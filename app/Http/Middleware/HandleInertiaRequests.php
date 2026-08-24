@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Services\ActiveTenantContext;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -29,8 +30,23 @@ class HandleInertiaRequests extends Middleware
      */
     public function share(Request $request): array
     {
+        /** @var ActiveTenantContext $context */
+        $context = app(ActiveTenantContext::class);
+        $organization = $context->organization();
+        $store = $context->store();
+
         return [
             ...parent::share($request),
+            'auth' => [
+                'user' => $request->user()?->only(['id', 'name', 'email']),
+            ],
+            'tenant' => [
+                'organization' => $organization?->only(['id', 'name', 'status']),
+                'store' => $store?->only(['id', 'organization_id', 'name', 'code', 'status']),
+                'permissions' => $request->user() && $organization
+                    ? $request->user()->permissionKeysFor($organization)
+                    : [],
+            ],
         ];
     }
 }
