@@ -1,7 +1,7 @@
 import { Link } from '@inertiajs/react';
 import type { PropsWithChildren } from 'react';
 
-const links = [['/sales/orders', 'Sales Orders'], ['/sales/customers', 'Customers']];
+const links = [['/pos', 'POS'], ['/sales/orders', 'Sales Orders'], ['/sales/customers', 'Customers']];
 
 export default function SalesLayout({ children }: PropsWithChildren) {
     return <main className="mx-auto min-h-screen max-w-7xl px-6 py-8">

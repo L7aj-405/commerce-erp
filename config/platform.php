@@ -55,6 +55,7 @@ return [
         'sales_orders.fulfill' => 'Fulfill sales orders',
         'sales_orders.override_price' => 'Override catalog sale prices',
         'sales_orders.apply_discount' => 'Apply sales order line discounts',
+        'pos.access' => 'Access the point of sale',
     ],
 
     'default_roles' => [
@@ -115,6 +116,7 @@ return [
                 'sales_orders.fulfill',
                 'sales_orders.override_price',
                 'sales_orders.apply_discount',
+                'pos.access',
             ],
         ],
         'sales-employee' => [
@@ -137,6 +139,7 @@ return [
                 'sales_orders.update',
                 'sales_orders.confirm',
                 'sales_orders.fulfill',
+                'pos.access',
             ],
         ],
     ],

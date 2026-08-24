@@ -25,18 +25,26 @@ class CreateSalesOrderAction
     public function __construct(private readonly SalesOrderNumberGenerator $numbers, private readonly AuditLogger $audit) {}
 
     /** @param array<string, mixed> $data */
-    public function execute(User $actor, Organization $organization, Store $store, array $data): SalesOrder
+    public function execute(
+        User $actor,
+        Organization $organization,
+        Store $store,
+        array $data,
+        SalesOrderSource $source = SalesOrderSource::Manual,
+        ?string $clientOperationId = null,
+    ): SalesOrder
     {
         $this->authorizeSales($actor, $organization, $store, 'sales_orders.create');
 
-        return DB::transaction(function () use ($actor, $organization, $store, $data) {
+        return DB::transaction(function () use ($actor, $organization, $store, $data, $source, $clientOperationId) {
             $customer = $this->customer($organization, $data['customer_id'] ?? null);
             $order = new SalesOrder;
             $order->organization_id = $organization->getKey();
             $order->store_id = $store->getKey();
             $order->customer_id = $customer?->getKey();
             $order->order_number = $this->numbers->next($organization);
-            $order->source = SalesOrderSource::Manual;
+            $order->source = $source;
+            $order->client_operation_id = $clientOperationId;
             $order->status = SalesOrderStatus::Draft;
             $order->fulfillment_status = SalesOrderFulfillmentStatus::Unfulfilled;
             $order->payment_status = SalesOrderPaymentStatus::Unpaid;
@@ -54,7 +62,8 @@ class CreateSalesOrderAction
             $this->audit->record('sales_order.created', $actor, $organization, $store, $order, newValues: [
                 'order_number' => $order->order_number, 'store_id' => $store->getKey(),
                 'customer_id' => $customer?->getKey(), 'sale_date' => $order->sale_date->toDateString(),
-                'currency_code' => $order->currency_code, 'status' => SalesOrderStatus::Draft->value,
+                'currency_code' => $order->currency_code, 'source' => $source->value,
+                'status' => SalesOrderStatus::Draft->value,
             ]);
 
             return $order;

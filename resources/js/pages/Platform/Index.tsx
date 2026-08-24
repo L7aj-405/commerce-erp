@@ -341,6 +341,12 @@ export default function PlatformIndex({ organizations, stores }: Props) {
                         Open Sales
                     </Link>
                 )}
+
+                {tenant.permissions.includes('pos.access') && (
+                    <Link href="/pos" className="ml-3 inline-flex rounded bg-emerald-700 px-4 py-2 text-white">
+                        Open POS
+                    </Link>
+                )}
             </main>
         </>
     );

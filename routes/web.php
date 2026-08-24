@@ -14,6 +14,7 @@ use App\Http\Controllers\Inventory\WarehouseController;
 use App\Http\Controllers\OrganizationController;
 use App\Http\Controllers\OrganizationMembershipController;
 use App\Http\Controllers\PlatformController;
+use App\Http\Controllers\PosController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\Sales\CustomerController;
 use App\Http\Controllers\Sales\SalesOrderController;
@@ -44,6 +45,14 @@ Route::middleware('auth')->group(function () {
     Route::post('/logout', [AuthenticatedSessionController::class, 'destroy'])->name('logout');
 
     Route::get('/platform', PlatformController::class)->name('platform.index');
+
+    Route::prefix('pos')->name('pos.')->group(function () {
+        Route::get('/', [PosController::class, 'index'])->name('index');
+        Route::get('/products', [PosController::class, 'products'])->name('products.index');
+        Route::get('/customers', [PosController::class, 'customers'])->name('customers.index');
+        Route::post('/customers', [PosController::class, 'storeCustomer'])->name('customers.store');
+        Route::post('/sales', [PosController::class, 'complete'])->name('sales.store');
+    });
     Route::post('/context/organizations/{organizationId}', [TenantContextController::class, 'organization'])
         ->whereNumber('organizationId')
         ->name('context.organization');

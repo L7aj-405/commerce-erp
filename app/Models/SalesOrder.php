@@ -17,6 +17,8 @@ class SalesOrder extends Model
 
     protected $guarded = ['*'];
 
+    protected $hidden = ['client_operation_id'];
+
     protected function casts(): array
     {
         return [

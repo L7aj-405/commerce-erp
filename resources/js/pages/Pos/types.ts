@@ -1,0 +1,31 @@
+export type Warehouse = { id: number; name: string; code: string };
+export type TaxRate = { id: number; name: string; rate: string };
+export type Customer = { id: number; display_name: string; company_name: string | null; phone: string | null; email: string | null };
+export type ProductResult = {
+    id: number;
+    product_name: string;
+    variant_name: string | null;
+    sku: string;
+    reference: string | null;
+    barcode: string | null;
+    default_sale_price: string;
+    tax_rate: TaxRate | null;
+    stock: { on_hand: string; reserved: string; available: string };
+};
+export type CartLine = {
+    key: string;
+    line_type: 'catalog' | 'custom';
+    product_variant_id?: number;
+    description: string;
+    variant_name?: string | null;
+    sku?: string | null;
+    reference?: string | null;
+    unit_label?: string | null;
+    quantity: string;
+    unit_price_excl_tax: string;
+    tax_rate_id?: number | null;
+    tax_rate: string;
+    discount_type: 'none' | 'fixed' | 'percentage';
+    discount_value: string;
+    available?: string;
+};
