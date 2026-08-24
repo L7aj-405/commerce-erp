@@ -112,6 +112,15 @@ class ActiveTenantContext
         return $this->store;
     }
 
+    public function storeOrFail(): Store
+    {
+        if (! $this->store) {
+            throw new HttpException(409, 'Select an active store.');
+        }
+
+        return $this->store;
+    }
+
     private function clearInvalidContext(User $user): void
     {
         if ($user->active_organization_id || $user->active_store_id) {

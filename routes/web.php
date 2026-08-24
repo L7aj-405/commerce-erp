@@ -15,6 +15,10 @@ use App\Http\Controllers\OrganizationController;
 use App\Http\Controllers\OrganizationMembershipController;
 use App\Http\Controllers\PlatformController;
 use App\Http\Controllers\RoleController;
+use App\Http\Controllers\Sales\CustomerController;
+use App\Http\Controllers\Sales\SalesOrderController;
+use App\Http\Controllers\Sales\SalesOrderLifecycleController;
+use App\Http\Controllers\Sales\SalesOrderLineController;
 use App\Http\Controllers\StoreController;
 use App\Http\Controllers\StoreMembershipController;
 use App\Http\Controllers\TenantContextController;
@@ -120,5 +124,26 @@ Route::middleware('auth')->group(function () {
         Route::post('/reservations', [InventoryReservationController::class, 'store'])->name('reservations.store');
         Route::post('/reservations/{reservation}/release', [InventoryReservationController::class, 'release'])->name('reservations.release');
         Route::post('/reservations/{reservation}/consume', [InventoryReservationController::class, 'consume'])->name('reservations.consume');
+    });
+
+    Route::prefix('sales')->name('sales.')->group(function () {
+        Route::get('/customers', [CustomerController::class, 'index'])->name('customers.index');
+        Route::get('/customers/create', [CustomerController::class, 'create'])->name('customers.create');
+        Route::post('/customers', [CustomerController::class, 'store'])->name('customers.store');
+        Route::get('/customers/{customer}/edit', [CustomerController::class, 'edit'])->name('customers.edit');
+        Route::patch('/customers/{customer}', [CustomerController::class, 'update'])->name('customers.update');
+
+        Route::get('/orders', [SalesOrderController::class, 'index'])->name('orders.index');
+        Route::get('/orders/create', [SalesOrderController::class, 'create'])->name('orders.create');
+        Route::post('/orders', [SalesOrderController::class, 'store'])->name('orders.store');
+        Route::get('/orders/{order}', [SalesOrderController::class, 'show'])->name('orders.show');
+        Route::get('/orders/{order}/edit', [SalesOrderController::class, 'edit'])->name('orders.edit');
+        Route::patch('/orders/{order}', [SalesOrderController::class, 'update'])->name('orders.update');
+        Route::post('/orders/{order}/lines', [SalesOrderLineController::class, 'store'])->name('orders.lines.store');
+        Route::patch('/orders/{order}/lines/{lineId}', [SalesOrderLineController::class, 'update'])->whereNumber('lineId')->name('orders.lines.update');
+        Route::delete('/orders/{order}/lines/{lineId}', [SalesOrderLineController::class, 'destroy'])->whereNumber('lineId')->name('orders.lines.destroy');
+        Route::post('/orders/{order}/confirm', [SalesOrderLifecycleController::class, 'confirm'])->name('orders.confirm');
+        Route::post('/orders/{order}/cancel', [SalesOrderLifecycleController::class, 'cancel'])->name('orders.cancel');
+        Route::post('/orders/{order}/fulfill', [SalesOrderLifecycleController::class, 'fulfill'])->name('orders.fulfill');
     });
 });

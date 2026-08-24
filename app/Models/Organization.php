@@ -99,6 +99,16 @@ class Organization extends Model
         return $this->hasMany(InventoryReservation::class);
     }
 
+    public function customers(): HasMany
+    {
+        return $this->hasMany(Customer::class);
+    }
+
+    public function salesOrders(): HasMany
+    {
+        return $this->hasMany(SalesOrder::class);
+    }
+
     public function resolveRouteBindingQuery($query, $value, $field = null)
     {
         return $query

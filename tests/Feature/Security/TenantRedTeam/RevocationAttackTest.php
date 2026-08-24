@@ -50,6 +50,15 @@ class RevocationAttackTest extends TenantRedTeamTestCase
 
         $this->assertNull($this->userA->fresh()->active_store_id);
         $this->assertResponseDoesNotContain($response, ['RedTeam Store A', 'RED-A']);
+
+        $this->actingAs($this->userA)
+            ->withHeader('X-Inertia', 'true')
+            ->get(route('catalog.products.index'))
+            ->assertOk()
+            ->assertJsonPath('props.tenant.organization.id', $this->organizationA->id)
+            ->assertJsonPath('props.tenant.store', null)
+            ->assertJsonPath('props.products.data.0.id', $this->productA->id);
+
         $this->actingAs($this->userA)
             ->get(route('stores.show', $this->storeA))
             ->assertNotFound();

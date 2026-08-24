@@ -335,6 +335,12 @@ export default function PlatformIndex({ organizations, stores }: Props) {
                         Open Inventory
                     </Link>
                 )}
+
+                {tenant.permissions.includes('sales_orders.view') && tenant.store && (
+                    <Link href="/sales/orders" className="ml-3 inline-flex rounded bg-slate-900 px-4 py-2 text-white">
+                        Open Sales
+                    </Link>
+                )}
             </main>
         </>
     );

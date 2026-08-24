@@ -1,6 +1,8 @@
 <?php
 
 return [
+    'currency_code' => 'MAD',
+
     'permissions' => [
         'organizations.view' => 'View organizations',
         'organizations.update' => 'Update organizations',
@@ -42,6 +44,17 @@ return [
         'inventory.reserve' => 'Reserve inventory',
         'inventory.release' => 'Release inventory reservations',
         'inventory.consume' => 'Consume inventory reservations',
+        'customers.view' => 'View customers',
+        'customers.create' => 'Create customers',
+        'customers.update' => 'Update customers',
+        'sales_orders.view' => 'View sales orders',
+        'sales_orders.create' => 'Create sales orders',
+        'sales_orders.update' => 'Update draft sales orders',
+        'sales_orders.confirm' => 'Confirm sales orders',
+        'sales_orders.cancel' => 'Cancel sales orders',
+        'sales_orders.fulfill' => 'Fulfill sales orders',
+        'sales_orders.override_price' => 'Override catalog sale prices',
+        'sales_orders.apply_discount' => 'Apply sales order line discounts',
     ],
 
     'default_roles' => [
@@ -91,6 +104,17 @@ return [
                 'inventory.reserve',
                 'inventory.release',
                 'inventory.consume',
+                'customers.view',
+                'customers.create',
+                'customers.update',
+                'sales_orders.view',
+                'sales_orders.create',
+                'sales_orders.update',
+                'sales_orders.confirm',
+                'sales_orders.cancel',
+                'sales_orders.fulfill',
+                'sales_orders.override_price',
+                'sales_orders.apply_discount',
             ],
         ],
         'sales-employee' => [
@@ -105,6 +129,14 @@ return [
                 'units.view',
                 'tax_rates.view',
                 'inventory.view',
+                'customers.view',
+                'customers.create',
+                'customers.update',
+                'sales_orders.view',
+                'sales_orders.create',
+                'sales_orders.update',
+                'sales_orders.confirm',
+                'sales_orders.fulfill',
             ],
         ],
     ],

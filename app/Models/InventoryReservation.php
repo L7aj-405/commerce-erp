@@ -6,6 +6,7 @@ use App\Enums\InventoryReservationStatus;
 use App\Models\Concerns\ScopesToActiveOrganization;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class InventoryReservation extends Model
 {
@@ -40,5 +41,10 @@ class InventoryReservation extends Model
     public function createdBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by_user_id');
+    }
+
+    public function salesOrderAllocation(): HasOne
+    {
+        return $this->hasOne(SalesOrderInventoryAllocation::class);
     }
 }

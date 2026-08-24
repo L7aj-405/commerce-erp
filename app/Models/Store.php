@@ -39,6 +39,11 @@ class Store extends Model
             ->withTimestamps();
     }
 
+    public function salesOrders(): HasMany
+    {
+        return $this->hasMany(SalesOrder::class);
+    }
+
     public function resolveRouteBindingQuery($query, $value, $field = null)
     {
         return $query

@@ -52,4 +52,9 @@ class ProductVariant extends Model
     {
         return $this->hasMany(InventoryReservation::class);
     }
+
+    public function salesOrderLines(): HasMany
+    {
+        return $this->hasMany(SalesOrderLine::class);
+    }
 }
