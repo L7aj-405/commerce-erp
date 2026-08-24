@@ -7,6 +7,10 @@ use App\Http\Controllers\Catalog\ProductController;
 use App\Http\Controllers\Catalog\ProductVariantController;
 use App\Http\Controllers\Catalog\TaxRateController;
 use App\Http\Controllers\Catalog\UnitOfMeasureController;
+use App\Http\Controllers\Inventory\InventoryMovementController;
+use App\Http\Controllers\Inventory\InventoryReservationController;
+use App\Http\Controllers\Inventory\InventoryStockController;
+use App\Http\Controllers\Inventory\WarehouseController;
 use App\Http\Controllers\OrganizationController;
 use App\Http\Controllers\OrganizationMembershipController;
 use App\Http\Controllers\PlatformController;
@@ -100,5 +104,21 @@ Route::middleware('auth')->group(function () {
         Route::get('/tax-rates', [TaxRateController::class, 'index'])->name('tax-rates.index');
         Route::post('/tax-rates', [TaxRateController::class, 'store'])->name('tax-rates.store');
         Route::patch('/tax-rates/{taxRate}', [TaxRateController::class, 'update'])->name('tax-rates.update');
+    });
+
+    Route::prefix('inventory')->name('inventory.')->group(function () {
+        Route::get('/stock', [InventoryStockController::class, 'index'])->name('stock.index');
+        Route::post('/opening-stock', [InventoryStockController::class, 'opening'])->name('opening.store');
+        Route::post('/adjustments', [InventoryStockController::class, 'adjustment'])->name('adjustments.store');
+
+        Route::get('/warehouses', [WarehouseController::class, 'index'])->name('warehouses.index');
+        Route::post('/warehouses', [WarehouseController::class, 'store'])->name('warehouses.store');
+        Route::patch('/warehouses/{warehouse}', [WarehouseController::class, 'update'])->name('warehouses.update');
+
+        Route::get('/movements', [InventoryMovementController::class, 'index'])->name('movements.index');
+
+        Route::post('/reservations', [InventoryReservationController::class, 'store'])->name('reservations.store');
+        Route::post('/reservations/{reservation}/release', [InventoryReservationController::class, 'release'])->name('reservations.release');
+        Route::post('/reservations/{reservation}/consume', [InventoryReservationController::class, 'consume'])->name('reservations.consume');
     });
 });

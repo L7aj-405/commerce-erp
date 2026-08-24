@@ -2,13 +2,13 @@
 
 namespace App\Models;
 
-use App\Enums\CatalogStatus;
+use App\Enums\WarehouseStatus;
 use App\Models\Concerns\ScopesToActiveOrganization;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-class ProductVariant extends Model
+class Warehouse extends Model
 {
     use ScopesToActiveOrganization;
 
@@ -16,11 +16,7 @@ class ProductVariant extends Model
 
     protected function casts(): array
     {
-        return [
-            'purchase_price' => 'decimal:4',
-            'default_sale_price' => 'decimal:4',
-            'status' => CatalogStatus::class,
-        ];
+        return ['status' => WarehouseStatus::class];
     }
 
     public function organization(): BelongsTo
@@ -28,27 +24,17 @@ class ProductVariant extends Model
         return $this->belongsTo(Organization::class);
     }
 
-    public function product(): BelongsTo
-    {
-        return $this->belongsTo(Product::class);
-    }
-
-    public function taxRate(): BelongsTo
-    {
-        return $this->belongsTo(TaxRate::class);
-    }
-
-    public function inventoryBalances(): HasMany
+    public function balances(): HasMany
     {
         return $this->hasMany(InventoryBalance::class);
     }
 
-    public function inventoryMovements(): HasMany
+    public function movements(): HasMany
     {
         return $this->hasMany(InventoryMovement::class);
     }
 
-    public function inventoryReservations(): HasMany
+    public function reservations(): HasMany
     {
         return $this->hasMany(InventoryReservation::class);
     }

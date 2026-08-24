@@ -79,6 +79,26 @@ class Organization extends Model
         return $this->hasMany(TaxRate::class);
     }
 
+    public function warehouses(): HasMany
+    {
+        return $this->hasMany(Warehouse::class);
+    }
+
+    public function inventoryBalances(): HasMany
+    {
+        return $this->hasMany(InventoryBalance::class);
+    }
+
+    public function inventoryMovements(): HasMany
+    {
+        return $this->hasMany(InventoryMovement::class);
+    }
+
+    public function inventoryReservations(): HasMany
+    {
+        return $this->hasMany(InventoryReservation::class);
+    }
+
     public function resolveRouteBindingQuery($query, $value, $field = null)
     {
         return $query

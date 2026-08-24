@@ -329,6 +329,12 @@ export default function PlatformIndex({ organizations, stores }: Props) {
                         Open Catalog
                     </Link>
                 )}
+
+                {tenant.permissions.includes('inventory.view') && (
+                    <Link href="/inventory/stock" className="ml-3 inline-flex rounded bg-slate-900 px-4 py-2 text-white">
+                        Open Inventory
+                    </Link>
+                )}
             </main>
         </>
     );
