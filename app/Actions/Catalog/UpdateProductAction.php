@@ -13,9 +13,10 @@ class UpdateProductAction
     /** @param array<string, mixed> $data */
     public function execute(User $actor, Product $product, array $data): Product
     {
-        $oldValues = $product->only(['name', 'description', 'brand_id', 'default_category_id', 'default_unit_id', 'status']);
+        $oldValues = $product->only(['name', 'description', 'image_url', 'brand_id', 'default_category_id', 'default_unit_id', 'status']);
         $product->name = $data['name'];
         $product->description = $data['description'] ?? null;
+        $product->image_url = $data['image_url'] ?? null;
         $product->brand_id = $data['brand_id'] ?? null;
         $product->default_category_id = $data['category_id'] ?? null;
         $product->default_unit_id = $data['unit_id'] ?? null;

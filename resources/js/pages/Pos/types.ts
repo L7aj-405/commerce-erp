@@ -1,19 +1,31 @@
 export type Warehouse = { id: number; name: string; code: string };
 export type TaxRate = { id: number; name: string; rate: string };
-export type Customer = { id: number; display_name: string; company_name: string | null; phone: string | null; email: string | null };
+export type Option = { id: number; name: string };
+export type Customer = {
+    id: number;
+    type?: 'individual' | 'business';
+    display_name: string;
+    company_name: string | null;
+    phone: string | null;
+    email: string | null;
+    tax_identifier?: string | null;
+    billing_address?: string | null;
+};
 export type ProductResult = {
     id: number;
     product_name: string;
     variant_name: string | null;
-    sku: string;
+    sku: string | null;
     reference: string | null;
     barcode: string | null;
+    image_url: string | null;
+    brand: Option | null;
     default_sale_price: string;
     tax_rate: TaxRate | null;
-    stock: { on_hand: string; reserved: string; available: string };
+    stock: { on_hand: string; reserved: string; available: string; total_available: string };
 };
 export type CartLine = {
-    key: string;
+    id: number;
     line_type: 'catalog' | 'custom';
     product_variant_id?: number;
     description: string;
@@ -21,11 +33,57 @@ export type CartLine = {
     sku?: string | null;
     reference?: string | null;
     unit_label?: string | null;
+    image_url?: string | null;
+    brand?: Option | null;
+    warehouse?: Warehouse | null;
     quantity: string;
     unit_price_excl_tax: string;
+    line_subtotal?: string;
+    line_discount?: string;
+    line_total?: string;
     tax_rate_id?: number | null;
     tax_rate: string;
     discount_type: 'none' | 'fixed' | 'percentage';
     discount_value: string;
     available?: string;
+    insufficient?: boolean;
+};
+export type ActiveSale = {
+    id: number;
+    order_number: string;
+    customer: Customer | null;
+    warehouse: Warehouse | null;
+    sale_date: string;
+    currency_code: string;
+    held_at: string | null;
+    lines: CartLine[];
+    availability_warnings: Array<{ line_id: number; product_name: string; requested: string; available: string }>;
+    checkout: {
+        global_discount_type: 'none' | 'fixed' | 'percentage';
+        global_discount_value: string;
+        global_discount_amount: string;
+        fulfillment_mode: 'pickup' | 'delivery';
+        shipping_fee: string;
+        delivery_address: string | null;
+        delivery_phone: string | null;
+        delivery_notes: string | null;
+    };
+    summary: {
+        merchandise_total: string;
+        line_discount_total: string;
+        global_discount_amount: string;
+        shipping_fee: string;
+        total: string;
+    };
+};
+export type HeldSale = {
+    id: number;
+    order_number: string;
+    held_at: string | null;
+    customer_name: string | null;
+    warehouse: Warehouse | null;
+    product_count: number;
+    line_count: number;
+    subtotal: string;
+    currency_code: string;
 };

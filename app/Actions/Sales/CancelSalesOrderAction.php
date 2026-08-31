@@ -4,6 +4,7 @@ namespace App\Actions\Sales;
 
 use App\Actions\Sales\Concerns\AuthorizesSalesAction;
 use App\Enums\InventoryReservationStatus;
+use App\Enums\InvoiceStatus;
 use App\Enums\SalesOrderFulfillmentStatus;
 use App\Enums\SalesOrderStatus;
 use App\Models\InventoryReservation;
@@ -11,6 +12,8 @@ use App\Models\SalesOrder;
 use App\Models\User;
 use App\Services\AuditLogger;
 use App\Services\InventoryReservationManager;
+use App\Services\SalesOrderPaymentCalculator;
+use App\Support\Decimal;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -18,7 +21,11 @@ class CancelSalesOrderAction
 {
     use AuthorizesSalesAction;
 
-    public function __construct(private readonly InventoryReservationManager $inventory, private readonly AuditLogger $audit) {}
+    public function __construct(
+        private readonly InventoryReservationManager $inventory,
+        private readonly SalesOrderPaymentCalculator $payments,
+        private readonly AuditLogger $audit,
+    ) {}
 
     public function execute(User $actor, SalesOrder $order, ?string $reason = null): SalesOrder
     {
@@ -28,6 +35,12 @@ class CancelSalesOrderAction
             $order = SalesOrder::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
             if ($order->status === SalesOrderStatus::Cancelled) {
                 throw ValidationException::withMessages(['order' => 'The order is already cancelled.']);
+            }
+            if ($order->invoices()->whereIn('status', [InvoiceStatus::Draft->value, InvoiceStatus::Issued->value])->exists()) {
+                throw ValidationException::withMessages(['order' => 'Active Invoice documents must be resolved before cancelling the Sales Order; issued Invoices require a future Credit Note workflow.']);
+            }
+            if (Decimal::compare($this->payments->paidAmount($order), '0.0000') > 0) {
+                throw ValidationException::withMessages(['order' => 'Posted Payments must be reversed before cancelling the Sales Order.']);
             }
             if ($order->fulfillment_status !== SalesOrderFulfillmentStatus::Unfulfilled) {
                 throw ValidationException::withMessages(['order' => 'Fulfilled or partially fulfilled orders require a returns workflow.']);

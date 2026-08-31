@@ -17,7 +17,7 @@ class SalesOrder extends Model
 
     protected $guarded = ['*'];
 
-    protected $hidden = ['client_operation_id'];
+    protected $hidden = ['client_operation_id', 'pos_checkout_hash'];
 
     protected function casts(): array
     {
@@ -35,6 +35,9 @@ class SalesOrder extends Model
             'confirmed_at' => 'datetime',
             'cancelled_at' => 'datetime',
             'fulfilled_at' => 'datetime',
+            'pos_global_discount_value' => 'decimal:4',
+            'pos_shipping_fee' => 'decimal:4',
+            'pos_held_at' => 'datetime',
         ];
     }
 
@@ -53,9 +56,29 @@ class SalesOrder extends Model
         return $this->belongsTo(Customer::class);
     }
 
+    public function posWarehouse(): BelongsTo
+    {
+        return $this->belongsTo(Warehouse::class, 'pos_warehouse_id');
+    }
+
     public function lines(): HasMany
     {
         return $this->hasMany(SalesOrderLine::class)->orderBy('position');
+    }
+
+    public function paymentAllocations(): HasMany
+    {
+        return $this->hasMany(PaymentAllocation::class);
+    }
+
+    public function invoices(): HasMany
+    {
+        return $this->hasMany(Invoice::class);
+    }
+
+    public function deliveryNotes(): HasMany
+    {
+        return $this->hasMany(DeliveryNote::class);
     }
 
     public function createdBy(): BelongsTo

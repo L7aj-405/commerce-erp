@@ -44,6 +44,26 @@ class User extends Authenticatable
             ->withTimestamps();
     }
 
+    public function receivedPayments(): HasMany
+    {
+        return $this->hasMany(Payment::class, 'received_by_user_id');
+    }
+
+    public function reversedPayments(): HasMany
+    {
+        return $this->hasMany(Payment::class, 'reversed_by_user_id');
+    }
+
+    public function issuedInvoices(): HasMany
+    {
+        return $this->hasMany(Invoice::class, 'issued_by_user_id');
+    }
+
+    public function issuedDeliveryNotes(): HasMany
+    {
+        return $this->hasMany(DeliveryNote::class, 'issued_by_user_id');
+    }
+
     public function activeOrganization(): BelongsTo
     {
         return $this->belongsTo(Organization::class, 'active_organization_id');

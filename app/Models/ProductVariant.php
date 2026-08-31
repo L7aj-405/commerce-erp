@@ -19,6 +19,8 @@ class ProductVariant extends Model
         return [
             'purchase_price' => 'decimal:4',
             'default_sale_price' => 'decimal:4',
+            'regular_sale_price' => 'decimal:4',
+            'promotional_sale_price' => 'decimal:4',
             'status' => CatalogStatus::class,
         ];
     }
@@ -56,5 +58,10 @@ class ProductVariant extends Model
     public function salesOrderLines(): HasMany
     {
         return $this->hasMany(SalesOrderLine::class);
+    }
+
+    public function channelIdentifiers(): HasMany
+    {
+        return $this->hasMany(ProductChannelIdentifier::class);
     }
 }

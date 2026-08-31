@@ -68,6 +68,7 @@ abstract class CatalogTestCase extends PlatformTestCase
         $product->organization_id = $organization->id;
         $product->name = $name;
         $product->description = $attributes['description'] ?? null;
+        $product->image_url = $attributes['image_url'] ?? null;
         $product->brand_id = $attributes['brand_id'] ?? null;
         $product->default_category_id = $attributes['category_id'] ?? null;
         $product->default_unit_id = $attributes['unit_id'] ?? null;
@@ -83,6 +84,8 @@ abstract class CatalogTestCase extends PlatformTestCase
         $variant->barcode = $attributes['barcode'] ?? null;
         $variant->purchase_price = $attributes['purchase_price'] ?? null;
         $variant->default_sale_price = $attributes['default_sale_price'] ?? '100.0000';
+        $variant->regular_sale_price = $attributes['regular_sale_price'] ?? $variant->default_sale_price;
+        $variant->promotional_sale_price = $attributes['promotional_sale_price'] ?? null;
         $variant->tax_rate_id = $attributes['tax_rate_id'] ?? null;
         $variant->status = $attributes['variant_status'] ?? 'active';
         $variant->save();
@@ -93,7 +96,7 @@ abstract class CatalogTestCase extends PlatformTestCase
     protected function productPayload(array $overrides = []): array
     {
         return array_replace_recursive([
-            'name' => 'New Product', 'description' => 'Catalog item', 'brand_id' => null, 'category_id' => null, 'unit_id' => null, 'status' => 'active',
+            'name' => 'New Product', 'description' => 'Catalog item', 'image_url' => null, 'brand_id' => null, 'category_id' => null, 'unit_id' => null, 'status' => 'active',
             'variant' => ['label' => null, 'sku' => 'SKU-NEW', 'reference' => 'REF-NEW', 'barcode' => null, 'purchase_price' => '50.0000', 'default_sale_price' => '100.0000', 'tax_rate_id' => null, 'status' => 'active'],
         ], $overrides);
     }

@@ -7,6 +7,15 @@ use Tests\Support\PosTestCase;
 
 class PosSearchTest extends PosTestCase
 {
+    public function test_pos_catalogue_is_visible_without_search(): void
+    {
+        [$owner, , , $warehouse, $variant] = $this->searchContext();
+        $this->actingAs($owner)->getJson(route('pos.products.index', ['warehouse_id' => $warehouse->id]))
+            ->assertOk()
+            ->assertJsonPath('data.0.id', $variant->id)
+            ->assertJsonPath('meta.current_page', 1);
+    }
+
     public function test_product_search_by_name(): void
     {
         [$owner, , , $warehouse, $variant] = $this->searchContext();
@@ -26,6 +35,18 @@ class PosSearchTest extends PosTestCase
         [$owner, , , $warehouse, $variant] = $this->searchContext();
         $this->actingAs($owner)->getJson(route('pos.products.index', ['warehouse_id' => $warehouse->id, 'search' => 'POS-REF']))
             ->assertOk()->assertJsonPath('data.0.id', $variant->id);
+    }
+
+    public function test_product_search_by_brand(): void
+    {
+        [$owner, $organization, , $warehouse, $variant] = $this->searchContext();
+        $variant->product->brand_id = $this->createBrand($organization, 'Shure')->id;
+        $variant->product->save();
+
+        $this->actingAs($owner)->getJson(route('pos.products.index', ['warehouse_id' => $warehouse->id, 'search' => 'Shure']))
+            ->assertOk()
+            ->assertJsonPath('data.0.id', $variant->id)
+            ->assertJsonPath('data.0.brand.name', 'Shure');
     }
 
     public function test_exact_barcode_lookup_returns_one_accessible_variant(): void
@@ -53,10 +74,23 @@ class PosSearchTest extends PosTestCase
             ->assertOk()
             ->assertJsonPath('data.0.stock.on_hand', '8.0000')
             ->assertJsonPath('data.0.stock.reserved', '0.0000')
-            ->assertJsonPath('data.0.stock.available', '8.0000');
+            ->assertJsonPath('data.0.stock.available', '8.0000')
+            ->assertJsonPath('data.0.image_url', 'https://images.example.test/pos-product.png');
 
         $this->assertStringNotContainsString('purchase_price', $response->getContent());
         $this->assertSame($variant->id, $response->json('data.0.id'));
+    }
+
+    public function test_product_result_availability_is_scoped_to_operational_warehouse(): void
+    {
+        [$owner, $organization, , $warehouse, $variant] = $this->searchContext();
+        $otherWarehouse = $this->createWarehouse($organization, 'Overflow');
+        $this->openStock($owner, $organization, $otherWarehouse, $variant, '10.0000');
+
+        $this->actingAs($owner)->getJson(route('pos.products.index', ['warehouse_id' => $warehouse->id, 'search' => 'POS-SKU']))
+            ->assertOk()
+            ->assertJsonPath('data.0.stock.available', '8.0000')
+            ->assertJsonPath('data.0.stock.total_available', '18.0000');
     }
 
     public function test_customer_lookup_is_organization_scoped(): void
@@ -79,7 +113,7 @@ class PosSearchTest extends PosTestCase
 
         $this->actingAs($owner)->post(route('pos.customers.store'), [
             'display_name' => 'Quick Customer', 'phone' => '0612345678', 'email' => 'quick@example.test',
-            'organization_id' => $foreignOrganization->id, 'status' => 'inactive', 'type' => 'company',
+            'organization_id' => $foreignOrganization->id, 'status' => 'inactive', 'type' => 'individual',
         ])->assertRedirect(route('pos.index'));
 
         $this->assertDatabaseHas('customers', [
@@ -88,6 +122,42 @@ class PosSearchTest extends PosTestCase
         ]);
         $this->assertDatabaseMissing('customers', ['organization_id' => $foreignOrganization->id, 'display_name' => 'Quick Customer']);
         $this->assertDatabaseHas('audit_logs', ['organization_id' => $organization->id, 'event' => 'customer.created']);
+    }
+
+    public function test_quick_customer_update_stays_in_active_organization_and_ignores_privileged_fields(): void
+    {
+        [$owner, $organization] = $this->searchContext();
+        $customer = $this->createCustomer($organization, 'POS Customer', ['phone' => '0600000000']);
+        $foreignOwner = User::factory()->create();
+        $foreignOrganization = $this->createOrganization($foreignOwner);
+
+        $this->actingAs($owner)->patchJson(route('pos.customers.update', $customer), [
+            'type' => 'business',
+            'company_name' => 'Updated Showroom Client',
+            'contact_name' => 'Front Desk',
+            'phone' => '0611111111',
+            'email' => 'updated@example.test',
+            'tax_identifier' => 'ICE-001',
+            'billing_address' => '1 Rue Atlas',
+            'organization_id' => $foreignOrganization->id,
+            'status' => 'inactive',
+        ])->assertOk()
+            ->assertJsonPath('data.display_name', 'Updated Showroom Client')
+            ->assertJsonPath('data.company_name', 'Updated Showroom Client');
+
+        $this->assertDatabaseHas('customers', [
+            'id' => $customer->id,
+            'organization_id' => $organization->id,
+            'display_name' => 'Updated Showroom Client',
+            'company_name' => 'Updated Showroom Client',
+            'phone' => '0611111111',
+            'status' => 'active',
+        ]);
+        $this->assertDatabaseMissing('customers', [
+            'id' => $customer->id,
+            'organization_id' => $foreignOrganization->id,
+        ]);
+        $this->assertDatabaseHas('audit_logs', ['organization_id' => $organization->id, 'event' => 'customer.updated']);
     }
 
     private function searchContext(): array
@@ -99,6 +169,7 @@ class PosSearchTest extends PosTestCase
         $product = $this->createProduct($organization, 'Studio Camera', 'POS-SKU', [
             'reference' => 'POS-REF', 'barcode' => '6111111111111',
             'purchase_price' => '25.0000', 'default_sale_price' => '100.0000',
+            'image_url' => 'https://images.example.test/pos-product.png',
         ]);
         $variant = $product->variants->first();
         $this->activate($owner, $organization, $store);

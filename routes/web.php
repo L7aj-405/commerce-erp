@@ -4,15 +4,24 @@ use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\Catalog\BrandController;
 use App\Http\Controllers\Catalog\CategoryController;
 use App\Http\Controllers\Catalog\ProductController;
+use App\Http\Controllers\Catalog\ProductImportController;
 use App\Http\Controllers\Catalog\ProductVariantController;
 use App\Http\Controllers\Catalog\TaxRateController;
 use App\Http\Controllers\Catalog\UnitOfMeasureController;
+use App\Http\Controllers\Documents\DeliveryNoteController;
+use App\Http\Controllers\Documents\DocumentEmailController;
+use App\Http\Controllers\Documents\DocumentProfileController;
+use App\Http\Controllers\Documents\DocumentRenderingController;
+use App\Http\Controllers\Documents\InvoiceController;
 use App\Http\Controllers\Inventory\InventoryMovementController;
 use App\Http\Controllers\Inventory\InventoryReservationController;
 use App\Http\Controllers\Inventory\InventoryStockController;
+use App\Http\Controllers\Inventory\StockTransferController;
 use App\Http\Controllers\Inventory\WarehouseController;
 use App\Http\Controllers\OrganizationController;
 use App\Http\Controllers\OrganizationMembershipController;
+use App\Http\Controllers\Payments\FinancialAccountController;
+use App\Http\Controllers\Payments\PaymentController;
 use App\Http\Controllers\PlatformController;
 use App\Http\Controllers\PosController;
 use App\Http\Controllers\RoleController;
@@ -45,12 +54,23 @@ Route::middleware('auth')->group(function () {
     Route::post('/logout', [AuthenticatedSessionController::class, 'destroy'])->name('logout');
 
     Route::get('/platform', PlatformController::class)->name('platform.index');
+    Route::get('/document-profile', [DocumentProfileController::class, 'edit'])->name('document-profile.edit');
+    Route::put('/document-profile', [DocumentProfileController::class, 'update'])->name('document-profile.update');
 
     Route::prefix('pos')->name('pos.')->group(function () {
         Route::get('/', [PosController::class, 'index'])->name('index');
         Route::get('/products', [PosController::class, 'products'])->name('products.index');
         Route::get('/customers', [PosController::class, 'customers'])->name('customers.index');
         Route::post('/customers', [PosController::class, 'storeCustomer'])->name('customers.store');
+        Route::patch('/customers/{customer}', [PosController::class, 'updateCustomer'])->name('customers.update');
+        Route::post('/drafts', [PosController::class, 'storeDraft'])->name('drafts.store');
+        Route::patch('/drafts/{order}', [PosController::class, 'updateDraft'])->name('drafts.update');
+        Route::post('/drafts/{order}/lines', [PosController::class, 'storeDraftLine'])->name('drafts.lines.store');
+        Route::patch('/drafts/{order}/lines/{line}', [PosController::class, 'updateDraftLine'])->name('drafts.lines.update');
+        Route::delete('/drafts/{order}/lines/{line}', [PosController::class, 'destroyDraftLine'])->name('drafts.lines.destroy');
+        Route::post('/drafts/{order}/hold', [PosController::class, 'holdDraft'])->name('drafts.hold');
+        Route::post('/drafts/{order}/resume', [PosController::class, 'resumeDraft'])->name('drafts.resume');
+        Route::delete('/drafts/{order}', [PosController::class, 'destroyDraft'])->name('drafts.destroy');
         Route::post('/sales', [PosController::class, 'complete'])->name('sales.store');
     });
     Route::post('/context/organizations/{organizationId}', [TenantContextController::class, 'organization'])
@@ -91,6 +111,11 @@ Route::middleware('auth')->group(function () {
 
     Route::prefix('catalog')->name('catalog.')->group(function () {
         Route::get('/products', [ProductController::class, 'index'])->name('products.index');
+        Route::get('/products/import', [ProductImportController::class, 'create'])->name('product-imports.create');
+        Route::post('/products/import', [ProductImportController::class, 'store'])->name('product-imports.store');
+        Route::get('/products/import/{productImport}', [ProductImportController::class, 'show'])->name('product-imports.show');
+        Route::put('/products/import/{productImport}/preview', [ProductImportController::class, 'preview'])->name('product-imports.preview');
+        Route::post('/products/import/{productImport}/confirm', [ProductImportController::class, 'confirm'])->name('product-imports.confirm');
         Route::get('/products/create', [ProductController::class, 'create'])->name('products.create');
         Route::post('/products', [ProductController::class, 'store'])->name('products.store');
         Route::get('/products/{product}', [ProductController::class, 'show'])->name('products.show');
@@ -130,10 +155,45 @@ Route::middleware('auth')->group(function () {
 
         Route::get('/movements', [InventoryMovementController::class, 'index'])->name('movements.index');
 
+        Route::get('/transfers', [StockTransferController::class, 'index'])->name('transfers.index');
+        Route::get('/transfers/create', [StockTransferController::class, 'create'])->name('transfers.create');
+        Route::post('/transfers', [StockTransferController::class, 'store'])->name('transfers.store');
+        Route::get('/transfers/{transfer}', [StockTransferController::class, 'show'])->name('transfers.show');
+
         Route::post('/reservations', [InventoryReservationController::class, 'store'])->name('reservations.store');
         Route::post('/reservations/{reservation}/release', [InventoryReservationController::class, 'release'])->name('reservations.release');
         Route::post('/reservations/{reservation}/consume', [InventoryReservationController::class, 'consume'])->name('reservations.consume');
     });
+
+    Route::get('/financial-accounts', [FinancialAccountController::class, 'index'])->name('financial-accounts.index');
+    Route::post('/financial-accounts', [FinancialAccountController::class, 'store'])->name('financial-accounts.store');
+    Route::patch('/financial-accounts/{financialAccount}', [FinancialAccountController::class, 'update'])->name('financial-accounts.update');
+
+    Route::prefix('payments')->name('payments.')->group(function () {
+        Route::get('/', [PaymentController::class, 'index'])->name('index');
+        Route::get('/{payment}', [PaymentController::class, 'show'])->name('show');
+        Route::post('/{payment}/reverse', [PaymentController::class, 'reverse'])->name('reverse');
+    });
+
+    Route::get('/invoices', [InvoiceController::class, 'index'])->name('invoices.index');
+    Route::get('/invoices/{invoice}', [InvoiceController::class, 'show'])->name('invoices.show');
+    Route::get('/invoices/{invoice}/print', [DocumentRenderingController::class, 'printInvoice'])->name('invoices.print');
+    Route::get('/invoices/{invoice}/pdf', [DocumentRenderingController::class, 'invoicePdf'])->name('invoices.pdf');
+    Route::get('/invoices/{invoice}/download', [DocumentRenderingController::class, 'downloadInvoice'])->name('invoices.download');
+    Route::post('/invoices/{invoice}/email', [DocumentEmailController::class, 'invoice'])->name('invoices.email');
+    Route::patch('/invoices/{invoice}', [InvoiceController::class, 'update'])->name('invoices.update');
+    Route::post('/invoices/{invoice}/issue', [InvoiceController::class, 'issue'])->name('invoices.issue');
+    Route::post('/invoices/{invoice}/cancel', [InvoiceController::class, 'cancel'])->name('invoices.cancel');
+
+    Route::get('/delivery-notes', [DeliveryNoteController::class, 'index'])->name('delivery-notes.index');
+    Route::get('/delivery-notes/{deliveryNote}', [DeliveryNoteController::class, 'show'])->name('delivery-notes.show');
+    Route::get('/delivery-notes/{deliveryNote}/print', [DocumentRenderingController::class, 'printDeliveryNote'])->name('delivery-notes.print');
+    Route::get('/delivery-notes/{deliveryNote}/pdf', [DocumentRenderingController::class, 'deliveryNotePdf'])->name('delivery-notes.pdf');
+    Route::get('/delivery-notes/{deliveryNote}/download', [DocumentRenderingController::class, 'downloadDeliveryNote'])->name('delivery-notes.download');
+    Route::post('/delivery-notes/{deliveryNote}/email', [DocumentEmailController::class, 'deliveryNote'])->name('delivery-notes.email');
+    Route::patch('/delivery-notes/{deliveryNote}', [DeliveryNoteController::class, 'update'])->name('delivery-notes.update');
+    Route::post('/delivery-notes/{deliveryNote}/issue', [DeliveryNoteController::class, 'issue'])->name('delivery-notes.issue');
+    Route::post('/delivery-notes/{deliveryNote}/cancel', [DeliveryNoteController::class, 'cancel'])->name('delivery-notes.cancel');
 
     Route::prefix('sales')->name('sales.')->group(function () {
         Route::get('/customers', [CustomerController::class, 'index'])->name('customers.index');
@@ -154,5 +214,8 @@ Route::middleware('auth')->group(function () {
         Route::post('/orders/{order}/confirm', [SalesOrderLifecycleController::class, 'confirm'])->name('orders.confirm');
         Route::post('/orders/{order}/cancel', [SalesOrderLifecycleController::class, 'cancel'])->name('orders.cancel');
         Route::post('/orders/{order}/fulfill', [SalesOrderLifecycleController::class, 'fulfill'])->name('orders.fulfill');
+        Route::post('/orders/{order}/payments', [PaymentController::class, 'store'])->name('orders.payments.store');
+        Route::post('/orders/{order}/invoices', [InvoiceController::class, 'store'])->name('orders.invoices.store');
+        Route::post('/orders/{order}/delivery-notes', [DeliveryNoteController::class, 'store'])->name('orders.delivery-notes.store');
     });
 });

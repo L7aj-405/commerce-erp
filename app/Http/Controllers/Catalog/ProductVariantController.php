@@ -52,7 +52,9 @@ class ProductVariantController extends Controller
             'reference' => ['nullable', 'string', 'max:255'],
             'barcode' => ['nullable', 'string', 'max:255', Rule::unique('product_variants', 'barcode')->where('organization_id', $organizationId)->ignore($variant)],
             'purchase_price' => ['nullable', 'numeric', 'min:0', 'decimal:0,4'],
-            'default_sale_price' => ['required', 'numeric', 'min:0', 'decimal:0,4'],
+            'regular_sale_price' => ['nullable', 'numeric', 'min:0', 'decimal:0,4', 'required_without:default_sale_price'],
+            'promotional_sale_price' => ['nullable', 'numeric', 'min:0', 'decimal:0,4', 'lte:regular_sale_price'],
+            'default_sale_price' => ['nullable', 'numeric', 'min:0', 'decimal:0,4', 'required_without:regular_sale_price'],
             'tax_rate_id' => ['nullable', 'integer', Rule::exists('tax_rates', 'id')->where('organization_id', $organizationId)],
             'status' => ['required', Rule::enum(CatalogStatus::class)],
         ];

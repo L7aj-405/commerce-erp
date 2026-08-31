@@ -4,9 +4,11 @@ namespace App\Http\Controllers\Inventory;
 
 use App\Enums\WarehouseStatus;
 use App\Http\Controllers\Controller;
+use App\Models\InventoryBalance;
 use App\Models\Warehouse;
 use App\Services\ActiveTenantContext;
 use App\Services\WarehouseManager;
+use App\Support\InventoryQuantity;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -19,9 +21,28 @@ class WarehouseController extends Controller
     {
         $organization = $context->organizationOrFail();
         $this->authorize('viewAny', [Warehouse::class, $organization]);
+        $warehouses = $organization->warehouses()->orderBy('name')->get();
+        $stats = InventoryBalance::query()
+            ->where('organization_id', $organization->getKey())
+            ->selectRaw('warehouse_id, COUNT(DISTINCT product_variant_id) as product_count, COALESCE(SUM(on_hand), 0) as unit_count')
+            ->groupBy('warehouse_id')
+            ->get()
+            ->keyBy('warehouse_id');
 
         return Inertia::render('Inventory/Warehouses/Index', [
-            'warehouses' => $organization->warehouses()->orderBy('name')->get(),
+            'warehouses' => $warehouses->map(function (Warehouse $warehouse) use ($stats) {
+                $summary = $stats->get($warehouse->getKey());
+
+                return [
+                    ...$warehouse->toArray(),
+                    'product_count' => (int) ($summary->product_count ?? 0),
+                    'unit_count' => InventoryQuantity::normalize($summary->unit_count ?? InventoryQuantity::ZERO),
+                ];
+            }),
+            'can' => [
+                'create' => request()->user()?->can('create', [Warehouse::class, $organization]) ?? false,
+                'update' => request()->user()?->hasPermission($organization, 'warehouses.update') ?? false,
+            ],
         ]);
     }
 
@@ -29,9 +50,12 @@ class WarehouseController extends Controller
     {
         $organization = $context->organizationOrFail();
         $this->authorize('create', [Warehouse::class, $organization]);
-        $manager->create($request->user(), $organization, $request->validate($this->rules($organization->getKey())));
+        $warehouse = $manager->create($request->user(), $organization, $request->validate($this->rules($organization->getKey())));
 
-        return back();
+        return redirect()
+            ->route('inventory.warehouses.index')
+            ->with('success', 'Emplacement cree avec succes.')
+            ->with('warehouse_created_id', $warehouse->getKey());
     }
 
     public function update(Request $request, Warehouse $warehouse, WarehouseManager $manager): RedirectResponse
@@ -39,7 +63,7 @@ class WarehouseController extends Controller
         $this->authorize('update', $warehouse);
         $manager->update($request->user(), $warehouse, $request->validate($this->rules($warehouse->organization_id, $warehouse)));
 
-        return back();
+        return back()->with('success', 'Emplacement mis a jour.');
     }
 
     /** @return array<string, mixed> */

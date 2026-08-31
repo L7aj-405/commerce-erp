@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\Organization;
 use App\Services\ActiveTenantContext;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
@@ -34,6 +35,13 @@ class HandleInertiaRequests extends Middleware
         $context = app(ActiveTenantContext::class);
         $organization = $context->organization();
         $store = $context->store();
+        $user = $request->user();
+        $organizations = $user ? Organization::query()
+            ->whereHas('memberships', fn ($query) => $query->where('user_id', $user->getKey())->where('status', 'active'))
+            ->where('status', 'active')->orderBy('name')->get(['id', 'name', 'status']) : collect();
+        $stores = $user && $organization ? $organization->stores()->where('status', 'active')
+            ->whereHas('memberships', fn ($query) => $query->where('user_id', $user->getKey()))
+            ->orderBy('name')->get(['id', 'organization_id', 'name', 'code', 'status']) : collect();
 
         return [
             ...parent::share($request),
@@ -43,9 +51,15 @@ class HandleInertiaRequests extends Middleware
             'tenant' => [
                 'organization' => $organization?->only(['id', 'name', 'status']),
                 'store' => $store?->only(['id', 'organization_id', 'name', 'code', 'status']),
+                'organizations' => $organizations,
+                'stores' => $stores,
                 'permissions' => $request->user() && $organization
                     ? $request->user()->permissionKeysFor($organization)
                     : [],
+            ],
+            'flash' => [
+                'success' => fn () => $request->session()->get('success'),
+                'warehouseCreatedId' => fn () => $request->session()->get('warehouse_created_id'),
             ],
         ];
     }

@@ -13,6 +13,7 @@ return new class extends Migration
         'inventory.view' => 'View inventory',
         'inventory.opening' => 'Add opening stock',
         'inventory.adjust' => 'Adjust inventory',
+        'inventory.transfer' => 'Transfer inventory',
         'inventory.reserve' => 'Reserve inventory',
         'inventory.release' => 'Release inventory reservations',
         'inventory.consume' => 'Consume inventory reservations',

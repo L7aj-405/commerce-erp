@@ -1,81 +1,153 @@
-import type { FormEvent } from 'react';
-import { useState } from 'react';
-import type { ProductResult } from './types';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import type { Option, ProductResult } from './types';
+import PosProductCard from './PosProductCard';
 
 type Props = {
     warehouseId: number | null;
+    brands: Option[];
+    categories: Option[];
     onAdd: (product: ProductResult) => void;
 };
 
-export default function PosProductSearch({ warehouseId, onAdd }: Props) {
-    const [search, setSearch] = useState('');
-    const [barcode, setBarcode] = useState('');
+type Payload = {
+    data: ProductResult[];
+    meta: { current_page: number; has_more: boolean; next_page: number | null };
+};
+
+export default function PosProductSearch({ warehouseId, brands, categories, onAdd }: Props) {
+    const [query, setQuery] = useState('');
+    const [brandId, setBrandId] = useState<number | ''>('');
+    const [categoryId, setCategoryId] = useState<number | ''>('');
+    const [availability, setAvailability] = useState<'all' | 'in_stock' | 'out_of_stock'>('all');
     const [results, setResults] = useState<ProductResult[]>([]);
+    const [nextPage, setNextPage] = useState<number | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
+    const abortRef = useRef<AbortController | null>(null);
+    const trimmed = useMemo(() => query.trim(), [query]);
 
-    async function lookup(params: { search?: string; barcode?: string }) {
+    async function lookup(page = 1, append = false, params?: { barcode?: string }) {
         if (!warehouseId) {
-            setError('Select a Warehouse before searching products.');
-            return;
+            setResults([]);
+            setError('Sélectionnez un entrepôt opérationnel avant de charger le catalogue.');
+            return [];
         }
 
+        abortRef.current?.abort();
+        const controller = new AbortController();
+        abortRef.current = controller;
         setLoading(true);
         setError('');
 
+        const searchParams = new URLSearchParams({
+            warehouse_id: String(warehouseId),
+            page: String(page),
+            availability,
+        });
+
+        if (trimmed) searchParams.set('search', trimmed);
+        if (brandId) searchParams.set('brand_id', String(brandId));
+        if (categoryId) searchParams.set('category_id', String(categoryId));
+        if (params?.barcode) searchParams.set('barcode', params.barcode);
+
         try {
-            const query = new URLSearchParams({ warehouse_id: String(warehouseId), ...params });
-            const response = await fetch(`/pos/products?${query}`, { headers: { Accept: 'application/json' }, credentials: 'same-origin' });
-            if (!response.ok) throw new Error(response.status === 403 ? 'You are not authorized to search POS products.' : 'Product search failed.');
-            const payload = await response.json() as { data: ProductResult[] };
-            setResults(payload.data);
-            if (params.barcode && payload.data.length === 1) {
-                onAdd(payload.data[0]);
-                setBarcode('');
-            } else if (params.barcode) {
-                setError('No accessible active product matches this barcode.');
+            const response = await fetch(`/pos/products?${searchParams.toString()}`, {
+                headers: { Accept: 'application/json' },
+                credentials: 'same-origin',
+                signal: controller.signal,
+            });
+
+            if (!response.ok) {
+                throw new Error(response.status === 403 ? 'Vous n’êtes pas autorisé à consulter le catalogue POS.' : 'Le chargement du catalogue a échoué.');
             }
+
+            const payload = await response.json() as Payload;
+            setResults(current => append ? [...current, ...payload.data] : payload.data);
+            setNextPage(payload.meta.next_page);
+
+            return payload.data;
         } catch (reason) {
-            setError(reason instanceof Error ? reason.message : 'Product search failed.');
+            if ((reason as Error).name === 'AbortError') {
+                return [];
+            }
+
+            setError(reason instanceof Error ? reason.message : 'Le chargement du catalogue a échoué.');
+            return [];
         } finally {
             setLoading(false);
         }
     }
 
-    function submitSearch(event: FormEvent) {
-        event.preventDefault();
-        if (search.trim()) void lookup({ search: search.trim() });
-    }
+    useEffect(() => {
+        const timer = window.setTimeout(() => {
+            void lookup(1, false);
+        }, trimmed ? 275 : 0);
 
-    function submitBarcode(event: FormEvent) {
-        event.preventDefault();
-        if (barcode.trim()) void lookup({ barcode: barcode.trim() });
-    }
+        return () => window.clearTimeout(timer);
+    }, [warehouseId, trimmed, brandId, categoryId, availability]);
 
     return (
-        <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <div>
-                <h2 className="font-semibold">Scan or search products</h2>
-                <p className="text-xs text-slate-500">Exact barcode scans add immediately. Search results are limited to 20.</p>
+        <section className="space-y-4 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                    <h2 className="text-lg font-semibold text-slate-950">Catalogue showroom</h2>
+                    <p className="text-sm text-slate-500">Produits visibles immédiatement, puis filtrés par recherche, SKU, référence, marque ou code-barres.</p>
+                </div>
+                <div className="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-600">Recherche serveur · 275 ms</div>
             </div>
-            <form onSubmit={submitBarcode} className="flex gap-2">
-                <input autoFocus value={barcode} onChange={(event) => setBarcode(event.target.value)} placeholder="Scan barcode, then Enter" className="min-w-0 flex-1 rounded-lg border border-slate-300 px-3 py-3 font-mono focus:border-slate-700 focus:outline-none" />
-                <button disabled={loading || !warehouseId} className="rounded-lg bg-slate-900 px-4 py-2 text-white disabled:opacity-40">Add</button>
-            </form>
-            <form onSubmit={submitSearch} className="flex gap-2">
-                <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Name, SKU, reference or barcode" className="min-w-0 flex-1 rounded-lg border border-slate-300 px-3 py-2 focus:border-slate-700 focus:outline-none" />
-                <button disabled={loading || !warehouseId} className="rounded-lg border border-slate-300 px-4 py-2 disabled:opacity-40">Search</button>
-            </form>
-            {error && <p className="rounded bg-red-50 p-2 text-sm text-red-700">{error}</p>}
-            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                {results.map((product) => (
-                    <button key={product.id} type="button" onClick={() => onAdd(product)} className="rounded-lg border border-slate-200 p-3 text-left hover:border-slate-500 hover:bg-slate-50">
-                        <strong className="block truncate">{product.product_name}</strong>
-                        <span className="block truncate text-xs text-slate-500">{product.variant_name ?? 'Default'} · {product.sku}</span>
-                        <span className="mt-2 flex justify-between text-sm"><span>{product.default_sale_price}</span><span className={Number(product.stock.available) > 0 ? 'text-emerald-700' : 'text-red-700'}>Available {product.stock.available}</span></span>
+
+            <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_12rem_12rem_11rem]">
+                <input
+                    autoFocus
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                    onKeyDown={async (event) => {
+                        if (event.key !== 'Enter' || !trimmed) return;
+                        event.preventDefault();
+                        const matches = await lookup(1, false, { barcode: trimmed });
+                        if (matches.length === 1 && Number(matches[0].stock.available) > 0) {
+                            onAdd(matches[0]);
+                            setQuery('');
+                        }
+                    }}
+                    placeholder="Rechercher produit / SKU / référence / code-barres"
+                    className="h-12 rounded-2xl border border-slate-300 px-4 text-base focus:border-slate-700 focus:outline-none"
+                />
+                <select value={brandId} onChange={(event) => setBrandId(event.target.value ? Number(event.target.value) : '')} className="h-12 rounded-2xl border border-slate-300 px-3 text-sm">
+                    <option value="">Toutes les marques</option>
+                    {brands.map((brand) => <option key={brand.id} value={brand.id}>{brand.name}</option>)}
+                </select>
+                <select value={categoryId} onChange={(event) => setCategoryId(event.target.value ? Number(event.target.value) : '')} className="h-12 rounded-2xl border border-slate-300 px-3 text-sm">
+                    <option value="">Toutes les catégories</option>
+                    {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+                </select>
+                <select value={availability} onChange={(event) => setAvailability(event.target.value as 'all' | 'in_stock' | 'out_of_stock')} className="h-12 rounded-2xl border border-slate-300 px-3 text-sm">
+                    <option value="all">Tous</option>
+                    <option value="in_stock">Disponibles</option>
+                    <option value="out_of_stock">Rupture</option>
+                </select>
+            </div>
+
+            {error && <p className="rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>}
+            {loading && results.length === 0 && <p className="text-sm text-slate-500">Chargement du catalogue…</p>}
+
+            <div className="grid gap-4 sm:grid-cols-2 2xl:grid-cols-3">
+                {results.map((product) => <PosProductCard key={product.id} product={product} onAdd={onAdd} />)}
+            </div>
+
+            {!loading && results.length === 0 && !error && (
+                <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm text-slate-500">
+                    Aucun produit ne correspond aux filtres actuels.
+                </div>
+            )}
+
+            {nextPage && (
+                <div className="flex justify-center">
+                    <button type="button" disabled={loading} onClick={() => void lookup(nextPage, true)} className="rounded-2xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 disabled:opacity-50">
+                        {loading ? 'Chargement…' : 'Charger plus de produits'}
                     </button>
-                ))}
-            </div>
+                </div>
+            )}
         </section>
     );
 }

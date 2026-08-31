@@ -44,6 +44,21 @@ class Store extends Model
         return $this->hasMany(SalesOrder::class);
     }
 
+    public function payments(): HasMany
+    {
+        return $this->hasMany(Payment::class);
+    }
+
+    public function invoices(): HasMany
+    {
+        return $this->hasMany(Invoice::class);
+    }
+
+    public function deliveryNotes(): HasMany
+    {
+        return $this->hasMany(DeliveryNote::class);
+    }
+
     public function resolveRouteBindingQuery($query, $value, $field = null)
     {
         return $query

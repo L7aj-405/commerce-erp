@@ -1,0 +1,5 @@
+import { Link } from '@inertiajs/react';
+import type { ButtonHTMLAttributes, PropsWithChildren } from 'react';
+const styles = { primary: 'bg-slate-950 text-white hover:bg-slate-800', secondary: 'border border-slate-300 bg-white text-slate-800 hover:bg-slate-50', danger: 'border border-red-200 text-red-700 hover:bg-red-50' };
+export function Button({ variant = 'primary', className = '', ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: keyof typeof styles }) { return <button {...props} className={`inline-flex min-h-10 items-center justify-center rounded-lg px-4 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${styles[variant]} ${className}`} />; }
+export function ButtonLink({ href, variant = 'primary', children }: PropsWithChildren<{ href: string; variant?: keyof typeof styles }>) { return <Link href={href} className={`inline-flex min-h-10 items-center justify-center rounded-lg px-4 py-2 text-sm font-medium transition ${styles[variant]}`}>{children}</Link>; }

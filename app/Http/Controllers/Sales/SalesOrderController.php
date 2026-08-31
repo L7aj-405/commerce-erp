@@ -7,9 +7,14 @@ use App\Actions\Sales\UpdateSalesOrderAction;
 use App\Enums\SalesOrderStatus;
 use App\Http\Controllers\Controller;
 use App\Models\Customer;
+use App\Models\DeliveryNote;
+use App\Models\FinancialAccount;
+use App\Models\Invoice;
+use App\Models\Payment;
 use App\Models\ProductVariant;
 use App\Models\SalesOrder;
 use App\Services\ActiveTenantContext;
+use App\Services\SalesOrderPaymentCalculator;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -60,11 +65,45 @@ class SalesOrderController extends Controller
         return redirect()->route('sales.orders.edit', $order);
     }
 
-    public function show(SalesOrder $order): Response
+    public function show(SalesOrder $order, SalesOrderPaymentCalculator $payments): Response
     {
         $this->authorize('view', $order);
 
-        return Inertia::render('Sales/Orders/Show', ['order' => $this->loadOrder($order), 'can' => $this->abilities(request(), $order)]);
+        $canRecordPayment = request()->user()->can('create', [Payment::class, $order]);
+
+        return Inertia::render('Sales/Orders/Show', [
+            'order' => $this->loadOrder($order),
+            'paymentSummary' => $payments->summary($order),
+            'payments' => $order->paymentAllocations()
+                ->with(['payment.financialAccount:id,name,code,type', 'payment.receivedBy:id,name'])
+                ->latest('id')
+                ->get()
+                ->map(fn ($allocation) => [
+                    ...$allocation->payment->only(['id', 'payment_number', 'method', 'status', 'amount', 'currency_code', 'payment_date', 'reference']),
+                    'allocated_amount' => $allocation->amount,
+                    'financial_account' => $allocation->payment->financialAccount,
+                    'received_by' => $allocation->payment->receivedBy,
+                ]),
+            'financialAccounts' => $canRecordPayment
+                ? FinancialAccount::query()
+                    ->where('organization_id', $order->organization_id)
+                    ->where('status', 'active')
+                    ->where('currency_code', $order->currency_code)
+                    ->orderBy('name')
+                    ->get(['id', 'name', 'code', 'type', 'currency_code'])
+                : [],
+            'documents' => [
+                'invoices' => $order->invoices()->latest('id')->get(['id', 'invoice_number', 'invoice_date', 'status', 'total_incl_tax']),
+                'deliveryNotes' => $order->deliveryNotes()->latest('id')->get(['id', 'delivery_note_number', 'delivery_date', 'status']),
+            ],
+            'can' => [
+                ...$this->abilities(request(), $order),
+                'recordPayment' => $canRecordPayment,
+                'backdatePayment' => request()->user()->hasPermission($order->organization_id, 'payments.backdate'),
+                'createInvoice' => request()->user()->can('create', [Invoice::class, $order]),
+                'createDeliveryNote' => request()->user()->can('create', [DeliveryNote::class, $order]),
+            ],
+        ]);
     }
 
     public function edit(Request $request, SalesOrder $order): Response

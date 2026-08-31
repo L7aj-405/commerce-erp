@@ -32,4 +32,22 @@ class ProductSearchTest extends CatalogTestCase
         $this->actingAs($owner)->withHeader('X-Inertia', 'true')->get(route('catalog.products.index', ['status' => 'active', 'brand' => $brand->id, 'category' => $category->id]))
             ->assertOk()->assertJsonFragment(['name' => 'Matching'])->assertJsonMissing(['name' => 'Not Matching']);
     }
+
+    public function test_server_search_never_returns_another_organization_product_and_preserves_filter_state(): void
+    {
+        $ownerA = User::factory()->create();
+        $ownerB = User::factory()->create();
+        $organizationA = $this->createOrganization($ownerA, 'A');
+        $organizationB = $this->createOrganization($ownerB, 'B');
+        $this->createProduct($organizationA, 'Shared term local', 'LOCAL-SEARCH');
+        $this->createProduct($organizationB, 'Shared term private', 'PRIVATE-SEARCH');
+        $this->activate($ownerA, $organizationA);
+
+        $this->actingAs($ownerA)->withHeader('X-Inertia', 'true')->get(route('catalog.products.index', ['search' => 'Shared term']))
+            ->assertOk()
+            ->assertJsonCount(1, 'props.products.data')
+            ->assertJsonPath('props.products.data.0.name', 'Shared term local')
+            ->assertJsonPath('props.filters.search', 'Shared term')
+            ->assertJsonMissing(['sku' => 'PRIVATE-SEARCH']);
+    }
 }

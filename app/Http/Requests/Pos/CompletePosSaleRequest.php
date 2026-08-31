@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Pos;
 
+use App\Enums\PaymentMethod;
 use App\Enums\SalesOrderDiscountType;
 use App\Enums\SalesOrderLineType;
 use Illuminate\Foundation\Http\FormRequest;
@@ -19,9 +20,16 @@ class CompletePosSaleRequest extends FormRequest
     {
         return [
             'client_operation_id' => ['required', 'uuid'],
-            'warehouse_id' => ['required', 'integer'],
+            'order_id' => ['nullable', 'integer', 'required_without:lines'],
+            'warehouse_id' => ['nullable', 'integer', 'required_without:order_id'],
             'customer_id' => ['nullable', 'integer'],
-            'lines' => ['required', 'array', 'min:1', 'max:100'],
+            'payments' => ['required', 'array', 'min:1', 'max:10'],
+            'payments.*.method' => ['required', Rule::enum(PaymentMethod::class)],
+            'payments.*.financial_account_id' => ['required', 'integer'],
+            'payments.*.amount' => ['required', 'decimal:0,4', 'gt:0'],
+            'payments.*.cash_received' => ['nullable', 'required_if:payments.*.method,cash', 'decimal:0,4', 'gt:0'],
+            'payments.*.reference' => ['nullable', 'string', 'max:255'],
+            'lines' => ['nullable', 'array', 'min:1', 'max:100', 'required_without:order_id'],
             'lines.*.line_type' => ['required', Rule::enum(SalesOrderLineType::class)],
             'lines.*.product_variant_id' => ['nullable', 'required_if:lines.*.line_type,catalog', 'integer'],
             'lines.*.description' => ['nullable', 'required_if:lines.*.line_type,custom', 'string', 'max:255'],
@@ -32,6 +40,7 @@ class CompletePosSaleRequest extends FormRequest
             'lines.*.tax_rate_id' => ['nullable', 'integer'],
             'lines.*.discount_type' => ['required', Rule::enum(SalesOrderDiscountType::class)],
             'lines.*.discount_value' => ['nullable', 'decimal:0,4', 'gte:0'],
+            'fulfillment_mode' => ['nullable', 'in:pickup,delivery'],
         ];
     }
 }

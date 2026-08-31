@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Pos;
 
+use App\Models\InventoryMovement;
 use App\Models\SalesOrder;
 use App\Models\User;
 use Illuminate\Support\Str;
@@ -23,7 +24,7 @@ class PosSaleCompletionTest extends PosTestCase
         $this->assertSame('pos', $order->source->value);
         $this->assertSame('confirmed', $order->status->value);
         $this->assertSame('fulfilled', $order->fulfillment_status->value);
-        $this->assertSame('unpaid', $order->payment_status->value);
+        $this->assertSame('paid', $order->payment_status->value);
         $this->assertSame($owner->id, $order->confirmed_by_user_id);
         $this->assertSame($owner->id, $order->fulfilled_by_user_id);
         $this->assertDatabaseHas('sales_order_inventory_allocations', ['warehouse_id' => $warehouse->id, 'quantity' => 3]);
@@ -33,6 +34,8 @@ class PosSaleCompletionTest extends PosTestCase
         $this->assertDatabaseHas('audit_logs', ['organization_id' => $organization->id, 'event' => 'sales_order.created']);
         $this->assertDatabaseHas('audit_logs', ['organization_id' => $organization->id, 'event' => 'sales_order.confirmed']);
         $this->assertDatabaseHas('audit_logs', ['organization_id' => $organization->id, 'event' => 'sales_order.fulfilled']);
+        $this->assertDatabaseCount('payments', 1);
+        $this->assertDatabaseCount('payment_allocations', 1);
     }
 
     public function test_sales_employee_can_complete_pos_sale_without_direct_inventory_mutation_permissions(): void
@@ -85,7 +88,7 @@ class PosSaleCompletionTest extends PosTestCase
         $this->assertSame('100.0000', $order->lines->first()->unit_price_excl_tax);
         $this->assertSame('100.0000', $order->total_incl_tax);
         $this->assertSame('pos', $order->source->value);
-        $this->assertSame('unpaid', $order->payment_status->value);
+        $this->assertSame('paid', $order->payment_status->value);
     }
 
     public function test_sales_employee_cannot_override_catalog_price_through_pos(): void
@@ -144,6 +147,8 @@ class PosSaleCompletionTest extends PosTestCase
         $this->assertDatabaseCount('sales_orders', 1);
         $this->assertDatabaseCount('sales_order_lines', 1);
         $this->assertDatabaseCount('inventory_reservations', 1);
+        $this->assertDatabaseCount('payments', 1);
+        $this->assertDatabaseCount('payment_allocations', 1);
         $this->assertSame(1, $this->movementCount('reservation_consumed'));
         $this->assertSame('4.0000', $this->balance($organization, $warehouse, $variant)->on_hand);
     }
@@ -178,6 +183,6 @@ class PosSaleCompletionTest extends PosTestCase
 
     private function movementCount(string $type): int
     {
-        return \App\Models\InventoryMovement::query()->where('movement_type', $type)->count();
+        return InventoryMovement::query()->where('movement_type', $type)->count();
     }
 }

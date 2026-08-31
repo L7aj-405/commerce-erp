@@ -22,6 +22,7 @@ class CreateProductAction
             $product->organization_id = $organization->getKey();
             $product->name = $data['name'];
             $product->description = $data['description'] ?? null;
+            $product->image_url = $data['image_url'] ?? null;
             $product->brand_id = $data['brand_id'] ?? null;
             $product->default_category_id = $data['category_id'] ?? null;
             $product->default_unit_id = $data['unit_id'] ?? null;
@@ -37,7 +38,9 @@ class CreateProductAction
             $variant->reference = $variantData['reference'] ?? null;
             $variant->barcode = $variantData['barcode'] ?? null;
             $variant->purchase_price = $variantData['purchase_price'] ?? null;
-            $variant->default_sale_price = $variantData['default_sale_price'];
+            $variant->regular_sale_price = $variantData['regular_sale_price'] ?? $variantData['default_sale_price'];
+            $variant->promotional_sale_price = ($variantData['promotional_sale_price'] ?? '') !== '' ? $variantData['promotional_sale_price'] : null;
+            $variant->default_sale_price = $variant->promotional_sale_price ?? $variant->regular_sale_price;
             $variant->tax_rate_id = $variantData['tax_rate_id'] ?? null;
             $variant->status = $variantData['status'] ?? CatalogStatus::Active->value;
             $variant->save();
@@ -47,14 +50,14 @@ class CreateProductAction
                 $actor,
                 $organization,
                 auditable: $product,
-                newValues: $product->only(['name', 'brand_id', 'default_category_id', 'default_unit_id', 'status']),
+                newValues: $product->only(['name', 'image_url', 'brand_id', 'default_category_id', 'default_unit_id', 'status']),
             );
             $this->audit->record(
                 'product_variant.created',
                 $actor,
                 $organization,
                 auditable: $variant,
-                newValues: $variant->only(['product_id', 'sku', 'reference', 'barcode', 'purchase_price', 'default_sale_price', 'tax_rate_id', 'status']),
+                newValues: $variant->only(['product_id', 'sku', 'reference', 'barcode', 'purchase_price', 'regular_sale_price', 'promotional_sale_price', 'default_sale_price', 'tax_rate_id', 'status']),
             );
 
             return $product->load('variants');

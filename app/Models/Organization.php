@@ -59,6 +59,11 @@ class Organization extends Model
         return $this->hasMany(Product::class);
     }
 
+    public function productImports(): HasMany
+    {
+        return $this->hasMany(ProductImport::class);
+    }
+
     public function brands(): HasMany
     {
         return $this->hasMany(Brand::class);
@@ -107,6 +112,26 @@ class Organization extends Model
     public function salesOrders(): HasMany
     {
         return $this->hasMany(SalesOrder::class);
+    }
+
+    public function financialAccounts(): HasMany
+    {
+        return $this->hasMany(FinancialAccount::class);
+    }
+
+    public function payments(): HasMany
+    {
+        return $this->hasMany(Payment::class);
+    }
+
+    public function invoices(): HasMany
+    {
+        return $this->hasMany(Invoice::class);
+    }
+
+    public function deliveryNotes(): HasMany
+    {
+        return $this->hasMany(DeliveryNote::class);
     }
 
     public function resolveRouteBindingQuery($query, $value, $field = null)

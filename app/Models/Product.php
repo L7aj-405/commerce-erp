@@ -43,4 +43,9 @@ class Product extends Model
     {
         return $this->hasMany(ProductVariant::class);
     }
+
+    public function channelIdentifiers(): HasMany
+    {
+        return $this->hasMany(ProductChannelIdentifier::class);
+    }
 }

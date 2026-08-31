@@ -1,44 +1,40 @@
-import { Head, useForm } from '@inertiajs/react';
-import { FormEvent } from 'react';
+import { Button, ButtonLink } from '@/components/ui/Button';
+import FormField from '@/components/ui/FormField';
+import PageHeader from '@/components/ui/PageHeader';
 import CatalogLayout from '@/layouts/CatalogLayout';
+import { Head, useForm } from '@inertiajs/react';
+import type { FormEvent } from 'react';
 
 type Option = { id: number; name: string; symbol?: string; rate?: string };
-type Product = { id: number; name: string; description: string | null; brand_id: number | null; default_category_id: number | null; default_unit_id: number | null; status: string };
+type Product = { id: number; name: string; description: string | null; image_url: string | null; brand_id: number | null; default_category_id: number | null; default_unit_id: number | null; status: string };
 type Props = { product: Product | null; brands: Option[]; categories: Option[]; units: Option[]; taxRates: Option[] };
 
 export default function ProductForm({ product, brands, categories, units, taxRates }: Props) {
-    const form = useForm({
-        name: product?.name ?? '', description: product?.description ?? '', brand_id: product?.brand_id ?? null,
-        category_id: product?.default_category_id ?? null, unit_id: product?.default_unit_id ?? null, status: product?.status ?? 'active',
-        variant: { label: '', sku: '', reference: '', barcode: '', purchase_price: '', default_sale_price: '', tax_rate_id: null as number | null, status: 'active' },
-    });
+    const form = useForm({ name: product?.name ?? '', description: product?.description ?? '', image_url: product?.image_url ?? '', brand_id: product?.brand_id ?? null, category_id: product?.default_category_id ?? null, unit_id: product?.default_unit_id ?? null, status: product?.status ?? 'active', variant: { label: '', sku: '', reference: '', barcode: '', purchase_price: '', default_sale_price: '', promotional_sale_price: '', tax_rate_id: null as number | null, status: 'active' } });
     const creating = product === null;
-
-    function submit(event: FormEvent) {
-        event.preventDefault();
-        creating ? form.post('/catalog/products') : form.patch(`/catalog/products/${product.id}`);
-    }
+    const errors = form.errors as Record<string, string>;
+    const submit = (event: FormEvent) => { event.preventDefault(); creating ? form.post('/catalog/products') : form.patch(`/catalog/products/${product.id}`); };
     const selectId = (value: string) => value ? Number(value) : null;
 
     return <CatalogLayout>
-        <Head title={creating ? 'Create Product' : `Edit ${product.name}`} />
-        <form onSubmit={submit} className="mx-auto max-w-3xl space-y-6">
-            <h2 className="text-xl font-semibold">{creating ? 'Create Product' : 'Edit Product'}</h2>
-            <div className="grid gap-4 rounded-lg border p-5 md:grid-cols-2">
-                <label className="md:col-span-2">Name<input className="mt-1 w-full rounded border px-3 py-2" value={form.data.name} onChange={(e) => form.setData('name', e.target.value)} required /></label>
-                <label>Brand<select className="mt-1 w-full rounded border px-3 py-2" value={form.data.brand_id ?? ''} onChange={(e) => form.setData('brand_id', selectId(e.target.value))}><option value="">None</option>{brands.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</select></label>
-                <label>Category<select className="mt-1 w-full rounded border px-3 py-2" value={form.data.category_id ?? ''} onChange={(e) => form.setData('category_id', selectId(e.target.value))}><option value="">None</option>{categories.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}</select></label>
-                <label>Unit<select className="mt-1 w-full rounded border px-3 py-2" value={form.data.unit_id ?? ''} onChange={(e) => form.setData('unit_id', selectId(e.target.value))}><option value="">None</option>{units.map(x => <option key={x.id} value={x.id}>{x.name} ({x.symbol})</option>)}</select></label>
-                <label>Status<select className="mt-1 w-full rounded border px-3 py-2" value={form.data.status} onChange={(e) => form.setData('status', e.target.value)}><option value="active">Active</option><option value="inactive">Inactive</option></select></label>
-                <label className="md:col-span-2">Description<textarea className="mt-1 w-full rounded border px-3 py-2" value={form.data.description} onChange={(e) => form.setData('description', e.target.value)} rows={4} /></label>
-            </div>
-            {creating && <div className="grid gap-4 rounded-lg border p-5 md:grid-cols-2">
-                <h3 className="md:col-span-2 font-semibold">Initial variant</h3>
-                {(['sku', 'reference', 'barcode', 'purchase_price', 'default_sale_price'] as const).map((field) => <label key={field} className={field === 'sku' ? 'md:col-span-2' : ''}>{field.replaceAll('_', ' ')}<input className="mt-1 w-full rounded border px-3 py-2" value={form.data.variant[field]} onChange={(e) => form.setData('variant', { ...form.data.variant, [field]: e.target.value })} required={field === 'sku' || field === 'default_sale_price'} /></label>)}
-                <label>Tax rate<select className="mt-1 w-full rounded border px-3 py-2" value={form.data.variant.tax_rate_id ?? ''} onChange={(e) => form.setData('variant', { ...form.data.variant, tax_rate_id: selectId(e.target.value) })}><option value="">None</option>{taxRates.map(x => <option key={x.id} value={x.id}>{x.name} ({x.rate}%)</option>)}</select></label>
-            </div>}
-            {Object.keys(form.errors).length > 0 && <p className="text-sm text-red-600">Please correct the highlighted catalog data.</p>}
-            <button disabled={form.processing} className="rounded bg-slate-900 px-4 py-2 text-white disabled:opacity-50">Save</button>
+        <Head title={creating ? 'Ajouter un produit' : `Modifier ${product.name}`} />
+        <PageHeader title={creating ? 'Ajouter un produit' : 'Modifier le produit'} description={creating ? 'Renseignez les informations essentielles. Le stock sera configuré séparément par entrepôt.' : product.name} actions={<ButtonLink href={creating ? '/catalog/products' : `/catalog/products/${product.id}`} variant="secondary">Annuler</ButtonLink>} />
+        <form onSubmit={submit} className="max-w-4xl space-y-6">
+            <section className="rounded-2xl border bg-white p-6"><h2 className="font-semibold">Informations essentielles</h2><div className="mt-5 grid gap-5 md:grid-cols-2">
+                <div className="md:col-span-2"><FormField label="Nom du produit *" required value={form.data.name} onChange={event => form.setData('name', event.target.value)} error={errors.name} /></div>
+                <div className="md:col-span-2"><FormField label="URL de l’image principale" type="url" value={form.data.image_url} onChange={event => form.setData('image_url', event.target.value)} error={errors.image_url} /></div>
+                {creating && <>
+                    <FormField label="Référence" value={form.data.variant.reference} onChange={event => form.setData('variant', { ...form.data.variant, reference: event.target.value })} error={errors['variant.reference']} />
+                    <FormField label="SKU *" required value={form.data.variant.sku} onChange={event => form.setData('variant', { ...form.data.variant, sku: event.target.value })} error={errors['variant.sku']} />
+                    <FormField label="Code-barres" value={form.data.variant.barcode} onChange={event => form.setData('variant', { ...form.data.variant, barcode: event.target.value })} error={errors['variant.barcode']} />
+                    <FormField label="Prix régulier *" required inputMode="decimal" value={form.data.variant.default_sale_price} onChange={event => form.setData('variant', { ...form.data.variant, default_sale_price: event.target.value })} error={errors['variant.default_sale_price']} />
+                    <FormField label="Prix promotionnel" inputMode="decimal" value={form.data.variant.promotional_sale_price} onChange={event => form.setData('variant', { ...form.data.variant, promotional_sale_price: event.target.value })} error={errors['variant.promotional_sale_price']} />
+                </>}
+            </div></section>
+            <section className="rounded-2xl border bg-white p-6"><h2 className="font-semibold">Classification</h2><div className="mt-5 grid gap-5 md:grid-cols-2"><label className="text-sm font-medium">Catégorie<select value={form.data.category_id ?? ''} onChange={event => form.setData('category_id', selectId(event.target.value))} className="mt-1 w-full rounded-lg border px-3 py-2"><option value="">Aucune</option>{categories.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><label className="text-sm font-medium">Marque<select value={form.data.brand_id ?? ''} onChange={event => form.setData('brand_id', selectId(event.target.value))} className="mt-1 w-full rounded-lg border px-3 py-2"><option value="">Aucune</option>{brands.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><label className="text-sm font-medium">Unité<select value={form.data.unit_id ?? ''} onChange={event => form.setData('unit_id', selectId(event.target.value))} className="mt-1 w-full rounded-lg border px-3 py-2"><option value="">Aucune</option>{units.map(item => <option key={item.id} value={item.id}>{item.name} ({item.symbol})</option>)}</select></label>{creating && <label className="text-sm font-medium">Taxe<select value={form.data.variant.tax_rate_id ?? ''} onChange={event => form.setData('variant', { ...form.data.variant, tax_rate_id: selectId(event.target.value) })} className="mt-1 w-full rounded-lg border px-3 py-2"><option value="">Aucune</option>{taxRates.map(item => <option key={item.id} value={item.id}>{item.name} ({item.rate}%)</option>)}</select></label>}</div></section>
+            <section className="rounded-2xl border bg-white p-6"><h2 className="font-semibold">Informations facultatives</h2><label className="mt-5 block text-sm font-medium">Description<textarea rows={4} value={form.data.description} onChange={event => form.setData('description', event.target.value)} className="mt-1 w-full rounded-lg border px-3 py-2" /></label><details className="mt-5"><summary className="cursor-pointer text-sm font-medium">Options avancées</summary><label className="mt-4 block max-w-xs text-sm">Statut<select value={form.data.status} onChange={event => form.setData('status', event.target.value)} className="mt-1 w-full rounded-lg border px-3 py-2"><option value="active">Actif</option><option value="inactive">Inactif</option></select></label></details></section>
+            {Object.keys(form.errors).length > 0 && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">Corrigez les champs indiqués avant d’enregistrer.</p>}
+            <div className="flex items-center gap-3"><Button type="submit" disabled={form.processing}>{form.processing ? 'Enregistrement…' : 'Enregistrer le produit'}</Button><p className="text-sm text-slate-500">Le stock n’est pas créé ici.</p></div>
         </form>
     </CatalogLayout>;
 }

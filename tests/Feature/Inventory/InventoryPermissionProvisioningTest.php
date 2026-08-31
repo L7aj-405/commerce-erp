@@ -13,7 +13,7 @@ class InventoryPermissionProvisioningTest extends InventoryTestCase
         $organization = $this->createOrganization($owner);
         $expected = [
             'warehouses.view', 'warehouses.create', 'warehouses.update', 'inventory.view',
-            'inventory.opening', 'inventory.adjust', 'inventory.reserve', 'inventory.release', 'inventory.consume',
+            'inventory.opening', 'inventory.adjust', 'inventory.transfer', 'inventory.reserve', 'inventory.release', 'inventory.consume',
         ];
 
         foreach ($expected as $key) {

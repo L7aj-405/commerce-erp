@@ -25,11 +25,12 @@ class InventoryTenantIsolationTest extends InventoryTestCase
 
         $this->actingAs($owner)->get(route('inventory.stock.index'))->assertInertia(fn (Assert $page) => $page
             ->has('balances.data', 1)
-            ->where('balances.data.0.organization_id', $organizationA->id)
-            ->where('balances.data.0.product_variant.sku', 'SKU-A'));
+            ->where('balances.data.0.sku', 'SKU-A')
+            ->where('balances.data.0.product.name', 'Product A'));
         $this->actingAs($owner)->get(route('inventory.movements.index'))->assertInertia(fn (Assert $page) => $page
             ->has('movements.data', 1)
-            ->where('movements.data.0.organization_id', $organizationA->id));
+            ->where('movements.data.0.product_variant.sku', 'SKU-A')
+            ->where('movements.data.0.warehouse.name', 'Warehouse A'));
     }
 
     public function test_foreign_warehouse_filter_is_rejected_without_metadata_leakage(): void

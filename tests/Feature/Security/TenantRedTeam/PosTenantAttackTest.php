@@ -10,6 +10,7 @@ use App\Models\Store;
 use App\Models\User;
 use App\Models\Warehouse;
 use Illuminate\Support\Str;
+use Inertia\Testing\AssertableInertia as Assert;
 use Tests\Support\PosTestCase;
 
 class PosTenantAttackTest extends PosTestCase
@@ -88,7 +89,7 @@ class PosTenantAttackTest extends PosTestCase
         $this->assertSame('pos', $order->source->value);
         $this->assertSame('confirmed', $order->status->value);
         $this->assertSame('fulfilled', $order->fulfillment_status->value);
-        $this->assertSame('unpaid', $order->payment_status->value);
+        $this->assertSame('paid', $order->payment_status->value);
         $this->assertSame('100.0000', $order->total_incl_tax);
     }
 
@@ -112,6 +113,27 @@ class PosTenantAttackTest extends PosTestCase
         ], ['customer_id' => $this->customerB->id]))->assertNotFound();
 
         $this->assertDatabaseCount('sales_orders', 0);
+    }
+
+    public function test_foreign_financial_account_cannot_receive_pos_payment(): void
+    {
+        $foreignAccount = $this->createPosAccount($this->organizationB, 'cash', 'B-CASH', 'Secret Cash B');
+        $payload = $this->posPayload($this->warehouseA, [$this->posCatalogLine($this->variantA)], ['payments' => [
+            $this->posPayment($foreignAccount, '100.0000'),
+        ]]);
+        $this->actingAs($this->user)->postJson(route('pos.sales.store'), $payload)->assertNotFound();
+        $this->assertDatabaseCount('sales_orders', 0);
+        $this->assertDatabaseCount('payments', 0);
+    }
+
+    public function test_pos_account_options_do_not_leak_other_organizations(): void
+    {
+        $visible = $this->createPosAccount($this->organizationA, 'cash', 'A-CASH', 'Visible Cash A');
+        $hidden = $this->createPosAccount($this->organizationB, 'cash', 'B-CASH', 'Secret Cash B');
+        $this->actingAs($this->user)->get(route('pos.index'))->assertInertia(fn (Assert $page) => $page
+            ->has('financialAccounts', 1)
+            ->where('financialAccounts.0.id', $visible->id)
+            ->whereNot('financialAccounts.0.id', $hidden->id));
     }
 
     public function test_known_foreign_barcode_and_customer_metadata_are_not_disclosed(): void
