@@ -10,15 +10,24 @@ use App\Services\MembershipService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class OrganizationMembershipController extends Controller
 {
+    /**
+     * Add an EXISTING user to the organization, either by numeric `user_id`
+     * (original flow, kept for backward compatibility) or by `email` (used by
+     * the Users & Access "add existing user" form). If no account exists for
+     * the given email, this 422s — the caller should fall back to the invite
+     * flow (see OrganizationInvitationController).
+     */
     public function store(Request $request, Organization $organization, MembershipService $memberships): RedirectResponse
     {
         $this->authorize('create', [OrganizationMembership::class, $organization]);
 
         $data = $request->validate([
-            'user_id' => ['required', 'integer', Rule::exists('users', 'id')],
+            'user_id' => ['required_without:email', 'nullable', 'integer', Rule::exists('users', 'id')],
+            'email' => ['required_without:user_id', 'nullable', 'email', 'max:255'],
             'role_id' => [
                 'required',
                 'integer',
@@ -26,10 +35,22 @@ class OrganizationMembershipController extends Controller
             ],
         ]);
 
+        if (empty($data['user_id'])) {
+            $user = User::query()->where('email', $data['email'])->first();
+
+            if (! $user) {
+                throw ValidationException::withMessages([
+                    'email' => 'No account exists for this email yet. Send an invitation instead.',
+                ]);
+            }
+        } else {
+            $user = User::query()->findOrFail($data['user_id']);
+        }
+
         $memberships->addOrganizationMember(
             $request->user(),
             $organization,
-            User::query()->findOrFail($data['user_id']),
+            $user,
             Role::query()->where('organization_id', $organization->getKey())->findOrFail($data['role_id']),
         );
 

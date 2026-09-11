@@ -15,9 +15,10 @@ type Props = {
     };
     resolved: { default_validity_days: number };
     defaultAccentColor: string;
+    canUpdate: boolean;
 };
 
-export default function QuotationSettings({ settings, resolved, defaultAccentColor }: Props) {
+export default function QuotationSettings({ settings, resolved, defaultAccentColor, canUpdate }: Props) {
     const form = useForm({
         default_validity_days: settings.default_validity_days ?? resolved.default_validity_days,
         default_terms: settings.default_terms ?? '',
@@ -39,7 +40,13 @@ export default function QuotationSettings({ settings, resolved, defaultAccentCol
                     title="Documents · Devis"
                     description="Options stables pour les devis. L’identité de l’entreprise (logo, ICE, RC, IF, TP, RIB…) provient du profil de documents partagé. Modifier ces réglages n’altère aucun devis déjà émis."
                 />
+                {!canUpdate && (
+                    <p className="mb-3 rounded-field border border-line bg-raised px-3 py-2 text-xs text-ink-muted">
+                        Lecture seule — vous n’avez pas la permission de modifier ces paramètres.
+                    </p>
+                )}
                 <form onSubmit={submit} className="space-y-5 rounded-card border border-line bg-surface p-6">
+                <fieldset disabled={!canUpdate} className="space-y-5">
                     <Field label="Durée de validité par défaut (jours)">
                         <input
                             type="number"
@@ -74,6 +81,7 @@ export default function QuotationSettings({ settings, resolved, defaultAccentCol
                     <Button type="submit" loading={form.processing} loadingText="Enregistrement…">
                         Enregistrer
                     </Button>
+                </fieldset>
                 </form>
             </div>
         </SalesLayout>

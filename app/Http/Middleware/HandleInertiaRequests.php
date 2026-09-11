@@ -60,6 +60,7 @@ class HandleInertiaRequests extends Middleware
             'flash' => [
                 'success' => fn () => $request->session()->get('success'),
                 'warehouseCreatedId' => fn () => $request->session()->get('warehouse_created_id'),
+                'invitationUrl' => fn () => $request->session()->get('invitationUrl'),
             ],
         ];
     }

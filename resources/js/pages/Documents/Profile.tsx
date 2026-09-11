@@ -27,9 +27,10 @@ type Props = {
     profile: Profile;
     logoUrl: string | null;
     defaultAccentColor: string;
+    canUpdate: boolean;
 };
 
-export default function DocumentProfile({ organization, profile, logoUrl, defaultAccentColor }: Props) {
+export default function DocumentProfile({ organization, profile, logoUrl, defaultAccentColor, canUpdate }: Props) {
     const [removeLogo, setRemoveLogo] = useState(false);
     const form = useForm<{
         legal_name: string;
@@ -104,7 +105,13 @@ export default function DocumentProfile({ organization, profile, logoUrl, defaul
                     Ces informations alimentent toutes les factures émises. Les factures déjà émises ne changent pas.
                 </p>
 
+                {!canUpdate && (
+                    <p className="mt-4 rounded-field border border-line bg-raised px-3 py-2 text-xs text-ink-muted">
+                        Lecture seule — vous n’avez pas la permission de modifier le profil des documents.
+                    </p>
+                )}
                 <form onSubmit={submit} className="mt-8 space-y-4">
+                <fieldset disabled={!canUpdate} className="space-y-4">
                     <Section title="Identité">
                         <div className="flex items-start gap-4">
                             <div className="flex size-24 shrink-0 items-center justify-center overflow-hidden rounded-card border border-line bg-raised">
@@ -249,6 +256,7 @@ export default function DocumentProfile({ organization, profile, logoUrl, defaul
                     <Button type="submit" loading={form.processing} loadingText="Enregistrement…">
                         Enregistrer le profil
                     </Button>
+                </fieldset>
                 </form>
             </main>
         </ApplicationShell>

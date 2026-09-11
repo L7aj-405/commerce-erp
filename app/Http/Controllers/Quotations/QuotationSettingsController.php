@@ -24,16 +24,17 @@ use Inertia\Response;
  */
 class QuotationSettingsController extends Controller
 {
-    public function edit(ActiveTenantContext $context, QuotationDocumentSettings $settings): Response
+    public function edit(Request $request, ActiveTenantContext $context, QuotationDocumentSettings $settings): Response
     {
         $organization = $context->organizationOrFail();
-        $this->authorize('updateSettings', $organization);
+        $this->authorize('viewSettings', $organization);
 
         return Inertia::render('Settings/QuotationSettings', [
             'organization' => $organization->only(['id', 'name']),
             'settings' => data_get($organization->settings, 'quotation_profile', []),
             'resolved' => $settings->settings($organization),
             'defaultAccentColor' => DocumentSellerProfile::DEFAULT_ACCENT_COLOR,
+            'canUpdate' => $request->user()->hasPermission($organization, 'settings.update'),
         ]);
     }
 

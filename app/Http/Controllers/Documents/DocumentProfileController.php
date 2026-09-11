@@ -14,10 +14,10 @@ use Inertia\Response;
 
 class DocumentProfileController extends Controller
 {
-    public function edit(ActiveTenantContext $context): Response
+    public function edit(Request $request, ActiveTenantContext $context): Response
     {
         $organization = $context->organizationOrFail();
-        $this->authorize('updateSettings', $organization);
+        $this->authorize('viewSettings', $organization);
 
         $profile = data_get($organization->settings, 'document_profile', []);
         $logoPath = trim((string) ($profile['logo_path'] ?? ''));
@@ -29,6 +29,7 @@ class DocumentProfileController extends Controller
                 ? Storage::disk('public')->url($logoPath)
                 : null,
             'defaultAccentColor' => DocumentSellerProfile::DEFAULT_ACCENT_COLOR,
+            'canUpdate' => $request->user()->hasPermission($organization, 'settings.update'),
         ]);
     }
 

@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
+use App\Http\Controllers\Auth\InvitationAcceptController;
 use App\Http\Controllers\Auth\RegisteredUserController;
 use App\Http\Controllers\Catalog\BrandController;
 use App\Http\Controllers\Catalog\CategoryController;
@@ -25,6 +26,7 @@ use App\Http\Controllers\Inventory\TransferRequestController;
 use App\Http\Controllers\Inventory\WarehouseController;
 use App\Http\Controllers\Inventory\WarehouseReplenishmentController;
 use App\Http\Controllers\OrganizationController;
+use App\Http\Controllers\OrganizationInvitationController;
 use App\Http\Controllers\OrganizationMembershipController;
 use App\Http\Controllers\Payments\FinancialAccountController;
 use App\Http\Controllers\Payments\PaymentController;
@@ -46,6 +48,7 @@ use App\Http\Controllers\Sales\SalesOrderLineController;
 use App\Http\Controllers\StoreController;
 use App\Http\Controllers\StoreMembershipController;
 use App\Http\Controllers\TenantContextController;
+use App\Http\Controllers\UsersAccessController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -68,6 +71,18 @@ Route::middleware('guest')->group(function () {
         ->middleware('throttle:6,1')
         ->name('register.store');
 });
+
+// Invitation acceptance is reachable whether or not the visitor is currently
+// authenticated (a brand-new invitee has no account yet; an existing user may
+// already be logged in as themselves) — so it sits outside both the `guest`
+// and `auth` groups, like the public signed-PDF routes below. The random
+// token in the URL is the authorization.
+Route::get('/invitations/{token}', [InvitationAcceptController::class, 'show'])
+    ->middleware('throttle:30,1')
+    ->name('invitations.accept');
+Route::post('/invitations/{token}', [InvitationAcceptController::class, 'store'])
+    ->middleware('throttle:10,1')
+    ->name('invitations.accept.store');
 
 Route::middleware('auth')->group(function () {
     Route::post('/logout', [AuthenticatedSessionController::class, 'destroy'])->name('logout');
@@ -113,12 +128,20 @@ Route::middleware('auth')->group(function () {
     Route::patch('/stores/{store}', [StoreController::class, 'update'])->name('stores.update');
     Route::delete('/stores/{store}', [StoreController::class, 'destroy'])->name('stores.destroy');
 
+    Route::get('/organizations/{organization}/users-access', UsersAccessController::class)
+        ->name('users-access.index');
+
     Route::post('/organizations/{organization}/memberships', [OrganizationMembershipController::class, 'store'])
         ->name('organization-memberships.store');
     Route::patch('/organization-memberships/{membership}', [OrganizationMembershipController::class, 'update'])
         ->name('organization-memberships.update');
     Route::delete('/organization-memberships/{membership}', [OrganizationMembershipController::class, 'destroy'])
         ->name('organization-memberships.destroy');
+
+    Route::post('/organizations/{organization}/invitations', [OrganizationInvitationController::class, 'store'])
+        ->name('organization-invitations.store');
+    Route::delete('/invitations/{invitation}', [OrganizationInvitationController::class, 'destroy'])
+        ->name('invitations.destroy');
 
     Route::post('/stores/{store}/memberships', [StoreMembershipController::class, 'store'])
         ->name('store-memberships.store');

@@ -5,7 +5,7 @@ import { Link, router, usePage } from '@inertiajs/react';
 import { useEffect, useState } from 'react';
 import type { PropsWithChildren, ReactNode } from 'react';
 
-type NavItem = { href: string; label: string; permission?: string; needsStore?: boolean; icon: ReactNode };
+type NavItem = { href: string; label: string; permission?: string | string[]; needsStore?: boolean; icon: ReactNode };
 
 const SIDEBAR_KEY = 'shell.sidebar.collapsed';
 
@@ -85,10 +85,17 @@ export default function ApplicationShell({ children, wide = false, flush = false
             label: 'Paramètres',
             items: [
                 ...(tenant.organization
-                    ? [{ href: `/organizations/${tenant.organization.id}`, label: 'Organisation et utilisateurs', permission: 'organizations.view', icon: <IconBuilding /> }]
+                    ? [
+                          {
+                              href: `/organizations/${tenant.organization.id}/users-access`,
+                              label: 'Utilisateurs & accès',
+                              permission: 'members.view',
+                              icon: <IconUsers />,
+                          },
+                      ]
                     : []),
-                { href: '/document-profile', label: 'Documents · Facture', permission: 'settings.update', icon: <IconDoc /> },
-                { href: '/quotation-settings', label: 'Documents · Devis', permission: 'settings.update', icon: <IconDoc /> },
+                { href: '/document-profile', label: 'Documents · Facture', permission: ['settings.view', 'settings.update'], icon: <IconDoc /> },
+                { href: '/quotation-settings', label: 'Documents · Devis', permission: ['settings.view', 'settings.update'], icon: <IconDoc /> },
                 { href: '/catalog/categories', label: 'Catégories', permission: 'categories.manage', icon: <IconTag /> },
                 { href: '/catalog/brands', label: 'Marques', permission: 'brands.manage', icon: <IconTag /> },
                 { href: '/catalog/tax-rates', label: 'Taxes (TVA)', permission: 'tax_rates.view', icon: <IconInvoice /> },
@@ -98,8 +105,9 @@ export default function ApplicationShell({ children, wide = false, flush = false
         },
     ];
 
-    const allowed = (item: NavItem) =>
-        (!item.permission || tenant.permissions.includes(item.permission)) && (!item.needsStore || tenant.store !== null);
+    const hasPermission = (permission?: string | string[]) =>
+        !permission || (Array.isArray(permission) ? permission.some((p) => tenant.permissions.includes(p)) : tenant.permissions.includes(permission));
+    const allowed = (item: NavItem) => hasPermission(item.permission) && (!item.needsStore || tenant.store !== null);
     const activeHref = groups
         .flatMap((group) => group.items)
         .filter((item) => allowed(item) && (currentPath === item.href || currentPath.startsWith(`${item.href}/`)))
@@ -230,15 +238,15 @@ export default function ApplicationShell({ children, wide = false, flush = false
                                     <p className="text-[13px] font-medium text-ink">{auth.user?.name}</p>
                                     <p className="truncate text-[12px] text-ink-muted">{auth.user?.email}</p>
                                 </div>
-                                {tenant.organization && tenant.permissions.includes('organizations.view') && (
+                                {tenant.organization && tenant.permissions.includes('members.view') && (
                                     <Link
-                                        href={`/organizations/${tenant.organization.id}`}
+                                        href={`/organizations/${tenant.organization.id}/users-access`}
                                         className="block rounded-field px-3 py-2 text-[13px] text-ink-muted transition-soft hover:bg-sage hover:text-ink"
                                     >
-                                        Organisation et utilisateurs
+                                        Utilisateurs & accès
                                     </Link>
                                 )}
-                                {tenant.permissions.includes('settings.update') && (
+                                {hasPermission(['settings.view', 'settings.update']) && (
                                     <Link
                                         href="/document-profile"
                                         className="block rounded-field px-3 py-2 text-[13px] text-ink-muted transition-soft hover:bg-sage hover:text-ink"

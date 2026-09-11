@@ -32,6 +32,17 @@ class OrganizationPolicy
         return $user->hasPermission($organization, 'settings.update');
     }
 
+    /**
+     * Read-only access to settings screens (document profile, quotation
+     * settings, …). `settings.update` still implies read access — this only
+     * adds the ability to grant viewing without granting mutation.
+     */
+    public function viewSettings(User $user, Organization $organization): bool
+    {
+        return $user->hasPermission($organization, 'settings.view')
+            || $user->hasPermission($organization, 'settings.update');
+    }
+
     public function delete(User $user, Organization $organization): bool
     {
         return $user->hasPermission($organization, 'organizations.delete');
