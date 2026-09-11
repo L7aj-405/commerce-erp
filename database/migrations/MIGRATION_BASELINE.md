@@ -1,6 +1,6 @@
 # Migration baseline
 
-The `2026_08_23_0000XX_*` migrations are a **consolidated baseline**. They were
+The `2026_08_23_0000XX_*` migrations are a **consolidated baseline**. They wereh
 rebuilt on 2026-09-09 from ~30 incremental `create → alter → alter` migrations
 into one create-in-final-form migration per domain, ordered by real table
 dependency.
