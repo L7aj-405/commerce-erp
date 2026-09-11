@@ -1,8 +1,8 @@
 *.log
 .DS_Store
 .env
-.env.backup
-.env.production
+.env.*
+!.env.example
 .phpactor.json
 .phpunit.result.cache
 /.codex
@@ -25,3 +25,23 @@ _ide_helper.php
 Homestead.json
 Homestead.yaml
 Thumbs.db
+
+# Backups / dumps / archives — never commit a database export or a generated
+# document that happened to land in the repo root during local testing.
+*.sql
+*.sql.gz
+*.dump
+*.bak
+*.old
+*.backup
+*_copy.*
+*.orig
+*.zip
+*.rar
+*.7z
+
+# Coverage / editor / OS metadata not already covered above.
+/coverage
+*.swp
+*.swo
+desktop.ini

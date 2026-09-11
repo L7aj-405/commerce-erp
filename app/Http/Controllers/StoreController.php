@@ -6,8 +6,8 @@ use App\Models\Store;
 use App\Services\ActiveTenantContext;
 use App\Services\AuditLogger;
 use App\Services\StoreCreator;
-use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
@@ -51,9 +51,14 @@ class StoreController extends Controller
                 Rule::unique('stores')->where('organization_id', $store->organization_id)->ignore($store),
             ],
             'settings' => ['sometimes', 'array'],
+            'default_tax_rate_id' => [
+                'nullable',
+                'integer',
+                Rule::exists('tax_rates', 'id')->where('organization_id', $store->organization_id),
+            ],
         ]);
 
-        $oldValues = $store->only(['name', 'code', 'settings']);
+        $oldValues = $store->only(['name', 'code', 'settings', 'default_tax_rate_id']);
         $store->update($data);
 
         $audit->record(
@@ -63,7 +68,7 @@ class StoreController extends Controller
             $store,
             $store,
             $oldValues,
-            $store->only(['name', 'code', 'settings']),
+            $store->only(['name', 'code', 'settings', 'default_tax_rate_id']),
         );
 
         return back();

@@ -29,6 +29,21 @@ class FulfillSalesOrderAction
             if ($order->status !== SalesOrderStatus::Confirmed || $order->fulfillment_status !== SalesOrderFulfillmentStatus::Unfulfilled) {
                 throw ValidationException::withMessages(['order' => 'Only a confirmed, unfulfilled order can be fulfilled.']);
             }
+            // Showroom pickup can only complete once every remote quantity has
+            // physically arrived. Until the linked Transfer Request is received
+            // the order stays operationally "À approvisionner".
+            if ($order->awaitingReplenishment()) {
+                throw ValidationException::withMessages([
+                    'order' => 'À approvisionner : un transfert interne doit être réceptionné avant la remise au client.',
+                ]);
+            }
+            // A confirmed Order still waiting on supplier-procured goods is not
+            // ready for customer fulfilment until every procurement is received.
+            if ($order->awaitingSupplierProcurement()) {
+                throw ValidationException::withMessages([
+                    'order' => 'À approvisionner fournisseur : la marchandise fournisseur doit être réceptionnée avant la remise au client.',
+                ]);
+            }
             $allocationReservationIds = $order->lines()->with('allocations')->get()->flatMap(fn ($line) => $line->allocations->pluck('inventory_reservation_id'));
             if ($allocationReservationIds->contains(null)) {
                 throw ValidationException::withMessages(['order' => 'Every catalog allocation must have an active reservation.']);

@@ -7,8 +7,8 @@ use App\Actions\Documents\IssueInvoiceAction;
 use App\Actions\Documents\UpdateInvoiceDraftAction;
 use App\Actions\Sales\CancelSalesOrderAction;
 use App\Actions\Sales\ConfirmSalesOrderAction;
-use App\Models\InvoiceSequence;
 use App\Models\User;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Tests\Support\DocumentTestCase;
 
@@ -20,13 +20,16 @@ class InvoiceLifecycleTest extends DocumentTestCase
         $draft = $this->createInvoice($owner, $order);
         $this->assertNull($draft->invoice_number);
         $issued = $this->issueInvoice($owner, $draft);
-        $this->assertSame('INV-000001', $issued->invoice_number);
+        $this->assertSame('1/'.$issued->invoice_date->year, $issued->invoice_number);
         $this->assertDatabaseHas('audit_logs', ['event' => 'invoice.issued', 'auditable_id' => $issued->id]);
         $this->expectException(ValidationException::class);
         try {
             app(IssueInvoiceAction::class)->execute($owner, $issued);
         } finally {
-            $this->assertSame(2, InvoiceSequence::query()->findOrFail($organization->id)->next_number);
+            $this->assertSame(2, (int) DB::table('invoice_sequences')
+                ->where('organization_id', $organization->id)
+                ->where('year', $issued->invoice_date->year)
+                ->value('next_number'));
         }
     }
 

@@ -18,6 +18,7 @@ class TaxRate extends Model
     {
         return [
             'rate' => 'decimal:4',
+            'is_default' => 'boolean',
             'status' => CatalogStatus::class,
         ];
     }

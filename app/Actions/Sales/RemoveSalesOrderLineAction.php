@@ -26,6 +26,11 @@ class RemoveSalesOrderLineAction
                 throw ValidationException::withMessages(['order' => 'Lines cannot be removed after confirmation.']);
             }
             $line = SalesOrderLine::query()->where('sales_order_id', $order->getKey())->whereKey($line->getKey())->firstOrFail();
+            if ($line->procurements()->whereNotIn('status', ['cancelled', 'unavailable'])->exists()) {
+                throw ValidationException::withMessages([
+                    'line' => 'Annulez d’abord l’approvisionnement fournisseur lié à cette ligne.',
+                ]);
+            }
             $line->allocations()->delete();
             $line->delete();
             $this->totals->recalculate($order);

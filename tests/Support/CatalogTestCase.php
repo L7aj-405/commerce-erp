@@ -83,9 +83,16 @@ abstract class CatalogTestCase extends PlatformTestCase
         $variant->reference = $attributes['reference'] ?? null;
         $variant->barcode = $attributes['barcode'] ?? null;
         $variant->purchase_price = $attributes['purchase_price'] ?? null;
-        $variant->default_sale_price = $attributes['default_sale_price'] ?? '100.0000';
+        $variant->default_sale_price = $attributes['default_sale_price'] ?? $attributes['public_price_ttc'] ?? $attributes['regular_sale_price'] ?? '100.0000';
         $variant->regular_sale_price = $attributes['regular_sale_price'] ?? $variant->default_sale_price;
         $variant->promotional_sale_price = $attributes['promotional_sale_price'] ?? null;
+        $variant->public_price_ttc = $attributes['public_price_ttc'] ?? null;
+        // Backwards-compatibility bridge: a test that only sets `default_sale_price`
+        // is expressing an explicit HT price (the pre-fallback semantics). A test
+        // that sets `public_price_ttc` opts into the TTC-authoritative model where
+        // HT is derived unless `unit_price_ht` is also given.
+        $variant->unit_price_ht = $attributes['unit_price_ht']
+            ?? (array_key_exists('public_price_ttc', $attributes) ? null : $variant->default_sale_price);
         $variant->tax_rate_id = $attributes['tax_rate_id'] ?? null;
         $variant->status = $attributes['variant_status'] ?? 'active';
         $variant->save();

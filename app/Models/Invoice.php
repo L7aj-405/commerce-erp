@@ -7,6 +7,7 @@ use App\Models\Concerns\ScopesToActiveStore;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Invoice extends Model
 {
@@ -62,5 +63,17 @@ class Invoice extends Model
     public function cancelledBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'cancelled_by_user_id');
+    }
+
+    /** The originally issued Invoice this record was created to correct. */
+    public function correctedInvoice(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'corrected_invoice_id');
+    }
+
+    /** The correction that replaces this originally issued Invoice, if any. */
+    public function correction(): HasOne
+    {
+        return $this->hasOne(self::class, 'corrected_invoice_id')->latestOfMany();
     }
 }

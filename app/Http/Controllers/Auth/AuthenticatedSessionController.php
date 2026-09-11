@@ -26,7 +26,7 @@ class AuthenticatedSessionController extends Controller
 
         if (! Auth::attempt($credentials, $request->boolean('remember'))) {
             throw ValidationException::withMessages([
-                'email' => 'The provided credentials do not match our records.',
+                'email' => 'Ces identifiants ne correspondent à aucun compte.',
             ]);
         }
 

@@ -61,7 +61,7 @@ class DocumentEmailTest extends DocumentTestCase
         $invoice = $this->issueInvoice($owner, $this->createInvoice($owner, $order));
         $this->app->bind(PdfGenerator::class, fn () => new class implements PdfGenerator
         {
-            public function generate(string $html): string
+            public function generate(string $html, array $options = []): string
             {
                 throw new \RuntimeException('Synthetic renderer failure');
             }

@@ -1,21 +1,121 @@
+import DocBadge from '@/components/ui/DocBadge';
+import FilterSelect from '@/components/ui/FilterSelect';
+import PageHeader from '@/components/ui/PageHeader';
+import Pagination from '@/components/ui/Pagination';
+import SearchInput from '@/components/ui/SearchInput';
+import { useDebouncedValue } from '@/components/pos/useDebouncedValue';
 import SalesLayout from '@/layouts/SalesLayout';
 import { formatDate, formatMoney } from '@/utils/format';
-import { Head, Link, router } from '@inertiajs/react';
-import type { FormEvent } from 'react';
+import { invoiceStatusLabel, invoiceStatusTone, label } from '@/utils/labels';
+import { Head, router } from '@inertiajs/react';
+import { useEffect, useRef, useState } from 'react';
 
-type Invoice = { id: number; invoice_number: string | null; invoice_date: string; customer_name: string | null; customer_company: string | null; total_incl_tax: string; currency_code: string; status: string; store: { name: string }; sales_order: { id: number; order_number: string } };
+type Invoice = {
+    id: number;
+    invoice_number: string | null;
+    invoice_date: string;
+    customer_name: string | null;
+    customer_company: string | null;
+    total_incl_tax: string;
+    currency_code: string;
+    status: string;
+    sales_order: { id: number; order_number: string };
+};
 type PageLink = { url: string | null; label: string; active: boolean };
-type Props = { invoices: { data: Invoice[]; links: PageLink[] }; filters: Record<string, string | undefined> };
+type Props = { invoices: { data: Invoice[]; links: PageLink[] }; filters: { search?: string; status?: string; invoice_date?: string } };
 
 export default function InvoiceIndex({ invoices, filters }: Props) {
-    const submit = (event: FormEvent<HTMLFormElement>) => {
-        event.preventDefault();
-        router.get('/invoices', Object.fromEntries(new FormData(event.currentTarget).entries()), { preserveState: true, replace: true });
-    };
-    return <SalesLayout><Head title="Invoices" />
-        <div className="mb-5"><h2 className="text-xl font-semibold">Invoices</h2><p className="text-sm text-slate-500">Independent commercial documents for the active store.</p></div>
-        <form onSubmit={submit} className="mb-6 grid gap-3 rounded-lg bg-slate-50 p-4 md:grid-cols-5"><input name="search" defaultValue={filters.search ?? ''} placeholder="Invoice, order, customer" className="rounded border px-3 py-2 md:col-span-2" /><input name="invoice_date" type="date" defaultValue={filters.invoice_date ?? ''} className="rounded border px-3 py-2" /><select name="status" defaultValue={filters.status ?? ''} className="rounded border px-3 py-2"><option value="">All statuses</option><option value="draft">Draft</option><option value="issued">Issued</option><option value="cancelled">Cancelled</option></select><button className="rounded bg-slate-900 px-4 py-2 text-white">Filter</button></form>
-        <div className="overflow-x-auto rounded-lg border"><table className="w-full text-left text-sm"><thead className="bg-slate-50"><tr><th className="p-3">Invoice #</th><th className="p-3">Invoice date</th><th className="p-3">Order #</th><th className="p-3">Customer</th><th className="p-3">Store</th><th className="p-3">Status</th><th className="p-3 text-right">Total</th></tr></thead><tbody>{invoices.data.map((invoice) => <tr key={invoice.id} className="border-t"><td className="p-3"><Link href={`/invoices/${invoice.id}`} className="font-medium underline">{invoice.invoice_number ?? `Draft #${invoice.id}`}</Link></td><td className="p-3">{formatDate(invoice.invoice_date)}</td><td className="p-3"><Link href={`/sales/orders/${invoice.sales_order.id}`} className="underline">{invoice.sales_order.order_number}</Link></td><td className="p-3">{invoice.customer_company ?? invoice.customer_name ?? 'Walk-in'}</td><td className="p-3">{invoice.store.name}</td><td className="p-3 capitalize">{invoice.status}</td><td className="p-3 text-right">{formatMoney(invoice.total_incl_tax, invoice.currency_code)}</td></tr>)}{invoices.data.length === 0 && <tr><td colSpan={7} className="p-8 text-center text-slate-500">No invoices match these filters.</td></tr>}</tbody></table></div>
-        <nav className="mt-5 flex flex-wrap gap-2">{invoices.links.map((link) => <Link key={link.label} href={link.url ?? '#'} preserveState className={`rounded border px-3 py-2 text-sm ${link.active ? 'bg-slate-900 text-white' : ''} ${!link.url ? 'pointer-events-none opacity-50' : ''}`} dangerouslySetInnerHTML={{ __html: link.label }} />)}</nav>
-    </SalesLayout>;
+    const [search, setSearch] = useState(filters.search ?? '');
+    const debounced = useDebouncedValue(search, 250);
+    const mounted = useRef(false);
+
+    const apply = (patch: Record<string, string | undefined>) =>
+        router.get('/invoices', { ...filters, ...patch }, { preserveState: true, preserveScroll: true, replace: true });
+
+    useEffect(() => {
+        if (!mounted.current) {
+            mounted.current = true;
+            return;
+        }
+        apply({ search: debounced || undefined });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [debounced]);
+
+    return (
+        <SalesLayout>
+            <Head title="Factures" />
+            <PageHeader title="Factures" description="Documents commerciaux du magasin actif." />
+
+            <div className="mb-4 flex flex-wrap items-center gap-2">
+                <SearchInput
+                    value={search}
+                    onChange={setSearch}
+                    searching={search !== (filters.search ?? '')}
+                    placeholder="N° facture, commande, client…"
+                />
+                <FilterSelect value={filters.status ?? ''} onChange={(e) => apply({ status: e.target.value || undefined })}>
+                    <option value="">Tous statuts</option>
+                    <option value="draft">Brouillon</option>
+                    <option value="issued">Émise</option>
+                    <option value="cancelled">Annulée</option>
+                </FilterSelect>
+                <input
+                    type="date"
+                    value={filters.invoice_date ?? ''}
+                    onChange={(e) => apply({ invoice_date: e.target.value || undefined })}
+                    className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+                />
+            </div>
+
+            <div className="overflow-x-auto rounded-card border border-line bg-surface">
+                <table className="w-full min-w-[760px] text-left text-sm">
+                    <thead className="border-b border-line bg-raised text-xs uppercase tracking-wide text-ink-muted">
+                        <tr>
+                            <th className="px-4 py-3 font-medium">Facture</th>
+                            <th className="px-4 py-3 font-medium">Date</th>
+                            <th className="px-4 py-3 font-medium">Commande</th>
+                            <th className="px-4 py-3 font-medium">Client</th>
+                            <th className="px-4 py-3 font-medium">Statut</th>
+                            <th className="px-4 py-3 text-right font-medium">Total</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-line">
+                        {invoices.data.map((invoice) => (
+                            <tr
+                                key={invoice.id}
+                                onClick={() => router.visit(`/invoices/${invoice.id}`)}
+                                className="cursor-pointer transition-soft hover:bg-sage/50"
+                            >
+                                <td className="px-4 py-3 font-medium text-ink">
+                                    {invoice.invoice_number ?? 'Brouillon'}
+                                </td>
+                                <td className="px-4 py-3 text-ink-muted">{formatDate(invoice.invoice_date)}</td>
+                                <td className="px-4 py-3 text-ink-muted">{invoice.sales_order.order_number}</td>
+                                <td className="px-4 py-3 text-ink">
+                                    {invoice.customer_company ?? invoice.customer_name ?? 'Client comptoir'}
+                                </td>
+                                <td className="px-4 py-3">
+                                    <DocBadge tone={invoiceStatusTone(invoice.status)}>
+                                        {label(invoiceStatusLabel, invoice.status)}
+                                    </DocBadge>
+                                </td>
+                                <td className="px-4 py-3 text-right font-medium tabular-nums text-ink">
+                                    {formatMoney(invoice.total_incl_tax, invoice.currency_code)}
+                                </td>
+                            </tr>
+                        ))}
+                        {invoices.data.length === 0 && (
+                            <tr>
+                                <td colSpan={6} className="px-4 py-10 text-center text-ink-muted">
+                                    Aucune facture ne correspond à ces critères.
+                                </td>
+                            </tr>
+                        )}
+                    </tbody>
+                </table>
+            </div>
+
+            <Pagination links={invoices.links} />
+        </SalesLayout>
+    );
 }

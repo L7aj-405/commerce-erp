@@ -33,16 +33,26 @@ class CatalogReferenceManager
         }
         if ($record instanceof TaxRate) {
             $record->rate = $data['rate'];
+            $record->is_default = (bool) ($data['is_default'] ?? false);
         }
 
         $record->save();
+
+        if ($record instanceof TaxRate && $record->is_default) {
+            TaxRate::query()
+                ->where('organization_id', $organization->getKey())
+                ->whereKeyNot($record->getKey())
+                ->where('is_default', true)
+                ->update(['is_default' => false]);
+        }
+
         $this->audit->record(
             $event,
             $actor,
             $organization,
             auditable: $record,
-            oldValues: collect($oldValues)->only(['name', 'slug', 'parent_id', 'symbol', 'rate', 'status'])->all(),
-            newValues: $record->only(['name', 'slug', 'parent_id', 'symbol', 'rate', 'status']),
+            oldValues: collect($oldValues)->only(['name', 'slug', 'parent_id', 'symbol', 'rate', 'is_default', 'status'])->all(),
+            newValues: $record->only(['name', 'slug', 'parent_id', 'symbol', 'rate', 'is_default', 'status']),
         );
 
         return $record;

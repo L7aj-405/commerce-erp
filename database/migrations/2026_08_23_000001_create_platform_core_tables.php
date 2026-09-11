@@ -4,6 +4,17 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
+/**
+ * Platform / tenant core.
+ *
+ * Consolidated baseline (see MIGRATION_BASELINE.md). Folds the historical
+ * "create_platform_core_tables" + "add_active_tenant_context_to_users".
+ *
+ * `users` is created by the framework migration first without tenant columns;
+ * organizations/stores reference users; then users is altered to point back at
+ * the active organization/store. This two-stage shape resolves the genuine
+ * users <-> organizations circular dependency.
+ */
 return new class extends Migration
 {
     public function up(): void
@@ -43,6 +54,9 @@ return new class extends Migration
             $table->string('code');
             $table->string('status')->default('active')->index();
             $table->json('settings')->nullable();
+            // Store-level default tax rate. The composite tenant FK to tax_rates is
+            // attached in the catalog migration, once tax_rates exists.
+            $table->unsignedBigInteger('default_tax_rate_id')->nullable();
             $table->timestamps();
 
             $table->unique(['organization_id', 'code']);
@@ -111,10 +125,29 @@ return new class extends Migration
             $table->index(['organization_id', 'created_at']);
             $table->index(['store_id', 'created_at']);
         });
+
+        // Stage 2 of the users <-> tenant cycle: point users at their active tenant.
+        Schema::table('users', function (Blueprint $table) {
+            $table->foreignId('active_organization_id')
+                ->nullable()
+                ->after('remember_token')
+                ->constrained('organizations')
+                ->nullOnDelete();
+            $table->foreignId('active_store_id')
+                ->nullable()
+                ->after('active_organization_id')
+                ->constrained('stores')
+                ->nullOnDelete();
+        });
     }
 
     public function down(): void
     {
+        Schema::table('users', function (Blueprint $table) {
+            $table->dropConstrainedForeignId('active_store_id');
+            $table->dropConstrainedForeignId('active_organization_id');
+        });
+
         Schema::dropIfExists('audit_logs');
         Schema::dropIfExists('store_memberships');
         Schema::dropIfExists('role_permission');

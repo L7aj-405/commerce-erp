@@ -72,6 +72,43 @@ class InventoryReservationManager
         });
     }
 
+    /**
+     * Grow an existing active reservation by `$delta` at its own warehouse — used
+     * when a received internal transfer merges an Order's remote earmark into the
+     * Order's existing operational-warehouse reservation. Balance-locked and
+     * checked against `on_hand - reserved`; quantity is conserved by the caller
+     * (the paired release + physical move happen in the same transaction).
+     */
+    public function increase(User $actor, Organization $organization, InventoryReservation $reservation, int|float|string $delta): InventoryReservation
+    {
+        $this->assertContext($actor, $organization);
+        abort_unless($reservation->organization_id === $organization->getKey(), 404);
+        $delta = InventoryQuantity::positive($delta);
+
+        return DB::transaction(function () use ($actor, $organization, $reservation, $delta) {
+            $balance = $this->balances->lock($organization, $reservation->warehouse, $reservation->productVariant);
+            $reservation = InventoryReservation::query()->whereKey($reservation->getKey())
+                ->where('organization_id', $organization->getKey())->lockForUpdate()->firstOrFail();
+            if ($reservation->status !== InventoryReservationStatus::Active) {
+                throw ValidationException::withMessages(['reservation' => 'Only an active reservation can be increased.']);
+            }
+            $available = InventoryQuantity::subtract($balance->on_hand, $balance->reserved);
+            if (InventoryQuantity::compare($available, $delta) < 0) {
+                throw ValidationException::withMessages(['quantity' => 'The requested quantity exceeds available stock.']);
+            }
+            $reservation->quantity = InventoryQuantity::add($reservation->quantity, $delta);
+            $reservation->save();
+            $balance->reserved = InventoryQuantity::add($balance->reserved, $delta);
+            $balance->save();
+            $this->audit->record('inventory.reservation.increased', $actor, $organization, auditable: $reservation, newValues: [
+                'warehouse_id' => $reservation->warehouse_id, 'product_variant_id' => $reservation->product_variant_id,
+                'delta' => $delta, 'quantity' => $reservation->quantity,
+            ]);
+
+            return $reservation;
+        });
+    }
+
     public function release(User $actor, Organization $organization, InventoryReservation $reservation): InventoryReservation
     {
         $this->assertContext($actor, $organization);

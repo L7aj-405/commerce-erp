@@ -1,5 +1,8 @@
-import { FormEvent } from 'react';
-import { Head, useForm } from '@inertiajs/react';
+import AuthLayout from '@/components/auth/AuthLayout';
+import { Button } from '@/components/ui/Button';
+import { Checkbox, PasswordField, TextField } from '@/components/ui/form';
+import { Head, Link, useForm } from '@inertiajs/react';
+import type { FormEvent } from 'react';
 
 export default function Login() {
     const form = useForm({
@@ -15,57 +18,58 @@ export default function Login() {
 
     return (
         <>
-            <Head title="Sign in" />
+            <Head title="Se connecter" />
 
-            <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-6">
-                <form onSubmit={submit} className="space-y-5 rounded-xl border border-slate-200 p-8 shadow-sm">
-                    <div>
-                        <h1 className="text-2xl font-semibold">Commerce ERP</h1>
-                        <p className="mt-1 text-sm text-slate-600">Sign in to select your organization and store.</p>
-                    </div>
+            <AuthLayout
+                title="Se connecter"
+                subtitle="Accédez à votre organisation et à vos magasins."
+                footer={
+                    <>
+                        Pas encore de compte ?{' '}
+                        <Link href="/register" className="font-medium text-ink underline-offset-4 hover:underline">
+                            Créer un compte
+                        </Link>
+                    </>
+                }
+            >
+                <form onSubmit={submit} className="space-y-4" noValidate>
+                    <TextField
+                        label="Adresse email"
+                        type="email"
+                        name="email"
+                        autoComplete="email"
+                        autoFocus
+                        required
+                        placeholder="vous@entreprise.com"
+                        value={form.data.email}
+                        onChange={(event) => form.setData('email', event.target.value)}
+                        error={form.errors.email}
+                    />
 
-                    <label className="block">
-                        <span className="text-sm font-medium">Email</span>
-                        <input
-                            type="email"
-                            value={form.data.email}
-                            onChange={(event) => form.setData('email', event.target.value)}
-                            className="mt-1 w-full rounded border border-slate-300 px-3 py-2"
-                            required
-                            autoFocus
-                        />
-                        {form.errors.email && <span className="mt-1 block text-sm text-red-600">{form.errors.email}</span>}
-                    </label>
+                    <PasswordField
+                        label="Mot de passe"
+                        name="password"
+                        autoComplete="current-password"
+                        required
+                        placeholder="••••••••"
+                        value={form.data.password}
+                        onChange={(event) => form.setData('password', event.target.value)}
+                        error={form.errors.password}
+                    />
 
-                    <label className="block">
-                        <span className="text-sm font-medium">Password</span>
-                        <input
-                            type="password"
-                            value={form.data.password}
-                            onChange={(event) => form.setData('password', event.target.value)}
-                            className="mt-1 w-full rounded border border-slate-300 px-3 py-2"
-                            required
-                        />
-                    </label>
-
-                    <label className="flex items-center gap-2 text-sm">
-                        <input
-                            type="checkbox"
+                    <div className="pt-0.5">
+                        <Checkbox
+                            label="Se souvenir de moi"
                             checked={form.data.remember}
                             onChange={(event) => form.setData('remember', event.target.checked)}
                         />
-                        Remember me
-                    </label>
+                    </div>
 
-                    <button
-                        type="submit"
-                        disabled={form.processing}
-                        className="w-full rounded bg-slate-900 px-4 py-2 text-white disabled:opacity-50"
-                    >
-                        Sign in
-                    </button>
+                    <Button type="submit" block size="lg" disabled={form.processing}>
+                        {form.processing ? 'Connexion…' : 'Se connecter'}
+                    </Button>
                 </form>
-            </main>
+            </AuthLayout>
         </>
     );
 }

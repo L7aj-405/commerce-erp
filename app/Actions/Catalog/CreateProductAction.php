@@ -38,9 +38,12 @@ class CreateProductAction
             $variant->reference = $variantData['reference'] ?? null;
             $variant->barcode = $variantData['barcode'] ?? null;
             $variant->purchase_price = $variantData['purchase_price'] ?? null;
-            $variant->regular_sale_price = $variantData['regular_sale_price'] ?? $variantData['default_sale_price'];
+            $publicPrice = $variantData['public_price_ttc'] ?? $variantData['default_sale_price'] ?? $variantData['regular_sale_price'];
+            $variant->public_price_ttc = $publicPrice;
+            $variant->regular_sale_price = $variantData['regular_sale_price'] ?? $publicPrice;
             $variant->promotional_sale_price = ($variantData['promotional_sale_price'] ?? '') !== '' ? $variantData['promotional_sale_price'] : null;
             $variant->default_sale_price = $variant->promotional_sale_price ?? $variant->regular_sale_price;
+            $variant->unit_price_ht = ($variantData['unit_price_ht'] ?? '') !== '' ? $variantData['unit_price_ht'] : null;
             $variant->tax_rate_id = $variantData['tax_rate_id'] ?? null;
             $variant->status = $variantData['status'] ?? CatalogStatus::Active->value;
             $variant->save();
@@ -57,7 +60,7 @@ class CreateProductAction
                 $actor,
                 $organization,
                 auditable: $variant,
-                newValues: $variant->only(['product_id', 'sku', 'reference', 'barcode', 'purchase_price', 'regular_sale_price', 'promotional_sale_price', 'default_sale_price', 'tax_rate_id', 'status']),
+                newValues: $variant->only(['product_id', 'sku', 'reference', 'barcode', 'purchase_price', 'regular_sale_price', 'promotional_sale_price', 'default_sale_price', 'public_price_ttc', 'unit_price_ht', 'tax_rate_id', 'status']),
             );
 
             return $product->load('variants');

@@ -264,6 +264,9 @@ class ConfirmProductImportAction
             'label' => $data['variant_label'], 'sku' => $this->nullableIdentifier($data['sku'] ?? null), 'reference' => $this->nullableIdentifier($data['reference'] ?? null),
             'barcode' => $this->nullableIdentifier($data['barcode'] ?? null), 'purchase_price' => null, 'regular_sale_price' => $data['sale_price'],
             'promotional_sale_price' => $data['promo_price'], 'default_sale_price' => $data['effective_sale_price'],
+            // The imported price is the customer-facing (public / TTC) price. No explicit
+            // HT is supplied; it is derived later from the effective tax rate.
+            'public_price_ttc' => $data['effective_sale_price'], 'unit_price_ht' => null,
             'tax_rate_id' => $defaults['tax_rate_id'] ?? null, 'status' => CatalogStatus::Active->value,
         ];
     }

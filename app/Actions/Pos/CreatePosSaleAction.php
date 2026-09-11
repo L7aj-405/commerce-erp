@@ -9,14 +9,18 @@ use App\Actions\Sales\FulfillSalesOrderAction;
 use App\Actions\Sales\SaveSalesOrderLineAction;
 use App\Enums\PaymentMethod;
 use App\Enums\SalesOrderDiscountType;
+use App\Enums\SalesOrderLineType;
 use App\Enums\SalesOrderSource;
 use App\Enums\SalesOrderStatus;
 use App\Models\Organization;
 use App\Models\SalesOrder;
+use App\Models\SalesOrderLine;
+use App\Models\SalesOrderProcurement;
 use App\Models\Store;
 use App\Models\User;
 use App\Services\AuditLogger;
 use App\Services\PosDraftCheckoutCalculator;
+use App\Services\PosStockAllocator;
 use App\Services\SalesLineCalculator;
 use App\Services\SalesOrderPaymentCalculator;
 use App\Services\SalesOrderTotalsCalculator;
@@ -27,6 +31,16 @@ use Illuminate\Validation\ValidationException;
 
 class CreatePosSaleAction
 {
+    /**
+     * Tax treatment of the POS delivery fee.
+     *
+     * The fee is captured as a single tax-exclusive amount and added as a custom
+     * order line taxed at this rate. It is currently 0% — the delivery fee is
+     * entered and charged as-is, VAT-free (HT === TTC). Set a `tax_rate_id`-backed
+     * rate here (and adjust `applyShippingLine`) to make delivery VAT-able.
+     */
+    private const SHIPPING_TAX_RATE_ID = null;
+
     public function __construct(
         private readonly CreateSalesOrderAction $createOrder,
         private readonly SaveSalesOrderLineAction $saveLine,
@@ -37,6 +51,7 @@ class CreatePosSaleAction
         private readonly SalesLineCalculator $lineCalculator,
         private readonly SalesOrderTotalsCalculator $totals,
         private readonly PosDraftCheckoutCalculator $posSummary,
+        private readonly PosStockAllocator $stockAllocator,
         private readonly AuditLogger $audit,
     ) {}
 
@@ -62,7 +77,7 @@ class CreatePosSaleAction
                     ->where('source', SalesOrderSource::Pos->value)
                     ->whereKey($data['order_id'])
                     ->lockForUpdate()
-                    ->with(['lines.allocations', 'store', 'customer', 'organization'])
+                    ->with(['lines.allocations', 'lines.productVariant', 'lines.procurements', 'store', 'customer', 'organization'])
                     ->firstOrFail();
 
                 if ($draft->status !== SalesOrderStatus::Draft) {
@@ -77,6 +92,8 @@ class CreatePosSaleAction
                     ]);
                 }
 
+                $this->assertProcurementDeficitCovered($draft);
+
                 $checkoutHash = $this->draftCheckoutHash($draft, $payments);
                 $existing = $this->findExisting($organization, $store, $data['client_operation_id'], true);
                 if ($existing) {
@@ -90,6 +107,11 @@ class CreatePosSaleAction
                 $draft->save();
 
                 $confirmed = $this->confirmOrder->execute($actor, $draft->fresh());
+                $requiresReplenishment = $this->requiresReplenishment($confirmed, (int) $draft->pos_warehouse_id);
+                // A confirmed order still waiting on supplier-procured goods is a
+                // special order: it is not fulfilled on the spot and the customer
+                // is free to pay now, partly, or later (§15).
+                $awaitingProcurement = $confirmed->awaitingSupplierProcurement();
                 $remaining = $this->paymentCalculator->remainingAmount($confirmed);
                 $paymentTotal = $this->paymentTotal($payments);
                 $fulfillmentMode = $draft->pos_fulfillment_mode ?? 'pickup';
@@ -100,7 +122,7 @@ class CreatePosSaleAction
                     ]);
                 }
 
-                if ($fulfillmentMode !== 'delivery' && Decimal::compare($paymentTotal, $remaining) !== 0) {
+                if ($fulfillmentMode !== 'delivery' && ! $awaitingProcurement && Decimal::compare($paymentTotal, $remaining) !== 0) {
                     throw ValidationException::withMessages([
                         'payments' => 'Le retrait immédiat exige un paiement intégral avant la remise au client.',
                     ]);
@@ -121,9 +143,19 @@ class CreatePosSaleAction
 
                 $completed = $draft->fresh(['store:id,name,code', 'customer:id,display_name', 'paymentAllocations.payment.financialAccount']);
 
-                if ($fulfillmentMode !== 'delivery') {
+                if ($awaitingProcurement) {
+                    $this->audit->record('sales_order.pos_awaiting_supplier_procurement', $actor, $draft->organization, $draft->store, $draft, newValues: [
+                        'order_number' => $draft->order_number,
+                        'pos_warehouse_id' => $draft->pos_warehouse_id,
+                    ]);
+                } elseif ($fulfillmentMode !== 'delivery' && ! $requiresReplenishment) {
                     $completed = $this->fulfillOrder->execute($actor, $confirmed->fresh())
                         ->load(['store:id,name,code', 'customer:id,display_name', 'paymentAllocations.payment.financialAccount']);
+                } elseif ($fulfillmentMode !== 'delivery') {
+                    $this->audit->record('sales_order.pos_replenishment_required', $actor, $draft->organization, $draft->store, $draft, newValues: [
+                        'order_number' => $draft->order_number,
+                        'pos_warehouse_id' => $draft->pos_warehouse_id,
+                    ]);
                 } else {
                     $this->audit->record('sales_order.pos_delivery_confirmed', $actor, $draft->organization, $draft->store, $draft, newValues: [
                         'order_number' => $draft->order_number,
@@ -172,6 +204,8 @@ class CreatePosSaleAction
                     $data['client_operation_id'],
                 );
                 $order->pos_checkout_hash = $checkoutHash;
+                $order->pos_warehouse_id = (int) $data['warehouse_id'];
+                $order->pos_fulfillment_mode = $data['fulfillment_mode'] ?? 'pickup';
                 $order->save();
 
                 foreach ($lines as $line) {
@@ -183,6 +217,8 @@ class CreatePosSaleAction
                 }
 
                 $confirmed = $this->confirmOrder->execute($actor, $order);
+                $requiresReplenishment = $this->requiresReplenishment($confirmed, (int) $data['warehouse_id']);
+                $awaitingProcurement = $confirmed->awaitingSupplierProcurement();
                 $remaining = $this->paymentCalculator->remainingAmount($confirmed);
                 $paymentTotal = $this->paymentTotal($payments);
                 $fulfillmentMode = $data['fulfillment_mode'] ?? 'pickup';
@@ -193,7 +229,7 @@ class CreatePosSaleAction
                     ]);
                 }
 
-                if ($fulfillmentMode !== 'delivery' && Decimal::compare($paymentTotal, $remaining) !== 0) {
+                if ($fulfillmentMode !== 'delivery' && ! $awaitingProcurement && Decimal::compare($paymentTotal, $remaining) !== 0) {
                     throw ValidationException::withMessages([
                         'payments' => 'Le retrait immédiat exige un paiement intégral avant la remise au client.',
                     ]);
@@ -214,9 +250,19 @@ class CreatePosSaleAction
 
                 $completed = $confirmed->fresh(['store:id,name,code', 'customer:id,display_name', 'paymentAllocations.payment.financialAccount']);
 
-                if ($fulfillmentMode !== 'delivery') {
+                if ($awaitingProcurement) {
+                    $this->audit->record('sales_order.pos_awaiting_supplier_procurement', $actor, $order->organization, $order->store, $order, newValues: [
+                        'order_number' => $order->order_number,
+                        'pos_warehouse_id' => $order->pos_warehouse_id,
+                    ]);
+                } elseif ($fulfillmentMode !== 'delivery' && ! $requiresReplenishment) {
                     $completed = $this->fulfillOrder->execute($actor, $confirmed->fresh())
                         ->load(['store:id,name,code', 'customer:id,display_name', 'paymentAllocations.payment.financialAccount']);
+                } elseif ($fulfillmentMode !== 'delivery') {
+                    $this->audit->record('sales_order.pos_replenishment_required', $actor, $order->organization, $order->store, $order, newValues: [
+                        'order_number' => $order->order_number,
+                        'pos_warehouse_id' => $order->pos_warehouse_id,
+                    ]);
                 }
 
                 return $completed;
@@ -241,7 +287,7 @@ class CreatePosSaleAction
 
         foreach ($distribution as $item) {
             /** @var SalesOrder $order */
-            /** @var \App\Models\SalesOrderLine $line */
+            /** @var SalesOrderLine $line */
             $line = $item['line'];
             if ($line->discount_type->value === $item['discount_type'] && Decimal::compare($line->discount_value, $item['discount_value']) === 0) {
                 continue;
@@ -281,7 +327,7 @@ class CreatePosSaleAction
             'unit_label' => 'service',
             'quantity' => '1.0000',
             'unit_price_excl_tax' => $shipping,
-            'tax_rate_id' => null,
+            'tax_rate_id' => self::SHIPPING_TAX_RATE_ID,
             'discount_type' => SalesOrderDiscountType::None->value,
             'discount_value' => '0.0000',
         ], $existing);
@@ -409,7 +455,7 @@ class CreatePosSaleAction
     }
 
     /** @param list<array<string, mixed>> $lines
-     * @param list<array<string, mixed>> $payments
+     * @param  list<array<string, mixed>>  $payments
      */
     private function legacyCheckoutHash(array $data, array $lines, array $payments): string
     {
@@ -445,6 +491,42 @@ class CreatePosSaleAction
         }
 
         return $total;
+    }
+
+    /**
+     * A POS special order may only be finalised once every catalogue line is
+     * covered by `company stock + CONFIRMED supplier procurement`. An uncovered
+     * or still-pending deficit is not an instant sale — the cashier must raise /
+     * confirm a supplier procurement first (§11, §12).
+     */
+    private function assertProcurementDeficitCovered(SalesOrder $draft): void
+    {
+        foreach ($draft->lines as $line) {
+            if ($line->line_type !== SalesOrderLineType::Catalog || $line->product_variant_id === null || ! $line->productVariant) {
+                continue;
+            }
+            $companyAvailable = $this->stockAllocator->availableForLine($draft, $line->productVariant, $line);
+            $confirmedProcurement = $line->procurements
+                ->filter(fn (SalesOrderProcurement $p) => in_array(
+                    $p->status->value,
+                    ['supplier_confirmed', 'ordered', 'received', 'completed'],
+                    true,
+                ))
+                ->reduce(fn (string $total, SalesOrderProcurement $p) => Decimal::add($total, $p->quantity), '0.0000');
+
+            if (Decimal::compare(Decimal::add($companyAvailable, $confirmedProcurement), $line->quantity) < 0) {
+                throw ValidationException::withMessages([
+                    'order_id' => 'Certains articles sont en rupture et ne sont pas couverts par un approvisionnement fournisseur confirmé. Ouvrez « Approvisionner auprès d’un fournisseur », faites confirmer la disponibilité, puis finalisez la vente.',
+                ]);
+            }
+        }
+    }
+
+    private function requiresReplenishment(SalesOrder $order, int $posWarehouseId): bool
+    {
+        return $order->lines()
+            ->whereHas('allocations', fn ($query) => $query->where('warehouse_id', '!=', $posWarehouseId))
+            ->exists();
     }
 
     private function authorizeCheckout(User $actor, Organization $organization, Store $store): void

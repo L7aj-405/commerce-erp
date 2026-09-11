@@ -31,7 +31,7 @@ class UpdateInvoiceDraftAction
             }
             $oldDate = $invoice->invoice_date->toDateString();
             $updatedFields = [];
-            foreach (['customer_name', 'customer_company', 'customer_email', 'customer_phone', 'customer_tax_identifier', 'billing_address', 'notes'] as $field) {
+            foreach (['customer_name', 'customer_company', 'customer_email', 'customer_phone', 'customer_tax_identifier', 'billing_address', 'representative_name', 'payment_method_summary', 'notes'] as $field) {
                 if (array_key_exists($field, $data)) {
                     if ($invoice->{$field} !== $data[$field]) {
                         $updatedFields[] = $field;

@@ -168,6 +168,35 @@ class PosSaleCompletionTest extends PosTestCase
         $this->assertDatabaseCount('inventory_reservations', 1);
     }
 
+    public function test_pos_sale_completion_does_not_create_an_invoice(): void
+    {
+        [$owner, , , $warehouse, $variant] = $this->stockContext('5.0000');
+
+        $this->actingAs($owner)->post(route('pos.sales.store'), $this->posPayload($warehouse, [
+            $this->posCatalogLine($variant, ['quantity' => '2.0000']),
+        ]))->assertRedirect(route('pos.index'));
+
+        $this->assertDatabaseCount('sales_orders', 1);
+        $this->assertDatabaseCount('invoices', 0);
+        $this->assertDatabaseCount('invoice_lines', 0);
+    }
+
+    public function test_completed_order_payload_exposes_line_details_for_the_receipt(): void
+    {
+        [$owner, , , $warehouse, $variant] = $this->stockContext('5.0000');
+
+        $this->actingAs($owner)->post(route('pos.sales.store'), $this->posPayload($warehouse, [
+            $this->posCatalogLine($variant, ['quantity' => '2.0000']),
+        ]))->assertRedirect(route('pos.index'));
+
+        $this->actingAs($owner)
+            ->withHeader('X-Inertia', 'true')
+            ->get(route('pos.index'))
+            ->assertOk()
+            ->assertJsonPath('props.completedOrder.lines.0.quantity', '2.0000')
+            ->assertJsonPath('props.completedOrder.lines.0.description', 'POS Product');
+    }
+
     private function stockContext(string $stock = '10.0000'): array
     {
         $owner = User::factory()->create();

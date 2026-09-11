@@ -26,12 +26,13 @@ use App\Models\ProductVariant;
 use App\Models\SalesOrder;
 use App\Models\SalesOrderLine;
 use App\Models\Store;
-use App\Models\TaxRate;
+use App\Models\Supplier;
 use App\Models\Warehouse;
 use App\Services\ActiveTenantContext;
 use App\Services\AuditLogger;
 use App\Services\CustomerManager;
 use App\Services\PosDraftCheckoutCalculator;
+use App\Services\ProductPriceResolver;
 use App\Services\SalesOrderPaymentCalculator;
 use App\Support\Decimal;
 use Illuminate\Http\JsonResponse;
@@ -78,8 +79,8 @@ class PosController extends Controller
                 ->where('store_id', $store->getKey())
                 ->where('source', SalesOrderSource::Pos->value)
                 ->whereKey($request->session()->get('pos.completed_order_id'))
-                ->with(['paymentAllocations.payment.financialAccount:id,name,code,type'])
-                ->first(['id', 'organization_id', 'order_number', 'client_operation_id', 'customer_name', 'ordered_at', 'total_incl_tax', 'currency_code', 'status', 'fulfillment_status', 'payment_status'])
+                ->with(['paymentAllocations.payment.financialAccount:id,name,code,type', 'lines.allocations'])
+                ->first(['id', 'organization_id', 'order_number', 'client_operation_id', 'customer_name', 'ordered_at', 'subtotal_excl_tax', 'discount_total', 'tax_total', 'total_incl_tax', 'currency_code', 'status', 'fulfillment_status', 'payment_status', 'pos_warehouse_id'])
             : null;
 
         $canCreatePayment = $request->user()->hasPermission($organization, 'payments.create');
@@ -104,6 +105,9 @@ class PosController extends Controller
             'financialAccounts' => $financialAccounts,
             'brands' => Brand::query()->where('organization_id', $organization->getKey())->where('status', CatalogStatus::Active->value)->orderBy('name')->get(['id', 'name']),
             'categories' => Category::query()->where('organization_id', $organization->getKey())->where('status', CatalogStatus::Active->value)->orderBy('name')->get(['id', 'name']),
+            'suppliers' => $request->user()->hasPermission($organization, 'procurement.manage')
+                ? Supplier::query()->where('organization_id', $organization->getKey())->where('active', true)->orderBy('name')->get(['id', 'name'])
+                : collect(),
             'can' => [
                 'createCustomer' => $request->user()->hasPermission($organization, 'customers.create'),
                 'updateCustomer' => $request->user()->hasPermission($organization, 'customers.update'),
@@ -114,13 +118,15 @@ class PosController extends Controller
                 'updateDraft' => $request->user()->hasPermission($organization, 'sales_orders.update'),
                 'holdDraft' => $request->user()->hasPermission($organization, 'sales_orders.update'),
                 'cancelDraft' => $request->user()->hasPermission($organization, 'sales_orders.cancel'),
+                'manageProcurement' => $request->user()->hasPermission($organization, 'procurement.manage'),
             ],
         ]);
     }
 
-    public function products(Request $request, ActiveTenantContext $context): JsonResponse
+    public function products(Request $request, ActiveTenantContext $context, ProductPriceResolver $priceResolver): JsonResponse
     {
         [$organization] = $this->operationalContext($request, $context);
+        $store = $context->store();
         abort_unless(
             $request->user()->hasPermission($organization, 'products.view')
             && $request->user()->hasPermission($organization, 'inventory.view'),
@@ -134,6 +140,8 @@ class PosController extends Controller
             'brand_id' => ['nullable', 'integer'],
             'category_id' => ['nullable', 'integer'],
             'availability' => ['nullable', 'in:all,in_stock,out_of_stock'],
+            'price_min' => ['nullable', 'numeric', 'min:0'],
+            'price_max' => ['nullable', 'numeric', 'min:0'],
             'page' => ['nullable', 'integer', 'min:1'],
         ]);
         $warehouse = $this->warehouse($organization, (int) $filters['warehouse_id']);
@@ -141,12 +149,14 @@ class PosController extends Controller
         $variants = ProductVariant::query()
             ->where('organization_id', $organization->getKey())
             ->where('status', CatalogStatus::Active->value)
-            ->whereHas('product', function ($query) use ($organization, $filters) {
+            ->whereHas('product', function ($query) use ($filters) {
                 $query->where('status', CatalogStatus::Active->value)
                     ->when($filters['brand_id'] ?? null, fn ($q, $brandId) => $q->where('brand_id', $brandId))
                     ->when($filters['category_id'] ?? null, fn ($q, $categoryId) => $q->where('default_category_id', $categoryId));
             })
             ->when($filters['barcode'] ?? null, fn ($query, string $barcode) => $query->where('barcode', trim($barcode)))
+            ->when(isset($filters['price_min']), fn ($query) => $query->where('default_sale_price', '>=', (string) $filters['price_min']))
+            ->when(isset($filters['price_max']), fn ($query) => $query->where('default_sale_price', '<=', (string) $filters['price_max']))
             ->when($filters['search'] ?? null, fn ($query, string $search) => $query->where(fn ($query) => $query
                 ->where('sku', 'like', "%{$search}%")
                 ->orWhere('reference', 'like', "%{$search}%")
@@ -163,18 +173,22 @@ class PosController extends Controller
             ->orderBy('product_id')
             ->orderByRaw('CASE WHEN sku IS NULL OR sku = ? THEN 1 ELSE 0 END', [''])
             ->orderBy('sku')
-            ->paginate(($filters['barcode'] ?? null) ? 1 : 24, ['id', 'product_id', 'label', 'sku', 'reference', 'barcode', 'default_sale_price', 'tax_rate_id'])
+            ->paginate(($filters['barcode'] ?? null) ? 1 : 24, ['id', 'organization_id', 'product_id', 'label', 'sku', 'reference', 'barcode', 'default_sale_price', 'public_price_ttc', 'unit_price_ht', 'tax_rate_id'])
             ->withQueryString();
+
+        $defaultTaxRate = $priceResolver->defaultTaxRate($store, $organization->getKey());
 
         $totalAvailability = InventoryBalance::query()
             ->where('organization_id', $organization->getKey())
             ->whereIn('product_variant_id', $variants->getCollection()->pluck('id'))
+            ->whereHas('warehouse', fn ($query) => $query->where('status', WarehouseStatus::Active->value))
             ->get()
             ->groupBy('product_variant_id')
             ->map(fn ($rows) => $rows->reduce(fn (string $carry, InventoryBalance $row) => Decimal::add($carry, $row->available), '0.0000'));
 
-        $items = $variants->getCollection()->map(function (ProductVariant $variant) use ($totalAvailability) {
+        $items = $variants->getCollection()->map(function (ProductVariant $variant) use ($totalAvailability, $priceResolver, $defaultTaxRate) {
             $balance = $variant->inventoryBalances->first();
+            $price = $priceResolver->resolveWith($variant, $defaultTaxRate);
 
             return [
                 'id' => $variant->getKey(),
@@ -185,8 +199,12 @@ class PosController extends Controller
                 'barcode' => $variant->barcode,
                 'image_url' => $variant->product->image_url,
                 'brand' => $variant->product->brand?->only(['id', 'name']),
+                'unit_price_excl_tax' => $price['unit_price_ht'] ?? '0.0000',
+                'unit_price_incl_tax' => $price['unit_price_ttc'] ?? $variant->default_sale_price,
                 'default_sale_price' => $variant->default_sale_price,
-                'tax_rate' => $variant->taxRate?->only(['id', 'name', 'rate']),
+                'tax_rate' => $price['tax_rate_id'] ? ['id' => $price['tax_rate_id'], 'name' => $price['tax_name'], 'rate' => $price['tax_rate_value']] : null,
+                'ht_source' => $price['ht_source'],
+                'tax_config_missing' => $price['config_missing'],
                 'stock' => [
                     'on_hand' => $balance?->on_hand ?? '0.0000',
                     'reserved' => $balance?->reserved ?? '0.0000',
@@ -196,8 +214,8 @@ class PosController extends Controller
             ];
         })->filter(function (array $row) use ($filters) {
             return match ($filters['availability'] ?? 'all') {
-                'in_stock' => Decimal::compare($row['stock']['available'], '0.0000') > 0,
-                'out_of_stock' => Decimal::compare($row['stock']['available'], '0.0000') <= 0,
+                'in_stock' => Decimal::compare($row['stock']['total_available'], '0.0000') > 0,
+                'out_of_stock' => Decimal::compare($row['stock']['total_available'], '0.0000') <= 0,
                 default => true,
             };
         })->values();
@@ -216,17 +234,19 @@ class PosController extends Controller
     {
         [$organization] = $this->operationalContext($request, $context);
         $this->authorize('viewAny', [Customer::class, $organization]);
-        $filters = $request->validate(['search' => ['required', 'string', 'max:255']]);
+        $filters = $request->validate(['search' => ['nullable', 'string', 'max:255']]);
+        $search = trim((string) ($filters['search'] ?? ''));
 
         $customers = Customer::query()
             ->where('organization_id', $organization->getKey())
             ->where('status', CustomerStatus::Active->value)
-            ->where(fn ($query) => $query
-                ->where('display_name', 'like', "%{$filters['search']}%")
-                ->orWhere('company_name', 'like', "%{$filters['search']}%")
-                ->orWhere('phone', 'like', "%{$filters['search']}%")
-                ->orWhere('email', 'like', "%{$filters['search']}%"))
-            ->orderBy('display_name')
+            ->when($search !== '', fn ($query) => $query
+                ->where(fn ($inner) => $inner
+                    ->where('display_name', 'like', "%{$search}%")
+                    ->orWhere('company_name', 'like', "%{$search}%")
+                    ->orWhere('phone', 'like', "%{$search}%")
+                    ->orWhere('email', 'like', "%{$search}%")))
+            ->when($search !== '', fn ($query) => $query->orderBy('display_name'), fn ($query) => $query->latest('updated_at'))
             ->limit(20)
             ->get(['id', 'type', 'display_name', 'company_name', 'phone', 'email', 'tax_identifier', 'billing_address']);
 
@@ -429,7 +449,7 @@ class PosController extends Controller
             $variant = $this->catalogVariantForPos($organization, (int) $data['product_variant_id']);
             $line = $this->findIncrementableCatalogLine($order, $variant->getKey());
             $quantity = $line ? Decimal::add($line->quantity, $data['quantity']) : $data['quantity'];
-            $this->assertCatalogAvailability($organization, $order, $warehouse, $variant, $quantity, $line);
+            $this->assertCatalogAvailability($organization, $warehouse, $variant);
             $payload = array_replace($data, ['warehouse_id' => $warehouse->getKey(), 'quantity' => $quantity]);
             $saveLine->execute($request->user(), $order, $payload, $line);
         } else {
@@ -450,7 +470,7 @@ class PosController extends Controller
         if ($data['line_type'] === 'catalog') {
             $warehouse = $this->draftWarehouseOrFail($organization, $order, $data['warehouse_id'] ?? $order->pos_warehouse_id);
             $variant = $this->catalogVariantForPos($organization, (int) $data['product_variant_id']);
-            $this->assertCatalogAvailability($organization, $order, $warehouse, $variant, $data['quantity'], $line);
+            $this->assertCatalogAvailability($organization, $warehouse, $variant);
             $data['warehouse_id'] = $warehouse->getKey();
         }
 
@@ -657,30 +677,20 @@ class PosController extends Controller
             ->first();
     }
 
-    private function assertCatalogAvailability(Organization $organization, SalesOrder $order, Warehouse $warehouse, ProductVariant $variant, string $requestedQuantity, ?SalesOrderLine $ignoreLine = null): void
+    /**
+     * Tenant-identity guard for a catalogue line. A company-stock shortfall is
+     * NO LONGER a reason to reject the line: the missing quantity becomes a
+     * supplier special-order requirement, surfaced in the cart as "À
+     * approvisionner". The authoritative company-stock check happens at
+     * confirmation (ConfirmSalesOrderAction) / POS checkout.
+     */
+    private function assertCatalogAvailability(Organization $organization, Warehouse $warehouse, ProductVariant $variant): void
     {
-        $available = InventoryBalance::query()
-            ->where('organization_id', $organization->getKey())
-            ->where('warehouse_id', $warehouse->getKey())
-            ->where('product_variant_id', $variant->getKey())
-            ->first()?->available ?? '0.0000';
-
-        $alreadyRequested = $order->lines()
-            ->where('line_type', 'catalog')
-            ->where('product_variant_id', $variant->getKey())
-            ->when($ignoreLine, fn ($query) => $query->whereKeyNot($ignoreLine->getKey()))
-            ->with('allocations')
-            ->get()
-            ->filter(fn (SalesOrderLine $line) => $line->allocations->contains('warehouse_id', $warehouse->getKey()))
-            ->reduce(fn (string $carry, SalesOrderLine $line) => Decimal::add($carry, $line->quantity), '0.0000');
-
-        $requestedTotal = Decimal::add($alreadyRequested, $requestedQuantity);
-
-        if (Decimal::compare($requestedTotal, $available) > 0) {
-            throw ValidationException::withMessages([
-                'quantity' => "Only {$available} units are currently available in this warehouse.",
-            ]);
-        }
+        abort_unless(
+            $warehouse->organization_id === $organization->getKey()
+            && $variant->organization_id === $organization->getKey(),
+            404,
+        );
     }
 
     private function syncDraftHeader(Request $request, SalesOrder $order, array $data): void
@@ -736,6 +746,7 @@ class PosController extends Controller
             'lines.allocations.warehouse:id,name,code',
             'lines.productVariant.product.brand:id,name',
             'lines.productVariant.product:id,name,image_url,brand_id',
+            'lines.procurements.supplier:id,name',
         ];
     }
 
@@ -761,29 +772,57 @@ class PosController extends Controller
         $order->loadMissing($this->draftRelations());
         $summary = $posSummary->summary($order);
         $warnings = [];
-        $allocationsByLine = $order->lines->mapWithKeys(fn (SalesOrderLine $line) => [$line->getKey() => $line->allocations->first()]);
         $variantIds = $order->lines->pluck('product_variant_id')->filter()->unique()->values();
-        $warehouseIds = $allocationsByLine->filter(fn ($allocation) => $allocation && $allocation->warehouse_id)->pluck('warehouse_id')->unique()->values();
         $balances = InventoryBalance::query()
             ->where('organization_id', $order->organization_id)
             ->when($variantIds->isNotEmpty(), fn ($query) => $query->whereIn('product_variant_id', $variantIds))
-            ->when($warehouseIds->isNotEmpty(), fn ($query) => $query->whereIn('warehouse_id', $warehouseIds))
+            ->whereHas('warehouse', fn ($query) => $query->where('status', WarehouseStatus::Active->value))
             ->get()
             ->keyBy(fn (InventoryBalance $balance) => $balance->product_variant_id.':'.$balance->warehouse_id);
+        $organizationAvailability = $balances->groupBy('product_variant_id')->map(
+            fn ($rows) => $rows->reduce(fn (string $total, InventoryBalance $balance) => Decimal::add($total, $balance->available), '0.0000'),
+        );
+        $orderDemand = $order->lines->whereNotNull('product_variant_id')->groupBy('product_variant_id')->map(
+            fn ($lines) => $lines->reduce(fn (string $total, SalesOrderLine $line) => Decimal::add($total, $line->quantity), '0.0000'),
+        );
 
-        $lines = $order->lines->map(function (SalesOrderLine $line) use (&$warnings, $balances, $allocationsByLine) {
-            $allocation = $allocationsByLine->get($line->getKey());
-            $warehouse = $allocation?->warehouse;
-            $balance = $line->product_variant_id && $warehouse ? $balances->get($line->product_variant_id.':'.$warehouse->getKey()) : null;
-            $available = $balance?->available ?? '0.0000';
-            $insufficient = $line->line_type->value === 'catalog' && Decimal::compare($line->quantity, $available) > 0;
+        $lines = $order->lines->map(function (SalesOrderLine $line) use (&$warnings, $balances, $organizationAvailability, $orderDemand, $order) {
+            $isCatalog = $line->line_type->value === 'catalog';
+            $localBalance = $line->product_variant_id && $order->pos_warehouse_id
+                ? $balances->get($line->product_variant_id.':'.$order->pos_warehouse_id)
+                : null;
+            $localAvailable = $localBalance?->available ?? '0.0000';
+            $totalAvailable = $line->product_variant_id
+                ? $organizationAvailability->get($line->product_variant_id, '0.0000')
+                : '0.0000';
+            $remoteRequired = $line->allocations
+                ->where('warehouse_id', '!=', $order->pos_warehouse_id)
+                ->reduce(fn (string $total, $allocation) => Decimal::add($total, $allocation->quantity), '0.0000');
+            $insufficient = $isCatalog
+                && Decimal::compare($orderDemand->get($line->product_variant_id, $line->quantity), $totalAvailable) > 0;
 
-            if ($insufficient) {
+            // Supplier special-order sourcing for this line. A ProductVariant is
+            // never duplicated — the procured quantity is the SUPPLIER_ORDER
+            // portion of THIS line.
+            $activeProcs = $isCatalog
+                ? $line->procurements->reject(fn ($p) => in_array($p->status->value, ['cancelled', 'unavailable'], true))
+                : collect();
+            $procConfirmed = $activeProcs
+                ->filter(fn ($p) => in_array($p->status->value, ['supplier_confirmed', 'ordered', 'received', 'completed'], true))
+                ->reduce(fn (string $t, $p) => Decimal::add($t, $p->quantity), '0.0000');
+            $companyCovered = Decimal::compare($totalAvailable, $line->quantity) >= 0 ? Decimal::normalize($line->quantity) : $totalAvailable;
+            $toProcure = Decimal::compare($line->quantity, $totalAvailable) > 0
+                ? Decimal::subtract($line->quantity, $totalAvailable)
+                : '0.0000';
+            $needsProcurement = $isCatalog && Decimal::compare($toProcure, $procConfirmed) > 0;
+            $procRow = $activeProcs->sortByDesc('id')->first();
+
+            if ($needsProcurement) {
                 $warnings[] = [
                     'line_id' => $line->getKey(),
                     'product_name' => $line->product_name,
                     'requested' => $line->quantity,
-                    'available' => $available,
+                    'available' => $totalAvailable,
                 ];
             }
 
@@ -797,20 +836,44 @@ class PosController extends Controller
                 'unit_label' => $line->unit_label,
                 'quantity' => $line->quantity,
                 'unit_price_excl_tax' => $line->unit_price_excl_tax,
+                'unit_price_incl_tax' => $line->unit_price_incl_tax,
                 'tax_rate' => $line->tax_rate,
+                'tax_name' => $line->tax_name,
                 'discount_type' => $line->discount_type->value,
                 'discount_value' => $line->discount_value,
                 'line_subtotal' => $line->subtotal_excl_tax,
                 'line_discount' => $line->discount_amount,
+                'line_taxable' => $line->taxable_amount,
+                'line_tax_amount' => $line->tax_amount,
                 'line_total' => $line->total_incl_tax,
                 'product_variant_id' => $line->product_variant_id,
                 'image_url' => $line->productVariant?->product?->image_url,
                 'brand' => $line->productVariant?->product?->brand?->only(['id', 'name']),
-                'warehouse' => $warehouse?->only(['id', 'name', 'code']),
-                'available' => $available,
-                'insufficient' => $insufficient,
+                'warehouse' => $order->posWarehouse?->only(['id', 'name', 'code']),
+                'remote_required' => $remoteRequired,
+                ...($isCatalog ? [
+                    'available' => $localAvailable,
+                    'local_available' => $localAvailable,
+                    'total_available' => $totalAvailable,
+                    'requires_replenishment' => Decimal::compare($remoteRequired, '0.0000') > 0,
+                    'insufficient' => $insufficient,
+                    'company_covered' => $companyCovered,
+                    'to_procure' => $toProcure,
+                    'procurement_confirmed_qty' => $procConfirmed,
+                    'needs_procurement' => $needsProcurement,
+                    'procurement' => $procRow ? [
+                        'id' => $procRow->id,
+                        'procurement_number' => $procRow->procurement_number,
+                        'status' => $procRow->status->value,
+                        'status_label' => $procRow->status->label(),
+                        'supplier_availability_status' => $procRow->supplier_availability_status->value,
+                        'supplier' => $procRow->supplier?->only(['id', 'name']),
+                        'quantity' => $procRow->quantity,
+                    ] : null,
+                ] : []),
             ];
         })->values();
+        $remoteRequired = $lines->reduce(fn (string $total, array $line) => Decimal::add($total, $line['remote_required']), '0.0000');
 
         return [
             'id' => $order->getKey(),
@@ -822,6 +885,12 @@ class PosController extends Controller
             'held_at' => $order->pos_held_at?->toIso8601String(),
             'lines' => $lines,
             'availability_warnings' => array_values($warnings),
+            'requires_replenishment' => Decimal::compare($remoteRequired, '0.0000') > 0,
+            'remote_required' => $remoteRequired,
+            'procurement_deficit' => $warnings !== [],
+            'awaiting_supplier_procurement' => $order->awaitingSupplierProcurement(),
+            'procurements_count' => $order->lines->sum(fn (SalesOrderLine $line) => $line->procurements
+                ->reject(fn ($p) => in_array($p->status->value, ['cancelled', 'unavailable'], true))->count()),
             'checkout' => [
                 'global_discount_type' => $summary['global_discount_type'],
                 'global_discount_value' => $summary['global_discount_value'],
@@ -834,8 +903,11 @@ class PosController extends Controller
             ],
             'summary' => [
                 'merchandise_total' => $summary['merchandise_total'],
+                'subtotal_excl_tax' => $summary['subtotal_excl_tax'],
                 'line_discount_total' => $summary['line_discount_total'],
                 'global_discount_amount' => $summary['global_discount_amount'],
+                'net_excl_tax' => $summary['net_excl_tax'],
+                'tax_total' => $summary['tax_total'],
                 'shipping_fee' => $summary['shipping_fee'],
                 'total' => $summary['total'],
             ],
@@ -885,11 +957,24 @@ class PosController extends Controller
                 ];
             });
 
+        $remoteRequired = $order->lines->flatMap->allocations
+            ->where('warehouse_id', '!=', $order->pos_warehouse_id)
+            ->reduce(fn (string $total, $allocation) => Decimal::add($total, $allocation->quantity), '0.0000');
+
         return [
-            ...$order->only(['id', 'order_number', 'customer_name', 'ordered_at', 'total_incl_tax', 'currency_code', 'status', 'fulfillment_status', 'payment_status']),
+            ...$order->only(['id', 'order_number', 'customer_name', 'ordered_at', 'subtotal_excl_tax', 'discount_total', 'tax_total', 'total_incl_tax', 'currency_code', 'status', 'fulfillment_status', 'payment_status']),
             'paid' => $summary['paid'],
             'remaining' => $summary['remaining'],
+            'requires_replenishment' => Decimal::compare($remoteRequired, '0.0000') > 0,
+            'remote_required' => $remoteRequired,
             'payments' => $payments,
+            'lines' => $order->lines->map(fn (SalesOrderLine $line) => [
+                'id' => $line->getKey(),
+                'description' => $line->product_name,
+                'quantity' => $line->quantity,
+                'unit_price_incl_tax' => $line->unit_price_incl_tax,
+                'line_total' => $line->total_incl_tax,
+            ])->values(),
         ];
     }
 

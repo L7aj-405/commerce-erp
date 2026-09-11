@@ -23,22 +23,22 @@ class TransferInventoryAction
     public function __construct(private readonly InventoryBalanceLocker $balances, private readonly AuditLogger $audit) {}
 
     /** @return array{out: InventoryMovement, in: InventoryMovement} */
-    public function execute(User $actor, Organization $organization, Warehouse $source, Warehouse $destination, ProductVariant $variant, int|float|string $quantity, string $reason, ?string $reference = null): array
+    public function execute(User $actor, Organization $organization, Warehouse $source, Warehouse $destination, ProductVariant $variant, int|float|string $quantity, string $reason, ?string $reference = null, string $permission = 'inventory.transfer'): array
     {
         $reference ??= 'TRANSFER-'.Str::uuid();
 
         return $this->executeMany($actor, $organization, $source, $destination, [
             ['variant' => $variant, 'quantity' => $quantity],
-        ], $reason, $reference)[0];
+        ], $reason, $reference, $permission)[0];
     }
 
     /**
      * @param  list<array{variant: ProductVariant, quantity: int|float|string}>  $lines
      * @return list<array{variant: ProductVariant, quantity: string, out: InventoryMovement, in: InventoryMovement}>
      */
-    public function executeMany(User $actor, Organization $organization, Warehouse $source, Warehouse $destination, array $lines, string $reason, ?string $reference = null): array
+    public function executeMany(User $actor, Organization $organization, Warehouse $source, Warehouse $destination, array $lines, string $reason, ?string $reference = null, string $permission = 'inventory.transfer'): array
     {
-        $this->authorizeInventory($actor, $organization, 'inventory.transfer');
+        $this->authorizeInventory($actor, $organization, $permission);
         $this->validateRoute($organization, $source, $destination, $reason);
         if ($lines === []) {
             throw ValidationException::withMessages(['lines' => 'Select at least one product to transfer.']);

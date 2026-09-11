@@ -52,9 +52,11 @@ class ProductVariantController extends Controller
             'reference' => ['nullable', 'string', 'max:255'],
             'barcode' => ['nullable', 'string', 'max:255', Rule::unique('product_variants', 'barcode')->where('organization_id', $organizationId)->ignore($variant)],
             'purchase_price' => ['nullable', 'numeric', 'min:0', 'decimal:0,4'],
-            'regular_sale_price' => ['nullable', 'numeric', 'min:0', 'decimal:0,4', 'required_without:default_sale_price'],
+            'public_price_ttc' => ['nullable', 'numeric', 'min:0', 'decimal:0,4', 'required_without_all:regular_sale_price,default_sale_price'],
+            'unit_price_ht' => ['nullable', 'numeric', 'min:0', 'decimal:0,4'],
+            'regular_sale_price' => ['nullable', 'numeric', 'min:0', 'decimal:0,4', 'required_without_all:default_sale_price,public_price_ttc'],
             'promotional_sale_price' => ['nullable', 'numeric', 'min:0', 'decimal:0,4', 'lte:regular_sale_price'],
-            'default_sale_price' => ['nullable', 'numeric', 'min:0', 'decimal:0,4', 'required_without:regular_sale_price'],
+            'default_sale_price' => ['nullable', 'numeric', 'min:0', 'decimal:0,4', 'required_without_all:regular_sale_price,public_price_ttc'],
             'tax_rate_id' => ['nullable', 'integer', Rule::exists('tax_rates', 'id')->where('organization_id', $organizationId)],
             'status' => ['required', Rule::enum(CatalogStatus::class)],
         ];

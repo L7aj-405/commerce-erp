@@ -15,12 +15,19 @@ use Inertia\Response;
 
 class TaxRateController extends Controller
 {
-    public function index(ActiveTenantContext $context): Response
+    public function index(Request $request, ActiveTenantContext $context): Response
     {
         $organization = $context->organizationOrFail();
         $this->authorize('viewAny', [TaxRate::class, $organization]);
 
-        return Inertia::render('Catalog/ReferenceData', ['kind' => 'tax-rates', 'title' => 'Tax Rates', 'records' => $organization->taxRates()->orderBy('name')->get()]);
+        return Inertia::render('Catalog/ReferenceData', [
+            'kind' => 'tax-rates',
+            'title' => 'Taxes',
+            'records' => $organization->taxRates()->orderBy('name')->get(),
+            'stores' => $request->user()->hasPermission($organization, 'stores.update')
+                ? $organization->stores()->orderBy('name')->get(['id', 'name', 'code', 'default_tax_rate_id'])
+                : [],
+        ]);
     }
 
     public function store(Request $request, ActiveTenantContext $context, CatalogReferenceManager $manager): RedirectResponse
@@ -42,6 +49,11 @@ class TaxRateController extends Controller
 
     private function rules(int $organizationId, ?TaxRate $taxRate = null): array
     {
-        return ['name' => ['required', 'string', 'max:255', Rule::unique('tax_rates')->where('organization_id', $organizationId)->ignore($taxRate)], 'rate' => ['required', 'numeric', 'min:0', 'max:100', 'decimal:0,4'], 'status' => ['required', Rule::enum(CatalogStatus::class)]];
+        return [
+            'name' => ['required', 'string', 'max:255', Rule::unique('tax_rates')->where('organization_id', $organizationId)->ignore($taxRate)],
+            'rate' => ['required', 'numeric', 'min:0', 'max:100', 'decimal:0,4'],
+            'is_default' => ['sometimes', 'boolean'],
+            'status' => ['required', Rule::enum(CatalogStatus::class)],
+        ];
     }
 }

@@ -26,4 +26,17 @@ class ProductChannelIdentifier extends Model
     {
         return $this->belongsTo(ProductVariant::class);
     }
+
+    public function integration(): BelongsTo
+    {
+        return $this->belongsTo(WooCommerceIntegration::class, 'woocommerce_integration_id');
+    }
+
+    protected function casts(): array
+    {
+        return [
+            'remote_modified_at' => 'datetime',
+            'last_synced_at' => 'datetime',
+        ];
+    }
 }

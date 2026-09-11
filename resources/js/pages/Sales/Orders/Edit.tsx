@@ -1,37 +1,342 @@
+import DocBadge from '@/components/ui/DocBadge';
+import { Button } from '@/components/ui/Button';
 import SalesLayout from '@/layouts/SalesLayout';
-import { Head, Link, router, useForm } from '@inertiajs/react';
+import OrderLineGrid, { type OLine } from './OrderLineGrid';
+import { formatMoney } from '@/utils/format';
+import { label, orderStatusLabel, orderStatusTone } from '@/utils/labels';
+import { Head, Link, useForm } from '@inertiajs/react';
 import type { FormEvent } from 'react';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
-type Customer = { id: number; display_name: string; company_name: string | null };
-type Warehouse = { id: number; name: string; code: string };
 type TaxRate = { id: number; name: string; rate: string };
-type Variant = { id: number; label: string | null; sku: string; reference: string | null; default_sale_price: string; product: { name: string }; tax_rate: TaxRate | null };
-type Line = { id: number; line_type: string; product_name: string; variant_name: string | null; sku: string | null; quantity: string; unit_price_excl_tax: string; tax_rate: string; discount_amount: string; total_incl_tax: string; allocations: { warehouse: Warehouse }[] };
-type Order = { id: number; order_number: string; customer_id: number | null; sale_date: string; currency_code: string; notes: string | null; status: string; subtotal_excl_tax: string; discount_total: string; tax_total: string; total_incl_tax: string; lines: Line[] };
-type Props = { order: Order; customers: Customer[]; warehouses: Warehouse[]; taxRates: TaxRate[]; catalogResults: Variant[]; filters: { catalog_search?: string }; can: { overridePrice: boolean; applyDiscount: boolean } };
+type Order = {
+    id: number;
+    order_number: string;
+    customer_id: number | null;
+    customer_name: string | null;
+    customer_company: string | null;
+    sale_date: string;
+    currency_code: string;
+    notes: string | null;
+    status: string;
+    subtotal_excl_tax: string;
+    discount_total: string;
+    tax_total: string;
+    total_incl_tax: string;
+    lines: OLine[];
+};
+type OriginatingQuotation = { id: number; number: string | null; status: string; revision_number: number };
+type Props = {
+    order: Order;
+    taxRates: TaxRate[];
+    lineSearchUrl: string;
+    customerSearchUrl: string;
+    isEditable: boolean;
+    procurementUnderCovered: number;
+    originatingQuotation: OriginatingQuotation | null;
+    can: { update: boolean; overridePrice: boolean; applyDiscount: boolean };
+};
 
-export default function EditOrder({ order, customers, warehouses, taxRates, catalogResults, filters, can }: Props) {
-    const [catalogSearch, setCatalogSearch] = useState(filters.catalog_search ?? '');
-    const header = useForm({ customer_id: order.customer_id, sale_date: order.sale_date.slice(0, 10), currency_code: order.currency_code, notes: order.notes ?? '' });
-    const catalog = useForm({ line_type: 'catalog', product_variant_id: null as number | null, warehouse_id: null as number | null, quantity: '1.0000', unit_price_excl_tax: '', discount_type: 'none', discount_value: '0.0000' });
-    const custom = useForm({ line_type: 'custom', description: '', reference: '', unit_label: '', quantity: '1.0000', unit_price_excl_tax: '', tax_rate_id: null as number | null, discount_type: 'none', discount_value: '0.0000' });
-    const selected = catalogResults.find((variant) => variant.id === catalog.data.product_variant_id);
-    const search = (event: { preventDefault: () => void }) => { event.preventDefault(); router.get(`/sales/orders/${order.id}/edit`, { catalog_search: catalogSearch }, { preserveState: true, replace: true }); };
-    const addCatalog = (event: FormEvent) => { event.preventDefault(); catalog.post(`/sales/orders/${order.id}/lines`, { preserveScroll: true, onSuccess: () => catalog.reset() }); };
-    const addCustom = (event: FormEvent) => { event.preventDefault(); custom.post(`/sales/orders/${order.id}/lines`, { preserveScroll: true, onSuccess: () => custom.reset() }); };
-    return <SalesLayout><Head title={`Edit ${order.order_number}`} /><div className="mb-5 flex items-center justify-between"><h2 className="text-xl font-semibold">Edit {order.order_number}</h2><Link href={`/sales/orders/${order.id}`} className="rounded border px-4 py-2">View order</Link></div>
-        <form onSubmit={(e) => { e.preventDefault(); header.patch(`/sales/orders/${order.id}`, { preserveScroll: true }); }} className="mb-8 grid gap-4 rounded-lg border p-5 md:grid-cols-4"><label>Customer<select value={header.data.customer_id ?? ''} onChange={(e) => header.setData('customer_id', e.target.value ? Number(e.target.value) : null)} className="mt-1 w-full rounded border px-3 py-2"><option value="">Walk-in</option>{customers.map((item) => <option key={item.id} value={item.id}>{item.display_name}</option>)}</select></label><label>Sale date<input type="date" value={header.data.sale_date} onChange={(e) => header.setData('sale_date', e.target.value)} className="mt-1 w-full rounded border px-3 py-2" /></label><label>Currency<input value={header.data.currency_code} onChange={(e) => header.setData('currency_code', e.target.value.toUpperCase())} className="mt-1 w-full rounded border px-3 py-2" /></label><label>Notes<input value={header.data.notes} onChange={(e) => header.setData('notes', e.target.value)} className="mt-1 w-full rounded border px-3 py-2" /></label><button className="w-fit rounded border px-4 py-2">Save header</button></form>
-        <div className="mb-8 overflow-x-auto rounded-lg border"><table className="w-full text-left text-sm"><thead className="bg-slate-50"><tr><th className="p-3">Line</th><th className="p-3">Warehouse</th><th className="p-3 text-right">Qty</th><th className="p-3 text-right">Unit price</th><th className="p-3 text-right">Tax</th><th className="p-3 text-right">Discount</th><th className="p-3 text-right">Total</th><th></th></tr></thead><tbody>{order.lines.map((line) => <tr key={line.id} className="border-t"><td className="p-3"><strong>{line.product_name}</strong><br /><span className="text-slate-500">{line.variant_name ?? line.line_type} {line.sku ?? ''}</span></td><td className="p-3">{line.allocations[0]?.warehouse.name ?? '—'}</td><td className="p-3 text-right">{line.quantity}</td><td className="p-3 text-right">{line.unit_price_excl_tax}</td><td className="p-3 text-right">{line.tax_rate}%</td><td className="p-3 text-right">{line.discount_amount}</td><td className="p-3 text-right">{line.total_incl_tax}</td><td className="p-3"><button type="button" onClick={() => router.delete(`/sales/orders/${order.id}/lines/${line.id}`, { preserveScroll: true })} className="text-red-700">Remove</button></td></tr>)}</tbody></table></div>
-        <div className="mb-8 grid gap-3 rounded-lg bg-slate-50 p-5 text-right md:grid-cols-4"><div>Subtotal<br /><strong>{order.subtotal_excl_tax}</strong></div><div>Discount<br /><strong>{order.discount_total}</strong></div><div>Tax<br /><strong>{order.tax_total}</strong></div><div>Total<br /><strong>{order.total_incl_tax} {order.currency_code}</strong></div></div>
-        <div className="grid gap-6 lg:grid-cols-2"><form onSubmit={addCatalog} className="space-y-3 rounded-lg border p-5"><h3 className="font-semibold">Add catalog item</h3><div className="flex gap-2"><input value={catalogSearch} onChange={(e) => setCatalogSearch(e.target.value)} placeholder="Product, SKU, reference or barcode" className="min-w-0 flex-1 rounded border px-3 py-2" /><button type="button" onClick={search} className="rounded border px-3">Search</button></div><select required value={catalog.data.product_variant_id ?? ''} onChange={(e) => { const id = Number(e.target.value); const variant = catalogResults.find((item) => item.id === id); catalog.setData({ ...catalog.data, product_variant_id: id, unit_price_excl_tax: variant?.default_sale_price ?? '' }); }} className="w-full rounded border px-3 py-2"><option value="">Select result</option>{catalogResults.map((item) => <option key={item.id} value={item.id}>{item.product.name} · {item.label ?? 'Default'} · {item.sku}</option>)}</select><select required value={catalog.data.warehouse_id ?? ''} onChange={(e) => catalog.setData('warehouse_id', Number(e.target.value))} className="w-full rounded border px-3 py-2"><option value="">Warehouse</option>{warehouses.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><input required value={catalog.data.quantity} onChange={(e) => catalog.setData('quantity', e.target.value)} placeholder="Quantity" className="w-full rounded border px-3 py-2" /><label>Unit price<input readOnly={!can.overridePrice} value={catalog.data.unit_price_excl_tax} onChange={(e) => catalog.setData('unit_price_excl_tax', e.target.value)} className="mt-1 w-full rounded border px-3 py-2 read-only:bg-slate-100" /></label><p className="text-sm text-slate-500">Tax: {selected?.tax_rate ? `${selected.tax_rate.name} (${selected.tax_rate.rate}%)` : 'None'}</p><DiscountFields form={catalog} enabled={can.applyDiscount} /><Errors errors={catalog.errors} /><button className="rounded bg-slate-900 px-4 py-2 text-white">Add catalog line</button></form>
-            <form onSubmit={addCustom} className="space-y-3 rounded-lg border p-5"><h3 className="font-semibold">Add custom item</h3><input required value={custom.data.description} onChange={(e) => custom.setData('description', e.target.value)} placeholder="Description" className="w-full rounded border px-3 py-2" /><input value={custom.data.reference} onChange={(e) => custom.setData('reference', e.target.value)} placeholder="Reference" className="w-full rounded border px-3 py-2" /><input value={custom.data.unit_label} onChange={(e) => custom.setData('unit_label', e.target.value)} placeholder="Unit label" className="w-full rounded border px-3 py-2" /><input required value={custom.data.quantity} onChange={(e) => custom.setData('quantity', e.target.value)} placeholder="Quantity" className="w-full rounded border px-3 py-2" /><input required value={custom.data.unit_price_excl_tax} onChange={(e) => custom.setData('unit_price_excl_tax', e.target.value)} placeholder="Unit price excl. tax" className="w-full rounded border px-3 py-2" /><select value={custom.data.tax_rate_id ?? ''} onChange={(e) => custom.setData('tax_rate_id', e.target.value ? Number(e.target.value) : null)} className="w-full rounded border px-3 py-2"><option value="">No tax</option>{taxRates.map((item) => <option key={item.id} value={item.id}>{item.name} ({item.rate}%)</option>)}</select><DiscountFields form={custom} enabled={can.applyDiscount} /><Errors errors={custom.errors} /><button className="rounded bg-slate-900 px-4 py-2 text-white">Add custom line</button></form></div>
-    </SalesLayout>;
+export default function EditOrder({ order, taxRates, lineSearchUrl, customerSearchUrl, isEditable, procurementUnderCovered, originatingQuotation, can }: Props) {
+    const currency = order.currency_code;
+    const header = useForm({
+        customer_id: order.customer_id,
+        sale_date: order.sale_date.slice(0, 10),
+        currency_code: order.currency_code,
+        notes: order.notes ?? '',
+    });
+    const [customerLabel, setCustomerLabel] = useState(order.customer_company || order.customer_name || '');
+    const net = (Number(order.subtotal_excl_tax) - Number(order.discount_total)).toFixed(4);
+    const hasDiscount = Number(order.discount_total) > 0;
+
+    const saveHeader = (e: FormEvent) => {
+        e.preventDefault();
+        header.patch(`/sales/orders/${order.id}`, { preserveScroll: true });
+    };
+
+    return (
+        <SalesLayout>
+            <Head title={`Modifier la commande ${order.order_number}`} />
+
+            <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
+                <div>
+                    <Link href="/sales/orders" className="text-sm text-ink-muted">
+                        ← Commandes
+                    </Link>
+                    <div className="mt-1 flex flex-wrap items-center gap-3">
+                        <h1 className="text-2xl font-semibold tracking-tight text-ink">Modifier la commande {order.order_number}</h1>
+                        <DocBadge tone={orderStatusTone(order.status)}>{label(orderStatusLabel, order.status)}</DocBadge>
+                    </div>
+                    {originatingQuotation && (
+                        <p className="mt-1 text-sm text-ink-muted">
+                            Créée depuis le devis{' '}
+                            <Link href={`/quotations/${originatingQuotation.id}`} className="underline">
+                                {originatingQuotation.number ?? 'brouillon'}
+                                {originatingQuotation.revision_number > 0 ? ` · Révision ${originatingQuotation.revision_number}` : ''}
+                            </Link>
+                        </p>
+                    )}
+                </div>
+                <Link
+                    href={`/sales/orders/${order.id}`}
+                    className="inline-flex min-h-10 items-center rounded-field border border-line-strong bg-surface px-4 text-sm text-ink hover:bg-raised"
+                >
+                    Voir la commande
+                </Link>
+            </div>
+
+            {isEditable && procurementUnderCovered > 0 && (
+                <div className="mb-6 rounded-card border border-warning/30 bg-warning-soft/50 px-4 py-3 text-sm text-warning">
+                    {procurementUnderCovered === 1 ? 'Une ligne dépasse' : `${procurementUnderCovered} lignes dépassent`} le stock société
+                    disponible. Approvisionnez la quantité manquante auprès d’un fournisseur depuis la{' '}
+                    <Link href={`/sales/orders/${order.id}`} className="font-medium underline">
+                        fiche commande
+                    </Link>{' '}
+                    avant de confirmer.
+                </div>
+            )}
+
+            {!isEditable && (
+                <div className="mb-6 rounded-card border border-warning/30 bg-warning-soft/50 px-4 py-3 text-sm text-warning">
+                    Cette commande est {label(orderStatusLabel, order.status).toLowerCase()} et n’est plus modifiable. Les lignes, les
+                    prix et les réservations sont figés.{' '}
+                    <Link href={`/sales/orders/${order.id}`} className="font-medium underline">
+                        Voir la commande
+                    </Link>
+                    .
+                </div>
+            )}
+
+            {/* HEADER */}
+            <form onSubmit={saveHeader} className="mb-6 rounded-card border border-line bg-surface p-5">
+                <div className="grid gap-4 md:grid-cols-3">
+                    <label className="block text-sm">
+                        <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-ink-muted">Client</span>
+                        <CustomerPicker
+                            searchUrl={customerSearchUrl}
+                            disabled={!isEditable}
+                            value={customerLabel}
+                            onPick={(c) => {
+                                header.setData('customer_id', c ? c.id : null);
+                                setCustomerLabel(c ? c.company_name || c.display_name : '');
+                            }}
+                        />
+                    </label>
+                    <label className="block text-sm">
+                        <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-ink-muted">Date de vente</span>
+                        <input
+                            type="date"
+                            disabled={!isEditable}
+                            value={header.data.sale_date}
+                            onChange={(e) => header.setData('sale_date', e.target.value)}
+                            className="w-full rounded-field border border-line-strong px-3 py-2 disabled:bg-raised"
+                        />
+                    </label>
+                    <div className="flex items-end text-xs text-ink-faint">Devise : {order.currency_code}</div>
+                    <label className="block text-sm md:col-span-3">
+                        <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-ink-muted">Notes</span>
+                        <textarea
+                            disabled={!isEditable}
+                            value={header.data.notes}
+                            onChange={(e) => header.setData('notes', e.target.value)}
+                            rows={2}
+                            className="w-full rounded-field border border-line-strong px-3 py-2 disabled:bg-raised"
+                        />
+                    </label>
+                </div>
+                {Object.values(header.errors).map((err) => err && <p key={err} className="mt-2 text-sm text-danger">{err}</p>)}
+                {isEditable && (
+                    <div className="mt-3">
+                        <Button type="submit" variant="secondary" loading={header.processing} loadingText="Enregistrement…">
+                            Enregistrer
+                        </Button>
+                    </div>
+                )}
+            </form>
+
+            {/* ARTICLES */}
+            <section className="mb-6 rounded-card border border-line bg-surface p-5">
+                <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-ink-muted">Articles</h2>
+                {isEditable ? (
+                    <OrderLineGrid
+                        orderId={order.id}
+                        currency={currency}
+                        lines={order.lines}
+                        searchUrl={lineSearchUrl}
+                        taxRates={taxRates}
+                        canOverridePrice={can.overridePrice}
+                        canApplyDiscount={can.applyDiscount}
+                    />
+                ) : (
+                    <ReadOnlyLines lines={order.lines} currency={currency} />
+                )}
+            </section>
+
+            {/* TOTALS */}
+            <div className="ml-auto max-w-xs space-y-1 text-sm">
+                <Row term="Total HT" value={formatMoney(hasDiscount ? net : order.subtotal_excl_tax, currency)} />
+                {hasDiscount && <Row term="Remise" value={`- ${formatMoney(order.discount_total, currency)}`} />}
+                <Row term="TVA" value={formatMoney(order.tax_total, currency)} />
+                <div className="flex justify-between border-t-2 border-line pt-1 text-base font-bold text-ink">
+                    <span>TOTAL TTC</span>
+                    <span className="tabular-nums">{formatMoney(order.total_incl_tax, currency)}</span>
+                </div>
+            </div>
+        </SalesLayout>
+    );
 }
 
-// The two Inertia forms intentionally have different data shapes but share these discount controls.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function DiscountFields({ form, enabled }: { form: any; enabled: boolean }) {
-    return <div className="grid grid-cols-2 gap-2"><select disabled={!enabled} value={String(form.data.discount_type)} onChange={(e) => form.setData('discount_type', e.target.value)} className="rounded border px-3 py-2 disabled:bg-slate-100"><option value="none">No discount</option><option value="fixed">Fixed</option><option value="percentage">Percentage</option></select><input disabled={!enabled || form.data.discount_type === 'none'} value={String(form.data.discount_value)} onChange={(e) => form.setData('discount_value', e.target.value)} className="rounded border px-3 py-2 disabled:bg-slate-100" /></div>;
+function Row({ term, value }: { term: string; value: string }) {
+    return (
+        <div className="flex justify-between text-ink-muted">
+            <span>{term}</span>
+            <span className="tabular-nums text-ink">{value}</span>
+        </div>
+    );
 }
-function Errors({ errors }: { errors: Record<string, string> }) { return <>{Object.values(errors).map((error, index) => <p key={index} className="text-sm text-red-600">{error}</p>)}</>; }
+
+function ReadOnlyLines({ lines, currency }: { lines: OLine[]; currency: string }) {
+    if (lines.length === 0) return <p className="text-sm text-ink-muted">Aucun article.</p>;
+    return (
+        <div className="overflow-x-auto">
+            <table className="w-full min-w-[640px] border-collapse text-sm">
+                <thead>
+                    <tr className="border-b border-line-strong text-left text-xs uppercase tracking-wide text-ink-muted [&>th]:px-2 [&>th]:py-2 [&>th]:font-medium">
+                        <th>Article</th>
+                        <th className="text-right">Qté</th>
+                        <th className="text-right">PU HT</th>
+                        <th className="text-right">Remise</th>
+                        <th className="text-right">TVA</th>
+                        <th className="text-right">Total TTC</th>
+                    </tr>
+                </thead>
+                <tbody className="[&>tr>td]:border-b [&>tr>td]:border-line [&>tr>td]:px-2 [&>tr>td]:py-2">
+                    {lines.map((line) => (
+                        <tr key={line.id}>
+                            <td>
+                                <span className="font-medium text-ink">{line.product_name}</span>
+                                {line.variant_name && <span className="block text-xs text-ink-muted">{line.variant_name}</span>}
+                            </td>
+                            <td className="text-right tabular-nums">{line.quantity.replace(/\.?0+$/, '')}</td>
+                            <td className="text-right tabular-nums">{formatMoney(line.unit_price_excl_tax, currency)}</td>
+                            <td className="text-right tabular-nums">{Number(line.discount_amount) > 0 ? `- ${formatMoney(line.discount_amount, currency)}` : '—'}</td>
+                            <td className="text-right tabular-nums text-ink-muted">
+                                {line.tax_unresolved ? 'À définir' : `${Number(line.tax_rate)} %`}
+                            </td>
+                            <td className="text-right font-medium tabular-nums text-ink">{formatMoney(line.total_incl_tax, currency)}</td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        </div>
+    );
+}
+
+type CustomerHit = { id: number; display_name: string; company_name: string | null; phone: string | null; email: string | null };
+
+function CustomerPicker({
+    searchUrl,
+    value,
+    disabled,
+    onPick,
+}: {
+    searchUrl: string;
+    value: string;
+    disabled: boolean;
+    onPick: (c: CustomerHit | null) => void;
+}) {
+    const [open, setOpen] = useState(false);
+    const [query, setQuery] = useState('');
+    const [rows, setRows] = useState<CustomerHit[]>([]);
+    const [loading, setLoading] = useState(false);
+    const reqId = useRef(0);
+
+    useEffect(() => {
+        if (!open) return;
+        const ctrl = new AbortController();
+        const id = ++reqId.current;
+        const h = window.setTimeout(async () => {
+            setLoading(true);
+            try {
+                const url = new URL(searchUrl, window.location.origin);
+                if (query.trim() !== '') url.searchParams.set('search', query.trim());
+                const res = await fetch(url.toString(), { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, signal: ctrl.signal });
+                if (res.ok && id === reqId.current) setRows(((await res.json()) as { data: CustomerHit[] }).data);
+            } catch {
+                /* aborted */
+            } finally {
+                if (id === reqId.current) setLoading(false);
+            }
+        }, 250);
+        return () => {
+            ctrl.abort();
+            window.clearTimeout(h);
+        };
+    }, [query, searchUrl, open]);
+
+    if (!open) {
+        return (
+            <div className="flex items-center gap-2">
+                <button
+                    type="button"
+                    disabled={disabled}
+                    onClick={() => setOpen(true)}
+                    className="flex-1 rounded-field border border-line-strong px-3 py-2 text-left disabled:bg-raised"
+                >
+                    {value || <span className="text-ink-faint">Client comptoir</span>}
+                </button>
+                {value && !disabled && (
+                    <button type="button" onClick={() => onPick(null)} className="text-xs text-ink-muted hover:underline">
+                        Retirer
+                    </button>
+                )}
+            </div>
+        );
+    }
+
+    return (
+        <div className="rounded-field border border-line-strong p-2">
+            <input
+                autoFocus
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Nom, société, téléphone, email…"
+                className="w-full rounded-field border border-line-strong px-2 py-1 text-sm"
+            />
+            <ul className="mt-1 max-h-48 divide-y divide-line overflow-y-auto">
+                <li>
+                    <button
+                        type="button"
+                        onClick={() => {
+                            onPick(null);
+                            setOpen(false);
+                        }}
+                        className="block w-full px-1 py-1.5 text-left text-xs text-ink-muted hover:bg-raised"
+                    >
+                        Client comptoir (aucun)
+                    </button>
+                </li>
+                {loading && <li className="px-1 py-1.5 text-xs text-ink-muted">Recherche…</li>}
+                {!loading &&
+                    rows.map((row) => (
+                        <li key={row.id}>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    onPick(row);
+                                    setOpen(false);
+                                }}
+                                className="block w-full px-1 py-1.5 text-left hover:bg-raised"
+                            >
+                                <span className="text-sm font-medium text-ink">{row.company_name || row.display_name}</span>
+                                <span className="block text-xs text-ink-faint">{[row.phone, row.email].filter(Boolean).join(' · ') || '—'}</span>
+                            </button>
+                        </li>
+                    ))}
+            </ul>
+            <button type="button" onClick={() => setOpen(false)} className="mt-1 text-xs text-ink-muted hover:underline">
+                Fermer
+            </button>
+        </div>
+    );
+}

@@ -4,9 +4,12 @@ namespace App\Actions\Documents;
 
 use App\Actions\Documents\Concerns\AuthorizesDocumentAction;
 use App\Enums\InvoiceStatus;
+use App\Enums\PaymentMethod;
+use App\Enums\PaymentStatus;
 use App\Enums\SalesOrderStatus;
 use App\Models\Invoice;
 use App\Models\InvoiceLine;
+use App\Models\PaymentAllocation;
 use App\Models\SalesOrder;
 use App\Models\User;
 use App\Services\AuditLogger;
@@ -37,7 +40,7 @@ class CreateFullInvoiceFromSalesOrderAction
         return DB::transaction(function () use ($actor, $order, $data, $invoiceDate) {
             $order = SalesOrder::query()
                 ->where('organization_id', $order->organization_id)->where('store_id', $order->store_id)
-                ->whereKey($order->getKey())->lockForUpdate()->with(['lines', 'customer', 'organization', 'store'])->firstOrFail();
+                ->whereKey($order->getKey())->lockForUpdate()->with(['lines', 'customer', 'organization', 'store', 'createdBy:id,name'])->firstOrFail();
             if ($order->status !== SalesOrderStatus::Confirmed) {
                 throw ValidationException::withMessages(['order' => 'Only a confirmed Sales Order can be invoiced.']);
             }
@@ -64,6 +67,8 @@ class CreateFullInvoiceFromSalesOrderAction
             $invoice->customer_phone = $order->customer_phone;
             $invoice->customer_tax_identifier = $order->customer?->tax_identifier;
             $invoice->billing_address = $order->customer?->billing_address;
+            $invoice->representative_name = $data['representative_name'] ?? $order->createdBy?->name;
+            $invoice->payment_method_summary = $data['payment_method_summary'] ?? $this->derivePaymentMethodSummary($order);
             $invoice->subtotal_excl_tax = $order->subtotal_excl_tax;
             $invoice->discount_total = $order->discount_total;
             $invoice->tax_total = $order->tax_total;
@@ -82,7 +87,7 @@ class CreateFullInvoiceFromSalesOrderAction
                 $line->position = $source->position;
                 $line->line_type = $source->line_type;
                 $line->description = $source->product_name;
-                foreach (['product_name', 'variant_name', 'sku', 'reference', 'unit_label', 'quantity', 'unit_price_excl_tax', 'discount_type', 'discount_value', 'subtotal_excl_tax', 'discount_amount', 'taxable_amount', 'tax_name', 'tax_rate', 'tax_amount', 'total_incl_tax'] as $field) {
+                foreach (['product_name', 'variant_name', 'sku', 'reference', 'unit_label', 'quantity', 'unit_price_excl_tax', 'unit_price_incl_tax', 'discount_type', 'discount_value', 'subtotal_excl_tax', 'discount_amount', 'taxable_amount', 'tax_name', 'tax_rate', 'tax_amount', 'total_incl_tax'] as $field) {
                     $line->{$field} = $source->{$field};
                 }
                 $line->save();
@@ -96,5 +101,26 @@ class CreateFullInvoiceFromSalesOrderAction
 
             return $invoice->load(['lines', 'salesOrder']);
         });
+    }
+
+    /**
+     * A concise French rendering of the payment methods actually used on the
+     * source Order's posted payments (e.g. "ESPÈCES / TPE"). This is a display
+     * string only — no Invoice-level payment is created.
+     */
+    private function derivePaymentMethodSummary(SalesOrder $order): ?string
+    {
+        $methods = PaymentAllocation::query()
+            ->where('organization_id', $order->organization_id)
+            ->where('sales_order_id', $order->getKey())
+            ->whereHas('payment', fn ($query) => $query->where('status', PaymentStatus::Posted->value))
+            ->with('payment:id,method')
+            ->get()
+            ->pluck('payment.method')
+            ->filter();
+
+        $summary = PaymentMethod::summary($methods->all());
+
+        return $summary === '' ? null : $summary;
     }
 }

@@ -67,7 +67,12 @@ class PosDraftCartTest extends PosTestCase
         $this->assertDatabaseMissing('sales_order_lines', ['id' => $line->id]);
     }
 
-    public function test_unavailable_quantity_is_rejected_before_cart_mutation(): void
+    /**
+     * A quantity above company stock is no longer rejected — the shortfall
+     * becomes a supplier special-order requirement on the same commercial
+     * line (see the POS + Supplier Procurement integration).
+     */
+    public function test_a_quantity_above_company_stock_is_accepted_with_a_procurement_deficit(): void
     {
         [$owner, $organization, $store, $warehouse, $variant] = $this->context('1.0000');
         $draft = $this->createPosDraft($owner, $organization, $store, $warehouse);
@@ -79,9 +84,13 @@ class PosDraftCartTest extends PosTestCase
             'quantity' => '2',
             'discount_type' => 'none',
             'discount_value' => '0.0000',
-        ])->assertUnprocessable()->assertJsonValidationErrors('quantity');
+        ])->assertOk()
+            ->assertJsonPath('active_sale.lines.0.quantity', '2.0000')
+            ->assertJsonPath('active_sale.lines.0.company_covered', '1.0000')
+            ->assertJsonPath('active_sale.lines.0.to_procure', '1.0000')
+            ->assertJsonPath('active_sale.procurement_deficit', true);
 
-        $this->assertDatabaseCount('sales_order_lines', 0);
+        $this->assertDatabaseCount('sales_order_lines', 1);
     }
 
     public function test_foreign_product_variant_is_rejected_from_pos_cart(): void

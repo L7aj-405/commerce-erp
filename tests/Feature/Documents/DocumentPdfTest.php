@@ -16,9 +16,11 @@ class DocumentPdfTest extends DocumentTestCase
         $invoiceTotal = $invoice->total_incl_tax;
         $invoiceLineCount = $invoice->lines()->count();
 
+        // The official number "N/YYYY" is filename-sanitised (slash → dash).
+        $invoiceFile = 'Facture-'.preg_replace('/[^A-Za-z0-9._-]+/', '-', $invoice->invoice_number).'.pdf';
         foreach ([
-            [route('invoices.pdf', $invoice), 'inline', 'Facture-'.$invoice->invoice_number.'.pdf'],
-            [route('invoices.download', $invoice), 'attachment', 'Facture-'.$invoice->invoice_number.'.pdf'],
+            [route('invoices.pdf', $invoice), 'inline', $invoiceFile],
+            [route('invoices.download', $invoice), 'attachment', $invoiceFile],
             [route('delivery-notes.pdf', $note), 'inline', 'Bon-de-Livraison-'.$note->delivery_note_number.'.pdf'],
             [route('delivery-notes.download', $note), 'attachment', 'Bon-de-Livraison-'.$note->delivery_note_number.'.pdf'],
         ] as [$url, $disposition, $filename]) {

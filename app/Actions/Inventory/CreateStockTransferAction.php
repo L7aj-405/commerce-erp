@@ -31,8 +31,9 @@ class CreateStockTransferAction
         Warehouse $destination,
         array $lines,
         string $reason,
+        string $permission = 'inventory.transfer',
     ): StockTransfer {
-        return DB::transaction(function () use ($actor, $organization, $source, $destination, $lines, $reason) {
+        return DB::transaction(function () use ($actor, $organization, $source, $destination, $lines, $reason, $permission) {
             $transferNumber = $this->numbers->next($organization);
             $movements = $this->transfers->executeMany(
                 $actor,
@@ -42,6 +43,7 @@ class CreateStockTransferAction
                 $lines,
                 $reason,
                 $transferNumber,
+                $permission,
             );
 
             $transfer = new StockTransfer;

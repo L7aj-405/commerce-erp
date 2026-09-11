@@ -22,6 +22,10 @@ class WarehouseController extends Controller
         $organization = $context->organizationOrFail();
         $this->authorize('viewAny', [Warehouse::class, $organization]);
         $warehouses = $organization->warehouses()->orderBy('name')->get();
+        $replenishment = \App\Models\WarehouseReplenishmentSetting::query()
+            ->where('organization_id', $organization->getKey())
+            ->get()
+            ->keyBy('warehouse_id');
         $stats = InventoryBalance::query()
             ->where('organization_id', $organization->getKey())
             ->selectRaw('warehouse_id, COUNT(DISTINCT product_variant_id) as product_count, COALESCE(SUM(on_hand), 0) as unit_count')
@@ -30,18 +34,24 @@ class WarehouseController extends Controller
             ->keyBy('warehouse_id');
 
         return Inertia::render('Inventory/Warehouses/Index', [
-            'warehouses' => $warehouses->map(function (Warehouse $warehouse) use ($stats) {
+            'warehouses' => $warehouses->map(function (Warehouse $warehouse) use ($stats, $replenishment) {
                 $summary = $stats->get($warehouse->getKey());
+                $setting = $replenishment->get($warehouse->getKey());
 
                 return [
                     ...$warehouse->toArray(),
                     'product_count' => (int) ($summary->product_count ?? 0),
                     'unit_count' => InventoryQuantity::normalize($summary->unit_count ?? InventoryQuantity::ZERO),
+                    'replenishment' => [
+                        'auto_replenish' => (bool) ($setting->auto_replenish ?? false),
+                        'default_minimum_quantity' => InventoryQuantity::normalize($setting->default_minimum_quantity ?? InventoryQuantity::ZERO),
+                    ],
                 ];
             }),
             'can' => [
                 'create' => request()->user()?->can('create', [Warehouse::class, $organization]) ?? false,
                 'update' => request()->user()?->hasPermission($organization, 'warehouses.update') ?? false,
+                'replenishment' => request()->user()?->hasPermission($organization, 'inventory.transfer_requests.manage') ?? false,
             ],
         ]);
     }

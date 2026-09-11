@@ -42,14 +42,19 @@ class IssueInvoiceAction
             if ($order->status !== SalesOrderStatus::Confirmed) {
                 throw ValidationException::withMessages(['order' => 'The source Sales Order is no longer eligible for invoicing.']);
             }
+            // A correction legitimately co-exists with the issued Invoice it
+            // replaces until the moment it is issued — exclude that one original
+            // from the "already invoiced" guard.
             if (Invoice::query()->where('organization_id', $invoice->organization_id)->where('sales_order_id', $invoice->sales_order_id)
-                ->where('status', InvoiceStatus::Issued->value)->where('id', '!=', $invoice->getKey())->exists()) {
+                ->where('status', InvoiceStatus::Issued->value)->where('id', '!=', $invoice->getKey())
+                ->when($invoice->corrected_invoice_id, fn ($query, $id) => $query->where('id', '!=', $id))
+                ->exists()) {
                 throw ValidationException::withMessages(['order' => 'This Sales Order already has an issued full Invoice.']);
             }
             $this->verifier->verifyInvoice($invoice);
             $this->sellerProfile->validate($invoice->seller_snapshot);
             $this->templates->invoiceView($invoice->template_version);
-            $invoice->invoice_number = $this->numbers->next($invoice->organization);
+            $invoice->invoice_number = $this->numbers->next($invoice->organization, (int) $invoice->invoice_date->format('Y'));
             $invoice->status = InvoiceStatus::Issued;
             $invoice->issued_at = now();
             $invoice->issued_by_user_id = $actor->getKey();
@@ -59,6 +64,25 @@ class IssueInvoiceAction
                 'invoice_date' => $invoice->invoice_date->toDateString(), 'status' => InvoiceStatus::Issued->value,
                 'total_incl_tax' => $invoice->total_incl_tax,
             ]);
+
+            // Issuing a correction supersedes the Invoice it replaces, in the
+            // same transaction. The original stays immutable and viewable.
+            if ($invoice->corrected_invoice_id) {
+                $original = Invoice::query()->where('organization_id', $invoice->organization_id)
+                    ->whereKey($invoice->corrected_invoice_id)->lockForUpdate()->first();
+                if ($original && $original->status === InvoiceStatus::Issued) {
+                    $original->status = InvoiceStatus::Superseded;
+                    $original->save();
+                }
+                $this->audit->record('invoice.correction_issued', $actor, $invoice->organization, $invoice->store, $invoice, newValues: [
+                    'correction_invoice_id' => $invoice->getKey(),
+                    'correction_invoice_number' => $invoice->invoice_number,
+                    'original_invoice_id' => $original?->getKey(),
+                    'original_invoice_number' => $original?->invoice_number,
+                    'sales_order_number' => $invoice->salesOrder->order_number,
+                    'reason' => $invoice->correction_reason,
+                ]);
+            }
 
             return $invoice;
         });

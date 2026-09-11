@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\InvoiceStatus;
 use App\Models\DeliveryNote;
 use App\Models\Invoice;
 use App\Support\Decimal;
@@ -11,6 +12,16 @@ class DocumentSnapshotVerifier
 {
     public function verifyInvoice(Invoice $invoice): void
     {
+        // A post-issue correction Draft/Invoice may intentionally differ from the
+        // authoritative Sales Order snapshot (that is the whole point of a
+        // financial line correction). It is verified for internal consistency
+        // instead — never against the Order lines.
+        if ($invoice->corrected_invoice_id !== null) {
+            $this->verifyCorrectionInvoice($invoice);
+
+            return;
+        }
+
         $invoice->loadMissing(['lines', 'salesOrder.lines']);
         $sourceLines = $invoice->salesOrder->lines->keyBy('id');
         if ($invoice->lines->count() !== $sourceLines->count()) {
@@ -29,7 +40,7 @@ class DocumentSnapshotVerifier
                     $this->invalid("Invoice line {$field} differs from the Sales Order snapshot.");
                 }
             }
-            foreach (['quantity', 'unit_price_excl_tax', 'discount_value', 'subtotal_excl_tax', 'discount_amount', 'taxable_amount', 'tax_rate', 'tax_amount', 'total_incl_tax'] as $field) {
+            foreach (['quantity', 'unit_price_excl_tax', 'unit_price_incl_tax', 'discount_value', 'subtotal_excl_tax', 'discount_amount', 'taxable_amount', 'tax_rate', 'tax_amount', 'total_incl_tax'] as $field) {
                 if (Decimal::compare($line->{$field}, $source->{$field}) !== 0) {
                     $this->invalid("Invoice line {$field} differs from the Sales Order snapshot.");
                 }
@@ -49,6 +60,77 @@ class DocumentSnapshotVerifier
         }
         if ($invoice->currency_code !== $invoice->salesOrder->currency_code) {
             $this->invalid('Invoice currency differs from the Sales Order snapshot.');
+        }
+    }
+
+    /**
+     * Correction-aware verification. Enforces arithmetic + exact-decimal
+     * consistency, tax sanity, the required document snapshots, the correction
+     * relationship and the original Invoice's existence — but NOT equality with
+     * the Sales Order line snapshot, which a correction may legitimately change.
+     */
+    public function verifyCorrectionInvoice(Invoice $invoice): void
+    {
+        $invoice->loadMissing(['lines', 'correctedInvoice']);
+
+        $original = $invoice->correctedInvoice;
+        if (! $original) {
+            $this->invalid('A correction Invoice must reference the original Invoice it supersedes.');
+        }
+        if (! in_array($original->status, [InvoiceStatus::Issued, InvoiceStatus::Superseded], true)) {
+            $this->invalid('The original Invoice being corrected is not in a correctable state.');
+        }
+        if ($invoice->lines->isEmpty()) {
+            $this->invalid('A correction Invoice must keep at least one line.');
+        }
+        if ($invoice->currency_code !== $original->currency_code) {
+            $this->invalid('Correction currency differs from the original Invoice.');
+        }
+
+        $totals = ['subtotal_excl_tax' => '0.0000', 'discount_total' => '0.0000', 'tax_total' => '0.0000', 'total_incl_tax' => '0.0000'];
+        foreach ($invoice->lines as $line) {
+            if (Decimal::compare($line->quantity, '0') <= 0) {
+                $this->invalid('A correction line quantity must be greater than zero.');
+            }
+            if (Decimal::compare($line->unit_price_excl_tax, '0') < 0) {
+                $this->invalid('A correction line unit price may not be negative.');
+            }
+            if (Decimal::compare($line->tax_rate, '0') < 0 || Decimal::compare($line->tax_rate, '100') > 0) {
+                $this->invalid('A correction line tax rate is out of range.');
+            }
+            if ($line->line_type === null || $line->description === null || $line->description === '') {
+                $this->invalid('A correction line is missing its required document snapshot.');
+            }
+
+            $subtotal = Decimal::multiply($line->quantity, $line->unit_price_excl_tax);
+            if (Decimal::compare($subtotal, $line->subtotal_excl_tax) !== 0) {
+                $this->invalid('A correction line subtotal does not match quantity × unit price HT.');
+            }
+            if (Decimal::compare($line->discount_amount, '0') < 0 || Decimal::compare($line->discount_amount, $subtotal) > 0) {
+                $this->invalid('A correction line discount is outside its valid range.');
+            }
+            $taxable = Decimal::subtract($subtotal, $line->discount_amount);
+            if (Decimal::compare($taxable, $line->taxable_amount) !== 0) {
+                $this->invalid('A correction line taxable base is inconsistent.');
+            }
+            $tax = Decimal::compare($line->tax_rate, '0') === 0 ? '0.0000' : Decimal::percentage($taxable, $line->tax_rate);
+            if (Decimal::compare($tax, $line->tax_amount) !== 0) {
+                $this->invalid('A correction line tax amount is inconsistent with its taxable base and rate.');
+            }
+            if (Decimal::compare(Decimal::add($taxable, $tax), $line->total_incl_tax) !== 0) {
+                $this->invalid('A correction line total TTC is inconsistent.');
+            }
+
+            $totals['subtotal_excl_tax'] = Decimal::add($totals['subtotal_excl_tax'], $line->subtotal_excl_tax);
+            $totals['discount_total'] = Decimal::add($totals['discount_total'], $line->discount_amount);
+            $totals['tax_total'] = Decimal::add($totals['tax_total'], $line->tax_amount);
+            $totals['total_incl_tax'] = Decimal::add($totals['total_incl_tax'], $line->total_incl_tax);
+        }
+
+        foreach ($totals as $field => $value) {
+            if (Decimal::compare($invoice->{$field}, $value) !== 0) {
+                $this->invalid("Correction Invoice {$field} does not reconcile with its own line snapshots.");
+            }
         }
     }
 

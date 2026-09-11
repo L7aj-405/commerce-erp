@@ -1,4 +1,5 @@
 import { ButtonLink } from '@/components/ui/Button';
+import { Spinner } from '@/components/ui/Spinner';
 import EmptyState from '@/components/ui/EmptyState';
 import FilterSelect from '@/components/ui/FilterSelect';
 import PageHeader from '@/components/ui/PageHeader';
@@ -262,7 +263,7 @@ export default function StockIndex({ balances, filters, warehouses, brands, cate
                                     <input value={opening.data.reason} onChange={event => opening.setData('reason', event.target.value)} placeholder="Motif (optionnel)" className="w-full rounded-lg border px-3 py-2" />
                                     <input value={opening.data.reference} onChange={event => opening.setData('reference', event.target.value)} placeholder="Reference (optionnelle)" className="w-full rounded-lg border px-3 py-2" />
                                     {Object.values(opening.errors).map((error, index) => <p key={index} className="text-sm text-red-600">{error}</p>)}
-                                    <button disabled={opening.processing} className="rounded-lg bg-slate-950 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">{opening.processing ? 'Enregistrement...' : 'Ajouter le stock initial'}</button>
+                                    <button disabled={opening.processing} aria-busy={opening.processing || undefined} className="inline-flex items-center gap-2 rounded-lg bg-slate-950 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">{opening.processing && <Spinner size="sm" />}{opening.processing ? 'Enregistrement...' : 'Ajouter le stock initial'}</button>
                                 </form>
                             )}
 
@@ -285,7 +286,7 @@ export default function StockIndex({ balances, filters, warehouses, brands, cate
                                     <input required value={adjustment.data.reason} onChange={event => adjustment.setData('reason', event.target.value)} placeholder="Motif" className="w-full rounded-lg border px-3 py-2" />
                                     <input value={adjustment.data.reference} onChange={event => adjustment.setData('reference', event.target.value)} placeholder="Reference (optionnelle)" className="w-full rounded-lg border px-3 py-2" />
                                     {Object.values(adjustment.errors).map((error, index) => <p key={index} className="text-sm text-red-600">{error}</p>)}
-                                    <button disabled={adjustment.processing} className="rounded-lg bg-slate-950 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">{adjustment.processing ? 'Ajustement...' : 'Appliquer l ajustement'}</button>
+                                    <button disabled={adjustment.processing} aria-busy={adjustment.processing || undefined} className="inline-flex items-center gap-2 rounded-lg bg-slate-950 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">{adjustment.processing && <Spinner size="sm" />}{adjustment.processing ? 'Ajustement...' : 'Appliquer l ajustement'}</button>
                                 </form>
                             )}
                         </section>

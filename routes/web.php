@@ -1,8 +1,10 @@
 <?php
 
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
+use App\Http\Controllers\Auth\RegisteredUserController;
 use App\Http\Controllers\Catalog\BrandController;
 use App\Http\Controllers\Catalog\CategoryController;
+use App\Http\Controllers\Catalog\NonStockItemController;
 use App\Http\Controllers\Catalog\ProductController;
 use App\Http\Controllers\Catalog\ProductImportController;
 use App\Http\Controllers\Catalog\ProductVariantController;
@@ -13,17 +15,29 @@ use App\Http\Controllers\Documents\DocumentEmailController;
 use App\Http\Controllers\Documents\DocumentProfileController;
 use App\Http\Controllers\Documents\DocumentRenderingController;
 use App\Http\Controllers\Documents\InvoiceController;
+use App\Http\Controllers\Documents\InvoiceCorrectionLineController;
+use App\Http\Controllers\Integrations\WooCommerceIntegrationController;
 use App\Http\Controllers\Inventory\InventoryMovementController;
 use App\Http\Controllers\Inventory\InventoryReservationController;
 use App\Http\Controllers\Inventory\InventoryStockController;
 use App\Http\Controllers\Inventory\StockTransferController;
+use App\Http\Controllers\Inventory\TransferRequestController;
 use App\Http\Controllers\Inventory\WarehouseController;
+use App\Http\Controllers\Inventory\WarehouseReplenishmentController;
 use App\Http\Controllers\OrganizationController;
 use App\Http\Controllers\OrganizationMembershipController;
 use App\Http\Controllers\Payments\FinancialAccountController;
 use App\Http\Controllers\Payments\PaymentController;
 use App\Http\Controllers\PlatformController;
 use App\Http\Controllers\PosController;
+use App\Http\Controllers\Procurement\ProcurementController;
+use App\Http\Controllers\Procurement\SupplierController;
+use App\Http\Controllers\Quotations\QuotationController;
+use App\Http\Controllers\Quotations\QuotationConversionController;
+use App\Http\Controllers\Quotations\QuotationEmailController;
+use App\Http\Controllers\Quotations\QuotationLineController;
+use App\Http\Controllers\Quotations\QuotationRenderingController;
+use App\Http\Controllers\Quotations\QuotationSettingsController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\Sales\CustomerController;
 use App\Http\Controllers\Sales\SalesOrderController;
@@ -48,6 +62,11 @@ Route::middleware('guest')->group(function () {
     Route::post('/login', [AuthenticatedSessionController::class, 'store'])
         ->middleware('throttle:6,1')
         ->name('login.store');
+
+    Route::get('/register', [RegisteredUserController::class, 'create'])->name('register');
+    Route::post('/register', [RegisteredUserController::class, 'store'])
+        ->middleware('throttle:6,1')
+        ->name('register.store');
 });
 
 Route::middleware('auth')->group(function () {
@@ -56,6 +75,8 @@ Route::middleware('auth')->group(function () {
     Route::get('/platform', PlatformController::class)->name('platform.index');
     Route::get('/document-profile', [DocumentProfileController::class, 'edit'])->name('document-profile.edit');
     Route::put('/document-profile', [DocumentProfileController::class, 'update'])->name('document-profile.update');
+    Route::get('/quotation-settings', [QuotationSettingsController::class, 'edit'])->name('quotation-settings.edit');
+    Route::put('/quotation-settings', [QuotationSettingsController::class, 'update'])->name('quotation-settings.update');
 
     Route::prefix('pos')->name('pos.')->group(function () {
         Route::get('/', [PosController::class, 'index'])->name('index');
@@ -142,6 +163,12 @@ Route::middleware('auth')->group(function () {
         Route::get('/tax-rates', [TaxRateController::class, 'index'])->name('tax-rates.index');
         Route::post('/tax-rates', [TaxRateController::class, 'store'])->name('tax-rates.store');
         Route::patch('/tax-rates/{taxRate}', [TaxRateController::class, 'update'])->name('tax-rates.update');
+
+        // Reusable non-stock / external article library (no inventory footprint).
+        Route::get('/non-stock-items', [NonStockItemController::class, 'index'])->name('non-stock-items.index');
+        Route::get('/non-stock-items/export', [NonStockItemController::class, 'export'])->name('non-stock-items.export');
+        Route::post('/non-stock-items', [NonStockItemController::class, 'store'])->name('non-stock-items.store');
+        Route::patch('/non-stock-items/{nonStockItem}', [NonStockItemController::class, 'update'])->name('non-stock-items.update');
     });
 
     Route::prefix('inventory')->name('inventory.')->group(function () {
@@ -160,9 +187,34 @@ Route::middleware('auth')->group(function () {
         Route::post('/transfers', [StockTransferController::class, 'store'])->name('transfers.store');
         Route::get('/transfers/{transfer}', [StockTransferController::class, 'show'])->name('transfers.show');
 
+        // Internal transfer REQUESTS (logistics lifecycle: requested → preparing
+        // → shipped → received). Distinct from the completed movements above.
+        Route::get('/transfer-requests', [TransferRequestController::class, 'index'])->name('transfer-requests.index');
+        Route::post('/transfer-requests/replenish', [TransferRequestController::class, 'replenish'])->name('transfer-requests.replenish');
+        Route::get('/transfer-requests/{transferRequest}', [TransferRequestController::class, 'show'])->name('transfer-requests.show');
+        Route::post('/transfer-requests/{transferRequest}/prepare', [TransferRequestController::class, 'prepare'])->name('transfer-requests.prepare');
+        Route::patch('/transfer-requests/{transferRequest}/driver', [TransferRequestController::class, 'assignDriver'])->name('transfer-requests.driver');
+        Route::post('/transfer-requests/{transferRequest}/ship', [TransferRequestController::class, 'ship'])->name('transfer-requests.ship');
+        Route::post('/transfer-requests/{transferRequest}/receive', [TransferRequestController::class, 'receive'])->name('transfer-requests.receive');
+        Route::post('/transfer-requests/{transferRequest}/cancel', [TransferRequestController::class, 'cancel'])->name('transfer-requests.cancel');
+        Route::get('/transfer-requests/{transferRequest}/bon', [TransferRequestController::class, 'bon'])->name('transfer-requests.bon');
+        Route::get('/transfer-requests/{transferRequest}/bon/download', [TransferRequestController::class, 'bonDownload'])->name('transfer-requests.bon.download');
+        Route::get('/transfer-requests/{transferRequest}/bon/preview', [TransferRequestController::class, 'bonPreview'])->name('transfer-requests.bon.preview');
+
+        Route::patch('/warehouses/{warehouse}/replenishment', [WarehouseReplenishmentController::class, 'update'])->name('warehouses.replenishment.update');
+
         Route::post('/reservations', [InventoryReservationController::class, 'store'])->name('reservations.store');
         Route::post('/reservations/{reservation}/release', [InventoryReservationController::class, 'release'])->name('reservations.release');
         Route::post('/reservations/{reservation}/consume', [InventoryReservationController::class, 'consume'])->name('reservations.consume');
+    });
+
+    Route::prefix('integrations')->name('integrations.')->group(function () {
+        Route::get('/woocommerce', [WooCommerceIntegrationController::class, 'index'])->name('woocommerce.index');
+        Route::post('/woocommerce', [WooCommerceIntegrationController::class, 'store'])->name('woocommerce.store');
+        Route::patch('/woocommerce/{integration}', [WooCommerceIntegrationController::class, 'update'])->name('woocommerce.update');
+        Route::post('/woocommerce/{integration}/test', [WooCommerceIntegrationController::class, 'test'])->name('woocommerce.test');
+        Route::post('/woocommerce/{integration}/sync', [WooCommerceIntegrationController::class, 'sync'])->name('woocommerce.sync');
+        Route::get('/woocommerce/{integration}/status', [WooCommerceIntegrationController::class, 'runStatus'])->name('woocommerce.status');
     });
 
     Route::get('/financial-accounts', [FinancialAccountController::class, 'index'])->name('financial-accounts.index');
@@ -184,6 +236,37 @@ Route::middleware('auth')->group(function () {
     Route::patch('/invoices/{invoice}', [InvoiceController::class, 'update'])->name('invoices.update');
     Route::post('/invoices/{invoice}/issue', [InvoiceController::class, 'issue'])->name('invoices.issue');
     Route::post('/invoices/{invoice}/cancel', [InvoiceController::class, 'cancel'])->name('invoices.cancel');
+    Route::post('/invoices/{invoice}/corrections', [InvoiceController::class, 'correct'])->name('invoices.corrections.store');
+
+    // Financial-line editing — only ever reaches a post-issue correction Draft
+    // (enforced by the `editLines` Invoice policy inside the controller).
+    Route::get('/invoices/{invoice}/correction-lines/search', [InvoiceCorrectionLineController::class, 'search'])->name('invoices.correction-lines.search');
+    Route::post('/invoices/{invoice}/correction-lines', [InvoiceCorrectionLineController::class, 'store'])->name('invoices.correction-lines.store');
+    Route::patch('/invoices/{invoice}/correction-lines/{line}', [InvoiceCorrectionLineController::class, 'update'])->name('invoices.correction-lines.update');
+    Route::delete('/invoices/{invoice}/correction-lines/{line}', [InvoiceCorrectionLineController::class, 'destroy'])->name('invoices.correction-lines.destroy');
+
+    // Quotations / Devis — commercial proposals. Zero Inventory / Finance impact.
+    Route::get('/quotations', [QuotationController::class, 'index'])->name('quotations.index');
+    Route::get('/quotations/create', [QuotationController::class, 'create'])->name('quotations.create');
+    Route::get('/quotations/customer-search', [QuotationController::class, 'customerSearch'])->name('quotations.customer-search');
+    Route::post('/quotations/customers', [QuotationController::class, 'storeCustomer'])->name('quotations.customers.store');
+    Route::post('/quotations', [QuotationController::class, 'store'])->name('quotations.store');
+    Route::get('/quotations/{quotation}', [QuotationController::class, 'show'])->name('quotations.show');
+    Route::get('/quotations/{quotation}/print', [QuotationRenderingController::class, 'print'])->name('quotations.print');
+    Route::get('/quotations/{quotation}/pdf', [QuotationRenderingController::class, 'pdf'])->name('quotations.pdf');
+    Route::get('/quotations/{quotation}/download', [QuotationRenderingController::class, 'download'])->name('quotations.download');
+    Route::get('/quotations/{quotation}/search', [QuotationController::class, 'search'])->name('quotations.search');
+    Route::patch('/quotations/{quotation}', [QuotationController::class, 'update'])->name('quotations.update');
+    Route::post('/quotations/{quotation}/issue', [QuotationController::class, 'issue'])->name('quotations.issue');
+    Route::post('/quotations/{quotation}/accept', [QuotationController::class, 'accept'])->name('quotations.accept');
+    Route::post('/quotations/{quotation}/reject', [QuotationController::class, 'reject'])->name('quotations.reject');
+    Route::post('/quotations/{quotation}/duplicate', [QuotationController::class, 'duplicate'])->name('quotations.duplicate');
+    Route::post('/quotations/{quotation}/revise', [QuotationController::class, 'revise'])->name('quotations.revise');
+    Route::post('/quotations/{quotation}/email', [QuotationEmailController::class, 'send'])->name('quotations.email');
+    Route::post('/quotations/{quotation}/conversion', [QuotationConversionController::class, 'store'])->name('quotations.conversion.store');
+    Route::post('/quotations/{quotation}/lines', [QuotationLineController::class, 'store'])->name('quotations.lines.store');
+    Route::patch('/quotations/{quotation}/lines/{line}', [QuotationLineController::class, 'update'])->name('quotations.lines.update');
+    Route::delete('/quotations/{quotation}/lines/{line}', [QuotationLineController::class, 'destroy'])->name('quotations.lines.destroy');
 
     Route::get('/delivery-notes', [DeliveryNoteController::class, 'index'])->name('delivery-notes.index');
     Route::get('/delivery-notes/{deliveryNote}', [DeliveryNoteController::class, 'show'])->name('delivery-notes.show');
@@ -203,10 +286,13 @@ Route::middleware('auth')->group(function () {
         Route::patch('/customers/{customer}', [CustomerController::class, 'update'])->name('customers.update');
 
         Route::get('/orders', [SalesOrderController::class, 'index'])->name('orders.index');
-        Route::get('/orders/create', [SalesOrderController::class, 'create'])->name('orders.create');
+        // Manual order creation is intentionally not exposed in the UI — Sales Orders
+        // originate from the POS. `store` is retained for internal/admin/test use.
         Route::post('/orders', [SalesOrderController::class, 'store'])->name('orders.store');
         Route::get('/orders/{order}', [SalesOrderController::class, 'show'])->name('orders.show');
         Route::get('/orders/{order}/edit', [SalesOrderController::class, 'edit'])->name('orders.edit');
+        Route::get('/orders/{order}/line-search', [SalesOrderController::class, 'lineSearch'])->name('orders.line-search');
+        Route::get('/orders/{order}/customer-search', [SalesOrderController::class, 'customerSearch'])->name('orders.customer-search');
         Route::patch('/orders/{order}', [SalesOrderController::class, 'update'])->name('orders.update');
         Route::post('/orders/{order}/lines', [SalesOrderLineController::class, 'store'])->name('orders.lines.store');
         Route::patch('/orders/{order}/lines/{lineId}', [SalesOrderLineController::class, 'update'])->whereNumber('lineId')->name('orders.lines.update');
@@ -217,5 +303,33 @@ Route::middleware('auth')->group(function () {
         Route::post('/orders/{order}/payments', [PaymentController::class, 'store'])->name('orders.payments.store');
         Route::post('/orders/{order}/invoices', [InvoiceController::class, 'store'])->name('orders.invoices.store');
         Route::post('/orders/{order}/delivery-notes', [DeliveryNoteController::class, 'store'])->name('orders.delivery-notes.store');
+        // Raise a supplier special-order for one under-covered catalogue line.
+        Route::post('/orders/{order}/procurements', [ProcurementController::class, 'store'])->name('orders.procurements.store');
+    });
+
+    // Achats — supplier procurement / special orders. Distinct domain from the
+    // internal warehouse Transfer Requests above.
+    Route::prefix('procurement')->name('procurement.')->group(function () {
+        Route::get('/', [ProcurementController::class, 'index'])->name('index');
+        Route::get('/suppliers', [SupplierController::class, 'index'])->name('suppliers.index');
+        Route::post('/suppliers', [SupplierController::class, 'store'])->name('suppliers.store');
+        Route::patch('/suppliers/{supplier}', [SupplierController::class, 'update'])->name('suppliers.update');
+        Route::patch('/{procurement}/availability', [ProcurementController::class, 'availability'])->name('availability');
+        Route::patch('/{procurement}/supplier', [ProcurementController::class, 'changeSupplier'])->name('supplier');
+        Route::post('/{procurement}/order', [ProcurementController::class, 'order'])->name('order');
+        Route::post('/{procurement}/receive', [ProcurementController::class, 'receive'])->name('receive');
+        Route::post('/{procurement}/cancel', [ProcurementController::class, 'cancel'])->name('cancel');
     });
 });
+
+// Public, signature-gated read of one issued Invoice PDF (used for WhatsApp/email
+// sharing). Not behind `auth`: the temporary signature is the authorisation and
+// binds the URL to a single invoice id + expiry.
+Route::get('/invoices/{invoice}/shared-pdf', [DocumentRenderingController::class, 'sharedInvoicePdf'])
+    ->middleware('signed')
+    ->name('invoices.shared-pdf');
+
+// Public, signature-gated read of one issued Devis PDF (WhatsApp / email sharing).
+Route::get('/quotations/{quotation}/shared-pdf', [QuotationRenderingController::class, 'shared'])
+    ->middleware('signed')
+    ->name('quotations.shared-pdf');

@@ -21,6 +21,8 @@ class UpdateInvoiceDraftRequest extends FormRequest
             'customer_phone' => ['nullable', 'string', 'max:64'],
             'customer_tax_identifier' => ['nullable', 'string', 'max:128'],
             'billing_address' => ['nullable', 'string', 'max:5000'],
+            'representative_name' => ['nullable', 'string', 'max:255'],
+            'payment_method_summary' => ['nullable', 'string', 'max:255'],
             'notes' => ['nullable', 'string', 'max:5000'],
         ];
     }

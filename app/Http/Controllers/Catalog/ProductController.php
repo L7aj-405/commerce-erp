@@ -14,8 +14,9 @@ use App\Models\Product;
 use App\Models\ProductImport;
 use App\Models\TaxRate;
 use App\Models\UnitOfMeasure;
-use App\Support\InventoryQuantity;
 use App\Services\ActiveTenantContext;
+use App\Services\ProductPriceResolver;
+use App\Support\InventoryQuantity;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -114,12 +115,26 @@ class ProductController extends Controller
         return redirect()->route('catalog.products.show', $product)->with('success', 'Produit créé avec succès.');
     }
 
-    public function show(Request $request, Product $product): Response
+    public function show(Request $request, Product $product, ActiveTenantContext $context, ProductPriceResolver $priceResolver): Response
     {
         $this->authorize('view', $product);
         $canViewStock = $request->user()->hasPermission($product->organization_id, 'inventory.view');
         $canTransfer = $request->user()->hasPermission($product->organization_id, 'inventory.transfer');
         $product->load(['brand', 'defaultCategory', 'defaultUnit', 'variants.taxRate']);
+
+        $defaultTaxRate = $priceResolver->defaultTaxRate($context->store(), (int) $product->organization_id);
+        $priceByVariant = $product->variants->mapWithKeys(function ($variant) use ($priceResolver, $defaultTaxRate) {
+            $resolution = $priceResolver->resolveWith($variant, $defaultTaxRate);
+
+            return [$variant->getKey() => [
+                'ttc' => $resolution['unit_price_ttc'],
+                'ht' => $resolution['unit_price_ht'],
+                'ht_source' => $resolution['ht_source'],
+                'tax_name' => $resolution['tax_name'],
+                'tax_rate' => $resolution['tax_rate_value'],
+                'config_missing' => $resolution['config_missing'],
+            ]];
+        });
 
         $stock = null;
         if ($canViewStock) {
@@ -160,6 +175,7 @@ class ProductController extends Controller
         return Inertia::render('Catalog/Products/Show', [
             'product' => $product,
             'stock' => $stock,
+            'priceByVariant' => $priceByVariant,
             'can' => [
                 'create' => $request->user()->can('create', [Product::class, $product->organization]),
                 'update' => $request->user()->can('update', $product),
@@ -209,7 +225,7 @@ class ProductController extends Controller
             'brands' => Brand::query()->where('organization_id', $organizationId)->where('status', 'active')->orderBy('name')->get(['id', 'name']),
             'categories' => Category::query()->where('organization_id', $organizationId)->where('status', 'active')->orderBy('name')->get(['id', 'name']),
             'units' => UnitOfMeasure::query()->where('organization_id', $organizationId)->where('status', 'active')->orderBy('name')->get(['id', 'name', 'symbol']),
-            'taxRates' => TaxRate::query()->where('organization_id', $organizationId)->where('status', 'active')->orderBy('name')->get(['id', 'name', 'rate']),
+            'taxRates' => TaxRate::query()->where('organization_id', $organizationId)->where('status', 'active')->orderBy('name')->get(['id', 'name', 'rate', 'is_default']),
         ];
     }
 
@@ -230,9 +246,11 @@ class ProductController extends Controller
             'variant.reference' => ['nullable', 'string', 'max:255'],
             'variant.barcode' => ['nullable', 'string', 'max:255', Rule::unique('product_variants', 'barcode')->where('organization_id', $organizationId)],
             'variant.purchase_price' => ['nullable', 'numeric', 'min:0', 'decimal:0,4'],
-            'variant.regular_sale_price' => ['nullable', 'numeric', 'min:0', 'decimal:0,4', 'required_without:variant.default_sale_price'],
+            'variant.public_price_ttc' => ['nullable', 'numeric', 'min:0', 'decimal:0,4', 'required_without_all:variant.regular_sale_price,variant.default_sale_price'],
+            'variant.unit_price_ht' => ['nullable', 'numeric', 'min:0', 'decimal:0,4'],
+            'variant.regular_sale_price' => ['nullable', 'numeric', 'min:0', 'decimal:0,4', 'required_without_all:variant.default_sale_price,variant.public_price_ttc'],
             'variant.promotional_sale_price' => ['nullable', 'numeric', 'min:0', 'decimal:0,4', 'lte:variant.default_sale_price'],
-            'variant.default_sale_price' => ['nullable', 'numeric', 'min:0', 'decimal:0,4', 'required_without:variant.regular_sale_price'],
+            'variant.default_sale_price' => ['nullable', 'numeric', 'min:0', 'decimal:0,4', 'required_without_all:variant.regular_sale_price,variant.public_price_ttc'],
             'variant.tax_rate_id' => ['nullable', 'integer', Rule::exists('tax_rates', 'id')->where('organization_id', $organizationId)],
             'variant.status' => ['sometimes', Rule::enum(CatalogStatus::class)],
         ];

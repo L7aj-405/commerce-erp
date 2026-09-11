@@ -1,36 +1,1211 @@
+import DocBadge from '@/components/ui/DocBadge';
+import { Button } from '@/components/ui/Button';
+import { Popover } from '@/components/pos/primitives';
 import SalesLayout from '@/layouts/SalesLayout';
+import { formatDate, formatMoney, formatQuantity } from '@/utils/format';
+import {
+    fulfillmentLabel,
+    fulfillmentTone,
+    invoiceStatusLabel,
+    invoiceStatusTone,
+    label,
+    orderStatusLabel,
+    orderStatusTone,
+    paymentEntryStatusLabel,
+    paymentMethodLabel,
+    paymentStatusLabel,
+    paymentStatusTone,
+} from '@/utils/labels';
 import { Head, Link, router, useForm } from '@inertiajs/react';
-import type { FormEvent } from 'react';
+import type { FormEvent, ReactNode } from 'react';
+import { useState } from 'react';
 
-type Line = { id: number; product_name: string; variant_name: string | null; sku: string | null; quantity: string; unit_price_excl_tax: string; discount_amount: string; tax_amount: string; total_incl_tax: string; allocations: { warehouse: { name: string }; inventory_reservation: { status: string } | null }[] };
-type Order = { id: number; order_number: string; customer_name: string | null; customer_company: string | null; sale_date: string; currency_code: string; status: string; fulfillment_status: string; payment_status: string; subtotal_excl_tax: string; discount_total: string; tax_total: string; total_incl_tax: string; store: { name: string }; lines: Line[] };
-type Account = { id: number; name: string; code: string; type: string; currency_code: string };
-type Payment = { id: number; payment_number: string; method: string; status: string; amount: string; allocated_amount: string; payment_date: string; reference: string | null; financial_account: Account; received_by: { name: string } };
-type PaymentEntry = { method: string; financial_account_id: string; amount: string; payment_date: string; reference: string; external_reference: string; notes: string };
-type Props = { order: Order; paymentSummary: { paid: string; remaining: string; status: string }; payments: Payment[]; financialAccounts: Account[]; documents: { invoices: { id: number; invoice_number: string | null; invoice_date: string; status: string; total_incl_tax: string }[]; deliveryNotes: { id: number; delivery_note_number: string | null; delivery_date: string; status: string }[] }; can: { update: boolean; confirm: boolean; cancel: boolean; fulfill: boolean; recordPayment: boolean; backdatePayment: boolean; createInvoice: boolean; createDeliveryNote: boolean } };
-const today = () => {
-    const date = new Date();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    return `${date.getFullYear()}-${month}-${day}`;
+type Allocation = { quantity: string; warehouse: { name: string; code: string }; inventory_reservation: { status: string } | null };
+type Line = {
+    id: number;
+    product_name: string;
+    variant_name: string | null;
+    sku: string | null;
+    reference: string | null;
+    unit_label: string | null;
+    quantity: string;
+    unit_price_excl_tax: string;
+    discount_amount: string;
+    tax_rate: string;
+    tax_amount: string;
+    total_incl_tax: string;
+    allocations: Allocation[];
 };
-const blankPayment = (remaining = ''): PaymentEntry => ({ method: 'cash', financial_account_id: '', amount: remaining, payment_date: today(), reference: '', external_reference: '', notes: '' });
+type Customer = {
+    id: number;
+    type: string;
+    display_name: string;
+    company_name: string | null;
+    email: string | null;
+    phone: string | null;
+    tax_identifier: string | null;
+    billing_address: string | null;
+} | null;
+type Order = {
+    id: number;
+    order_number: string;
+    source: string;
+    customer_name: string | null;
+    customer_company: string | null;
+    customer_email: string | null;
+    customer_phone: string | null;
+    sale_date: string;
+    currency_code: string;
+    status: string;
+    fulfillment_status: string;
+    payment_status: string;
+    subtotal_excl_tax: string;
+    discount_total: string;
+    tax_total: string;
+    total_incl_tax: string;
+    pos_shipping_fee: string;
+    notes: string | null;
+    store: { name: string; code: string };
+    customer: Customer;
+    created_by: { name: string } | null;
+    lines: Line[];
+};
+type Account = { id: number; name: string; code: string; type: string; currency_code: string };
+type Payment = {
+    id: number;
+    payment_number: string;
+    method: string;
+    status: string;
+    amount: string;
+    allocated_amount: string;
+    payment_date: string;
+    reference: string | null;
+    financial_account: Account;
+    received_by: { name: string };
+};
+type InvoiceDoc = { id: number; invoice_number: string | null; invoice_date: string; status: string; total_incl_tax: string };
+type PaymentEntry = { method: string; financial_account_id: string; amount: string; payment_date: string; reference: string; external_reference: string; notes: string };
+type TransferReq = { id: number; request_number: string; status: string; source: string | null; destination: string | null; unit_count: number };
+type ProcurementRow = {
+    id: number;
+    procurement_number: string;
+    status: string;
+    status_label: string;
+    supplier_availability_status: string;
+    supplier_availability_label: string;
+    supplier: { id: number; name: string } | null;
+    sales_order_line_id: number | null;
+    product: string;
+    quantity: string;
+    supplier_reference: string | null;
+    expected_at: string | null;
+    ordered_at: string | null;
+    received_at: string | null;
+    receiving_warehouse: { id: number; name: string } | null;
+    transfer_request: { id: number; request_number: string; status: string } | null;
+    notes: string | null;
+    cancellation_reason: string | null;
+};
+type ProcurementLine = {
+    id: number;
+    product: string;
+    requested: string;
+    company_available: string;
+    procured: string;
+    to_procure: string;
+};
+type ProcurementData = {
+    rows: ProcurementRow[];
+    awaiting: boolean;
+    can: { manage: boolean; receive: boolean };
+    lines: ProcurementLine[];
+    suppliers: { id: number; name: string }[];
+    warehouses: { id: number; name: string; code: string }[];
+};
+type Props = {
+    order: Order;
+    paymentSummary: { paid: string; remaining: string; status: string };
+    payments: Payment[];
+    financialAccounts: Account[];
+    documents: { invoices: InvoiceDoc[]; deliveryNotes: { id: number; delivery_note_number: string | null; delivery_date: string; status: string }[] };
+    awaitingReplenishment: boolean;
+    procurement: ProcurementData;
+    transferRequests: TransferReq[];
+    can: {
+        update: boolean;
+        confirm: boolean;
+        cancel: boolean;
+        fulfill: boolean;
+        recordPayment: boolean;
+        backdatePayment: boolean;
+        createInvoice: boolean;
+        createDeliveryNote: boolean;
+    };
+};
 
-export default function ShowOrder({ order, paymentSummary, payments, financialAccounts, documents, can }: Props) {
+const today = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+const blankPayment = (remaining = ''): PaymentEntry => ({
+    method: 'cash',
+    financial_account_id: '',
+    amount: remaining,
+    payment_date: today(),
+    reference: '',
+    external_reference: '',
+    notes: '',
+});
+
+function Card({ label: l, children }: { label: string; children: ReactNode }) {
+    return (
+        <div className="rounded-card border border-line bg-surface px-4 py-3">
+            <p className="text-xs text-ink-muted">{l}</p>
+            <div className="mt-1 text-sm font-semibold text-ink">{children}</div>
+        </div>
+    );
+}
+
+const TR_STATUS_LABEL: Record<string, string> = {
+    requested: 'Demandée',
+    preparing: 'En préparation',
+    shipped: 'Expédiée',
+    received: 'Réceptionnée',
+    cancelled: 'Annulée',
+};
+
+export default function ShowOrder({ order, paymentSummary, payments, financialAccounts, documents, awaitingReplenishment, procurement, transferRequests, can }: Props) {
+    const [confirmCancel, setConfirmCancel] = useState(false);
     const cancellation = useForm({ reason: '' });
-    const paymentForm = useForm<{ client_operation_id: string; payments: PaymentEntry[] }>({ client_operation_id: crypto.randomUUID(), payments: [blankPayment(paymentSummary.remaining)] });
-    const cancel = (event: FormEvent) => { event.preventDefault(); cancellation.post(`/sales/orders/${order.id}/cancel`, { preserveScroll: true }); };
-    const recordPayments = (event: FormEvent) => { event.preventDefault(); paymentForm.post(`/sales/orders/${order.id}/payments`, { preserveScroll: true, onSuccess: () => paymentForm.setData({ client_operation_id: crypto.randomUUID(), payments: [blankPayment()] }) }); };
-    const setEntry = (index: number, key: keyof PaymentEntry, value: string) => paymentForm.setData('payments', paymentForm.data.payments.map((entry, position) => position === index ? { ...entry, [key]: value } : entry));
-    return <SalesLayout><Head title={order.order_number} />
-        <div className="mb-6 flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-xl font-semibold">{order.order_number}</h2><p className="text-sm text-slate-500">{order.store.name} · Sale date {order.sale_date.slice(0, 10)}</p></div><div className="flex flex-wrap gap-2">{order.status === 'draft' && can.update && <Link href={`/sales/orders/${order.id}/edit`} className="rounded border px-4 py-2">Edit</Link>}{order.status === 'draft' && can.confirm && <button onClick={() => router.post(`/sales/orders/${order.id}/confirm`)} className="rounded bg-slate-900 px-4 py-2 text-white">Confirm</button>}{order.status === 'confirmed' && order.fulfillment_status === 'unfulfilled' && can.fulfill && <button onClick={() => router.post(`/sales/orders/${order.id}/fulfill`)} className="rounded bg-slate-900 px-4 py-2 text-white">Fulfill</button>}{order.status === 'confirmed' && can.createInvoice && !documents.invoices.some((invoice) => invoice.status !== 'cancelled') && <button onClick={() => router.post(`/sales/orders/${order.id}/invoices`)} className="rounded border px-4 py-2">Create invoice</button>}{order.status === 'confirmed' && order.fulfillment_status === 'fulfilled' && can.createDeliveryNote && !documents.deliveryNotes.some((note) => note.status !== 'cancelled') && <button onClick={() => router.post(`/sales/orders/${order.id}/delivery-notes`)} className="rounded border px-4 py-2">Create delivery note</button>}</div></div>
-        <div className="mb-6 grid gap-4 rounded-lg bg-slate-50 p-5 md:grid-cols-4"><div>Customer<br /><strong>{order.customer_name ?? 'Walk-in'}</strong><br /><span className="text-sm text-slate-500">{order.customer_company}</span></div><div>Order status<br /><strong className="capitalize">{order.status}</strong></div><div>Fulfillment<br /><strong>{order.fulfillment_status.replaceAll('_', ' ')}</strong></div><div>Payment<br /><strong>{paymentSummary.status.replaceAll('_', ' ')}</strong></div></div>
-        <div className="mb-6 overflow-x-auto rounded-lg border"><table className="w-full text-left text-sm"><thead className="bg-slate-50"><tr><th className="p-3">Item</th><th className="p-3">Warehouse / reservation</th><th className="p-3 text-right">Qty</th><th className="p-3 text-right">Price</th><th className="p-3 text-right">Discount</th><th className="p-3 text-right">Tax</th><th className="p-3 text-right">Total</th></tr></thead><tbody>{order.lines.map((line) => <tr key={line.id} className="border-t"><td className="p-3"><strong>{line.product_name}</strong><br />{line.variant_name ?? ''} {line.sku ?? ''}</td><td className="p-3">{line.allocations.map((allocation) => <div key={allocation.warehouse.name}>{allocation.warehouse.name} · {allocation.inventory_reservation?.status ?? 'draft'}</div>)}</td><td className="p-3 text-right">{line.quantity}</td><td className="p-3 text-right">{line.unit_price_excl_tax}</td><td className="p-3 text-right">{line.discount_amount}</td><td className="p-3 text-right">{line.tax_amount}</td><td className="p-3 text-right">{line.total_incl_tax}</td></tr>)}</tbody></table></div>
-        <div className="ml-auto mb-8 grid max-w-3xl grid-cols-3 gap-3 rounded-lg bg-slate-50 p-4 text-right"><div>Total<br /><strong>{order.total_incl_tax} {order.currency_code}</strong></div><div>Paid<br /><strong>{paymentSummary.paid} {order.currency_code}</strong></div><div>Remaining<br /><strong>{paymentSummary.remaining} {order.currency_code}</strong></div></div>
-        <section className="mb-8"><h3 className="mb-3 font-semibold">Payment history</h3><div className="overflow-x-auto rounded-lg border"><table className="w-full text-left text-sm"><thead className="bg-slate-50"><tr><th className="p-3">Payment</th><th className="p-3">Date</th><th className="p-3">Method / account</th><th className="p-3">Status</th><th className="p-3 text-right">Allocated</th></tr></thead><tbody>{payments.map((payment) => <tr key={payment.id} className="border-t"><td className="p-3"><Link href={`/payments/${payment.id}`} className="font-medium underline">{payment.payment_number}</Link><br /><span className="text-slate-500">{payment.reference}</span></td><td className="p-3">{payment.payment_date.slice(0, 10)}</td><td className="p-3 capitalize">{payment.method.replaceAll('_', ' ')}<br /><span className="text-slate-500">{payment.financial_account.name}</span></td><td className="p-3 capitalize">{payment.status}</td><td className="p-3 text-right">{payment.allocated_amount} {order.currency_code}</td></tr>)}{payments.length === 0 && <tr><td colSpan={5} className="p-6 text-center text-slate-500">No payments recorded.</td></tr>}</tbody></table></div></section>
-        <section className="mb-8 grid gap-4 md:grid-cols-2"><div className="rounded-lg border p-5"><h3 className="mb-3 font-semibold">Invoices</h3>{documents.invoices.map((invoice) => <p key={invoice.id}><Link href={`/invoices/${invoice.id}`} className="underline">{invoice.invoice_number ?? `Draft #${invoice.id}`}</Link> · <span className="capitalize">{invoice.status}</span></p>)}{documents.invoices.length === 0 && <p className="text-sm text-slate-500">No invoice document.</p>}</div><div className="rounded-lg border p-5"><h3 className="mb-3 font-semibold">Delivery notes</h3>{documents.deliveryNotes.map((note) => <p key={note.id}><Link href={`/delivery-notes/${note.id}`} className="underline">{note.delivery_note_number ?? `Draft #${note.id}`}</Link> · <span className="capitalize">{note.status}</span></p>)}{documents.deliveryNotes.length === 0 && <p className="text-sm text-slate-500">No delivery document.</p>}</div></section>
-        {can.recordPayment && order.status === 'confirmed' && paymentSummary.remaining !== '0.0000' && <form onSubmit={recordPayments} className="mb-8 space-y-4 rounded-lg border p-5"><div><h3 className="font-semibold">Record payment</h3><p className="text-sm text-slate-500">Split the remaining balance across one or more methods. The server validates the final total and account compatibility.</p></div>{paymentForm.data.payments.map((entry, index) => <div key={index} className="grid gap-3 rounded bg-slate-50 p-4 md:grid-cols-6"><label className="text-sm">Method<select value={entry.method} onChange={(e) => setEntry(index, 'method', e.target.value)} className="mt-1 w-full rounded border px-3 py-2"><option value="cash">Cash</option><option value="card">Card</option><option value="bank_transfer">Bank transfer</option><option value="cheque">Cheque</option></select></label><label className="text-sm md:col-span-2">Financial account<select required value={entry.financial_account_id} onChange={(e) => setEntry(index, 'financial_account_id', e.target.value)} className="mt-1 w-full rounded border px-3 py-2"><option value="">Select account</option>{financialAccounts.map((account) => <option key={account.id} value={account.id}>{account.code} · {account.name} ({account.type.replaceAll('_', ' ')})</option>)}</select></label><label className="text-sm">Amount<input required inputMode="decimal" value={entry.amount} onChange={(e) => setEntry(index, 'amount', e.target.value)} className="mt-1 w-full rounded border px-3 py-2" /></label><label className="text-sm">Payment date<input required type="date" readOnly={!can.backdatePayment} value={entry.payment_date} onChange={(e) => setEntry(index, 'payment_date', e.target.value)} className="mt-1 w-full rounded border px-3 py-2 read-only:bg-slate-100" /></label><label className="text-sm">Reference<input maxLength={255} value={entry.reference} onChange={(e) => setEntry(index, 'reference', e.target.value)} className="mt-1 w-full rounded border px-3 py-2" /></label><label className="text-sm md:col-span-3">Notes<textarea maxLength={5000} value={entry.notes} onChange={(e) => setEntry(index, 'notes', e.target.value)} className="mt-1 w-full rounded border px-3 py-2" /></label>{paymentForm.data.payments.length > 1 && <button type="button" onClick={() => paymentForm.setData('payments', paymentForm.data.payments.filter((_, position) => position !== index))} className="text-left text-sm text-red-700">Remove split</button>}</div>)}
-            {Object.values(paymentForm.errors).map((error) => error && <p key={error} className="text-sm text-red-600">{error}</p>)}<div className="flex gap-2"><button type="button" onClick={() => paymentForm.setData('payments', [...paymentForm.data.payments, blankPayment()])} className="rounded border px-4 py-2">Add split</button><button disabled={paymentForm.processing || financialAccounts.length === 0} className="rounded bg-slate-900 px-4 py-2 text-white disabled:opacity-50">Record payments</button></div>{financialAccounts.length === 0 && <p className="text-sm text-amber-700">Create a compatible active financial account before recording a payment.</p>}</form>}
-        {can.cancel && order.status !== 'cancelled' && order.fulfillment_status === 'unfulfilled' && <form onSubmit={cancel} className="max-w-xl space-y-3 rounded-lg border border-red-200 p-5"><h3 className="font-semibold text-red-800">Cancel order</h3><textarea required={order.status === 'confirmed'} value={cancellation.data.reason} onChange={(e) => cancellation.setData('reason', e.target.value)} placeholder={order.status === 'confirmed' ? 'Cancellation reason required' : 'Reason (optional for draft)'} className="w-full rounded border px-3 py-2" /><button className="rounded border border-red-300 px-4 py-2 text-red-800">Cancel order</button></form>}
-    </SalesLayout>;
+    const createInvoice = useForm({});
+    const paymentForm = useForm<{ client_operation_id: string; payments: PaymentEntry[] }>({
+        client_operation_id: crypto.randomUUID(),
+        payments: [blankPayment(paymentSummary.remaining)],
+    });
+
+    const activeInvoice = documents.invoices.find((i) => i.status !== 'cancelled') ?? null;
+    const activeDeliveryNote = documents.deliveryNotes.find((n) => n.status !== 'cancelled') ?? null;
+    const isCompany = (order.customer?.type ?? 'individual') === 'business' || !!order.customer_company;
+    const net = (Number(order.subtotal_excl_tax) - Number(order.discount_total)).toFixed(4);
+    const hasDiscount = Number(order.discount_total) > 0;
+    const hasShipping = Number(order.pos_shipping_fee) > 0;
+
+    const cancel = (event: FormEvent) => {
+        event.preventDefault();
+        cancellation.post(`/sales/orders/${order.id}/cancel`, { preserveScroll: true, onSuccess: () => setConfirmCancel(false) });
+    };
+    const recordPayments = (event: FormEvent) => {
+        event.preventDefault();
+        paymentForm.post(`/sales/orders/${order.id}/payments`, {
+            preserveScroll: true,
+            onSuccess: () => paymentForm.setData({ client_operation_id: crypto.randomUUID(), payments: [blankPayment()] }),
+        });
+    };
+    const setEntry = (index: number, key: keyof PaymentEntry, value: string) =>
+        paymentForm.setData(
+            'payments',
+            paymentForm.data.payments.map((entry, position) => (position === index ? { ...entry, [key]: value } : entry)),
+        );
+
+    return (
+        <SalesLayout>
+            <Head title={order.order_number} />
+
+            <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
+                <div>
+                    <Link href="/sales/orders" className="text-sm text-ink-muted">
+                        ← Commandes
+                    </Link>
+                    <h1 className="mt-1 text-2xl font-semibold tracking-tight text-ink">{order.order_number}</h1>
+                    <p className="text-sm text-ink-muted">
+                        {formatDate(order.sale_date)} · {order.store.name}
+                    </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                    {order.status === 'draft' && can.update && (
+                        <Link
+                            href={`/sales/orders/${order.id}/edit`}
+                            className="inline-flex min-h-10 items-center rounded-field border border-line-strong bg-surface px-4 text-sm text-ink hover:bg-raised"
+                        >
+                            Modifier
+                        </Link>
+                    )}
+                    {order.status === 'draft' && can.confirm && (
+                        <Button onClick={() => router.post(`/sales/orders/${order.id}/confirm`)}>Confirmer</Button>
+                    )}
+
+                    {order.status === 'confirmed' && !activeInvoice && can.createInvoice && (
+                        <Button
+                            loading={createInvoice.processing}
+                            loadingText="Création…"
+                            onClick={() => createInvoice.post(`/sales/orders/${order.id}/invoices`)}
+                        >
+                            Créer facture
+                        </Button>
+                    )}
+                    {activeInvoice && activeInvoice.status === 'draft' && (
+                        <Link
+                            href={`/invoices/${activeInvoice.id}`}
+                            className="inline-flex min-h-10 items-center rounded-field bg-primary px-4 text-sm font-medium text-primary-fg hover:bg-primary-hover"
+                        >
+                            Continuer la facture
+                        </Link>
+                    )}
+                    {activeInvoice && activeInvoice.status === 'issued' && (
+                        <>
+                            <Link
+                                href={`/invoices/${activeInvoice.id}`}
+                                className="inline-flex min-h-10 items-center rounded-field border border-line-strong bg-surface px-4 text-sm text-ink hover:bg-raised"
+                            >
+                                Facture {activeInvoice.invoice_number}
+                            </Link>
+                            <a
+                                href={`/invoices/${activeInvoice.id}/pdf`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex min-h-10 items-center rounded-field border border-line-strong bg-surface px-4 text-sm text-ink hover:bg-raised"
+                            >
+                                PDF
+                            </a>
+                        </>
+                    )}
+
+                    {order.status === 'confirmed' &&
+                        order.fulfillment_status === 'fulfilled' &&
+                        !activeDeliveryNote &&
+                        can.createDeliveryNote && (
+                            <button
+                                type="button"
+                                onClick={() => router.post(`/sales/orders/${order.id}/delivery-notes`)}
+                                className="inline-flex min-h-10 items-center rounded-field border border-line-strong bg-surface px-4 text-sm text-ink hover:bg-raised"
+                            >
+                                Créer bon de livraison
+                            </button>
+                        )}
+                </div>
+            </div>
+
+            <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+                <Card label="Client">
+                    {isCompany
+                        ? order.customer_company ?? order.customer?.company_name ?? order.customer_name ?? 'Client comptoir'
+                        : order.customer_name ?? 'Client comptoir'}
+                </Card>
+                <Card label="Commande">
+                    <DocBadge tone={orderStatusTone(order.status)}>{label(orderStatusLabel, order.status)}</DocBadge>
+                </Card>
+                <Card label="Préparation">
+                    <DocBadge tone={fulfillmentTone(order.fulfillment_status)}>
+                        {label(fulfillmentLabel, order.fulfillment_status)}
+                    </DocBadge>
+                </Card>
+                <Card label="Paiement">
+                    <DocBadge tone={paymentStatusTone(paymentSummary.status)}>
+                        {label(paymentStatusLabel, paymentSummary.status)}
+                    </DocBadge>
+                </Card>
+            </div>
+
+            <div className="mb-6 grid gap-4 lg:grid-cols-3">
+                {/* Customer */}
+                <section className="rounded-card border border-line bg-surface p-5 lg:col-span-1">
+                    <h2 className="text-sm font-semibold text-ink">Client</h2>
+                    <div className="mt-2 space-y-0.5 text-sm text-ink-muted">
+                        <p className="font-medium text-ink">
+                            {isCompany
+                                ? order.customer?.company_name ?? order.customer_company ?? order.customer_name
+                                : order.customer_name ?? 'Client comptoir'}
+                        </p>
+                        {isCompany && order.customer_name && <p>Contact : {order.customer_name}</p>}
+                        {(order.customer?.tax_identifier ?? null) && <p>ICE : {order.customer?.tax_identifier}</p>}
+                        {(order.customer?.phone ?? order.customer_phone) && (
+                            <p>Tél : {order.customer?.phone ?? order.customer_phone}</p>
+                        )}
+                        {(order.customer?.email ?? order.customer_email) && (
+                            <p>{order.customer?.email ?? order.customer_email}</p>
+                        )}
+                        {(order.customer?.billing_address ?? null) && (
+                            <p className="whitespace-pre-line">{order.customer?.billing_address}</p>
+                        )}
+                    </div>
+                </section>
+
+                {/* Financial summary */}
+                <section className="rounded-card border border-line bg-surface p-5 lg:col-span-2">
+                    <h2 className="text-sm font-semibold text-ink">Récapitulatif</h2>
+                    <dl className="mt-3 space-y-1.5 text-sm">
+                        <Row term="Sous-total HT" value={formatMoney(order.subtotal_excl_tax, order.currency_code)} />
+                        {hasDiscount && (
+                            <Row term="Remise" value={`- ${formatMoney(order.discount_total, order.currency_code)}`} />
+                        )}
+                        {hasDiscount && <Row term="Total HT" value={formatMoney(net, order.currency_code)} />}
+                        <Row term="TVA" value={formatMoney(order.tax_total, order.currency_code)} />
+                        {hasShipping && (
+                            <Row term="Livraison" value={formatMoney(order.pos_shipping_fee, order.currency_code)} />
+                        )}
+                        <div className="mt-2 flex justify-between border-t border-line pt-2 text-base font-semibold text-ink">
+                            <dt>TOTAL TTC</dt>
+                            <dd className="tabular-nums">{formatMoney(order.total_incl_tax, order.currency_code)}</dd>
+                        </div>
+                    </dl>
+                    <div className="mt-4 grid grid-cols-2 gap-3 border-t border-line pt-3 text-sm">
+                        <div>
+                            <p className="text-ink-muted">Payé</p>
+                            <p className="font-semibold text-ink">{formatMoney(paymentSummary.paid, order.currency_code)}</p>
+                        </div>
+                        <div>
+                            <p className="text-ink-muted">Reste</p>
+                            <p className="font-semibold text-ink">
+                                {formatMoney(paymentSummary.remaining, order.currency_code)}
+                            </p>
+                        </div>
+                    </div>
+                </section>
+            </div>
+
+            {/* Product lines */}
+            <div className="mb-6 overflow-x-auto rounded-card border border-line bg-surface">
+                <table className="w-full min-w-[760px] text-left text-sm">
+                    <thead className="border-b border-line bg-raised text-xs uppercase tracking-wide text-ink-muted">
+                        <tr>
+                            <th className="px-4 py-3 font-medium">Produit</th>
+                            <th className="px-4 py-3 text-right font-medium">Qté</th>
+                            <th className="px-4 py-3 text-right font-medium">PU HT</th>
+                            <th className="px-4 py-3 text-right font-medium">Remise</th>
+                            <th className="px-4 py-3 text-right font-medium">TVA</th>
+                            <th className="px-4 py-3 text-right font-medium">Total TTC</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-line">
+                        {order.lines.map((line) => (
+                            <tr key={line.id}>
+                                <td className="px-4 py-3">
+                                    <div className="font-medium text-ink">{line.product_name}</div>
+                                    <div className="text-xs text-ink-muted">
+                                        {[line.variant_name, line.reference ?? line.sku].filter(Boolean).join(' · ')}
+                                    </div>
+                                    {line.allocations.length > 0 && (
+                                        <div className="mt-0.5 text-xs text-ink-faint">
+                                            {line.allocations
+                                                .map((a) => `${formatQuantity(a.quantity)} · ${a.warehouse.name}`)
+                                                .join('  ·  ')}
+                                        </div>
+                                    )}
+                                </td>
+                                <td className="px-4 py-3 text-right tabular-nums">
+                                    {formatQuantity(line.quantity)} {line.unit_label ?? ''}
+                                </td>
+                                <td className="px-4 py-3 text-right tabular-nums">
+                                    {formatMoney(line.unit_price_excl_tax, order.currency_code)}
+                                </td>
+                                <td className="px-4 py-3 text-right tabular-nums">
+                                    {Number(line.discount_amount) > 0
+                                        ? `- ${formatMoney(line.discount_amount, order.currency_code)}`
+                                        : '—'}
+                                </td>
+                                <td className="px-4 py-3 text-right tabular-nums">{formatQuantity(line.tax_rate)}%</td>
+                                <td className="px-4 py-3 text-right font-medium tabular-nums text-ink">
+                                    {formatMoney(line.total_incl_tax, order.currency_code)}
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+
+            {/* Internal replenishment / transfer requests */}
+            {transferRequests.length > 0 && (
+                <section className="mb-6 rounded-card border border-line bg-surface p-5">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                        <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Approvisionnement</h2>
+                        {awaitingReplenishment && (
+                            <span className="rounded-full bg-warning-soft px-2.5 py-1 text-xs font-medium text-warning">À approvisionner</span>
+                        )}
+                    </div>
+                    <ul className="mt-3 space-y-1.5 text-sm">
+                        {transferRequests.map((r) => (
+                            <li key={r.id} className="flex flex-wrap items-center justify-between gap-2">
+                                <Link href={`/inventory/transfer-requests/${r.id}`} className="font-medium text-ink underline">
+                                    {r.request_number}
+                                </Link>
+                                <span className="text-ink-muted">
+                                    {r.source} → {r.destination} · {formatQuantity(r.unit_count)} u.
+                                </span>
+                                <span className="text-ink-muted">{TR_STATUS_LABEL[r.status] ?? r.status}</span>
+                            </li>
+                        ))}
+                    </ul>
+                    {awaitingReplenishment && (
+                        <p className="mt-2 text-xs text-ink-faint">
+                            La remise au client sera possible une fois le transfert interne réceptionné au showroom.
+                        </p>
+                    )}
+                </section>
+            )}
+
+            {/* Supplier procurement / special orders — a domain of its own,
+                deliberately not mixed with the internal transfer requests above. */}
+            <ProcurementPanel order={order} data={procurement} />
+
+            {/* Invoice panel */}
+            <section className="mb-6 rounded-card border border-line bg-surface p-5">
+                <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Facture</h2>
+                {!activeInvoice && (
+                    <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
+                        <p className="text-sm text-ink-muted">Aucune facture créée.</p>
+                        {order.status === 'confirmed' && can.createInvoice && (
+                            <Button
+                                loading={createInvoice.processing}
+                                loadingText="Création…"
+                                onClick={() => createInvoice.post(`/sales/orders/${order.id}/invoices`)}
+                            >
+                                Créer une facture
+                            </Button>
+                        )}
+                    </div>
+                )}
+                {activeInvoice && (
+                    <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
+                        <div className="flex items-center gap-2 text-sm">
+                            <DocBadge tone={invoiceStatusTone(activeInvoice.status)}>
+                                {label(invoiceStatusLabel, activeInvoice.status)}
+                            </DocBadge>
+                            <span className="font-medium text-ink">
+                                {activeInvoice.status === 'issued'
+                                    ? `Facture ${activeInvoice.invoice_number}`
+                                    : 'Facture brouillon'}
+                            </span>
+                            <span className="text-ink-muted">
+                                {formatMoney(activeInvoice.total_incl_tax, order.currency_code)}
+                            </span>
+                        </div>
+                        <div className="flex gap-2">
+                            <Link
+                                href={`/invoices/${activeInvoice.id}`}
+                                className="inline-flex min-h-9 items-center rounded-field border border-line-strong bg-surface px-3 text-sm text-ink hover:bg-raised"
+                            >
+                                {activeInvoice.status === 'draft' ? 'Continuer' : 'Voir'}
+                            </Link>
+                            {activeInvoice.status === 'issued' && (
+                                <a
+                                    href={`/invoices/${activeInvoice.id}/pdf`}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="inline-flex min-h-9 items-center rounded-field border border-line-strong bg-surface px-3 text-sm text-ink hover:bg-raised"
+                                >
+                                    PDF
+                                </a>
+                            )}
+                        </div>
+                    </div>
+                )}
+            </section>
+
+            {/* Payment history */}
+            <section className="mb-6">
+                <h2 className="mb-2 text-sm font-semibold text-ink">Historique des paiements</h2>
+                <div className="overflow-x-auto rounded-card border border-line bg-surface">
+                    <table className="w-full min-w-[720px] text-left text-sm">
+                        <thead className="border-b border-line bg-raised text-xs uppercase tracking-wide text-ink-muted">
+                            <tr>
+                                <th className="px-4 py-3 font-medium">Date</th>
+                                <th className="px-4 py-3 font-medium">Moyen</th>
+                                <th className="px-4 py-3 font-medium">Compte</th>
+                                <th className="px-4 py-3 font-medium">Référence</th>
+                                <th className="px-4 py-3 text-right font-medium">Montant</th>
+                                <th className="px-4 py-3 font-medium">Statut</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-line">
+                            {payments.map((payment) => (
+                                <tr key={payment.id}>
+                                    <td className="px-4 py-3 text-ink-muted">{formatDate(payment.payment_date)}</td>
+                                    <td className="px-4 py-3">{label(paymentMethodLabel, payment.method)}</td>
+                                    <td className="px-4 py-3 text-ink-muted">{payment.financial_account?.name ?? '—'}</td>
+                                    <td className="px-4 py-3 text-ink-muted">
+                                        {payment.reference || <span className="text-ink-faint">{payment.payment_number}</span>}
+                                    </td>
+                                    <td className="px-4 py-3 text-right tabular-nums">
+                                        {formatMoney(payment.allocated_amount, order.currency_code)}
+                                    </td>
+                                    <td className="px-4 py-3">
+                                        <DocBadge tone={payment.status === 'posted' ? 'positive' : 'danger'}>
+                                            {label(paymentEntryStatusLabel, payment.status)}
+                                        </DocBadge>
+                                    </td>
+                                </tr>
+                            ))}
+                            {payments.length === 0 && (
+                                <tr>
+                                    <td colSpan={6} className="px-4 py-8 text-center text-ink-muted">
+                                        Aucun paiement enregistré.
+                                    </td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            {/* Record payment (kept, secondary) */}
+            {can.recordPayment && order.status === 'confirmed' && paymentSummary.remaining !== '0.0000' && (
+                <details className="mb-6 rounded-card border border-line bg-surface p-5">
+                    <summary className="cursor-pointer text-sm font-semibold text-ink">Enregistrer un paiement</summary>
+                    <form onSubmit={recordPayments} className="mt-4 space-y-3">
+                        {paymentForm.data.payments.map((entry, index) => (
+                            <div key={index} className="grid gap-3 rounded-field bg-raised p-4 md:grid-cols-6">
+                                <label className="text-sm">
+                                    Moyen
+                                    <select
+                                        value={entry.method}
+                                        onChange={(e) => setEntry(index, 'method', e.target.value)}
+                                        className="mt-1 w-full rounded-field border border-line-strong px-3 py-2"
+                                    >
+                                        <option value="cash">Espèces</option>
+                                        <option value="card">TPE</option>
+                                        <option value="bank_transfer">Virement</option>
+                                        <option value="cheque">Chèque</option>
+                                    </select>
+                                </label>
+                                <label className="text-sm md:col-span-2">
+                                    Compte
+                                    <select
+                                        required
+                                        value={entry.financial_account_id}
+                                        onChange={(e) => setEntry(index, 'financial_account_id', e.target.value)}
+                                        className="mt-1 w-full rounded-field border border-line-strong px-3 py-2"
+                                    >
+                                        <option value="">Choisir…</option>
+                                        {financialAccounts.map((account) => (
+                                            <option key={account.id} value={account.id}>
+                                                {account.code} · {account.name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </label>
+                                <label className="text-sm">
+                                    Montant
+                                    <input
+                                        required
+                                        inputMode="decimal"
+                                        value={entry.amount}
+                                        onChange={(e) => setEntry(index, 'amount', e.target.value)}
+                                        className="mt-1 w-full rounded-field border border-line-strong px-3 py-2"
+                                    />
+                                </label>
+                                <label className="text-sm">
+                                    Date
+                                    <input
+                                        required
+                                        type="date"
+                                        readOnly={!can.backdatePayment}
+                                        value={entry.payment_date}
+                                        onChange={(e) => setEntry(index, 'payment_date', e.target.value)}
+                                        className="mt-1 w-full rounded-field border border-line-strong px-3 py-2 read-only:bg-raised"
+                                    />
+                                </label>
+                                <label className="text-sm">
+                                    Référence
+                                    <input
+                                        maxLength={255}
+                                        value={entry.reference}
+                                        onChange={(e) => setEntry(index, 'reference', e.target.value)}
+                                        className="mt-1 w-full rounded-field border border-line-strong px-3 py-2"
+                                    />
+                                </label>
+                                {paymentForm.data.payments.length > 1 && (
+                                    <button
+                                        type="button"
+                                        onClick={() =>
+                                            paymentForm.setData(
+                                                'payments',
+                                                paymentForm.data.payments.filter((_, position) => position !== index),
+                                            )
+                                        }
+                                        className="text-left text-sm text-danger"
+                                    >
+                                        Retirer
+                                    </button>
+                                )}
+                            </div>
+                        ))}
+                        {Object.values(paymentForm.errors).map(
+                            (error) => error && <p key={error} className="text-sm text-danger">{error}</p>,
+                        )}
+                        <div className="flex gap-2">
+                            <button
+                                type="button"
+                                onClick={() => paymentForm.setData('payments', [...paymentForm.data.payments, blankPayment()])}
+                                className="rounded-field border border-line-strong px-4 py-2 text-sm"
+                            >
+                                Ajouter un moyen
+                            </button>
+                            <Button
+                                type="submit"
+                                loading={paymentForm.processing}
+                                loadingText="Enregistrement…"
+                                disabled={financialAccounts.length === 0}
+                            >
+                                Enregistrer
+                            </Button>
+                        </div>
+                        {financialAccounts.length === 0 && (
+                            <p className="text-sm text-warning">
+                                Créez un compte financier actif compatible avant d’enregistrer un paiement.
+                            </p>
+                        )}
+                    </form>
+                </details>
+            )}
+
+            {/* Delivery notes */}
+            {documents.deliveryNotes.length > 0 && (
+                <section className="mb-6 rounded-card border border-line bg-surface p-5">
+                    <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Bons de livraison</h2>
+                    <ul className="mt-2 space-y-1 text-sm">
+                        {documents.deliveryNotes.map((note) => (
+                            <li key={note.id}>
+                                <Link href={`/delivery-notes/${note.id}`} className="text-ink underline">
+                                    {note.delivery_note_number ?? 'Brouillon'}
+                                </Link>{' '}
+                                <span className="text-ink-muted">· {label(invoiceStatusLabel, note.status)}</span>
+                            </li>
+                        ))}
+                    </ul>
+                </section>
+            )}
+
+            {order.notes && (
+                <section className="mb-6 rounded-card border border-line bg-surface p-5">
+                    <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Notes</h2>
+                    <p className="mt-2 whitespace-pre-line text-sm text-ink-muted">{order.notes}</p>
+                </section>
+            )}
+
+            {/* Danger zone */}
+            {can.cancel && order.status !== 'cancelled' && order.fulfillment_status === 'unfulfilled' && (
+                <div className="mt-8 border-t border-line pt-4">
+                    {!confirmCancel ? (
+                        <button
+                            type="button"
+                            onClick={() => setConfirmCancel(true)}
+                            className="text-sm text-danger hover:underline"
+                        >
+                            Annuler la commande
+                        </button>
+                    ) : (
+                        <form onSubmit={cancel} className="max-w-xl space-y-3 rounded-card border border-danger/30 bg-danger-soft/40 p-4">
+                            <p className="text-sm font-medium text-danger">Annuler définitivement cette commande ?</p>
+                            <textarea
+                                required={order.status === 'confirmed'}
+                                value={cancellation.data.reason}
+                                onChange={(e) => cancellation.setData('reason', e.target.value)}
+                                placeholder={order.status === 'confirmed' ? 'Motif requis' : 'Motif (facultatif)'}
+                                className="w-full rounded-field border border-line-strong px-3 py-2 text-sm"
+                            />
+                            <div className="flex gap-2">
+                                <Button type="submit" variant="danger" loading={cancellation.processing} loadingText="Annulation…">
+                                    Confirmer l’annulation
+                                </Button>
+                                <button
+                                    type="button"
+                                    onClick={() => setConfirmCancel(false)}
+                                    className="rounded-field px-4 py-2 text-sm text-ink-muted"
+                                >
+                                    Retour
+                                </button>
+                            </div>
+                        </form>
+                    )}
+                </div>
+            )}
+        </SalesLayout>
+    );
+}
+
+function Row({ term, value }: { term: string; value: string }) {
+    return (
+        <div className="flex justify-between text-ink-muted">
+            <dt>{term}</dt>
+            <dd className="tabular-nums text-ink">{value}</dd>
+        </div>
+    );
+}
+
+const PROC_STATUS_CLASS: Record<string, string> = {
+    pending_supplier: 'bg-warning-soft text-warning',
+    supplier_confirmed: 'bg-sky-50 text-sky-700',
+    ordered: 'bg-indigo-50 text-indigo-700',
+    received: 'bg-emerald-50 text-emerald-700',
+    completed: 'bg-emerald-50 text-emerald-700',
+    cancelled: 'bg-slate-100 text-slate-500',
+    unavailable: 'bg-rose-50 text-rose-700',
+};
+
+function ProcurementPanel({ order, data }: { order: Order; data: ProcurementData }) {
+    const [addLine, setAddLine] = useState<number | null>(null);
+    const toProcureLines = data.lines.filter((l) => Number(l.to_procure) > 0);
+    if (data.rows.length === 0 && toProcureLines.length === 0 && !data.awaiting) return null;
+
+    return (
+        <section className="mb-6 rounded-card border border-line bg-surface p-5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+                <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Approvisionnement fournisseur</h2>
+                {data.awaiting && (
+                    <span className="rounded-full bg-warning-soft px-2.5 py-1 text-xs font-medium text-warning">
+                        À approvisionner fournisseur
+                    </span>
+                )}
+            </div>
+
+            {/* Draft coverage breakdown + raise action */}
+            {order.status === 'draft' && data.can.manage && toProcureLines.length > 0 && (
+                <div className="mt-3 space-y-2">
+                    {data.suppliers.length === 0 && (
+                        <p className="rounded-field bg-warning-soft/50 px-3 py-2 text-xs text-warning">
+                            Aucun fournisseur actif. Créez-en un dans Achats → Fournisseurs avant d’approvisionner.
+                        </p>
+                    )}
+                    {toProcureLines.map((line) => (
+                        <div key={line.id} className="rounded-field border border-line bg-raised p-3 text-sm">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                                <span className="font-medium text-ink">{line.product}</span>
+                                <span className="text-xs text-ink-muted">
+                                    Demandé {formatQuantity(line.requested)} · Stock société {formatQuantity(line.company_available)} ·
+                                    À approvisionner <strong className="text-ink">{formatQuantity(line.to_procure)}</strong>
+                                </span>
+                            </div>
+                            {data.suppliers.length > 0 &&
+                                (addLine === line.id ? (
+                                    <RaiseProcurementForm
+                                        orderId={order.id}
+                                        line={line}
+                                        suppliers={data.suppliers}
+                                        onDone={() => setAddLine(null)}
+                                    />
+                                ) : (
+                                    <button
+                                        type="button"
+                                        onClick={() => setAddLine(line.id)}
+                                        className="mt-2 rounded-field bg-primary px-3 py-1.5 text-xs font-medium text-primary-fg hover:bg-primary-hover"
+                                    >
+                                        Approvisionner auprès d’un fournisseur
+                                    </button>
+                                ))}
+                        </div>
+                    ))}
+                </div>
+            )}
+
+            {/* Existing procurement rows */}
+            {data.rows.length > 0 && (
+                <ul className="mt-3 space-y-2">
+                    {data.rows.map((row) => (
+                        <li key={row.id} className="rounded-field border border-line p-3 text-sm">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                                <div>
+                                    <span className="font-medium text-ink">{row.procurement_number}</span>{' '}
+                                    <span className="text-ink-muted">
+                                        · {row.product} · {formatQuantity(row.quantity)} u.
+                                    </span>
+                                </div>
+                                <span
+                                    className={`rounded-full px-2.5 py-1 text-xs font-medium ${
+                                        PROC_STATUS_CLASS[row.status] ?? 'bg-slate-100 text-slate-500'
+                                    }`}
+                                >
+                                    {row.status_label}
+                                </span>
+                            </div>
+                            <div className="mt-1 text-xs text-ink-muted">
+                                {row.supplier?.name ?? '—'} · Disponibilité : {row.supplier_availability_label}
+                                {row.supplier_reference ? ` · Réf ${row.supplier_reference}` : ''}
+                                {row.expected_at ? ` · Réception estimée ${formatDate(row.expected_at)}` : ''}
+                                {row.ordered_at ? ` · Commandé ${formatDate(row.ordered_at)}` : ''}
+                                {row.received_at
+                                    ? ` · Reçu ${formatDate(row.received_at)} à ${row.receiving_warehouse?.name ?? '—'}`
+                                    : ''}
+                            </div>
+                            {row.transfer_request && (
+                                <p className="mt-1 text-xs text-ink-faint">
+                                    Transfert interne{' '}
+                                    <Link
+                                        href={`/inventory/transfer-requests/${row.transfer_request.id}`}
+                                        className="underline"
+                                    >
+                                        {row.transfer_request.request_number}
+                                    </Link>{' '}
+                                    vers le showroom.
+                                </p>
+                            )}
+                            {row.cancellation_reason && (
+                                <p className="mt-1 text-xs text-ink-faint">Motif : {row.cancellation_reason}</p>
+                            )}
+                            <ProcurementRowActions row={row} data={data} />
+                        </li>
+                    ))}
+                </ul>
+            )}
+        </section>
+    );
+}
+
+function RaiseProcurementForm({
+    orderId,
+    line,
+    suppliers,
+    onDone,
+}: {
+    orderId: number;
+    line: ProcurementLine;
+    suppliers: { id: number; name: string }[];
+    onDone: () => void;
+}) {
+    const form = useForm({
+        sales_order_line_id: line.id,
+        supplier_id: suppliers[0]?.id ?? 0,
+        quantity: line.to_procure,
+        supplier_reference: '',
+        expected_at: '',
+        notes: '',
+    });
+    return (
+        <form
+            onSubmit={(e) => {
+                e.preventDefault();
+                form.post(`/sales/orders/${orderId}/procurements`, { preserveScroll: true, onSuccess: onDone });
+            }}
+            className="mt-2 grid gap-2 sm:grid-cols-2"
+        >
+            <label className="text-xs">
+                Fournisseur
+                <select
+                    value={form.data.supplier_id}
+                    onChange={(e) => form.setData('supplier_id', Number(e.target.value))}
+                    className="mt-1 w-full rounded-field border border-line-strong px-2 py-1.5 text-sm"
+                >
+                    {suppliers.map((s) => (
+                        <option key={s.id} value={s.id}>
+                            {s.name}
+                        </option>
+                    ))}
+                </select>
+            </label>
+            <label className="text-xs">
+                Quantité
+                <input
+                    inputMode="decimal"
+                    value={form.data.quantity}
+                    onChange={(e) => form.setData('quantity', e.target.value)}
+                    className="mt-1 w-full rounded-field border border-line-strong px-2 py-1.5 text-sm"
+                />
+            </label>
+            <label className="text-xs">
+                Référence fournisseur (opt.)
+                <input
+                    value={form.data.supplier_reference}
+                    onChange={(e) => form.setData('supplier_reference', e.target.value)}
+                    className="mt-1 w-full rounded-field border border-line-strong px-2 py-1.5 text-sm"
+                />
+            </label>
+            <label className="text-xs">
+                Réception estimée (opt.)
+                <input
+                    type="date"
+                    value={form.data.expected_at}
+                    onChange={(e) => form.setData('expected_at', e.target.value)}
+                    className="mt-1 w-full rounded-field border border-line-strong px-2 py-1.5 text-sm"
+                />
+            </label>
+            {Object.values(form.errors).map((err) => err && <p key={err} className="text-xs text-danger sm:col-span-2">{err}</p>)}
+            <div className="flex gap-2 sm:col-span-2">
+                <button
+                    type="submit"
+                    disabled={form.processing}
+                    className="rounded-field bg-primary px-3 py-1.5 text-xs font-medium text-primary-fg hover:bg-primary-hover disabled:opacity-50"
+                >
+                    Créer l’approvisionnement
+                </button>
+                <button type="button" onClick={onDone} className="rounded-field px-3 py-1.5 text-xs text-ink-muted">
+                    Annuler
+                </button>
+            </div>
+        </form>
+    );
+}
+
+function ProcurementRowActions({ row, data }: { row: ProcurementRow; data: ProcurementData }) {
+    const [open, setOpen] = useState<'availability' | 'order' | 'receive' | 'supplier' | 'cancel' | null>(null);
+    const availability = useForm({ supplier_availability_status: 'confirmed_available', quantity: row.quantity, supplier_reference: row.supplier_reference ?? '', expected_at: row.expected_at ?? '' });
+    const orderForm = useForm({ supplier_reference: row.supplier_reference ?? '', expected_at: row.expected_at ?? '' });
+    const receive = useForm({ receiving_warehouse_id: data.warehouses[0]?.id ?? 0, quantity: row.quantity });
+    const supplierForm = useForm({ supplier_id: data.suppliers[0]?.id ?? 0 });
+    const cancelForm = useForm({ reason: '', acknowledge_ordered: false });
+    const done = { preserveScroll: true, onSuccess: () => setOpen(null) };
+
+    const canManage = data.can.manage;
+    const canReceive = data.can.receive;
+    const isEditable = row.status === 'pending_supplier' || row.status === 'supplier_confirmed';
+
+    if (row.status === 'cancelled' || row.status === 'unavailable' || row.status === 'received' || row.status === 'completed') {
+        return null;
+    }
+
+    return (
+        <div className="mt-2 flex flex-wrap gap-2">
+            {canManage && isEditable && (
+                <ActionButton onClick={() => setOpen(open === 'availability' ? null : 'availability')}>
+                    Enregistrer la disponibilité
+                </ActionButton>
+            )}
+            {canManage && row.status === 'supplier_confirmed' && (
+                <ActionButton onClick={() => setOpen(open === 'order' ? null : 'order')} primary>
+                    Commander au fournisseur
+                </ActionButton>
+            )}
+            {canReceive && row.status === 'ordered' && (
+                <ActionButton onClick={() => setOpen(open === 'receive' ? null : 'receive')} primary>
+                    Confirmer la réception
+                </ActionButton>
+            )}
+            {canManage && isEditable && data.suppliers.length > 0 && (
+                <ActionButton onClick={() => setOpen(open === 'supplier' ? null : 'supplier')}>Changer de fournisseur</ActionButton>
+            )}
+            {canManage && (row.status === 'pending_supplier' || row.status === 'supplier_confirmed' || row.status === 'ordered') && (
+                <ActionButton onClick={() => setOpen(open === 'cancel' ? null : 'cancel')} danger>
+                    Annuler
+                </ActionButton>
+            )}
+
+            {open === 'availability' && (
+                <form
+                    onSubmit={(e) => {
+                        e.preventDefault();
+                        availability.patch(`/procurement/${row.id}/availability`, done);
+                    }}
+                    className="mt-1 w-full grid gap-2 rounded-field bg-raised p-3 sm:grid-cols-2"
+                >
+                    <label className="text-xs">
+                        Disponibilité
+                        <select
+                            value={availability.data.supplier_availability_status}
+                            onChange={(e) => availability.setData('supplier_availability_status', e.target.value)}
+                            className="mt-1 w-full rounded-field border border-line-strong px-2 py-1.5 text-sm"
+                        >
+                            <option value="confirmed_available">Confirmée disponible</option>
+                            <option value="pending_confirmation">À confirmer</option>
+                            <option value="unavailable">Indisponible</option>
+                        </select>
+                    </label>
+                    <label className="text-xs">
+                        Quantité confirmée
+                        <input
+                            inputMode="decimal"
+                            value={availability.data.quantity}
+                            onChange={(e) => availability.setData('quantity', e.target.value)}
+                            className="mt-1 w-full rounded-field border border-line-strong px-2 py-1.5 text-sm"
+                        />
+                    </label>
+                    <label className="text-xs">
+                        Référence fournisseur
+                        <input
+                            value={availability.data.supplier_reference}
+                            onChange={(e) => availability.setData('supplier_reference', e.target.value)}
+                            className="mt-1 w-full rounded-field border border-line-strong px-2 py-1.5 text-sm"
+                        />
+                    </label>
+                    <label className="text-xs">
+                        Réception estimée
+                        <input
+                            type="date"
+                            value={availability.data.expected_at}
+                            onChange={(e) => availability.setData('expected_at', e.target.value)}
+                            className="mt-1 w-full rounded-field border border-line-strong px-2 py-1.5 text-sm"
+                        />
+                    </label>
+                    <FormErrors errors={availability.errors} />
+                    <SubmitRow processing={availability.processing} onCancel={() => setOpen(null)} label="Enregistrer" />
+                </form>
+            )}
+
+            {open === 'order' && (
+                <form
+                    onSubmit={(e) => {
+                        e.preventDefault();
+                        orderForm.post(`/procurement/${row.id}/order`, done);
+                    }}
+                    className="mt-1 w-full grid gap-2 rounded-field bg-raised p-3 sm:grid-cols-2"
+                >
+                    <label className="text-xs">
+                        Référence fournisseur
+                        <input
+                            value={orderForm.data.supplier_reference}
+                            onChange={(e) => orderForm.setData('supplier_reference', e.target.value)}
+                            className="mt-1 w-full rounded-field border border-line-strong px-2 py-1.5 text-sm"
+                        />
+                    </label>
+                    <label className="text-xs">
+                        Réception estimée
+                        <input
+                            type="date"
+                            value={orderForm.data.expected_at}
+                            onChange={(e) => orderForm.setData('expected_at', e.target.value)}
+                            className="mt-1 w-full rounded-field border border-line-strong px-2 py-1.5 text-sm"
+                        />
+                    </label>
+                    <FormErrors errors={orderForm.errors} />
+                    <SubmitRow processing={orderForm.processing} onCancel={() => setOpen(null)} label="Confirmer la commande" />
+                </form>
+            )}
+
+            {open === 'receive' && (
+                <form
+                    onSubmit={(e) => {
+                        e.preventDefault();
+                        receive.post(`/procurement/${row.id}/receive`, done);
+                    }}
+                    className="mt-1 w-full grid gap-2 rounded-field bg-raised p-3 sm:grid-cols-2"
+                >
+                    <label className="text-xs">
+                        Entrepôt de réception
+                        <select
+                            value={receive.data.receiving_warehouse_id}
+                            onChange={(e) => receive.setData('receiving_warehouse_id', Number(e.target.value))}
+                            className="mt-1 w-full rounded-field border border-line-strong px-2 py-1.5 text-sm"
+                        >
+                            {data.warehouses.map((w) => (
+                                <option key={w.id} value={w.id}>
+                                    {w.name} · {w.code}
+                                </option>
+                            ))}
+                        </select>
+                    </label>
+                    <label className="text-xs">
+                        Reçu (qté)
+                        <input
+                            inputMode="decimal"
+                            value={receive.data.quantity}
+                            onChange={(e) => receive.setData('quantity', e.target.value)}
+                            className="mt-1 w-full rounded-field border border-line-strong px-2 py-1.5 text-sm"
+                        />
+                    </label>
+                    <p className="text-xs text-ink-faint sm:col-span-2">
+                        La marchandise entre en stock puis est immédiatement réservée à cette commande. Si l’entrepôt choisi n’est
+                        pas le showroom de la commande, une demande de transfert interne est créée automatiquement.
+                    </p>
+                    <FormErrors errors={receive.errors} />
+                    <SubmitRow processing={receive.processing} onCancel={() => setOpen(null)} label="Confirmer la réception" />
+                </form>
+            )}
+
+            {open === 'supplier' && (
+                <form
+                    onSubmit={(e) => {
+                        e.preventDefault();
+                        supplierForm.patch(`/procurement/${row.id}/supplier`, done);
+                    }}
+                    className="mt-1 w-full grid gap-2 rounded-field bg-raised p-3 sm:grid-cols-2"
+                >
+                    <label className="text-xs">
+                        Nouveau fournisseur
+                        <select
+                            value={supplierForm.data.supplier_id}
+                            onChange={(e) => supplierForm.setData('supplier_id', Number(e.target.value))}
+                            className="mt-1 w-full rounded-field border border-line-strong px-2 py-1.5 text-sm"
+                        >
+                            {data.suppliers.map((s) => (
+                                <option key={s.id} value={s.id}>
+                                    {s.name}
+                                </option>
+                            ))}
+                        </select>
+                    </label>
+                    <FormErrors errors={supplierForm.errors} />
+                    <SubmitRow processing={supplierForm.processing} onCancel={() => setOpen(null)} label="Remplacer" />
+                </form>
+            )}
+
+            {open === 'cancel' && (
+                <form
+                    onSubmit={(e) => {
+                        e.preventDefault();
+                        cancelForm.post(`/procurement/${row.id}/cancel`, done);
+                    }}
+                    className="mt-1 w-full grid gap-2 rounded-field bg-danger-soft/40 p-3"
+                >
+                    <label className="text-xs">
+                        Motif
+                        <input
+                            value={cancelForm.data.reason}
+                            onChange={(e) => cancelForm.setData('reason', e.target.value)}
+                            className="mt-1 w-full rounded-field border border-line-strong px-2 py-1.5 text-sm"
+                        />
+                    </label>
+                    {row.status === 'ordered' && (
+                        <label className="flex items-center gap-2 text-xs text-danger">
+                            <input
+                                type="checkbox"
+                                checked={cancelForm.data.acknowledge_ordered}
+                                onChange={(e) => cancelForm.setData('acknowledge_ordered', e.target.checked)}
+                            />
+                            Je confirme abandonner la commande fournisseur déjà passée.
+                        </label>
+                    )}
+                    <FormErrors errors={cancelForm.errors} />
+                    <SubmitRow processing={cancelForm.processing} onCancel={() => setOpen(null)} label="Annuler l’approvisionnement" danger />
+                </form>
+            )}
+        </div>
+    );
+}
+
+function ActionButton({ children, onClick, primary, danger }: { children: ReactNode; onClick: () => void; primary?: boolean; danger?: boolean }) {
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            className={`rounded-field px-3 py-1.5 text-xs font-medium ${
+                primary
+                    ? 'bg-primary text-primary-fg hover:bg-primary-hover'
+                    : danger
+                      ? 'border border-danger/40 text-danger hover:bg-danger-soft'
+                      : 'border border-line-strong text-ink hover:bg-raised'
+            }`}
+        >
+            {children}
+        </button>
+    );
+}
+
+function FormErrors({ errors }: { errors: Partial<Record<string, string>> }) {
+    const list = Object.values(errors).filter(Boolean) as string[];
+    if (list.length === 0) return null;
+    return (
+        <div className="sm:col-span-2">
+            {list.map((err) => (
+                <p key={err} className="text-xs text-danger">
+                    {err}
+                </p>
+            ))}
+        </div>
+    );
+}
+
+function SubmitRow({ processing, onCancel, label, danger }: { processing: boolean; onCancel: () => void; label: string; danger?: boolean }) {
+    return (
+        <div className="flex gap-2 sm:col-span-2">
+            <button
+                type="submit"
+                disabled={processing}
+                className={`rounded-field px-3 py-1.5 text-xs font-medium text-primary-fg disabled:opacity-50 ${
+                    danger ? 'bg-danger hover:bg-danger/90' : 'bg-primary hover:bg-primary-hover'
+                }`}
+            >
+                {label}
+            </button>
+            <button type="button" onClick={onCancel} className="rounded-field px-3 py-1.5 text-xs text-ink-muted">
+                Fermer
+            </button>
+        </div>
+    );
 }

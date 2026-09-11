@@ -21,6 +21,8 @@ class ProductVariant extends Model
             'default_sale_price' => 'decimal:4',
             'regular_sale_price' => 'decimal:4',
             'promotional_sale_price' => 'decimal:4',
+            'public_price_ttc' => 'decimal:4',
+            'unit_price_ht' => 'decimal:4',
             'status' => CatalogStatus::class,
         ];
     }

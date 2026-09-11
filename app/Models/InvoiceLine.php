@@ -18,6 +18,7 @@ class InvoiceLine extends Model
             'discount_type' => SalesOrderDiscountType::class,
             'quantity' => 'decimal:4',
             'unit_price_excl_tax' => 'decimal:4',
+            'unit_price_incl_tax' => 'decimal:4',
             'discount_value' => 'decimal:4',
             'subtotal_excl_tax' => 'decimal:4',
             'discount_amount' => 'decimal:4',

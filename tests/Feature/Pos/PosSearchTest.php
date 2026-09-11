@@ -93,6 +93,24 @@ class PosSearchTest extends PosTestCase
             ->assertJsonPath('data.0.stock.total_available', '18.0000');
     }
 
+    public function test_catalogue_can_filter_by_price_range(): void
+    {
+        [$owner, $organization, , $warehouse] = $this->searchContext();
+        $this->createProduct($organization, 'Budget Cable', 'CAB-1', ['default_sale_price' => '20.0000']);
+        $this->createProduct($organization, 'Premium Preamp', 'PRE-9', ['default_sale_price' => '900.0000']);
+
+        $response = $this->actingAs($owner)->getJson(route('pos.products.index', [
+            'warehouse_id' => $warehouse->id,
+            'price_min' => 50,
+            'price_max' => 500,
+        ]))->assertOk();
+
+        $skus = collect($response->json('data'))->pluck('sku');
+        $this->assertTrue($skus->contains('POS-SKU'));   // Studio Camera @ 100,00 DH
+        $this->assertFalse($skus->contains('CAB-1'));
+        $this->assertFalse($skus->contains('PRE-9'));
+    }
+
     public function test_customer_lookup_is_organization_scoped(): void
     {
         [$owner, $organization, , $warehouse] = $this->searchContext();
@@ -103,6 +121,37 @@ class PosSearchTest extends PosTestCase
 
         $this->actingAs($owner)->getJson(route('pos.customers.index', ['search' => '0600000000', 'warehouse_id' => $warehouse->id]))
             ->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.id', $customer->id);
+    }
+
+    public function test_customer_search_matches_company_name_email_and_phone(): void
+    {
+        [$owner, $organization] = $this->searchContext();
+        $byCompany = $this->createCustomer($organization, 'Front Desk', ['company_name' => 'Mohamed Amine SARL', 'phone' => '0522000000']);
+        $byEmail = $this->createCustomer($organization, 'Agday Mohamed', ['email' => 'mohamed@example.test']);
+        $this->createCustomer($organization, 'Unrelated Client', ['phone' => '0700000000']);
+
+        $response = $this->actingAs($owner)->getJson(route('pos.customers.index', ['search' => 'moh']))
+            ->assertOk();
+
+        $ids = collect($response->json('data'))->pluck('id');
+        $this->assertTrue($ids->contains($byCompany->id));
+        $this->assertTrue($ids->contains($byEmail->id));
+        $this->assertCount(2, $ids);
+    }
+
+    public function test_customer_search_without_term_returns_active_customers_for_the_organization(): void
+    {
+        [$owner, $organization] = $this->searchContext();
+        $mine = $this->createCustomer($organization, 'Showroom Client');
+        $this->createCustomer($organization, 'Archived Client', ['status' => 'inactive']);
+        $foreign = $this->createOrganization(User::factory()->create());
+        $this->createCustomer($foreign, 'Foreign Client');
+
+        $response = $this->actingAs($owner)->getJson(route('pos.customers.index'))->assertOk();
+
+        $ids = collect($response->json('data'))->pluck('id');
+        $this->assertTrue($ids->contains($mine->id));
+        $this->assertCount(1, $ids);
     }
 
     public function test_quick_customer_creation_reuses_customer_domain_and_ignores_privileged_fields(): void

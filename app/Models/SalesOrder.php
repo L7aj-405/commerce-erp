@@ -81,6 +81,40 @@ class SalesOrder extends Model
         return $this->hasMany(DeliveryNote::class);
     }
 
+    public function transferRequests(): HasMany
+    {
+        return $this->hasMany(TransferRequest::class);
+    }
+
+    public function procurements(): HasMany
+    {
+        return $this->hasMany(SalesOrderProcurement::class);
+    }
+
+    /**
+     * True while a linked internal Transfer Request still has to bring remote
+     * stock to the operational warehouse before final Showroom fulfilment.
+     */
+    public function awaitingReplenishment(): bool
+    {
+        return $this->transferRequests()
+            ->whereIn('status', ['requested', 'preparing', 'shipped'])
+            ->whereHas('lines', fn ($query) => $query->where('reason', 'order_fulfillment'))
+            ->exists();
+    }
+
+    /**
+     * True while a valid supplier special-order this Order depends on has not
+     * yet physically arrived (still awaiting confirmation, or confirmed/ordered
+     * but not received). The Order is not ready for customer fulfilment.
+     */
+    public function awaitingSupplierProcurement(): bool
+    {
+        return $this->procurements()
+            ->whereIn('status', ['pending_supplier', 'supplier_confirmed', 'ordered'])
+            ->exists();
+    }
+
     public function createdBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by_user_id');

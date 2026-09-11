@@ -3,7 +3,85 @@
 @source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
 @source '../../storage/framework/views/*.php';
 
+/*
+ * Commerce ERP — visual foundation tokens.
+ * Warm, light, calm SaaS palette. Business modules still use Tailwind's `slate`
+ * scale; these semantic tokens are the shared language for the app shell,
+ * welcome page, auth and onboarding, and are where new module work should draw from.
+ */
 @theme {
     --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
         'Segoe UI Symbol', 'Noto Color Emoji';
+
+    /* Surfaces */
+    --color-canvas: #f6f6f2;
+    --color-surface: #ffffff;
+    --color-raised: #fbfbf8;
+    --color-sage: #ecf0e8;
+    --color-sage-deep: #e3e9dc;
+
+    /* Text */
+    --color-ink: #1f211d;
+    --color-ink-muted: #656a5e;
+    --color-ink-faint: #949a8b;
+
+    /* Lines */
+    --color-line: #e7e6df;
+    --color-line-strong: #d8d7cd;
+
+    /* Brand / primary action — deep charcoal green */
+    --color-primary: #2b3a30;
+    --color-primary-hover: #212e26;
+    --color-primary-fg: #f7f8f4;
+
+    /* Feedback — restrained */
+    --color-success: #3f7a56;
+    --color-success-soft: #eaf2ec;
+    --color-warning: #a9761f;
+    --color-warning-soft: #f6efe0;
+    --color-danger: #b0453b;
+    --color-danger-soft: #f6e8e6;
+
+    /* Radius */
+    --radius-field: 0.625rem;
+    --radius-card: 1rem;
+    --radius-panel: 1.5rem;
+
+    /* Elevation */
+    --shadow-card: 0 1px 2px rgb(28 33 25 / 0.04), 0 10px 30px -16px rgb(28 33 25 / 0.12);
+    --shadow-pop: 0 8px 28px -8px rgb(28 33 25 / 0.18);
+
+    /* Motion */
+    --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@layer base {
+    html {
+        -webkit-text-size-adjust: 100%;
+    }
+
+    body {
+        background-color: var(--color-canvas);
+        color: var(--color-ink);
+        font-feature-settings: 'cv11', 'ss01';
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+    }
+
+    /* Consistent, visible focus for keyboard users across the app. */
+    :focus-visible {
+        outline: 2px solid var(--color-primary);
+        outline-offset: 2px;
+        border-radius: 4px;
+    }
+
+    ::selection {
+        background-color: color-mix(in srgb, var(--color-primary) 18%, transparent);
+    }
+}
+
+@utility transition-soft {
+    transition-property: color, background-color, border-color, box-shadow, transform, opacity;
+    transition-timing-function: var(--ease-out-soft);
+    transition-duration: 170ms;
 }

@@ -21,9 +21,10 @@ class DocumentNumberingTest extends DocumentTestCase
         $second = app(ConfirmSalesOrderAction::class)->execute($owner, $second);
         $second = app(FulfillSalesOrderAction::class)->execute($owner, $second->fresh());
 
-        $this->assertSame('INV-000001', $this->issueInvoice($owner, $this->createInvoice($owner, $first))->invoice_number);
+        $year = now()->year;
+        $this->assertSame("1/{$year}", $this->issueInvoice($owner, $this->createInvoice($owner, $first))->invoice_number);
         $this->assertSame('DN-000001', $this->issueDeliveryNote($owner, $this->createDeliveryNote($owner, $first))->delivery_note_number);
-        $this->assertSame('INV-000002', $this->issueInvoice($owner, $this->createInvoice($owner, $second))->invoice_number);
+        $this->assertSame("2/{$year}", $this->issueInvoice($owner, $this->createInvoice($owner, $second))->invoice_number);
         $this->assertSame('DN-000002', $this->issueDeliveryNote($owner, $this->createDeliveryNote($owner, $second))->delivery_note_number);
     }
 
@@ -35,13 +36,17 @@ class DocumentNumberingTest extends DocumentTestCase
         $connection->rollBack();
 
         try {
-            foreach ([app(InvoiceNumberGenerator::class), app(DeliveryNoteNumberGenerator::class)] as $generator) {
-                try {
-                    $generator->next($organization);
-                    $this->fail('Expected transaction-only sequence allocation.');
-                } catch (LogicException) {
-                    $this->assertDatabaseCount($generator instanceof InvoiceNumberGenerator ? 'invoice_sequences' : 'delivery_note_sequences', 0);
-                }
+            try {
+                app(InvoiceNumberGenerator::class)->next($organization, now()->year);
+                $this->fail('Expected transaction-only sequence allocation.');
+            } catch (LogicException) {
+                $this->assertDatabaseCount('invoice_sequences', 0);
+            }
+            try {
+                app(DeliveryNoteNumberGenerator::class)->next($organization);
+                $this->fail('Expected transaction-only sequence allocation.');
+            } catch (LogicException) {
+                $this->assertDatabaseCount('delivery_note_sequences', 0);
             }
         } finally {
             // Restore the transaction expected by RefreshDatabase teardown.
@@ -55,7 +60,7 @@ class DocumentNumberingTest extends DocumentTestCase
 
         try {
             DB::transaction(function () use ($organization) {
-                $this->assertSame('INV-000001', app(InvoiceNumberGenerator::class)->next($organization));
+                $this->assertSame('1/'.now()->year, app(InvoiceNumberGenerator::class)->next($organization, now()->year));
                 $this->assertSame('DN-000001', app(DeliveryNoteNumberGenerator::class)->next($organization));
                 $this->assertDatabaseCount('invoice_sequences', 1);
                 $this->assertDatabaseCount('delivery_note_sequences', 1);

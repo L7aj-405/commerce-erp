@@ -1,4 +1,5 @@
 import { ButtonLink } from '@/components/ui/Button';
+import { Spinner } from '@/components/ui/Spinner';
 import EmptyState from '@/components/ui/EmptyState';
 import PageHeader from '@/components/ui/PageHeader';
 import SearchInput from '@/components/ui/SearchInput';
@@ -250,7 +251,7 @@ export default function TransferCreate({ filters, warehouses, searchResults, pre
                                 </div>
                             </div>
 
-                            <button type="button" onClick={submit} disabled={form.processing || selectedLines.length === 0} className="mt-5 inline-flex min-h-10 w-full items-center justify-center rounded-lg bg-slate-950 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">{form.processing ? 'Transfert en cours...' : 'Confirmer le transfert'}</button>
+                            <button type="button" onClick={submit} disabled={form.processing || selectedLines.length === 0} aria-busy={form.processing || undefined} className="mt-5 inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-lg bg-slate-950 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">{form.processing && <Spinner size="sm" />}{form.processing ? 'Transfert en cours...' : 'Confirmer le transfert'}</button>
                         </>
                     )}
                 </aside>

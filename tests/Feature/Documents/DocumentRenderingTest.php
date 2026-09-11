@@ -75,7 +75,7 @@ class DocumentRenderingTest extends DocumentTestCase
         $this->assertStringNotContainsString('product_variant_id', $html);
 
         $issuedHtml = app(InvoiceDocumentRenderer::class)->html($this->issueInvoice($owner, $invoice));
-        $this->assertStringContainsString('INV-000001', $issuedHtml);
+        $this->assertStringContainsString('1/2026', $issuedHtml);
         $this->assertStringNotContainsString('BROUILLON', $issuedHtml);
     }
 

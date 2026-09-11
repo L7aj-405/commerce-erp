@@ -8,31 +8,82 @@ use App\Models\SalesOrderLine;
 use App\Support\Decimal;
 use Illuminate\Validation\ValidationException;
 
+/**
+ * Authoritative POS checkout financials.
+ *
+ * The draft's persisted line snapshots (HT / discount / tax) are the base. On top
+ * of them the POS applies an optional order-level global discount (allocated
+ * across taxable lines BEFORE tax) and an optional shipping fee. `breakdown()`
+ * simulates exactly what `CreatePosSaleAction` will persist at confirmation, so
+ * the preview total and the final charged total always agree.
+ */
 class PosDraftCheckoutCalculator
 {
+    public function __construct(private readonly SalesLineCalculator $lineCalculator) {}
+
     /** @return array<string, mixed> */
     public function summary(SalesOrder $order): array
     {
-        $order->loadMissing('lines');
-
-        $lineDiscount = '0.0000';
-        foreach ($order->lines as $line) {
-            $lineDiscount = Decimal::add($lineDiscount, $line->discount_amount);
-        }
-
-        $baseTotal = $order->total_incl_tax;
-        $globalDiscount = $this->globalDiscountAmount($order, $baseTotal);
-        $shippingFee = Decimal::normalize((string) ($order->pos_shipping_fee ?? '0'));
-        $grandTotal = Decimal::add(Decimal::subtract($baseTotal, $globalDiscount), $shippingFee);
+        $breakdown = $this->breakdown($order);
 
         return [
-            'merchandise_total' => $baseTotal,
-            'line_discount_total' => $lineDiscount,
+            'merchandise_total' => $order->total_incl_tax,
+            'subtotal_excl_tax' => $breakdown['gross_excl_tax'],
+            'line_discount_total' => $breakdown['item_discount_total'],
             'global_discount_type' => (string) ($order->pos_global_discount_type ?? 'none'),
             'global_discount_value' => Decimal::normalize((string) ($order->pos_global_discount_value ?? '0')),
+            'global_discount_amount' => $breakdown['global_discount_amount'],
+            'net_excl_tax' => $breakdown['net_excl_tax'],
+            'tax_total' => $breakdown['tax_total'],
+            'shipping_fee' => $breakdown['shipping_fee'],
+            'total' => $breakdown['total_incl_tax'],
+        ];
+    }
+
+    /**
+     * The exact financial result the confirmation step will persist.
+     *
+     * @return array{gross_excl_tax:string, item_discount_total:string, global_discount_amount:string, net_excl_tax:string, tax_total:string, shipping_fee:string, total_incl_tax:string}
+     */
+    public function breakdown(SalesOrder $order): array
+    {
+        $order->loadMissing('lines');
+
+        $gross = '0.0000';
+        $itemDiscount = '0.0000';
+        foreach ($order->lines as $line) {
+            $gross = Decimal::add($gross, $line->subtotal_excl_tax);
+            $itemDiscount = Decimal::add($itemDiscount, $line->discount_amount);
+        }
+
+        $globalDiscount = $this->globalDiscountAmount($order);
+
+        $net = '0.0000';
+        $tax = '0.0000';
+        foreach ($this->distributedLineDiscounts($order) as $item) {
+            /** @var SalesOrderLine $line */
+            $line = $item['line'];
+            $calculated = $this->lineCalculator->calculate(
+                $line->quantity,
+                $line->unit_price_excl_tax,
+                $line->tax_rate,
+                SalesOrderDiscountType::from($item['discount_type']),
+                $item['discount_value'],
+            );
+            $net = Decimal::add($net, $calculated['taxable_amount']);
+            $tax = Decimal::add($tax, $calculated['tax_amount']);
+        }
+
+        $shipping = Decimal::normalize((string) ($order->pos_shipping_fee ?? '0'));
+
+        return [
+            'gross_excl_tax' => $gross,
+            'item_discount_total' => $itemDiscount,
             'global_discount_amount' => $globalDiscount,
-            'shipping_fee' => $shippingFee,
-            'total' => $grandTotal,
+            'net_excl_tax' => $net,
+            'tax_total' => $tax,
+            'shipping_fee' => $shipping,
+            'total_incl_tax' => Decimal::add(Decimal::add($net, $tax), $shipping),
         ];
     }
 
@@ -45,8 +96,7 @@ class PosDraftCheckoutCalculator
             return [];
         }
 
-        $baseTotal = $order->total_incl_tax;
-        $globalDiscount = $this->globalDiscountAmount($order, $baseTotal);
+        $globalDiscount = $this->globalDiscountAmount($order);
         if (Decimal::compare($globalDiscount, '0.0000') === 0) {
             return $lines->map(fn (SalesOrderLine $line) => [
                 'line' => $line,
@@ -56,7 +106,7 @@ class PosDraftCheckoutCalculator
         }
 
         $remaining = $globalDiscount;
-        $base = $lines->reduce(fn (string $carry, SalesOrderLine $line) => Decimal::add($carry, $line->taxable_amount), '0.0000');
+        $base = $this->netExclTaxBase($order);
         if (Decimal::compare($base, '0.0000') <= 0) {
             throw ValidationException::withMessages([
                 'discount' => 'La remise globale nécessite au moins une ligne positive dans le panier.',
@@ -96,16 +146,32 @@ class PosDraftCheckoutCalculator
         return $result;
     }
 
-    private function globalDiscountAmount(SalesOrder $order, string $baseTotal): string
+    /**
+     * The order-level global discount, expressed as an absolute HT amount.
+     * A percentage is taken off the net HT base (line subtotals minus per-line
+     * discounts) so it behaves like the fixed amount and never over-discounts tax.
+     */
+    private function globalDiscountAmount(SalesOrder $order): string
     {
         $type = SalesOrderDiscountType::tryFrom((string) ($order->pos_global_discount_type ?? 'none')) ?? SalesOrderDiscountType::None;
         $value = Decimal::normalize((string) ($order->pos_global_discount_value ?? '0'));
+        $base = $this->netExclTaxBase($order);
 
         return match ($type) {
             SalesOrderDiscountType::None => '0.0000',
-            SalesOrderDiscountType::Fixed => $this->bounded($value, $baseTotal),
-            SalesOrderDiscountType::Percentage => $this->bounded(Decimal::percentage($baseTotal, $value), $baseTotal),
+            SalesOrderDiscountType::Fixed => $this->bounded($value, $base),
+            SalesOrderDiscountType::Percentage => $this->bounded(Decimal::percentage($base, $value), $base),
         };
+    }
+
+    private function netExclTaxBase(SalesOrder $order): string
+    {
+        $order->loadMissing('lines');
+
+        return $order->lines->reduce(
+            fn (string $carry, SalesOrderLine $line) => Decimal::add($carry, $line->taxable_amount),
+            '0.0000',
+        );
     }
 
     private function bounded(string $value, string $max): string

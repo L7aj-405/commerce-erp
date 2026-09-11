@@ -10,7 +10,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Facades\Auth;
 
-#[Fillable(['name', 'code', 'settings'])]
+#[Fillable(['name', 'code', 'settings', 'default_tax_rate_id'])]
 class Store extends Model
 {
     use HasFactory;
@@ -25,6 +25,11 @@ class Store extends Model
     public function organization(): BelongsTo
     {
         return $this->belongsTo(Organization::class);
+    }
+
+    public function defaultTaxRate(): BelongsTo
+    {
+        return $this->belongsTo(TaxRate::class, 'default_tax_rate_id');
     }
 
     public function memberships(): HasMany

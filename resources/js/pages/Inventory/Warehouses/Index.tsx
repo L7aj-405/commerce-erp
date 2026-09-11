@@ -1,10 +1,47 @@
 import { ButtonLink } from '@/components/ui/Button';
+import { Spinner } from '@/components/ui/Spinner';
 import EmptyState from '@/components/ui/EmptyState';
 import PageHeader from '@/components/ui/PageHeader';
 import InventoryLayout from '@/layouts/InventoryLayout';
 import { formatQuantity } from '@/utils/format';
 import { Head, router, useForm, usePage } from '@inertiajs/react';
 import type { FormEvent } from 'react';
+
+function ReplenishmentForm({ warehouse }: { warehouse: { id: number; replenishment: { auto_replenish: boolean; default_minimum_quantity: string } } }) {
+    const form = useForm({
+        auto_replenish: warehouse.replenishment.auto_replenish,
+        default_minimum_quantity: warehouse.replenishment.default_minimum_quantity,
+    });
+
+    return (
+        <form
+            onSubmit={(e) => {
+                e.preventDefault();
+                form.patch(`/inventory/warehouses/${warehouse.id}/replenishment`, { preserveScroll: true });
+            }}
+            className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm"
+        >
+            <p className="font-medium text-slate-700">Réassort automatique</p>
+            <label className="mt-2 flex items-center gap-2">
+                <input type="checkbox" checked={form.data.auto_replenish} onChange={(e) => form.setData('auto_replenish', e.target.checked)} />
+                Activer les demandes de réassort automatiques
+            </label>
+            <label className="mt-2 block text-slate-600">
+                Quantité minimale par défaut
+                <input
+                    inputMode="decimal"
+                    value={form.data.default_minimum_quantity}
+                    onChange={(e) => form.setData('default_minimum_quantity', e.target.value)}
+                    className="mt-1 w-28 rounded-lg border px-2 py-1"
+                />
+            </label>
+            {form.errors.default_minimum_quantity && <p className="mt-1 text-xs text-red-600">{form.errors.default_minimum_quantity}</p>}
+            <button disabled={form.processing} className="mt-3 rounded-lg border px-3 py-1.5 text-sm font-medium hover:bg-white disabled:opacity-50">
+                Enregistrer
+            </button>
+        </form>
+    );
+}
 
 type Warehouse = {
     id: number;
@@ -14,10 +51,11 @@ type Warehouse = {
     status: 'active' | 'inactive';
     product_count: number;
     unit_count: string;
+    replenishment: { auto_replenish: boolean; default_minimum_quantity: string };
 };
 type Props = {
     warehouses: Warehouse[];
-    can: { create: boolean; update: boolean };
+    can: { create: boolean; update: boolean; replenishment: boolean };
 };
 type SharedProps = { flash?: { warehouseCreatedId?: number | null } };
 
@@ -81,6 +119,7 @@ export default function WarehouseIndex({ warehouses, can }: Props) {
                                 <ButtonLink href={`/inventory/stock?warehouse=${warehouse.id}`} variant="secondary">Voir le stock</ButtonLink>
                                 {can.update && <button type="button" onClick={() => toggle(warehouse)} className="inline-flex min-h-10 items-center justify-center rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50">{warehouse.status === 'active' ? 'Desactiver' : 'Activer'}</button>}
                             </div>
+                            {can.replenishment && <ReplenishmentForm warehouse={warehouse} />}
                             {warehouse.id === justCreatedId && (
                                 <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
                                     <p className="font-medium">Emplacement cree avec succes.</p>
@@ -116,7 +155,7 @@ export default function WarehouseIndex({ warehouses, can }: Props) {
                             <textarea value={createForm.data.description} onChange={event => createForm.setData('description', event.target.value)} rows={3} className="mt-1 w-full rounded-lg border px-3 py-2 font-normal" />
                         </label>
                         <div className="md:col-span-3 flex flex-wrap gap-2">
-                            <button disabled={createForm.processing} className="inline-flex min-h-10 items-center justify-center rounded-lg bg-slate-950 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">{createForm.processing ? 'Creation...' : "Creer l'emplacement"}</button>
+                            <button disabled={createForm.processing} aria-busy={createForm.processing || undefined} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-slate-950 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">{createForm.processing && <Spinner size="sm" />}{createForm.processing ? 'Creation...' : "Creer l'emplacement"}</button>
                             <ButtonLink href="/inventory/stock" variant="secondary">Voir l'etat du stock</ButtonLink>
                         </div>
                     </form>

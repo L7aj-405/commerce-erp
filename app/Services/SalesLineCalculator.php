@@ -31,10 +31,13 @@ class SalesLineCalculator
         }
         $taxable = Decimal::subtract($subtotal, $discount);
         $tax = Decimal::percentage($taxable, $taxRate);
+        // Public (list) unit price incl. tax — snapshot of the pre-discount TTC price.
+        $unitTax = Decimal::compare($taxRate, '0.0000') === 0 ? '0.0000' : Decimal::percentage($unitPrice, $taxRate);
 
         return [
             'quantity' => $quantity,
             'unit_price_excl_tax' => $unitPrice,
+            'unit_price_incl_tax' => Decimal::add($unitPrice, $unitTax),
             'tax_rate' => $taxRate,
             'discount_value' => $discountValue,
             'subtotal_excl_tax' => $subtotal,
