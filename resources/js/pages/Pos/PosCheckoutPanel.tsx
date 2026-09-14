@@ -97,7 +97,7 @@ export default function PosCheckoutPanel({
     const [searched, setSearched] = useState(false);
     const abortRef = useRef<AbortController | null>(null);
     const debouncedSearch = useDebouncedValue(search.trim(), 250);
-    const [customerType, setCustomerType] = useState<'individual' | 'business'>(customerTypeFor(sale.customer));
+    const [customerType, setCustomerType] = useState<'individual' | 'company'>(customerTypeFor(sale.customer));
     const [customerForm, setCustomerForm] = useState<CustomerForm>(customerFormFrom(sale.customer));
     const [customerMode, setCustomerMode] = useState<'idle' | 'create' | 'edit'>('idle');
     const [customerBusy, setCustomerBusy] = useState(false);
@@ -331,7 +331,7 @@ export default function PosCheckoutPanel({
                     onChange={setCustomerType}
                     options={[
                         { value: 'individual', label: 'Particulier' },
-                        { value: 'business', label: 'Entreprise' },
+                        { value: 'company', label: 'Entreprise' },
                     ]}
                 />
                 {customerType === 'individual' ? (
@@ -344,7 +344,7 @@ export default function PosCheckoutPanel({
                 )}
                 <input value={customerForm.phone} onChange={(event) => set('phone', event.target.value)} placeholder="Téléphone" className={fieldClass} />
                 <input value={customerForm.email} onChange={(event) => set('email', event.target.value)} placeholder="Email" className={fieldClass} />
-                {customerType === 'business' && (
+                {customerType === 'company' && (
                     <input value={customerForm.tax_identifier} onChange={(event) => set('tax_identifier', event.target.value)} placeholder="ICE / IF / RC" className={fieldClass} />
                 )}
                 <div className="flex gap-2">

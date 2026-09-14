@@ -38,6 +38,7 @@ use App\Support\Decimal;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -90,7 +91,7 @@ class PosController extends Controller
                 ->where('status', 'active')
                 ->where('currency_code', config('platform.currency_code', 'MAD'))
                 ->orderBy('name')
-                ->get(['id', 'name', 'code', 'type', 'currency_code'])
+                ->get(['id', 'name', 'code', 'type', 'currency_code', 'accepted_methods'])
             : collect();
 
         return Inertia::render('Pos/Index', [
@@ -259,9 +260,9 @@ class PosController extends Controller
         $this->authorize('create', [Customer::class, $organization]);
 
         $data = $request->validate([
-            'type' => ['required', 'in:individual,business'],
+            'type' => ['required', Rule::enum(CustomerType::class)],
             'display_name' => ['nullable', 'string', 'max:255', 'required_if:type,individual'],
-            'company_name' => ['nullable', 'string', 'max:255', 'required_if:type,business'],
+            'company_name' => ['nullable', 'string', 'max:255', 'required_if:type,company'],
             'contact_name' => ['nullable', 'string', 'max:255'],
             'phone' => ['nullable', 'string', 'max:64'],
             'email' => ['nullable', 'email', 'max:255'],
@@ -271,11 +272,11 @@ class PosController extends Controller
         ]);
 
         $customer = $manager->create($request->user(), $organization, [
-            'type' => $data['type'] === 'business' ? CustomerType::Business->value : CustomerType::Individual->value,
-            'display_name' => $data['type'] === 'business'
+            'type' => $data['type'],
+            'display_name' => $data['type'] === 'company'
                 ? trim((string) ($data['company_name'] ?? $data['contact_name']))
                 : trim((string) $data['display_name']),
-            'company_name' => $data['type'] === 'business' ? trim((string) $data['company_name']) : null,
+            'company_name' => $data['type'] === 'company' ? trim((string) $data['company_name']) : null,
             'phone' => filled($data['phone'] ?? null) ? trim((string) $data['phone']) : null,
             'email' => filled($data['email'] ?? null) ? trim((string) $data['email']) : null,
             'tax_identifier' => filled($data['tax_identifier'] ?? null) ? trim((string) $data['tax_identifier']) : null,
@@ -302,9 +303,9 @@ class PosController extends Controller
         $this->authorize('update', $customer);
 
         $data = $request->validate([
-            'type' => ['required', 'in:individual,business'],
+            'type' => ['required', Rule::enum(CustomerType::class)],
             'display_name' => ['nullable', 'string', 'max:255', 'required_if:type,individual'],
-            'company_name' => ['nullable', 'string', 'max:255', 'required_if:type,business'],
+            'company_name' => ['nullable', 'string', 'max:255', 'required_if:type,company'],
             'contact_name' => ['nullable', 'string', 'max:255'],
             'phone' => ['nullable', 'string', 'max:64'],
             'email' => ['nullable', 'email', 'max:255'],
@@ -314,11 +315,11 @@ class PosController extends Controller
         ]);
 
         $customer = $manager->update($request->user(), $customer, [
-            'type' => $data['type'] === 'business' ? CustomerType::Business->value : CustomerType::Individual->value,
-            'display_name' => $data['type'] === 'business'
+            'type' => $data['type'],
+            'display_name' => $data['type'] === 'company'
                 ? trim((string) ($data['company_name'] ?? $data['contact_name']))
                 : trim((string) $data['display_name']),
-            'company_name' => $data['type'] === 'business' ? trim((string) $data['company_name']) : null,
+            'company_name' => $data['type'] === 'company' ? trim((string) $data['company_name']) : null,
             'phone' => filled($data['phone'] ?? null) ? trim((string) $data['phone']) : null,
             'email' => filled($data['email'] ?? null) ? trim((string) $data['email']) : null,
             'tax_identifier' => filled($data['tax_identifier'] ?? null) ? trim((string) $data['tax_identifier']) : null,

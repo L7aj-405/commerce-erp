@@ -46,6 +46,10 @@ return [
     'amount_in_words_intro' => 'Arrêtée la présente facture à la somme de :',
     'notes' => 'Notes',
     'issued_by' => 'Émise par',
+    'delivered_by' => 'Livré par',
+    'received_by' => 'Reçu par (client)',
+    'signature' => 'Signature',
+    'delivery_date' => 'Date de livraison',
     'bank' => 'Banque',
     'rib' => 'RIB',
     'email' => [

@@ -85,6 +85,18 @@ export function quotationStatusTone(value: string): BadgeTone {
     return 'neutral';
 }
 
+export const deliveryNoteStatusLabel: Record<string, string> = {
+    draft: 'Brouillon',
+    issued: 'Émis',
+    cancelled: 'Annulé',
+};
+
+export function deliveryNoteStatusTone(value: string): BadgeTone {
+    if (value === 'issued') return 'positive';
+    if (value === 'cancelled') return 'danger';
+    return 'neutral';
+}
+
 /** `label` helper: read a map, fall back to a de-underscored raw value. */
 export function label(map: Record<string, string>, value: string | null | undefined): string {
     if (!value) return '—';

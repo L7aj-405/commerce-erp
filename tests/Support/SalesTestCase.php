@@ -16,6 +16,28 @@ use App\Models\Warehouse;
 
 abstract class SalesTestCase extends InventoryTestCase
 {
+    /**
+     * Same type => methods default the Finance Account multi-method
+     * migration backfilled existing accounts from (see
+     * 2026_09_17_000001_add_accepted_methods_to_financial_accounts_table) —
+     * shared by PaymentTestCase::createFinancialAccount() and
+     * PosTestCase::createPosAccount() so a test account keeps behaving
+     * exactly like it always has unless it explicitly overrides
+     * `accepted_methods`.
+     *
+     * @return list<string>
+     */
+    protected function defaultAcceptedMethodsForType(string $type): array
+    {
+        return match ($type) {
+            'cash' => ['cash'],
+            'bank' => ['card', 'bank_transfer'],
+            'card_clearing' => ['card'],
+            'cheque_clearing' => ['cheque'],
+            default => [],
+        };
+    }
+
     protected function createCustomer(Organization $organization, string $name = 'Customer', array $attributes = []): Customer
     {
         $customer = new Customer;

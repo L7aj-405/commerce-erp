@@ -121,7 +121,7 @@ class SalesOrderController extends Controller
                     ->where('status', 'active')
                     ->where('currency_code', $order->currency_code)
                     ->orderBy('name')
-                    ->get(['id', 'name', 'code', 'type', 'currency_code'])
+                    ->get(['id', 'name', 'code', 'type', 'currency_code', 'accepted_methods'])
                 : [],
             'documents' => [
                 'invoices' => $order->invoices()->latest('id')->get(['id', 'invoice_number', 'invoice_date', 'status', 'total_incl_tax']),

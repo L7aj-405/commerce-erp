@@ -28,7 +28,7 @@ class ManageFinancialAccountAction
             $this->apply($account, $data);
             $account->save();
             $this->audit->record('financial_account.created', $actor, $organization, auditable: $account, newValues: $account->only([
-                'name', 'code', 'type', 'status', 'currency_code',
+                'name', 'code', 'type', 'status', 'currency_code', 'accepted_methods',
             ]));
 
             return $account;
@@ -46,11 +46,11 @@ class ManageFinancialAccountAction
         );
 
         return DB::transaction(function () use ($actor, $account, $data) {
-            $old = $account->only(['name', 'code', 'type', 'status', 'currency_code']);
+            $old = $account->only(['name', 'code', 'type', 'status', 'currency_code', 'accepted_methods']);
             $this->apply($account, $data);
             $account->save();
             $this->audit->record('financial_account.updated', $actor, $account->organization, auditable: $account, oldValues: $old, newValues: $account->only([
-                'name', 'code', 'type', 'status', 'currency_code',
+                'name', 'code', 'type', 'status', 'currency_code', 'accepted_methods',
             ]));
 
             return $account;
@@ -66,5 +66,6 @@ class ManageFinancialAccountAction
         $account->status = $data['status'];
         $account->currency_code = strtoupper($data['currency_code']);
         $account->notes = $data['notes'] ?? null;
+        $account->accepted_methods = array_values(array_unique($data['accepted_methods'] ?? []));
     }
 }

@@ -20,13 +20,21 @@ class TaxRateController extends Controller
         $organization = $context->organizationOrFail();
         $this->authorize('viewAny', [TaxRate::class, $organization]);
 
+        $stores = $request->user()->hasPermission($organization, 'stores.update')
+            ? $organization->stores()->orderBy('name')->get(['id', 'name', 'code', 'default_tax_rate_id'])
+            : collect();
+        $storeDefaultCounts = $stores->countBy('default_tax_rate_id');
+
         return Inertia::render('Catalog/ReferenceData', [
             'kind' => 'tax-rates',
             'title' => 'Taxes',
-            'records' => $organization->taxRates()->orderBy('name')->get(),
-            'stores' => $request->user()->hasPermission($organization, 'stores.update')
-                ? $organization->stores()->orderBy('name')->get(['id', 'name', 'code', 'default_tax_rate_id'])
-                : [],
+            // withCount is a single batched subquery regardless of how many
+            // tax rates exist — never one COUNT per row.
+            'records' => $organization->taxRates()->withCount('variants')->orderBy('name')->get()->map(fn ($rate) => [
+                ...$rate->toArray(),
+                'store_default_count' => $storeDefaultCounts->get($rate->id, 0),
+            ]),
+            'stores' => $stores,
         ]);
     }
 

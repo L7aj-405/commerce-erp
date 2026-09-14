@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\FinancialAccountStatus;
 use App\Enums\FinancialAccountType;
+use App\Enums\PaymentMethod;
 use App\Models\Concerns\ScopesToActiveOrganization;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -20,7 +21,19 @@ class FinancialAccount extends Model
         return [
             'type' => FinancialAccountType::class,
             'status' => FinancialAccountStatus::class,
+            'accepted_methods' => 'array',
         ];
+    }
+
+    /**
+     * Whether this account may receive a Payment of the given method. A
+     * single account can accept several methods (e.g. a bank account
+     * receiving transfers, TPE settlements and cheques) — `type` is purely
+     * categorisation now, never the compatibility gate.
+     */
+    public function acceptsMethod(PaymentMethod $method): bool
+    {
+        return in_array($method->value, $this->accepted_methods ?? [], true);
     }
 
     public function organization(): BelongsTo

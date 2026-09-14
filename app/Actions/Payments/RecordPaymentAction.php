@@ -161,10 +161,15 @@ class RecordPaymentAction
         return $payment->load(['financialAccount:id,name,code,type', 'allocations.salesOrder:id,order_number']);
     }
 
+    /**
+     * The single authoritative compatibility check: a Finance Account may
+     * accept several Payment methods (see FinancialAccount::acceptsMethod())
+     * — never the old one-type-implies-one-method mapping. The UI narrows
+     * choices for convenience, but this is what actually decides.
+     */
     private function assertCompatible(PaymentMethod $method, FinancialAccount $account): void
     {
-        $allowed = config("payments.account_types.{$method->value}", []);
-        if (! in_array($account->type->value, $allowed, true)) {
+        if (! $account->acceptsMethod($method)) {
             throw ValidationException::withMessages(['financial_account_id' => 'The selected Financial Account is not compatible with this Payment method.']);
         }
     }

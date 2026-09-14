@@ -70,7 +70,7 @@ type Order = {
     created_by: { name: string } | null;
     lines: Line[];
 };
-type Account = { id: number; name: string; code: string; type: string; currency_code: string };
+type Account = { id: number; name: string; code: string; type: string; currency_code: string; accepted_methods: string[] };
 type Payment = {
     id: number;
     payment_number: string;
@@ -185,7 +185,7 @@ export default function ShowOrder({ order, paymentSummary, payments, financialAc
 
     const activeInvoice = documents.invoices.find((i) => i.status !== 'cancelled') ?? null;
     const activeDeliveryNote = documents.deliveryNotes.find((n) => n.status !== 'cancelled') ?? null;
-    const isCompany = (order.customer?.type ?? 'individual') === 'business' || !!order.customer_company;
+    const isCompany = (order.customer?.type ?? 'individual') === 'company' || !!order.customer_company;
     const net = (Number(order.subtotal_excl_tax) - Number(order.discount_total)).toFixed(4);
     const hasDiscount = Number(order.discount_total) > 0;
     const hasShipping = Number(order.pos_shipping_fee) > 0;
@@ -558,7 +558,20 @@ export default function ShowOrder({ order, paymentSummary, payments, financialAc
                                     Moyen
                                     <select
                                         value={entry.method}
-                                        onChange={(e) => setEntry(index, 'method', e.target.value)}
+                                        onChange={(e) => {
+                                            const nextMethod = e.target.value;
+                                            const stillCompatible = financialAccounts.some(
+                                                (account) => String(account.id) === entry.financial_account_id && account.accepted_methods.includes(nextMethod),
+                                            );
+                                            paymentForm.setData(
+                                                'payments',
+                                                paymentForm.data.payments.map((row, position) =>
+                                                    position === index
+                                                        ? { ...row, method: nextMethod, financial_account_id: stillCompatible ? row.financial_account_id : '' }
+                                                        : row,
+                                                ),
+                                            );
+                                        }}
                                         className="mt-1 w-full rounded-field border border-line-strong px-3 py-2"
                                     >
                                         <option value="cash">Espèces</option>
@@ -576,12 +589,17 @@ export default function ShowOrder({ order, paymentSummary, payments, financialAc
                                         className="mt-1 w-full rounded-field border border-line-strong px-3 py-2"
                                     >
                                         <option value="">Choisir…</option>
-                                        {financialAccounts.map((account) => (
-                                            <option key={account.id} value={account.id}>
-                                                {account.code} · {account.name}
-                                            </option>
-                                        ))}
+                                        {financialAccounts
+                                            .filter((account) => account.accepted_methods.includes(entry.method))
+                                            .map((account) => (
+                                                <option key={account.id} value={account.id}>
+                                                    {account.code} · {account.name}
+                                                </option>
+                                            ))}
                                     </select>
+                                    {financialAccounts.length > 0 && financialAccounts.every((account) => !account.accepted_methods.includes(entry.method)) && (
+                                        <span className="mt-1 block text-xs text-warning">Aucun compte n’accepte ce moyen de paiement.</span>
+                                    )}
                                 </label>
                                 <label className="text-sm">
                                     Montant

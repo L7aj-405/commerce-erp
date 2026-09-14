@@ -16,14 +16,16 @@ abstract class PaymentTestCase extends SalesTestCase
 {
     protected function createFinancialAccount(Organization $organization, array $overrides = []): FinancialAccount
     {
+        $type = $overrides['type'] ?? 'cash';
         $account = new FinancialAccount;
         $account->organization_id = $organization->getKey();
         $account->name = $overrides['name'] ?? 'Cash Drawer';
         $account->code = $overrides['code'] ?? 'CASH';
-        $account->type = $overrides['type'] ?? 'cash';
+        $account->type = $type;
         $account->status = $overrides['status'] ?? 'active';
         $account->currency_code = $overrides['currency_code'] ?? 'MAD';
         $account->notes = $overrides['notes'] ?? null;
+        $account->accepted_methods = $overrides['accepted_methods'] ?? $this->defaultAcceptedMethodsForType($type);
         $account->save();
 
         return $account;

@@ -45,6 +45,7 @@ abstract class PosTestCase extends SalesTestCase
         $account->type = $type;
         $account->status = 'active';
         $account->currency_code = $currency;
+        $account->accepted_methods = $this->defaultAcceptedMethodsForType($type);
         $account->save();
 
         return $account;

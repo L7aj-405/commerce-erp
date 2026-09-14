@@ -13,7 +13,7 @@ export type LineProcurement = {
 };
 export type Customer = {
     id: number;
-    type?: 'individual' | 'business';
+    type?: 'individual' | 'company';
     display_name: string;
     company_name: string | null;
     phone: string | null;

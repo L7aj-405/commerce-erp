@@ -1,6 +1,6 @@
 import type { Customer } from './types';
 
-export type Account = { id: number; name: string; code: string; type: string; currency_code: string };
+export type Account = { id: number; name: string; code: string; type: string; currency_code: string; accepted_methods: string[] };
 
 /**
  * Scoped POS pending signals. Every field is derived from the `usePendingKeys`
@@ -113,13 +113,6 @@ export const referenceLabels: Record<PaymentMethod, string> = {
     cheque: 'Numéro du chèque',
 };
 
-const accountTypes: Record<PaymentMethod, string[]> = {
-    cash: ['cash'],
-    card: ['card_clearing'],
-    bank_transfer: ['bank'],
-    cheque: ['cheque_clearing'],
-};
-
 export const blankCustomerForm = (): CustomerForm => ({
     display_name: '',
     company_name: '',
@@ -145,8 +138,8 @@ export function positiveAmount(value: string): number {
     return Number.isFinite(numeric) && numeric > 0 ? numeric : 0;
 }
 
-export function customerTypeFor(customer: Customer | null): 'individual' | 'business' {
-    return customer?.type === 'business' ? 'business' : 'individual';
+export function customerTypeFor(customer: Customer | null): 'individual' | 'company' {
+    return customer?.type === 'company' ? 'company' : 'individual';
 }
 
 export function customerFormFrom(customer: Customer | null): CustomerForm {
@@ -155,9 +148,9 @@ export function customerFormFrom(customer: Customer | null): CustomerForm {
     }
 
     return {
-        display_name: customer.type === 'business' ? '' : customer.display_name,
+        display_name: customer.type === 'company' ? '' : customer.display_name,
         company_name: customer.company_name ?? '',
-        contact_name: customer.type === 'business' ? customer.display_name : '',
+        contact_name: customer.type === 'company' ? customer.display_name : '',
         phone: customer.phone ?? '',
         email: customer.email ?? '',
         tax_identifier: customer.tax_identifier ?? '',
@@ -165,12 +158,18 @@ export function customerFormFrom(customer: Customer | null): CustomerForm {
     };
 }
 
+/**
+ * A Finance Account can accept several Payment methods at once (see
+ * FinancialAccount::acceptsMethod() server-side) — this reads that same
+ * per-account list rather than a hardcoded type→method table, so the UI
+ * never drifts out of sync with what the backend actually accepts.
+ */
 export function compatibleAccounts(method: PaymentMethod | '', financialAccounts: Account[]): Account[] {
     if (!method) {
         return [];
     }
 
-    return financialAccounts.filter((account) => accountTypes[method].includes(account.type));
+    return financialAccounts.filter((account) => account.accepted_methods.includes(method));
 }
 
 export function firstCompatibleAccountId(method: PaymentMethod | '', financialAccounts: Account[]): number | '' {

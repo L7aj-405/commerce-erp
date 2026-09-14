@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Payments;
 use App\Actions\Payments\ManageFinancialAccountAction;
 use App\Enums\FinancialAccountStatus;
 use App\Enums\FinancialAccountType;
+use App\Enums\PaymentMethod;
 use App\Http\Controllers\Controller;
 use App\Models\FinancialAccount;
 use App\Services\ActiveTenantContext;
@@ -25,8 +26,12 @@ class FinancialAccountController extends Controller
             'accounts' => FinancialAccount::query()
                 ->where('organization_id', $organization->getKey())
                 ->orderBy('name')
-                ->get(['id', 'name', 'code', 'type', 'status', 'currency_code', 'notes']),
+                ->get(['id', 'name', 'code', 'type', 'status', 'currency_code', 'notes', 'accepted_methods']),
             'currencyCode' => config('platform.currency_code', 'MAD'),
+            'paymentMethods' => array_map(fn (PaymentMethod $method) => [
+                'value' => $method->value,
+                'label' => $method->operationalLabel(),
+            ], PaymentMethod::cases()),
             'can' => [
                 'create' => request()->user()->can('create', [FinancialAccount::class, $organization]),
                 'update' => request()->user()->hasPermission($organization, 'financial_accounts.update'),
@@ -64,6 +69,11 @@ class FinancialAccountController extends Controller
             'status' => ['required', Rule::enum(FinancialAccountStatus::class)],
             'currency_code' => ['required', 'string', 'size:3', 'uppercase'],
             'notes' => ['nullable', 'string', 'max:5000'],
+            // A Finance Account must accept at least one real Payment method
+            // — never a fabricated one. This is the authoritative list
+            // RecordPaymentAction checks against (FinancialAccount::acceptsMethod()).
+            'accepted_methods' => ['required', 'array', 'min:1'],
+            'accepted_methods.*' => ['required', Rule::enum(PaymentMethod::class)],
         ];
     }
 }
