@@ -2,6 +2,8 @@
 
 namespace Tests\Feature\Pos;
 
+use App\Actions\Documents\CreateFullInvoiceFromSalesOrderAction;
+use App\Actions\Payments\RecordPaymentAction;
 use App\Models\FinancialAccount;
 use App\Models\Organization;
 use App\Models\Payment;
@@ -9,6 +11,7 @@ use App\Models\SalesOrder;
 use App\Models\Store;
 use App\Models\User;
 use App\Models\Warehouse;
+use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\Support\PosTestCase;
 
@@ -158,19 +161,129 @@ class PosCheckoutPaymentTest extends PosTestCase
         $this->assertDatabaseCount('payments', 1);
     }
 
-    public function test_pickup_checkout_rejects_partial_payment_before_fulfillment(): void
+    public function test_pickup_checkout_allows_partial_payment_and_still_fulfills_for_a_trusted_customer(): void
     {
         [$owner, , , $warehouse, $line, $cash] = $this->checkoutContext();
         $payload = $this->posPayload($warehouse, [$line], [
             'payments' => [$this->posPayment($cash, '50.0000')],
         ]);
 
+        $this->actingAs($owner)->post(route('pos.sales.store'), $payload)->assertRedirect(route('pos.index'));
+
+        $order = SalesOrder::query()->firstOrFail();
+        $this->assertSame('confirmed', $order->status->value);
+        $this->assertSame('partially_paid', $order->payment_status->value);
+        // Fulfillment mode (goods handed over now) is independent from the
+        // settlement choice — a trusted customer can take the goods pickup
+        // and pay the balance later.
+        $this->assertSame('fulfilled', $order->fulfillment_status->value);
+        $this->assertDatabaseCount('payments', 1);
+        $this->assertDatabaseHas('payments', ['amount' => 50]);
+    }
+
+    public function test_pickup_checkout_with_zero_payment_confirms_and_fulfills_with_no_payment_row(): void
+    {
+        [$owner, , , $warehouse, $line] = $this->checkoutContext();
+        $payload = $this->posPayload($warehouse, [$line], ['payments' => []]);
+
+        $this->actingAs($owner)->post(route('pos.sales.store'), $payload)->assertRedirect(route('pos.index'));
+
+        $order = SalesOrder::query()->firstOrFail();
+        $this->assertSame('confirmed', $order->status->value);
+        $this->assertSame('unpaid', $order->payment_status->value);
+        $this->assertSame('fulfilled', $order->fulfillment_status->value);
+        $this->assertSame('100.0000', $order->total_incl_tax);
+        $this->assertDatabaseCount('payments', 0);
+        $this->assertDatabaseCount('payment_allocations', 0);
+    }
+
+    public function test_deferred_delivery_checkout_confirms_order_with_no_payment_row(): void
+    {
+        [$owner, , , $warehouse, $line] = $this->checkoutContext('5000.0000');
+        $payload = $this->posPayload($warehouse, [$line], [
+            'fulfillment_mode' => 'delivery',
+            'payments' => [],
+        ]);
+
+        $this->actingAs($owner)->post(route('pos.sales.store'), $payload)->assertRedirect(route('pos.index'));
+
+        $order = SalesOrder::query()->firstOrFail();
+        $this->assertSame('confirmed', $order->status->value);
+        $this->assertSame('unpaid', $order->payment_status->value);
+        $this->assertNotSame('fulfilled', $order->fulfillment_status->value);
+        $this->assertSame('5000.0000', $order->total_incl_tax);
+        $this->assertDatabaseCount('payments', 0);
+        $this->assertDatabaseCount('payment_allocations', 0);
+    }
+
+    public function test_omitting_the_payments_key_entirely_is_rejected(): void
+    {
+        [$owner, , , $warehouse, $line] = $this->checkoutContext();
+        $payload = $this->posPayload($warehouse, [$line]);
+        unset($payload['payments']);
+
         $this->actingAs($owner)->postJson(route('pos.sales.store'), $payload)
             ->assertUnprocessable()
             ->assertJsonValidationErrors('payments');
 
         $this->assertDatabaseCount('sales_orders', 0);
+    }
+
+    public function test_a_deferred_order_can_later_receive_a_real_payment_on_its_own_payment_date(): void
+    {
+        [$owner, $organization, , $warehouse, $line, $cash] = $this->checkoutContext('10000.0000');
+        $payload = $this->posPayload($warehouse, [$line], ['payments' => []]);
+        $this->actingAs($owner)->post(route('pos.sales.store'), $payload)->assertRedirect(route('pos.index'));
+
+        $order = SalesOrder::query()->firstOrFail();
+        $this->assertSame('unpaid', $order->payment_status->value);
         $this->assertDatabaseCount('payments', 0);
+
+        // The real Payment is recorded later, using its own business date —
+        // never the Sales Order's confirmation date.
+        $laterDate = now()->addDays(10)->toDateString();
+        $payment = app(RecordPaymentAction::class)->execute($owner, $order, [
+            'method' => 'bank_transfer',
+            'financial_account_id' => $this->createPosAccount($organization, 'bank', 'BANK', 'Main Bank')->getKey(),
+            'amount' => '10000.0000',
+            'payment_date' => $laterDate,
+            'reference' => 'VIR-1',
+        ], (string) Str::uuid());
+
+        $this->assertSame($laterDate, $payment->payment_date->toDateString());
+        $this->assertSame('paid', $order->fresh()->payment_status->value);
+        $this->assertDatabaseCount('payments', 1);
+        $this->assertDatabaseCount('payment_allocations', 1);
+    }
+
+    public function test_a_deferred_order_can_later_be_invoiced(): void
+    {
+        [$owner, , , $warehouse, $line] = $this->checkoutContext('10000.0000');
+        $payload = $this->posPayload($warehouse, [$line], ['payments' => []]);
+        $this->actingAs($owner)->post(route('pos.sales.store'), $payload)->assertRedirect(route('pos.index'));
+
+        $order = SalesOrder::query()->firstOrFail();
+        $this->assertSame('unpaid', $order->payment_status->value);
+
+        $invoice = app(CreateFullInvoiceFromSalesOrderAction::class)->execute($owner, $order);
+
+        $this->assertSame($order->getKey(), $invoice->sales_order_id);
+        $this->assertSame('10000.0000', $invoice->total_incl_tax);
+        // Invoicing never creates a Payment — sale_date, invoice_date and
+        // payment_date remain three independent events.
+        $this->assertDatabaseCount('payments', 0);
+    }
+
+    public function test_non_cash_payment_methods_do_not_require_cash_received(): void
+    {
+        [$owner, $organization, , $warehouse, $line] = $this->checkoutContext();
+        $account = $this->createPosAccount($organization, 'bank', 'BANK', 'Main Bank');
+        $payment = $this->posPayment($account, '100.0000', ['method' => 'bank_transfer', 'reference' => 'VIR-9']);
+        unset($payment['cash_received']);
+        $payload = $this->posPayload($warehouse, [$line], ['payments' => [$payment]]);
+
+        $this->actingAs($owner)->post(route('pos.sales.store'), $payload)->assertRedirect(route('pos.index'));
+        $this->assertDatabaseHas('payments', ['method' => 'bank_transfer', 'amount' => 100]);
     }
 
     public function test_overpayment_is_rejected_instead_of_becoming_customer_credit(): void

@@ -22,6 +22,20 @@ export type PosPending = {
 
 export type PaymentMethod = 'cash' | 'card' | 'bank_transfer' | 'cheque';
 
+/**
+ * POS settlement choice. This drives the payment UI and the payload sent to
+ * the server — it is never sent itself: `full`/`partial` submit one or more
+ * real `payments` rows, `deferred` submits an empty `payments` array so no
+ * Payment record is ever created for money that has not moved yet.
+ */
+export type SettlementMode = 'full' | 'partial' | 'deferred';
+
+export const settlementLabels: Record<SettlementMode, string> = {
+    full: 'Paiement comptant',
+    partial: 'Paiement partiel',
+    deferred: 'Paiement ultérieur',
+};
+
 export type PaymentDraft = {
     method: PaymentMethod | '';
     financial_account_id: number | '';

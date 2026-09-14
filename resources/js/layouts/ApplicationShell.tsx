@@ -82,6 +82,16 @@ export default function ApplicationShell({ children, wide = false, flush = false
             ],
         },
         {
+            label: 'Finance',
+            // Deliberately no `needsStore`: Finance reporting works across the
+            // whole organization without the viewer's active store switcher.
+            items: [
+                { href: '/finance', label: 'Situation mensuelle', permission: 'finance.view', icon: <IconWallet /> },
+                { href: '/finance/journal', label: 'Journal des ventes', permission: 'finance.view', icon: <IconDoc /> },
+                { href: '/finance/ca-encaisse', label: 'CA encaissé', permission: 'finance.view', icon: <IconWallet /> },
+            ],
+        },
+        {
             label: 'Paramètres',
             items: [
                 ...(tenant.organization

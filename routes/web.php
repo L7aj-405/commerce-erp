@@ -17,6 +17,9 @@ use App\Http\Controllers\Documents\DocumentProfileController;
 use App\Http\Controllers\Documents\DocumentRenderingController;
 use App\Http\Controllers\Documents\InvoiceController;
 use App\Http\Controllers\Documents\InvoiceCorrectionLineController;
+use App\Http\Controllers\Finance\FinanceDashboardController;
+use App\Http\Controllers\Finance\FinanceExportController;
+use App\Http\Controllers\Finance\FinanceJournalController;
 use App\Http\Controllers\Integrations\WooCommerceIntegrationController;
 use App\Http\Controllers\Inventory\InventoryMovementController;
 use App\Http\Controllers\Inventory\InventoryReservationController;
@@ -342,6 +345,26 @@ Route::middleware('auth')->group(function () {
         Route::post('/{procurement}/order', [ProcurementController::class, 'order'])->name('order');
         Route::post('/{procurement}/receive', [ProcurementController::class, 'receive'])->name('receive');
         Route::post('/{procurement}/cancel', [ProcurementController::class, 'cancel'])->name('cancel');
+    });
+
+    // Finance V1 — read-only reporting over existing Sales/Invoice/Payment data.
+    // Authorization is Finance's own path (finance.view / finance.export /
+    // finance.receivables.view via FinanceAccessGuard), never
+    // InvoicePolicy/PaymentPolicy — see FinanceAccessGuard for why. The store
+    // filter here is independent of the user's active-store switcher.
+    Route::prefix('finance')->name('finance.')->group(function () {
+        Route::get('/', [FinanceDashboardController::class, 'index'])->name('index');
+        Route::get('/ventes', [FinanceDashboardController::class, 'ventes'])->name('ventes');
+        Route::get('/facturation', [FinanceDashboardController::class, 'facturation'])->name('facturation');
+        Route::get('/encaissements', [FinanceDashboardController::class, 'encaissements'])->name('encaissements');
+        Route::get('/creances', [FinanceDashboardController::class, 'creances'])->name('creances');
+        Route::get('/journal', [FinanceJournalController::class, 'index'])->name('journal');
+        Route::get('/ca-encaisse', [FinanceDashboardController::class, 'caEncaisse'])->name('ca-encaisse');
+        Route::get('/export/xlsx', [FinanceExportController::class, 'xlsx'])->name('export.xlsx');
+        Route::get('/export/pdf', [FinanceExportController::class, 'pdf'])->name('export.pdf');
+        Route::get('/export/invoices', [FinanceExportController::class, 'invoicesPdf'])->name('export.invoices');
+        Route::get('/ca-encaisse/export/xlsx', [FinanceExportController::class, 'caEncaisseXlsx'])->name('ca-encaisse.export.xlsx');
+        Route::get('/ca-encaisse/export/pdf', [FinanceExportController::class, 'caEncaissePdf'])->name('ca-encaisse.export.pdf');
     });
 });
 

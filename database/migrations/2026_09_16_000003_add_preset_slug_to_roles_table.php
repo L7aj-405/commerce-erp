@@ -15,20 +15,28 @@ use Illuminate\Support\Facades\Schema;
  *
  * Additive-only per MIGRATION_BASELINE.md: appended after the frozen baseline,
  * does not touch `2026_08_23_000001_create_platform_core_tables`.
+ *
+ * Guarded with hasColumn()/hasColumn() checks so this migration is safe to run
+ * whether `preset_slug` already exists (e.g. a database that had it applied
+ * under an earlier filename of this same migration) or not.
  */
 return new class extends Migration
 {
     public function up(): void
     {
-        Schema::table('roles', function (Blueprint $table) {
-            $table->string('preset_slug')->nullable()->after('is_system');
-        });
+        if (! Schema::hasColumn('roles', 'preset_slug')) {
+            Schema::table('roles', function (Blueprint $table) {
+                $table->string('preset_slug')->nullable()->after('is_system');
+            });
+        }
     }
 
     public function down(): void
     {
-        Schema::table('roles', function (Blueprint $table) {
-            $table->dropColumn('preset_slug');
-        });
+        if (Schema::hasColumn('roles', 'preset_slug')) {
+            Schema::table('roles', function (Blueprint $table) {
+                $table->dropColumn('preset_slug');
+            });
+        }
     }
 };

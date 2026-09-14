@@ -71,3 +71,27 @@ export function ButtonLink({
         </Link>
     );
 }
+
+/**
+ * A file-download button. Deliberately a plain `<a>`, never Inertia's
+ * `<Link>` — Inertia's client-side visit expects an Inertia (or full HTML)
+ * response, and a raw binary body (XLSX/PDF bytes) gets rendered as text
+ * instead of letting the browser download it. `Content-Disposition:
+ * attachment` on the server response is what actually triggers the download;
+ * this is just a normal top-level navigation that lets the browser honor it.
+ */
+export function DownloadLink({
+    href,
+    variant = 'primary',
+    size = 'md',
+    block = false,
+    className = '',
+    title,
+    children,
+}: PropsWithChildren<{ href: string; variant?: Variant; size?: Size; block?: boolean; className?: string; title?: string }>) {
+    return (
+        <a href={href} title={title} className={`${base} ${styles[variant]} ${sizes[size]} ${block ? 'w-full' : ''} ${className}`}>
+            {children}
+        </a>
+    );
+}

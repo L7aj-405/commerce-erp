@@ -98,7 +98,7 @@ export default function PosReviewModal({ open, data, sale, currencyCode, busy, e
                     <div className="border-t border-line pt-3">
                         <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-faint">Paiement</p>
                         <ul className="mt-1 space-y-1">
-                            {data.payments.length === 0 && <li className="text-ink-muted">Aucun paiement saisi.</li>}
+                            {data.payments.length === 0 && <li className="text-ink-muted">Paiement ultérieur — aucun mouvement de caisse ne sera enregistré.</li>}
                             {data.payments.map((payment, index) => (
                                 <li key={index} className="flex justify-between gap-3">
                                     <span className="text-ink">
@@ -110,8 +110,8 @@ export default function PosReviewModal({ open, data, sale, currencyCode, busy, e
                                 </li>
                             ))}
                         </ul>
-                        <div className="mt-1.5 flex justify-between"><span className="text-ink-muted">Payé</span><strong className="text-ink"><Money value={data.paid} currency={currencyCode} /></strong></div>
-                        <div className="flex justify-between"><span className="text-ink-muted">Reste</span><strong className={Number(data.remaining) > 0 ? 'text-warning' : 'text-ink'}><Money value={data.remaining} currency={currencyCode} /></strong></div>
+                        <div className="mt-1.5 flex justify-between"><span className="text-ink-muted">Montant encaissé maintenant</span><strong className="text-ink"><Money value={data.paid} currency={currencyCode} /></strong></div>
+                        <div className="flex justify-between"><span className="text-ink-muted">Reste à payer</span><strong className={Number(data.remaining) > 0 ? 'text-warning' : 'text-ink'}><Money value={data.remaining} currency={currencyCode} /></strong></div>
                     </div>
 
                     {data.fulfillment_mode === 'pickup' && data.requires_replenishment && (

@@ -116,15 +116,13 @@ class CreatePosSaleAction
                 $paymentTotal = $this->paymentTotal($payments);
                 $fulfillmentMode = $draft->pos_fulfillment_mode ?? 'pickup';
 
+                // Full, partial, or zero payment ("payment later") are all
+                // legitimate POS settlements — the cashier's settlement choice
+                // decides this, not the fulfillment mode. The only hard rule is
+                // that a payment can never exceed the amount actually due.
                 if (Decimal::compare($paymentTotal, $remaining) > 0) {
                     throw ValidationException::withMessages([
                         'payments' => "Le total des paiements dépasse le montant dû autorisé de {$remaining}.",
-                    ]);
-                }
-
-                if ($fulfillmentMode !== 'delivery' && ! $awaitingProcurement && Decimal::compare($paymentTotal, $remaining) !== 0) {
-                    throw ValidationException::withMessages([
-                        'payments' => 'Le retrait immédiat exige un paiement intégral avant la remise au client.',
                     ]);
                 }
 
@@ -223,15 +221,13 @@ class CreatePosSaleAction
                 $paymentTotal = $this->paymentTotal($payments);
                 $fulfillmentMode = $data['fulfillment_mode'] ?? 'pickup';
 
+                // Full, partial, or zero payment ("payment later") are all
+                // legitimate POS settlements — the cashier's settlement choice
+                // decides this, not the fulfillment mode. The only hard rule is
+                // that a payment can never exceed the amount actually due.
                 if (Decimal::compare($paymentTotal, $remaining) > 0) {
                     throw ValidationException::withMessages([
                         'payments' => "Le total des paiements dépasse le montant dû autorisé de {$remaining}.",
-                    ]);
-                }
-
-                if ($fulfillmentMode !== 'delivery' && ! $awaitingProcurement && Decimal::compare($paymentTotal, $remaining) !== 0) {
-                    throw ValidationException::withMessages([
-                        'payments' => 'Le retrait immédiat exige un paiement intégral avant la remise au client.',
                     ]);
                 }
 

@@ -14,6 +14,7 @@ import {
     type PaymentDraft,
     type PaymentMethod,
     type ReviewData,
+    type SettlementMode,
     blankCustomerForm,
     buildEmptyPayment,
     buildInitialPayment,
@@ -25,6 +26,7 @@ import {
     paymentLabels,
     positiveAmount,
     referenceLabels,
+    settlementLabels,
 } from './pos-shared';
 import type { ActiveSale, Customer } from './types';
 
@@ -83,6 +85,7 @@ export default function PosCheckoutPanel({
         delivery_phone: sale.checkout.delivery_phone ?? '',
         delivery_notes: sale.checkout.delivery_notes ?? '',
     });
+    const [settlementMode, setSettlementMode] = useState<SettlementMode>('full');
     const [payments, setPayments] = useState<PaymentDraft[]>(() => [buildInitialPayment(sale.summary.total, financialAccounts)]);
     const [error, setError] = useState('');
     const [savingState, setSavingState] = useState(false);
@@ -190,6 +193,18 @@ export default function PosCheckoutPanel({
         setPayments((current) => current.map((payment, itemIndex) => (itemIndex === index ? { ...payment, ...patch } : payment)));
     }
 
+    function setSettlement(mode: SettlementMode) {
+        setSettlementMode(mode);
+        setError('');
+        if (mode === 'full') {
+            setPayments([buildInitialPayment(currentTotal, financialAccounts)]);
+        } else if (mode === 'partial') {
+            setPayments([buildEmptyPayment()]);
+        } else {
+            setPayments([]);
+        }
+    }
+
     function assignMethod(index: number, method: PaymentMethod | '') {
         setPayments((current) =>
             current.map((payment, itemIndex) => {
@@ -244,14 +259,24 @@ export default function PosCheckoutPanel({
     }
 
     function submitReview() {
-        const messages = [...cashErrors, ...accountErrors];
-        if (messages.length > 0) {
-            setError(messages[0]);
-            return;
-        }
-        if (Number(remaining) > 0 && checkoutState.fulfillment_mode === 'pickup') {
-            setError('Le retrait immédiat exige un paiement intégral.');
-            return;
+        if (settlementMode !== 'deferred') {
+            const messages = [...cashErrors, ...accountErrors];
+            if (messages.length > 0) {
+                setError(messages[0]);
+                return;
+            }
+            if (paid <= 0) {
+                setError('Sélectionnez un moyen de paiement et un montant.');
+                return;
+            }
+            if (settlementMode === 'full' && Math.abs(Number(currentTotal) - paid) > 0.00005) {
+                setError('Le paiement comptant doit couvrir la totalité du montant de la commande.');
+                return;
+            }
+            if (settlementMode === 'partial' && paid >= Number(currentTotal)) {
+                setError('Un paiement partiel doit rester inférieur au total de la commande.');
+                return;
+            }
         }
         setError('');
 
@@ -448,12 +473,27 @@ export default function PosCheckoutPanel({
                 <Section
                     title="Paiement"
                     action={
-                        <button type="button" onClick={() => setPayments((current) => [...current, buildEmptyPayment()])} className="text-[12px] font-medium text-ink-muted transition-soft hover:text-ink">
-                            + Ajouter un moyen
-                        </button>
+                        settlementMode !== 'deferred' ? (
+                            <button type="button" onClick={() => setPayments((current) => [...current, buildEmptyPayment()])} className="text-[12px] font-medium text-ink-muted transition-soft hover:text-ink">
+                                + Ajouter un moyen
+                            </button>
+                        ) : undefined
                     }
                 >
-                    <div className="space-y-2.5">
+                    <SegmentedControl
+                        size="sm"
+                        ariaLabel="Mode de règlement"
+                        value={settlementMode}
+                        onChange={setSettlement}
+                        options={(['full', 'partial', 'deferred'] as SettlementMode[]).map((mode) => ({ value: mode, label: settlementLabels[mode] }))}
+                    />
+
+                    {settlementMode === 'deferred' ? (
+                        <p className="mt-2.5 rounded-field bg-raised px-3 py-2 text-[12px] text-ink-muted">
+                            Le client règlera plus tard, après réception de la facture. Aucun mouvement de caisse ne sera enregistré maintenant.
+                        </p>
+                    ) : (
+                    <div className="mt-2.5 space-y-2.5">
                         {payments.map((payment, index) => {
                             const compatible = compatibleAccounts(payment.method, financialAccounts);
                             return (
@@ -530,10 +570,15 @@ export default function PosCheckoutPanel({
                             );
                         })}
                     </div>
+                    )}
 
                     <div className="mt-2.5 space-y-1 rounded-field bg-raised px-3 py-2 text-[13px]">
-                        <div className="flex justify-between"><span className="text-ink-muted">Payé</span><strong><Money value={paid.toFixed(4)} currency={currencyCode} /></strong></div>
-                        <div className="flex justify-between"><span className="text-ink-muted">Reste</span><strong className={Number(remaining) > 0 ? 'text-warning' : 'text-ink'}><Money value={remaining} currency={currencyCode} /></strong></div>
+                        <div className="flex justify-between"><span className="text-ink-muted">Total commande</span><strong><Money value={currentTotal} currency={currencyCode} /></strong></div>
+                        <div className="flex justify-between">
+                            <span className="text-ink-muted">{settlementMode === 'deferred' ? 'À encaisser maintenant' : 'Montant encaissé maintenant'}</span>
+                            <strong><Money value={paid.toFixed(4)} currency={currencyCode} /></strong>
+                        </div>
+                        <div className="flex justify-between"><span className="text-ink-muted">Reste à payer</span><strong className={Number(remaining) > 0 ? 'text-warning' : 'text-ink'}><Money value={remaining} currency={currencyCode} /></strong></div>
                     </div>
                 </Section>
 

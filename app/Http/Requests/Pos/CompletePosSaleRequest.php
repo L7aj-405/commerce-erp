@@ -23,7 +23,11 @@ class CompletePosSaleRequest extends FormRequest
             'order_id' => ['nullable', 'integer', 'required_without:lines'],
             'warehouse_id' => ['nullable', 'integer', 'required_without:order_id'],
             'customer_id' => ['nullable', 'integer'],
-            'payments' => ['required', 'array', 'min:1', 'max:10'],
+            // Payment is optional: a Sales Order may be confirmed with full,
+            // partial, or zero payment now ("payment later" for trusted
+            // customers). The key itself must still be sent — an empty array
+            // means no cash movement — but no entry is required.
+            'payments' => ['present', 'array', 'max:10'],
             'payments.*.method' => ['required', Rule::enum(PaymentMethod::class)],
             'payments.*.financial_account_id' => ['required', 'integer'],
             'payments.*.amount' => ['required', 'decimal:0,4', 'gt:0'],

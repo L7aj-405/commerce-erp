@@ -17,8 +17,12 @@ class DompdfPdfGenerator implements PdfGenerator
         $config->set('defaultFont', (string) config('documents.pdf.default_font', 'DejaVu Sans'));
         $config->setChroot([resource_path('views')]);
 
+        $orientation = in_array($options['orientation'] ?? null, ['portrait', 'landscape'], true)
+            ? $options['orientation']
+            : (string) config('documents.pdf.orientation', 'portrait');
+
         $pdf = new Dompdf($config);
-        $pdf->setPaper((string) config('documents.pdf.paper', 'a4'), (string) config('documents.pdf.orientation', 'portrait'));
+        $pdf->setPaper((string) config('documents.pdf.paper', 'a4'), $orientation);
         $pdf->loadHtml($html, 'UTF-8');
         $pdf->render();
 
