@@ -10,13 +10,19 @@
 
     // Vertical rhythm — see the identical comment in documents/invoice/v1 for
     // the full reasoning: ALL flexible whitespace lives between the last item
-    // row and the totals (a MIN-HEIGHT floor placed right after the items
-    // table, calibrated against real rendered output), so the closing
-    // section (totals + amount in words + issuer line) is one compact,
-    // predictable-height block that always reads low on the page as a
-    // single unit.
+    // row and the totals, sized ADAPTIVELY from the actual line count (a
+    // flat constant either strands the closing block too high or forces an
+    // unnecessary second page), estimated slightly high per row/block so the
+    // spacer errs small rather than large — large is what causes an
+    // artificial page break.
+    $lineCount = max(1, count($lines));
     $notesMm = (! empty($document['notes']) ? 20 : 0) + (! empty($document['terms']) ? 20 : 0);
-    $itemsSpacerMm = max(15, ($has_discount ? 50 : 65) - $notesMm);
+
+    // FINAL APPROVED RHYTHM:
+    // Keep the closing cluster low on short documents. As real item rows grow,
+    // spend this whitespace first so it can never be the reason for an
+    // artificial second page. 1 line ~= 102mm, 12 lines ~= 8.5mm.
+    $itemsSpacerMm = max(0, 102 - (($lineCount - 1) * 8.5) - $notesMm);
 
     $cols = $showRemise
         ? ['ref' => 10, 'des' => 33, 'pres' => 9, 'qty' => 6, 'pu' => 11, 'pt' => 11, 'rem' => 9, 'ttc' => 11]
@@ -88,11 +94,11 @@
         table.totals .val { text-align: right; white-space: nowrap; }
         table.totals tr.strong td { font-weight: bold; }
         table.totals tr.grand td { border-top: 1px solid {{ $ink }}; font-weight: bold; font-size: 11px; }
-        .words { margin-top: 16px; text-align: center; }
+        .words { margin-top: 12px; text-align: center; }
         .words-rule { border-top: 1px solid #c9c9c2; width: 60%; margin: 0 auto 8px; }
         .words-intro { font-weight: bold; font-size: 9px; }
         .words-value { margin-top: 6px; font-style: italic; font-weight: bold; font-size: 12px; text-transform: uppercase; }
-        .issued-meta { margin-top: 14px; color: #888; font-size: 8px; text-align: left; }
+        .issued-meta { margin: 12px 0 0; color: #888; font-size: 8px; text-align: left; }
     </style>
 </head>
 <body>

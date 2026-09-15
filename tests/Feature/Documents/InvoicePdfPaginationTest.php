@@ -34,6 +34,38 @@ class InvoicePdfPaginationTest extends DocumentTestCase
         $this->assertTrue(strpos($html, 'class="closing"') > strpos($html, 'class="items"'));
     }
 
+    /**
+     * Regression pin for TWO opposite bugs seen during development:
+     *  - a flat, small spacer left the closing block stranded far above the
+     *    footer on a short invoice;
+     *  - a flat, large spacer pushed a 5-12 line invoice to an unnecessary
+     *    second page even though page 1 had room.
+     * The spacer must therefore be ADAPTIVE: large for a 1-line invoice
+     * (there is a lot of real page left to fill), and small for a 12-line
+     * invoice (the items table itself already uses most of the page).
+     */
+    public function test_the_flexible_gap_above_totals_shrinks_as_line_count_grows(): void
+    {
+        [$owner, , , $shortOrder] = $this->documentFixture(); // 1 line
+        $shortInvoice = $this->issueInvoice($owner, $this->createInvoice($owner, $shortOrder));
+        $shortSpacerMm = $this->itemsSpacerMm(app(InvoiceDocumentRenderer::class)->html($shortInvoice));
+        $this->assertGreaterThanOrEqual(60.0, $shortSpacerMm);
+
+        $twelveLineInvoice = $this->issueInvoice($owner, $this->createInvoice($owner, $this->orderWithLines($owner, 12)));
+        $this->assertSame(1, $this->pageCount($twelveLineInvoice), '12 real item rows must still fit on one page.');
+        $longerSpacerMm = $this->itemsSpacerMm(app(InvoiceDocumentRenderer::class)->html($twelveLineInvoice));
+        $this->assertLessThan($shortSpacerMm, $longerSpacerMm);
+        $this->assertLessThanOrEqual(20.0, $longerSpacerMm);
+    }
+
+    private function itemsSpacerMm(string $html): float
+    {
+        preg_match('/\.items-spacer \{ min-height: ([\d.]+)mm; \}/', $html, $matches);
+        $this->assertNotEmpty($matches, 'Expected an .items-spacer min-height rule in the rendered HTML.');
+
+        return (float) $matches[1];
+    }
+
     public function test_issued_invoice_uses_the_snapshot_logo_as_a_faint_watermark(): void
     {
         [$owner, $organization, $store, $order] = $this->documentFixture();

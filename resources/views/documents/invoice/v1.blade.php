@@ -9,25 +9,35 @@
     $buyerLabel = $buyer['company'] ?: ($buyer['name'] ?: '—');
 
     // Vertical rhythm: ALL flexible whitespace lives BETWEEN the last item row
-    // and the totals — the items/commercial region is the flexible region,
-    // not the closing section. The closing section (totals + amount in words
-    // + issuer line) is one compact, predictable-height block that always
-    // follows immediately after that flexible gap, so it reads as a single
-    // unit low on the page rather than drifting apart.
+    // and the totals. This must be ADAPTIVE, not a flat constant — a flat
+    // min-height adds the same padding regardless of how many item rows
+    // there are, which either strands the closing block too high (too small
+    // a constant) or forces an unnecessary page break for content that would
+    // have fit (too large a constant, the previous bug: a fixed ~110mm was
+    // added on top of 5 real item rows and pushed the whole closing block to
+    // page 2 even though page 1 had room left).
     //
-    // This is a MIN-HEIGHT floor placed right after the items table (not a
-    // fixed margin). The real rendered height of the items table (and of the
-    // masthead/meta above it) is unknown here — that is exactly why this is
-    // a floor rather than a formula solving for an exact bottom position: on
-    // a short invoice it fills the real remaining room so the closing
-    // section lands low; on a longer one it simply contributes less (or
-    // nothing), and once the page is genuinely full, `page-break-inside:
-    // avoid` on `.closing` sends the whole closing block to the next page
-    // rather than splitting or overlapping anything. The base values are
-    // calibrated against real rendered output (1/5/12-line invoices) rather
-    // than derived from an on-paper estimate of the masthead's height.
+    // Instead we estimate the items table's own height as a function of the
+    // actual line count and only spend what's left of a fixed body budget as
+    // the spacer — i.e. spacer = budget − masthead/meta − estimated items
+    // height − closing height − notes. All of the per-element estimates
+    // below are deliberately biased slightly HIGH (rows/blocks assumed a bit
+    // taller than typical), so the *spacer* comes out a bit small rather
+    // than a bit large: underestimating the gap only costs a little of the
+    // "settle near the footer" polish, whereas overestimating it is exactly
+    // what caused the artificial-second-page bug. `max(0, …)` means a
+    // genuinely long items table (or long notes) can drive the spacer to
+    // zero — totals then follow the last row immediately, and once even
+    // that doesn't fit, `page-break-inside: avoid` on `.closing` (not this
+    // spacer) is what sends the closing block to the next page.
+    $lineCount = max(1, count($lines));
     $notesMm = ! empty($document['notes']) ? 20 : 0;
-    $itemsSpacerMm = max(15, ($has_discount ? 50 : 65) - $notesMm);
+
+    // FINAL APPROVED RHYTHM:
+    // Keep the closing cluster low on short documents. As real item rows grow,
+    // spend this whitespace first so it can never be the reason for an
+    // artificial second page. 1 line ~= 102mm, 12 lines ~= 8.5mm.
+    $itemsSpacerMm = max(0, 102 - (($lineCount - 1) * 8.5) - $notesMm);
 
     // Item-table column widths (percentages, each variant sums to 100).
     $cols = $showRemise
@@ -170,11 +180,11 @@
         table.totals .val { text-align: right; white-space: nowrap; }
         table.totals tr.strong td { font-weight: bold; }
         table.totals tr.grand td { border-top: 1px solid {{ $ink }}; font-weight: bold; font-size: 11px; }
-        .words { margin-top: 16px; text-align: center; }
+        .words { margin-top: 12px; text-align: center; }
         .words-rule { border-top: 1px solid #c9c9c2; width: 60%; margin: 0 auto 8px; }
         .words-intro { font-weight: bold; font-size: 9px; }
         .words-value { margin-top: 6px; font-style: italic; font-weight: bold; font-size: 12px; text-transform: uppercase; }
-        .issued-meta { margin-top: 14px; color: #888; font-size: 8px; text-align: left; }
+        .issued-meta { margin: 12px 0 0; color: #888; font-size: 8px; text-align: left; }
     </style>
 </head>
 <body>

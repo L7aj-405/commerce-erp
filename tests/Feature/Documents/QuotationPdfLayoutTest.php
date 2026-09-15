@@ -45,6 +45,41 @@ class QuotationPdfLayoutTest extends QuotationTestCase
         $this->assertStringContainsString('DIRHAMS', $html);
     }
 
+    /**
+     * Same regression pin as InvoicePdfPaginationTest — the flexible gap
+     * above the totals must be ADAPTIVE: large for a 1-line Devis (settles
+     * the closing block near the footer), small for a 12-line one (which
+     * must still fit on one page rather than being pushed to a second page
+     * by an oversized flat spacer).
+     */
+    public function test_the_flexible_gap_above_totals_shrinks_as_line_count_grows(): void
+    {
+        [$owner, $organization, $store, $variant] = $this->base();
+        $quotation = $this->createQuotation($owner, $organization, $store);
+        $this->addCatalogQuotationLine($owner, $quotation, $variant);
+        $issued = $this->issueQuotation($owner, $quotation);
+        $shortSpacerMm = $this->itemsSpacerMm(app(QuotationDocumentRenderer::class)->html($issued));
+        $this->assertGreaterThanOrEqual(60.0, $shortSpacerMm);
+
+        $longerQuotation = $this->createQuotation($owner, $organization, $store);
+        for ($i = 1; $i <= 12; $i++) {
+            $this->addNonStockQuotationLine($owner, $longerQuotation, ['name' => "Article {$i}"]);
+        }
+        $longerIssued = $this->issueQuotation($owner, $longerQuotation);
+        $this->assertSame(1, $this->pageCount($longerIssued), '12 real item rows must still fit on one page.');
+        $longerSpacerMm = $this->itemsSpacerMm(app(QuotationDocumentRenderer::class)->html($longerIssued));
+        $this->assertLessThan($shortSpacerMm, $longerSpacerMm);
+        $this->assertLessThanOrEqual(20.0, $longerSpacerMm);
+    }
+
+    private function itemsSpacerMm(string $html): float
+    {
+        preg_match('/\.items-spacer \{ min-height: ([\d.]+)mm; \}/', $html, $matches);
+        $this->assertNotEmpty($matches, 'Expected an .items-spacer min-height rule in the rendered HTML.');
+
+        return (float) $matches[1];
+    }
+
     public function test_amount_in_words_and_issuer_metadata_are_present_and_positioned_after_totals(): void
     {
         [$owner, $organization, $store, $variant] = $this->base();
