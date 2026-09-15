@@ -106,6 +106,7 @@ export default function ApplicationShell({ children, wide = false, flush = false
                     : []),
                 { href: '/document-profile', label: 'Documents · Facture', permission: ['settings.view', 'settings.update'], icon: <IconDoc /> },
                 { href: '/quotation-settings', label: 'Documents · Devis', permission: ['settings.view', 'settings.update'], icon: <IconDoc /> },
+                { href: '/email-settings', label: 'Configuration e-mail', permission: ['settings.view', 'settings.update'], icon: <IconMail /> },
                 { href: '/catalog/categories', label: 'Catégories', permission: 'categories.manage', icon: <IconTag /> },
                 { href: '/catalog/brands', label: 'Marques', permission: 'brands.manage', icon: <IconTag /> },
                 { href: '/catalog/tax-rates', label: 'Taxes (TVA)', permission: 'tax_rates.view', icon: <IconInvoice /> },
@@ -306,3 +307,4 @@ function IconWallet() { return <svg {...s}><path d="M4 7a2 2 0 0 1 2-2h11v4M4 7v
 function IconBuilding() { return <svg {...s}><path d="M5 21V5a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v16M9 8h.01M12 8h.01M9 12h.01M12 12h.01M9 16h.01M12 16h.01M17 21V10h2a2 2 0 0 1 2 2v9" /></svg>; }
 function IconCollapse() { return <svg {...s}><path d="M14 6 8 12l6 6" /></svg>; }
 function IconPlug() { return <svg {...s}><path d="M9 2v6M15 2v6M7 8h10v3a5 5 0 0 1-10 0V8ZM12 16v6" /></svg>; }
+function IconMail() { return <svg {...s}><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m4 7 8 6 8-6" /></svg>; }

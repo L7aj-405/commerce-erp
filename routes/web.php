@@ -48,6 +48,7 @@ use App\Http\Controllers\Sales\CustomerController;
 use App\Http\Controllers\Sales\SalesOrderController;
 use App\Http\Controllers\Sales\SalesOrderLifecycleController;
 use App\Http\Controllers\Sales\SalesOrderLineController;
+use App\Http\Controllers\Settings\OrganizationMailSettingController;
 use App\Http\Controllers\StoreController;
 use App\Http\Controllers\StoreMembershipController;
 use App\Http\Controllers\TenantContextController;
@@ -95,6 +96,9 @@ Route::middleware('auth')->group(function () {
     Route::put('/document-profile', [DocumentProfileController::class, 'update'])->name('document-profile.update');
     Route::get('/quotation-settings', [QuotationSettingsController::class, 'edit'])->name('quotation-settings.edit');
     Route::put('/quotation-settings', [QuotationSettingsController::class, 'update'])->name('quotation-settings.update');
+    Route::get('/email-settings', [OrganizationMailSettingController::class, 'edit'])->name('email-settings.edit');
+    Route::put('/email-settings', [OrganizationMailSettingController::class, 'update'])->name('email-settings.update');
+    Route::post('/email-settings/test', [OrganizationMailSettingController::class, 'test'])->name('email-settings.test');
 
     Route::prefix('pos')->name('pos.')->group(function () {
         Route::get('/', [PosController::class, 'index'])->name('index');

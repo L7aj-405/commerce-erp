@@ -20,6 +20,7 @@ use App\Models\ProductVariant;
 use App\Models\Quotation;
 use App\Models\TaxRate;
 use App\Services\ActiveTenantContext;
+use App\Services\OrganizationOutboundMailService;
 use App\Services\ProductPriceResolver;
 use App\Services\QuotationDocumentSettings;
 use App\Support\Decimal;
@@ -144,7 +145,7 @@ class QuotationController extends Controller
         return redirect()->route('quotations.show', $quotation);
     }
 
-    public function show(Request $request, Quotation $quotation): Response
+    public function show(Request $request, Quotation $quotation, OrganizationOutboundMailService $mail): Response
     {
         $this->authorize('view', $quotation);
         $quotation->load([
@@ -203,7 +204,10 @@ class QuotationController extends Controller
                 'email' => $quotation->customer_email,
                 'phone' => $quotation->customer_phone,
                 'whatsappMessage' => $this->whatsappMessage($quotation),
+                'defaultSubject' => "Devis {$quotation->quotation_number} — ".($seller['trade_name'] ?: $seller['legal_name'] ?? $quotation->organization->name),
+                'attachmentName' => "Devis-{$quotation->quotation_number}.pdf",
             ] : null,
+            'mailConfigured' => $mail->isConfigured($quotation->organization),
             'can' => [
                 'update' => $request->user()->can('update', $quotation),
                 'issue' => $request->user()->can('issue', $quotation),
@@ -217,6 +221,7 @@ class QuotationController extends Controller
                 'email' => $request->user()->can('email', $quotation) && $isCurrentVersion,
                 'duplicate' => $request->user()->can('duplicate', $quotation),
                 'createCustomer' => $request->user()->hasPermission($quotation->organization_id, 'customers.create'),
+                'configureMail' => $request->user()->hasPermission($quotation->organization_id, 'settings.update'),
             ],
         ]);
     }

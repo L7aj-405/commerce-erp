@@ -9,8 +9,8 @@ use App\Models\Quotation;
 use App\Models\User;
 use App\Services\AuditLogger;
 use App\Services\DocumentPdfService;
+use App\Services\OrganizationOutboundMailService;
 use App\Services\QuotationDocumentRenderer;
-use Illuminate\Support\Facades\Mail;
 use Illuminate\Validation\ValidationException;
 use Throwable;
 
@@ -21,10 +21,11 @@ class SendQuotationEmailAction
     public function __construct(
         private readonly DocumentPdfService $pdf,
         private readonly QuotationDocumentRenderer $renderer,
+        private readonly OrganizationOutboundMailService $mail,
         private readonly AuditLogger $audit,
     ) {}
 
-    public function execute(User $actor, Quotation $quotation, string $recipient): void
+    public function execute(User $actor, Quotation $quotation, string $recipient, ?string $subject = null, ?string $message = null): void
     {
         $this->authorizeQuotation($actor, $quotation, 'quotations.email');
 
@@ -37,7 +38,11 @@ class SendQuotationEmailAction
 
         try {
             $document = $this->pdf->quotation($quotation);
-            Mail::to($recipient)->send(new QuotationDocumentMail($this->renderer->payload($quotation), $document['bytes'], $document['filename']));
+            $this->mail->send(
+                $quotation->organization,
+                new QuotationDocumentMail($this->renderer->payload($quotation), $document['bytes'], $document['filename'], $subject, $message),
+                $recipient,
+            );
             $this->audit->record('quotation.sent', $actor, $quotation->organization, $quotation->store, $quotation, newValues: [
                 'recipient' => $recipient, 'filename' => $document['filename'], 'channel' => 'email',
             ]);

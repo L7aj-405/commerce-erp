@@ -3,6 +3,7 @@
 namespace Tests\Support;
 
 use App\Models\Organization;
+use App\Models\OrganizationMailSetting;
 use App\Models\OrganizationMembership;
 use App\Models\Permission;
 use App\Models\Role;
@@ -93,5 +94,32 @@ abstract class PlatformTestCase extends TestCase
     protected function permission(string $key): Permission
     {
         return Permission::query()->where('key', $key)->firstOrFail();
+    }
+
+    /**
+     * Gives an organization a usable outbound email configuration, so document
+     * email tests can exercise a "configured" organization without depending on
+     * the Settings HTTP flow. Uses a fake (non-routable) SMTP host — every test
+     * that sends through it must call Mail::fake() first.
+     *
+     * @param  array<string, mixed>  $overrides
+     */
+    protected function configureOrganizationMail(Organization $organization, array $overrides = []): OrganizationMailSetting
+    {
+        $setting = new OrganizationMailSetting;
+        $setting->organization_id = $organization->getKey();
+        $setting->sender_name = $overrides['sender_name'] ?? $organization->name;
+        $setting->sender_email = $overrides['sender_email'] ?? 'no-reply@example.test';
+        $setting->smtp_host = $overrides['smtp_host'] ?? 'smtp.example.test';
+        $setting->smtp_port = $overrides['smtp_port'] ?? 587;
+        $setting->smtp_username = $overrides['smtp_username'] ?? 'no-reply@example.test';
+        $setting->smtp_password = $overrides['smtp_password'] ?? 'super-secret';
+        $setting->smtp_encryption = $overrides['smtp_encryption'] ?? 'tls';
+        $setting->reply_to_email = $overrides['reply_to_email'] ?? null;
+        $setting->reply_to_name = $overrides['reply_to_name'] ?? null;
+        $setting->is_enabled = $overrides['is_enabled'] ?? true;
+        $setting->save();
+
+        return $setting;
     }
 }

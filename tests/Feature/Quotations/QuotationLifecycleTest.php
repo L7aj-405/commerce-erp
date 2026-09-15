@@ -171,6 +171,7 @@ class QuotationLifecycleTest extends QuotationTestCase
         $this->actingAs($owner)->get(route('quotations.show', $quotation))
             ->assertInertia(fn ($page) => $page->where('sharing', null));
 
+        $this->configureOrganizationMail($organization);
         $issued = $this->issueQuotation($owner, $quotation);
         $this->actingAs($owner)->post(route('quotations.email', $issued), ['email' => 'client@example.test'])->assertRedirect();
         Mail::assertSent(\App\Mail\QuotationDocumentMail::class);

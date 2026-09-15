@@ -1,5 +1,6 @@
 import DocBadge from '@/components/ui/DocBadge';
 import { Button } from '@/components/ui/Button';
+import SendDocumentEmailModal from '@/components/documents/SendDocumentEmailModal';
 import CorrectionLineEditor from './CorrectionLineEditor';
 import SalesLayout from '@/layouts/SalesLayout';
 import { formatDate, formatDateTime, formatMoney, formatQuantity } from '@/utils/format';
@@ -84,6 +85,8 @@ type Sharing = {
     phone: string | null;
     whatsappPhone: string | null;
     whatsappMessage: string;
+    defaultSubject: string;
+    attachmentName: string;
 };
 type HistoryEntry = {
     role: 'original' | 'correction';
@@ -104,7 +107,8 @@ type Props = {
     history: HistoryEntry[];
     relatedOrderPaymentSummary: { paid: string; remaining: string; status: string };
     sharing: Sharing | null;
-    can: { updateDraft: boolean; issue: boolean; backdate: boolean; email: boolean; correct: boolean; editLines: boolean };
+    mailConfigured: boolean;
+    can: { updateDraft: boolean; issue: boolean; backdate: boolean; email: boolean; correct: boolean; editLines: boolean; configureMail: boolean };
 };
 
 export default function InvoiceShow({
@@ -118,6 +122,7 @@ export default function InvoiceShow({
     history,
     relatedOrderPaymentSummary,
     sharing,
+    mailConfigured,
     can,
 }: Props) {
     const isDraft = invoice.status === 'draft';
@@ -485,7 +490,13 @@ export default function InvoiceShow({
                     </section>
 
                     {isIssued && sharing && (
-                        <ShareCard invoiceId={invoice.id} sharing={sharing} canEmail={can.email} />
+                        <ShareCard
+                            invoiceId={invoice.id}
+                            sharing={sharing}
+                            canEmail={can.email}
+                            mailConfigured={mailConfigured}
+                            canConfigureMail={can.configureMail}
+                        />
                     )}
 
                     {history.length > 0 && (
@@ -729,17 +740,24 @@ function Field({ label: l, children }: { label: string; children: ReactNode }) {
     );
 }
 
-function ShareCard({ invoiceId, sharing, canEmail }: { invoiceId: number; sharing: Sharing; canEmail: boolean }) {
+function ShareCard({
+    invoiceId,
+    sharing,
+    canEmail,
+    mailConfigured,
+    canConfigureMail,
+}: {
+    invoiceId: number;
+    sharing: Sharing;
+    canEmail: boolean;
+    mailConfigured: boolean;
+    canConfigureMail: boolean;
+}) {
     const [tab, setTab] = useState<'email' | 'whatsapp'>('email');
     const [waPhone, setWaPhone] = useState(sharing.phone ?? '');
     const [waMessage, setWaMessage] = useState(sharing.whatsappMessage);
     const [waOpened, setWaOpened] = useState(false);
-    const email = useForm({ email: sharing.email ?? '' });
-
-    const sendEmail = (event: FormEvent) => {
-        event.preventDefault();
-        email.post(`/invoices/${invoiceId}/email`, { preserveScroll: true });
-    };
+    const [emailModalOpen, setEmailModalOpen] = useState(false);
 
     const openWhatsApp = () => {
         const digits = toWhatsAppDigits(waPhone);
@@ -772,27 +790,42 @@ function ShareCard({ invoiceId, sharing, canEmail }: { invoiceId: number; sharin
             </div>
 
             {tab === 'email' && (
-                <form onSubmit={sendEmail} className="mt-3 space-y-2 text-sm">
-                    <Field label="Adresse email">
-                        <input
-                            type="email"
-                            required
-                            value={email.data.email}
-                            onChange={(e) => email.setData('email', e.target.value)}
-                            placeholder="destinataire@exemple.ma"
-                            className="w-full rounded-field border border-line-strong px-3 py-2"
-                        />
-                    </Field>
-                    {email.errors.email && <p className="text-sm text-danger">{email.errors.email}</p>}
+                <div className="mt-3 space-y-2 text-sm">
+                    {!mailConfigured && (
+                        <p className="text-xs text-warning">
+                            Configuration e-mail requise avant l’envoi.
+                            {canConfigureMail && (
+                                <>
+                                    {' '}
+                                    <Link href="/email-settings" className="font-medium underline">
+                                        Configurer
+                                    </Link>
+                                </>
+                            )}
+                        </p>
+                    )}
                     {!canEmail && (
                         <p className="text-xs text-ink-muted">
                             Vous n’avez pas la permission d’envoyer des factures par email.
                         </p>
                     )}
-                    <Button type="submit" variant="secondary" loading={email.processing} loadingText="Envoi…" disabled={!canEmail}>
-                        Envoyer par email
+                    <Button type="button" variant="secondary" disabled={!canEmail} onClick={() => setEmailModalOpen(true)}>
+                        Envoyer la facture par e-mail
                     </Button>
-                </form>
+                    <SendDocumentEmailModal
+                        open={emailModalOpen}
+                        onClose={() => setEmailModalOpen(false)}
+                        postUrl={`/invoices/${invoiceId}/email`}
+                        title="Envoyer la facture par e-mail"
+                        defaultTo={sharing.email ?? ''}
+                        defaultSubject={sharing.defaultSubject}
+                        defaultMessage={`Bonjour,\n\nVeuillez trouver ci-joint votre facture.\n\nCordialement.`}
+                        attachmentName={sharing.attachmentName}
+                        canSend={canEmail}
+                        mailConfigured={mailConfigured}
+                        canConfigureMail={canConfigureMail}
+                    />
+                </div>
             )}
 
             {tab === 'whatsapp' && (

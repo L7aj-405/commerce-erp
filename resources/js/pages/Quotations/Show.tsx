@@ -1,5 +1,6 @@
 import DocBadge from '@/components/ui/DocBadge';
 import { Button } from '@/components/ui/Button';
+import SendDocumentEmailModal from '@/components/documents/SendDocumentEmailModal';
 import SalesLayout from '@/layouts/SalesLayout';
 import LineGrid, { type QLine } from './LineGrid';
 import { formatDate, formatDateTime, formatMoney, formatQuantity } from '@/utils/format';
@@ -41,7 +42,7 @@ type Quotation = {
     created_by: { name: string } | null;
     converted_sales_order: { id: number; order_number: string; status: string } | null;
 };
-type Sharing = { pdfUrl: string; email: string | null; phone: string | null; whatsappMessage: string };
+type Sharing = { pdfUrl: string; email: string | null; phone: string | null; whatsappMessage: string; defaultSubject: string; attachmentName: string };
 type HistoryEntry = {
     id: number;
     quotation_number: string | null;
@@ -64,6 +65,7 @@ type Props = {
     isCurrentVersion: boolean;
     history: HistoryEntry[];
     sharing: Sharing | null;
+    mailConfigured: boolean;
     can: {
         update: boolean;
         issue: boolean;
@@ -73,6 +75,7 @@ type Props = {
         email: boolean;
         duplicate: boolean;
         createCustomer: boolean;
+        configureMail: boolean;
     };
 };
 
@@ -88,6 +91,7 @@ export default function QuotationShow({
     isCurrentVersion,
     history,
     sharing,
+    mailConfigured,
     can,
 }: Props) {
     const isDraft = quotation.status === 'draft';
@@ -504,7 +508,15 @@ export default function QuotationShow({
                         )}
                     </section>
 
-                    {sharing && <ShareCard quotationId={quotation.id} sharing={sharing} canEmail={can.email} />}
+                    {sharing && (
+                        <ShareCard
+                            quotationId={quotation.id}
+                            sharing={sharing}
+                            canEmail={can.email}
+                            mailConfigured={mailConfigured}
+                            canConfigureMail={can.configureMail}
+                        />
+                    )}
 
                     {history.length > 0 && (
                         <section className="rounded-card border border-line bg-surface p-5">
@@ -610,16 +622,24 @@ function Field({ label: l, children }: { label: string; children: ReactNode }) {
     );
 }
 
-function ShareCard({ quotationId, sharing, canEmail }: { quotationId: number; sharing: Sharing; canEmail: boolean }) {
+function ShareCard({
+    quotationId,
+    sharing,
+    canEmail,
+    mailConfigured,
+    canConfigureMail,
+}: {
+    quotationId: number;
+    sharing: Sharing;
+    canEmail: boolean;
+    mailConfigured: boolean;
+    canConfigureMail: boolean;
+}) {
     const [tab, setTab] = useState<'email' | 'whatsapp'>('email');
     const [waPhone, setWaPhone] = useState(sharing.phone ?? '');
     const [waMessage, setWaMessage] = useState(`${sharing.whatsappMessage}\nPDF : ${sharing.pdfUrl}`);
-    const email = useForm({ email: sharing.email ?? '' });
+    const [emailModalOpen, setEmailModalOpen] = useState(false);
 
-    const sendEmail = (e: FormEvent) => {
-        e.preventDefault();
-        email.post(`/quotations/${quotationId}/email`, { preserveScroll: true });
-    };
     const openWhatsApp = () => {
         const digits = waPhone.replace(/\D/g, '');
         const base = digits ? `https://wa.me/${digits}` : 'https://wa.me/';
@@ -645,16 +665,38 @@ function ShareCard({ quotationId, sharing, canEmail }: { quotationId: number; sh
             </div>
 
             {tab === 'email' && (
-                <form onSubmit={sendEmail} className="mt-3 space-y-2 text-sm">
-                    <Field label="Adresse email">
-                        <input type="email" required value={email.data.email} onChange={(e) => email.setData('email', e.target.value)} className={input} placeholder="client@exemple.ma" />
-                    </Field>
-                    {email.errors.email && <p className="text-sm text-danger">{email.errors.email}</p>}
+                <div className="mt-3 space-y-2 text-sm">
+                    {!mailConfigured && (
+                        <p className="text-xs text-warning">
+                            Configuration e-mail requise avant l’envoi.
+                            {canConfigureMail && (
+                                <>
+                                    {' '}
+                                    <Link href="/email-settings" className="font-medium underline">
+                                        Configurer
+                                    </Link>
+                                </>
+                            )}
+                        </p>
+                    )}
                     {!canEmail && <p className="text-xs text-ink-muted">Vous n’avez pas la permission d’envoyer des devis par email.</p>}
-                    <Button type="submit" variant="secondary" loading={email.processing} loadingText="Envoi…" disabled={!canEmail}>
-                        Envoyer par email
+                    <Button type="button" variant="secondary" disabled={!canEmail} onClick={() => setEmailModalOpen(true)}>
+                        Envoyer le devis par e-mail
                     </Button>
-                </form>
+                    <SendDocumentEmailModal
+                        open={emailModalOpen}
+                        onClose={() => setEmailModalOpen(false)}
+                        postUrl={`/quotations/${quotationId}/email`}
+                        title="Envoyer le devis par e-mail"
+                        defaultTo={sharing.email ?? ''}
+                        defaultSubject={sharing.defaultSubject}
+                        defaultMessage={`Bonjour,\n\nVeuillez trouver ci-joint notre devis.\n\nCordialement.`}
+                        attachmentName={sharing.attachmentName}
+                        canSend={canEmail}
+                        mailConfigured={mailConfigured}
+                        canConfigureMail={canConfigureMail}
+                    />
+                </div>
             )}
 
             {tab === 'whatsapp' && (

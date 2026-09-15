@@ -14,7 +14,8 @@ class DocumentEmailTest extends DocumentTestCase
     public function test_issued_documents_can_be_emailed_with_pdf_attachments_and_are_audited(): void
     {
         Mail::fake();
-        [$owner, , , $order] = $this->documentFixture(true);
+        [$owner, $organization, , $order] = $this->documentFixture(true);
+        $this->configureOrganizationMail($organization);
         $invoice = $this->issueInvoice($owner, $this->createInvoice($owner, $order));
         $note = $this->issueDeliveryNote($owner, $this->createDeliveryNote($owner, $order));
         $before = [
@@ -47,7 +48,8 @@ class DocumentEmailTest extends DocumentTestCase
     public function test_draft_email_is_rejected_before_mail_delivery(): void
     {
         Mail::fake();
-        [$owner, , , $order] = $this->documentFixture();
+        [$owner, $organization, , $order] = $this->documentFixture();
+        $this->configureOrganizationMail($organization);
         $invoice = $this->createInvoice($owner, $order);
 
         $this->actingAs($owner)->post(route('invoices.email', $invoice), ['email' => 'accounts@example.test'])->assertForbidden();
@@ -57,7 +59,8 @@ class DocumentEmailTest extends DocumentTestCase
     public function test_pdf_failure_does_not_send_or_mutate_an_issued_document_and_is_audited(): void
     {
         Mail::fake();
-        [$owner, , , $order] = $this->documentFixture();
+        [$owner, $organization, , $order] = $this->documentFixture();
+        $this->configureOrganizationMail($organization);
         $invoice = $this->issueInvoice($owner, $this->createInvoice($owner, $order));
         $this->app->bind(PdfGenerator::class, fn () => new class implements PdfGenerator
         {
@@ -73,5 +76,55 @@ class DocumentEmailTest extends DocumentTestCase
         Mail::assertNothingSent();
         $this->assertSame('issued', $invoice->fresh()->status->value);
         $this->assertDatabaseHas('audit_logs', ['event' => 'invoice.email_failed', 'auditable_id' => $invoice->id]);
+    }
+
+    public function test_email_is_rejected_when_organization_has_no_mail_configuration(): void
+    {
+        Mail::fake();
+        [$owner, , , $order] = $this->documentFixture();
+        // Deliberately no configureOrganizationMail() call: this reproduces the
+        // original bug (MAIL_MAILER=log reporting false success) as the "no
+        // organization SMTP configured" case — the send must be refused
+        // outright, never silently accepted.
+        $invoice = $this->issueInvoice($owner, $this->createInvoice($owner, $order));
+
+        $this->actingAs($owner)->post(route('invoices.email', $invoice), ['email' => 'accounts@example.test'])
+            ->assertSessionHasErrors('email')
+            ->assertSessionHas('mailNotConfigured', true);
+
+        Mail::assertNothingSent();
+        $this->assertDatabaseHas('audit_logs', ['event' => 'invoice.email_failed', 'auditable_id' => $invoice->id]);
+    }
+
+    public function test_transport_failure_is_reported_as_failure_not_success(): void
+    {
+        [$owner, $organization, , $order] = $this->documentFixture();
+        // An unroutable host guarantees the real SMTP transport fails fast
+        // rather than silently succeeding like the old `log` mailer did.
+        $this->configureOrganizationMail($organization, [
+            'smtp_host' => '127.0.0.1',
+            'smtp_port' => 1,
+        ]);
+        $invoice = $this->issueInvoice($owner, $this->createInvoice($owner, $order));
+
+        $this->actingAs($owner)->post(route('invoices.email', $invoice), ['email' => 'accounts@example.test'])
+            ->assertSessionHasErrors('email')
+            ->assertSessionMissing('mailNotConfigured');
+
+        $this->assertDatabaseHas('audit_logs', ['event' => 'invoice.email_failed', 'auditable_id' => $invoice->id]);
+        $this->assertSame('issued', $invoice->fresh()->status->value);
+    }
+
+    public function test_invalid_recipient_is_rejected(): void
+    {
+        Mail::fake();
+        [$owner, $organization, , $order] = $this->documentFixture();
+        $this->configureOrganizationMail($organization);
+        $invoice = $this->issueInvoice($owner, $this->createInvoice($owner, $order));
+
+        $this->actingAs($owner)->post(route('invoices.email', $invoice), ['email' => 'not-an-email'])
+            ->assertSessionHasErrors('email');
+
+        Mail::assertNothingSent();
     }
 }

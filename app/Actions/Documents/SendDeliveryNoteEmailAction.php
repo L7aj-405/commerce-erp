@@ -9,7 +9,7 @@ use App\Models\User;
 use App\Services\AuditLogger;
 use App\Services\DeliveryNoteDocumentRenderer;
 use App\Services\DocumentPdfService;
-use Illuminate\Support\Facades\Mail;
+use App\Services\OrganizationOutboundMailService;
 use Illuminate\Validation\ValidationException;
 use Throwable;
 
@@ -20,6 +20,7 @@ class SendDeliveryNoteEmailAction
     public function __construct(
         private readonly DocumentPdfService $pdf,
         private readonly DeliveryNoteDocumentRenderer $renderer,
+        private readonly OrganizationOutboundMailService $mail,
         private readonly AuditLogger $audit,
     ) {}
 
@@ -32,7 +33,11 @@ class SendDeliveryNoteEmailAction
 
         try {
             $document = $this->pdf->deliveryNote($note);
-            Mail::to($recipient)->send(new DeliveryNoteDocumentMail($this->renderer->payload($note), $document['bytes'], $document['filename']));
+            $this->mail->send(
+                $note->organization,
+                new DeliveryNoteDocumentMail($this->renderer->payload($note), $document['bytes'], $document['filename']),
+                $recipient,
+            );
             $this->audit->record('delivery_note.email_sent', $actor, $note->organization, $note->store, $note, newValues: [
                 'recipient' => $recipient, 'filename' => $document['filename'],
             ]);

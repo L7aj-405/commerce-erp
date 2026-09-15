@@ -18,16 +18,18 @@ class QuotationDocumentMail extends Mailable
         public readonly array $document,
         private readonly string $pdfBytes,
         private readonly string $pdfFilename,
+        private readonly ?string $customSubject = null,
+        private readonly ?string $customMessage = null,
     ) {}
 
     public function envelope(): Envelope
     {
-        return new Envelope(subject: __('documents.email.quotation_subject', ['number' => $this->document['document']['number']], config('documents.locale')));
+        return new Envelope(subject: $this->customSubject ?? __('documents.email.quotation_subject', ['number' => $this->document['document']['number']], config('documents.locale')));
     }
 
     public function content(): Content
     {
-        return new Content(view: 'emails.documents.quotation', with: ['document' => $this->document]);
+        return new Content(view: 'emails.documents.quotation', with: ['document' => $this->document, 'customMessage' => $this->customMessage]);
     }
 
     /** @return array<int, Attachment> */

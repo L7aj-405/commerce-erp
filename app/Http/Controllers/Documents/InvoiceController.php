@@ -16,6 +16,7 @@ use App\Models\SalesOrder;
 use App\Services\ActiveTenantContext;
 use App\Services\DocumentSellerProfile;
 use App\Services\DocumentValueFormatter;
+use App\Services\OrganizationOutboundMailService;
 use App\Services\SalesOrderPaymentCalculator;
 use App\Support\Decimal;
 use App\Support\PhoneNumber;
@@ -60,7 +61,7 @@ class InvoiceController extends Controller
         return redirect()->route('invoices.show', $invoice);
     }
 
-    public function show(Request $request, Invoice $invoice, SalesOrderPaymentCalculator $payments, DocumentValueFormatter $formatter): Response
+    public function show(Request $request, Invoice $invoice, SalesOrderPaymentCalculator $payments, DocumentValueFormatter $formatter, OrganizationOutboundMailService $mail): Response
     {
         $this->authorize('view', $invoice);
         $invoice->load([
@@ -168,8 +169,11 @@ class InvoiceController extends Controller
                 'phone' => $invoice->customer_phone,
                 'whatsappPhone' => PhoneNumber::forWhatsApp($invoice->customer_phone),
                 'whatsappMessage' => $this->whatsappMessage($invoice, $formatter, $sharePdfUrl),
+                'defaultSubject' => "Facture {$invoice->invoice_number} — ".($seller['trade_name'] ?: $seller['legal_name'] ?? $invoice->organization->name),
+                'attachmentName' => "Facture-{$invoice->invoice_number}.pdf",
             ] : null,
             'history' => $this->correctionHistory($invoice),
+            'mailConfigured' => $mail->isConfigured($invoice->organization),
             'can' => [
                 'updateDraft' => $request->user()->can('updateDraft', $invoice),
                 'issue' => $request->user()->can('issue', $invoice),
@@ -177,6 +181,7 @@ class InvoiceController extends Controller
                 'email' => $request->user()->can('email', $invoice),
                 'correct' => $request->user()->can('correct', $invoice) && ! $activeCorrectionExists,
                 'editLines' => $canEditLines,
+                'configureMail' => $request->user()->hasPermission($invoice->organization_id, 'settings.update'),
             ],
         ]);
     }
