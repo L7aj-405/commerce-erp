@@ -9,12 +9,14 @@
     $buyerLabel = $buyer['company'] ?: ($buyer['name'] ?: '—');
 
     // Vertical rhythm — see the identical comment in documents/invoice/v1 for
-    // the full reasoning: items + totals hug their real content, and a
-    // flexible MIN-HEIGHT spacer AFTER the totals settles the amount-in-words
-    // / stamp headroom / issuer-line cluster near the footer on a short
-    // document, degrading to natural pagination (via `page-break-inside:
-    // avoid` on `.lower-cluster`) on a longer one.
-    $spacerMm = $has_discount ? 37 : 50;
+    // the full reasoning: ALL flexible whitespace lives between the last item
+    // row and the totals (a MIN-HEIGHT floor placed right after the items
+    // table, calibrated against real rendered output), so the closing
+    // section (totals + amount in words + issuer line) is one compact,
+    // predictable-height block that always reads low on the page as a
+    // single unit.
+    $notesMm = (! empty($document['notes']) ? 20 : 0) + (! empty($document['terms']) ? 20 : 0);
+    $itemsSpacerMm = max(15, ($has_discount ? 50 : 65) - $notesMm);
 
     $cols = $showRemise
         ? ['ref' => 10, 'des' => 33, 'pres' => 9, 'qty' => 6, 'pu' => 11, 'pt' => 11, 'rem' => 9, 'ttc' => 11]
@@ -72,23 +74,25 @@
         .ctr { text-align: center; }
         .des-sub { color: #777; font-size: 8px; }
         .notes { margin-top: 12px; white-space: pre-line; page-break-inside: avoid; }
-        /* --- Totals: right after the item lines, no gap engineered here. --- */
-        .totals-row { margin-top: 12px; width: 100%; border-collapse: collapse; page-break-inside: avoid; }
-        .totals-row td { vertical-align: top; }
+        /* --- All flexible whitespace lives here, between the items table and
+               the closing section. A floor (min-height), not a fixed margin. --- */
+        .items-spacer { min-height: {{ $itemsSpacerMm }}mm; }
+        /* --- Closing section: totals + amount in words + issuer line, one
+               compact block that never drifts apart. --- */
+        .closing { page-break-inside: avoid; }
+        .closing-inner { width: 100%; border-collapse: collapse; }
+        .closing-inner td { vertical-align: top; }
         table.totals { border-collapse: collapse; width: 100%; }
         table.totals td { padding: 3px 4px; }
         table.totals .lbl { text-align: right; padding-right: 16px; color: #333; }
         table.totals .val { text-align: right; white-space: nowrap; }
         table.totals tr.strong td { font-weight: bold; }
         table.totals tr.grand td { border-top: 1px solid {{ $ink }}; font-weight: bold; font-size: 11px; }
-        /* --- Flexible whitespace, then the amount-in-words / issuer cluster settled near the footer. --- */
-        .lower-spacer { min-height: {{ $spacerMm }}mm; }
-        .lower-cluster { page-break-inside: avoid; }
-        .words { text-align: center; }
+        .words { margin-top: 16px; text-align: center; }
         .words-rule { border-top: 1px solid #c9c9c2; width: 60%; margin: 0 auto 8px; }
         .words-intro { font-weight: bold; font-size: 9px; }
         .words-value { margin-top: 6px; font-style: italic; font-weight: bold; font-size: 12px; text-transform: uppercase; }
-        .issued-meta { margin-top: 18px; color: #888; font-size: 8px; text-align: left; }
+        .issued-meta { margin-top: 14px; color: #888; font-size: 8px; text-align: left; }
     </style>
 </head>
 <body>
@@ -217,32 +221,32 @@
     <div class="notes"><strong>{{ $t('terms') }}</strong><br>{{ $document['terms'] }}</div>
 @endif
 
-{{-- ===== Totals — right after the item lines, no gap engineered here ===== --}}
-<table class="totals-row">
-    <tr>
-        <td style="width: 55%;">&nbsp;</td>
-        <td style="width: 45%;">
-            <table class="totals">
-                @if ($has_discount)
-                    <tr><td class="lbl">{{ $t('subtotal') }}</td><td class="val">{{ $totals['subtotal'] }} {{ $currency }}</td></tr>
-                    <tr><td class="lbl">{{ $t('discount') }}</td><td class="val">- {{ $totals['discount'] }} {{ $currency }}</td></tr>
-                    <tr class="strong"><td class="lbl">{{ $t('total_ht') }}</td><td class="val">{{ $totals['net'] }} {{ $currency }}</td></tr>
-                @else
-                    <tr><td class="lbl">{{ $t('total_ht') }}</td><td class="val">{{ $totals['subtotal'] }} {{ $currency }}</td></tr>
-                @endif
-                @foreach ($tax_lines as $taxLine)
-                    <tr><td class="lbl">{{ $taxLine['label'] }} ({{ $taxLine['rate'] }})</td><td class="val">{{ $taxLine['amount'] }} {{ $currency }}</td></tr>
-                @endforeach
-                <tr class="grand"><td class="lbl">{{ $t('total_ttc') }}</td><td class="val">{{ $totals['total'] }} {{ $currency }}</td></tr>
-            </table>
-        </td>
-    </tr>
-</table>
+{{-- ===== All flexible whitespace lives here — see $itemsSpacerMm above ===== --}}
+<div class="items-spacer"></div>
 
-{{-- ===== Flexible whitespace, then the lower cluster settled near the footer ===== --}}
-<div class="lower-spacer"></div>
+{{-- ===== Closing section: totals + amount in words + issuer line, kept together ===== --}}
+<div class="closing">
+    <table class="closing-inner">
+        <tr>
+            <td style="width: 55%;">&nbsp;</td>
+            <td style="width: 45%;">
+                <table class="totals">
+                    @if ($has_discount)
+                        <tr><td class="lbl">{{ $t('subtotal') }}</td><td class="val">{{ $totals['subtotal'] }} {{ $currency }}</td></tr>
+                        <tr><td class="lbl">{{ $t('discount') }}</td><td class="val">- {{ $totals['discount'] }} {{ $currency }}</td></tr>
+                        <tr class="strong"><td class="lbl">{{ $t('total_ht') }}</td><td class="val">{{ $totals['net'] }} {{ $currency }}</td></tr>
+                    @else
+                        <tr><td class="lbl">{{ $t('total_ht') }}</td><td class="val">{{ $totals['subtotal'] }} {{ $currency }}</td></tr>
+                    @endif
+                    @foreach ($tax_lines as $taxLine)
+                        <tr><td class="lbl">{{ $taxLine['label'] }} ({{ $taxLine['rate'] }})</td><td class="val">{{ $taxLine['amount'] }} {{ $currency }}</td></tr>
+                    @endforeach
+                    <tr class="grand"><td class="lbl">{{ $t('total_ttc') }}</td><td class="val">{{ $totals['total'] }} {{ $currency }}</td></tr>
+                </table>
+            </td>
+        </tr>
+    </table>
 
-<div class="lower-cluster">
     <div class="words">
         <div class="words-rule"></div>
         <div class="words-intro">{{ $t('amount_in_words_intro_quotation') }}</div>

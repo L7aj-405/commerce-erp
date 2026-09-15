@@ -22,17 +22,16 @@ class InvoicePdfPaginationTest extends DocumentTestCase
         $this->assertGreaterThanOrEqual(2, $this->pageCount($longInvoice));
 
         // Source markup: a single <thead> that Dompdf repeats via table-header-group,
-        // and the lower cluster (amount in words + issuer line) rendered exactly once.
+        // and the closing section (totals + amount in words + issuer line)
+        // rendered exactly once, as one compact block.
         $html = app(InvoiceDocumentRenderer::class)->html($longInvoice);
         $this->assertStringContainsString('display: table-header-group', $html);
         $this->assertSame(1, substr_count($html, 'class="items"'));
-        $this->assertSame(1, substr_count($html, 'class="totals-row"'));
-        $this->assertSame(1, substr_count($html, 'class="lower-cluster"'));
+        $this->assertSame(1, substr_count($html, 'class="closing"'));
         $this->assertSame(1, substr_count($html, 'Arrêtée la présente facture'));
-        // The lower cluster is the last flowed block — nothing renders after it
-        // except the (independently positioned) stamp partial.
-        $this->assertTrue(strpos($html, 'class="totals-row"') > strpos($html, 'class="items"'));
-        $this->assertTrue(strpos($html, 'class="lower-cluster"') > strpos($html, 'class="totals-row"'));
+        // The closing section is the last flowed block — nothing renders
+        // after it except the (independently positioned) stamp partial.
+        $this->assertTrue(strpos($html, 'class="closing"') > strpos($html, 'class="items"'));
     }
 
     public function test_issued_invoice_uses_the_snapshot_logo_as_a_faint_watermark(): void

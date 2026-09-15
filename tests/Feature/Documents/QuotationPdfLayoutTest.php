@@ -53,9 +53,8 @@ class QuotationPdfLayoutTest extends QuotationTestCase
         $issued = $this->issueQuotation($owner, $quotation);
 
         $html = app(QuotationDocumentRenderer::class)->html($issued);
-        $this->assertSame(1, substr_count($html, 'class="totals-row"'));
-        $this->assertSame(1, substr_count($html, 'class="lower-cluster"'));
-        $this->assertTrue(strpos($html, 'class="lower-cluster"') > strpos($html, 'class="totals-row"'));
+        $this->assertSame(1, substr_count($html, 'class="closing"'));
+        $this->assertTrue(strpos($html, 'class="closing"') > strpos($html, 'class="items"'));
         $this->assertStringContainsString('Émise par', $html);
         $this->assertMatchesRegularExpression('/Émise par .+ le \d{2}\/\d{2}\/\d{4} à \d{2}:\d{2}/', $html);
     }
@@ -88,7 +87,7 @@ class QuotationPdfLayoutTest extends QuotationTestCase
         $this->assertStringContainsString('rotate(-4deg)', $html);
     }
 
-    public function test_long_quotation_paginates_and_lower_cluster_and_stamp_render_exactly_once(): void
+    public function test_long_quotation_paginates_and_closing_section_and_stamp_render_exactly_once(): void
     {
         [$owner, $organization, $store] = $this->base();
         Storage::fake('local');
@@ -108,9 +107,9 @@ class QuotationPdfLayoutTest extends QuotationTestCase
         $this->assertGreaterThanOrEqual(2, $this->pageCount($issued));
 
         $html = app(QuotationDocumentRenderer::class)->html($issued);
-        $this->assertSame(1, substr_count($html, 'class="lower-cluster"'));
+        $this->assertSame(1, substr_count($html, 'class="closing"'));
         $this->assertSame(1, substr_count($html, 'data:image/png;base64,'));
-        $this->assertTrue(strpos($html, 'class="lower-cluster"') > strpos($html, 'class="items"'));
+        $this->assertTrue(strpos($html, 'class="closing"') > strpos($html, 'class="items"'));
     }
 
     private function pageCount(\App\Models\Quotation $quotation): int
