@@ -22,14 +22,17 @@ class InvoicePdfPaginationTest extends DocumentTestCase
         $this->assertGreaterThanOrEqual(2, $this->pageCount($longInvoice));
 
         // Source markup: a single <thead> that Dompdf repeats via table-header-group,
-        // and the closing (totals + amount in words) rendered exactly once.
+        // and the lower cluster (amount in words + issuer line) rendered exactly once.
         $html = app(InvoiceDocumentRenderer::class)->html($longInvoice);
         $this->assertStringContainsString('display: table-header-group', $html);
         $this->assertSame(1, substr_count($html, 'class="items"'));
-        $this->assertSame(1, substr_count($html, 'class="closing"'));
+        $this->assertSame(1, substr_count($html, 'class="totals-row"'));
+        $this->assertSame(1, substr_count($html, 'class="lower-cluster"'));
         $this->assertSame(1, substr_count($html, 'Arrêtée la présente facture'));
-        // The closing section is the last flowed block — nothing renders after it.
-        $this->assertTrue(strpos($html, 'class="closing"') > strpos($html, 'class="items"'));
+        // The lower cluster is the last flowed block — nothing renders after it
+        // except the (independently positioned) stamp partial.
+        $this->assertTrue(strpos($html, 'class="totals-row"') > strpos($html, 'class="items"'));
+        $this->assertTrue(strpos($html, 'class="lower-cluster"') > strpos($html, 'class="totals-row"'));
     }
 
     public function test_issued_invoice_uses_the_snapshot_logo_as_a_faint_watermark(): void
@@ -102,6 +105,37 @@ class InvoicePdfPaginationTest extends DocumentTestCase
         $thead = substr($html, strpos($html, '<table class="items">'), 900);
         $this->assertStringNotContainsString('Remise', $thead);
         $this->assertGreaterThanOrEqual(2, $this->pageCount($invoice));
+    }
+
+    /**
+     * The stamp partial uses `position: absolute`, not `fixed`, specifically
+     * so it renders once — on the page the lower cluster actually lands on —
+     * rather than repeating on every page the way the running header/footer
+     * do. This is the multi-page regression test for that.
+     */
+    public function test_stamp_appears_exactly_once_on_a_multipage_invoice_not_on_every_page(): void
+    {
+        [$owner, $organization, $store] = $this->documentFixture();
+        \Illuminate\Support\Facades\Storage::fake('local');
+        $this->configureOrganizationStamp($organization);
+        $order = $this->createDraftOrder($owner, $organization, $store);
+        for ($i = 1; $i <= 40; $i++) {
+            $this->addCustomLine($owner, $order, [
+                'description' => "Prestation catalogue numéro {$i} — désignation de longueur moyenne",
+                'reference' => 'REF-'.str_pad((string) $i, 4, '0', STR_PAD_LEFT),
+                'unit_label' => 'Unité', 'quantity' => (string) (($i % 3) + 1), 'unit_price_excl_tax' => (string) (100 + $i),
+            ]);
+        }
+        $order = app(ConfirmSalesOrderAction::class)->execute($owner, $order)->fresh();
+        $invoice = $this->issueInvoice($owner, $this->createInvoice($owner, $order));
+        $this->actingAs($owner)->post(route('invoices.stamp', $invoice))->assertRedirect();
+
+        $invoice = $invoice->fresh();
+        $this->assertGreaterThanOrEqual(2, $this->pageCount($invoice));
+
+        $html = app(InvoiceDocumentRenderer::class)->html($invoice);
+        $this->assertSame(1, substr_count($html, 'data:image/png;base64,'));
+        $this->assertSame(1, substr_count($html, 'transform: rotate('));
     }
 
     private function orderWithLines(User $owner, int $count)

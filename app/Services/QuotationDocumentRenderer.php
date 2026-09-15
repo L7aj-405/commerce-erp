@@ -89,7 +89,7 @@ class QuotationDocumentRenderer
             'amount_in_words' => $this->numberToWords->mad($quotation->total_incl_tax),
             'template_version' => $quotation->template_version,
             'metadata' => [
-                'issued_at' => $quotation->issued_at?->timezone(config('app.timezone'))->format('d/m/Y H:i'),
+                'issued_at' => $quotation->issued_at?->timezone(config('app.timezone'))->format('\l\e d/m/Y \à H:i'),
                 'issued_by' => $quotation->issuedBy?->name,
             ],
             'stamp' => $this->stamps->forQuotation($quotation),

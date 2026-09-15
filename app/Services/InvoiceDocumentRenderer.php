@@ -77,7 +77,7 @@ class InvoiceDocumentRenderer
             'amount_in_words' => $this->numberToWords->mad($invoice->total_incl_tax),
             'template_version' => $invoice->template_version,
             'metadata' => [
-                'issued_at' => $invoice->issued_at?->timezone(config('app.timezone'))->format('d/m/Y H:i'),
+                'issued_at' => $invoice->issued_at?->timezone(config('app.timezone'))->format('\l\e d/m/Y \à H:i'),
                 'issued_by' => $invoice->issuedBy?->name,
             ],
             'stamp' => $this->stamps->forInvoice($invoice),

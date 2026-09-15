@@ -8,9 +8,13 @@
     $numberLabel = $document['number'] ?: ($watermark ?: '—');
     $buyerLabel = $buyer['company'] ?: ($buyer['name'] ?: '—');
 
-    $closingMm = ($has_discount ? 62 : 46) + (! empty($metadata['issued_at']) ? 8 : 0);
-    $notesMm = (! empty($document['notes']) ? 20 : 0) + (! empty($document['terms']) ? 20 : 0);
-    $bodyFloor = max(24, 240 - 78 - $closingMm - $notesMm);
+    // Vertical rhythm — see the identical comment in documents/invoice/v1 for
+    // the full reasoning: items + totals hug their real content, and a
+    // flexible MIN-HEIGHT spacer AFTER the totals settles the amount-in-words
+    // / stamp headroom / issuer-line cluster near the footer on a short
+    // document, degrading to natural pagination (via `page-break-inside:
+    // avoid` on `.lower-cluster`) on a longer one.
+    $spacerMm = $has_discount ? 37 : 50;
 
     $cols = $showRemise
         ? ['ref' => 10, 'des' => 33, 'pres' => 9, 'qty' => 6, 'pu' => 11, 'pt' => 11, 'rem' => 9, 'ttc' => 11]
@@ -59,7 +63,6 @@
         table.meta { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
         table.meta th { border: 1px solid #c9c9c2; padding: 5px 6px; font-size: 8px; font-weight: normal; text-align: center; color: #555; }
         table.meta td { border: 1px solid #c9c9c2; padding: 6px; text-align: center; }
-        .items-wrap { min-height: {{ $bodyFloor }}mm; }
         table.items { width: 100%; border-collapse: collapse; table-layout: fixed; page-break-inside: auto; }
         table.items thead { display: table-header-group; }
         table.items tr { page-break-inside: avoid; }
@@ -69,20 +72,23 @@
         .ctr { text-align: center; }
         .des-sub { color: #777; font-size: 8px; }
         .notes { margin-top: 12px; white-space: pre-line; page-break-inside: avoid; }
-        .closing { margin-top: 12px; page-break-inside: avoid; }
-        .closing-inner { width: 100%; border-collapse: collapse; }
-        .closing-inner td { vertical-align: top; }
+        /* --- Totals: right after the item lines, no gap engineered here. --- */
+        .totals-row { margin-top: 12px; width: 100%; border-collapse: collapse; page-break-inside: avoid; }
+        .totals-row td { vertical-align: top; }
         table.totals { border-collapse: collapse; width: 100%; }
         table.totals td { padding: 3px 4px; }
         table.totals .lbl { text-align: right; padding-right: 16px; color: #333; }
         table.totals .val { text-align: right; white-space: nowrap; }
         table.totals tr.strong td { font-weight: bold; }
         table.totals tr.grand td { border-top: 1px solid {{ $ink }}; font-weight: bold; font-size: 11px; }
-        .words { margin-top: 18px; text-align: center; }
+        /* --- Flexible whitespace, then the amount-in-words / issuer cluster settled near the footer. --- */
+        .lower-spacer { min-height: {{ $spacerMm }}mm; }
+        .lower-cluster { page-break-inside: avoid; }
+        .words { text-align: center; }
         .words-rule { border-top: 1px solid #c9c9c2; width: 60%; margin: 0 auto 8px; }
         .words-intro { font-weight: bold; font-size: 9px; }
         .words-value { margin-top: 6px; font-style: italic; font-weight: bold; font-size: 12px; text-transform: uppercase; }
-        .issued-meta { margin-top: 14px; color: #888; font-size: 8px; }
+        .issued-meta { margin-top: 18px; color: #888; font-size: 8px; text-align: left; }
     </style>
 </head>
 <body>
@@ -168,43 +174,41 @@
     </tbody>
 </table>
 
-<div class="items-wrap">
-    <table class="items">
-        <thead>
+<table class="items">
+    <thead>
+        <tr>
+            <th style="width: {{ $cols['ref'] }}%; text-align: left;">{{ $t('reference') }}</th>
+            <th style="width: {{ $cols['des'] }}%; text-align: left;">{{ $t('designation') }}</th>
+            <th style="width: {{ $cols['pres'] }}%;">{{ $t('presentation') }}</th>
+            <th style="width: {{ $cols['qty'] }}%;">{{ $t('quantity') }}</th>
+            <th style="width: {{ $cols['pu'] }}%;" class="num">{{ $t('unit_price_ht') }}</th>
+            <th style="width: {{ $cols['pt'] }}%;" class="num">{{ $t('line_total_ht') }}</th>
+            @if ($showRemise)
+                <th style="width: {{ $cols['rem'] }}%;" class="num">{{ $t('line_discount') }}</th>
+            @endif
+            <th style="width: {{ $cols['ttc'] }}%;" class="num">{{ $t('total_ttc') }}</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach ($lines as $line)
             <tr>
-                <th style="width: {{ $cols['ref'] }}%; text-align: left;">{{ $t('reference') }}</th>
-                <th style="width: {{ $cols['des'] }}%; text-align: left;">{{ $t('designation') }}</th>
-                <th style="width: {{ $cols['pres'] }}%;">{{ $t('presentation') }}</th>
-                <th style="width: {{ $cols['qty'] }}%;">{{ $t('quantity') }}</th>
-                <th style="width: {{ $cols['pu'] }}%;" class="num">{{ $t('unit_price_ht') }}</th>
-                <th style="width: {{ $cols['pt'] }}%;" class="num">{{ $t('line_total_ht') }}</th>
+                <td>{{ $line['reference'] ?: '' }}</td>
+                <td>
+                    {{ $line['description'] }}
+                    @if ($line['variant'])<div class="des-sub">{{ $line['variant'] }}</div>@endif
+                </td>
+                <td class="ctr">{{ $line['presentation'] }}</td>
+                <td class="ctr">{{ $line['quantity'] }}</td>
+                <td class="num">{{ $line['unit_price_ht'] }}</td>
+                <td class="num">{{ $line['line_total_ht'] }}</td>
                 @if ($showRemise)
-                    <th style="width: {{ $cols['rem'] }}%;" class="num">{{ $t('line_discount') }}</th>
+                    <td class="num">{{ $line['has_discount'] ? $line['discount'] : '' }}</td>
                 @endif
-                <th style="width: {{ $cols['ttc'] }}%;" class="num">{{ $t('total_ttc') }}</th>
+                <td class="num">{{ $line['total'] }}</td>
             </tr>
-        </thead>
-        <tbody>
-            @foreach ($lines as $line)
-                <tr>
-                    <td>{{ $line['reference'] ?: '' }}</td>
-                    <td>
-                        {{ $line['description'] }}
-                        @if ($line['variant'])<div class="des-sub">{{ $line['variant'] }}</div>@endif
-                    </td>
-                    <td class="ctr">{{ $line['presentation'] }}</td>
-                    <td class="ctr">{{ $line['quantity'] }}</td>
-                    <td class="num">{{ $line['unit_price_ht'] }}</td>
-                    <td class="num">{{ $line['line_total_ht'] }}</td>
-                    @if ($showRemise)
-                        <td class="num">{{ $line['has_discount'] ? $line['discount'] : '' }}</td>
-                    @endif
-                    <td class="num">{{ $line['total'] }}</td>
-                </tr>
-            @endforeach
-        </tbody>
-    </table>
-</div>
+        @endforeach
+    </tbody>
+</table>
 
 @if ($document['notes'])
     <div class="notes"><strong>{{ $t('notes') }}</strong><br>{{ $document['notes'] }}</div>
@@ -213,36 +217,40 @@
     <div class="notes"><strong>{{ $t('terms') }}</strong><br>{{ $document['terms'] }}</div>
 @endif
 
-<div class="closing">
-    <table class="closing-inner">
-        <tr>
-            <td style="width: 55%;">&nbsp;</td>
-            <td style="width: 45%;">
-                <table class="totals">
-                    @if ($has_discount)
-                        <tr><td class="lbl">{{ $t('subtotal') }}</td><td class="val">{{ $totals['subtotal'] }} {{ $currency }}</td></tr>
-                        <tr><td class="lbl">{{ $t('discount') }}</td><td class="val">- {{ $totals['discount'] }} {{ $currency }}</td></tr>
-                        <tr class="strong"><td class="lbl">{{ $t('total_ht') }}</td><td class="val">{{ $totals['net'] }} {{ $currency }}</td></tr>
-                    @else
-                        <tr><td class="lbl">{{ $t('total_ht') }}</td><td class="val">{{ $totals['subtotal'] }} {{ $currency }}</td></tr>
-                    @endif
-                    @foreach ($tax_lines as $taxLine)
-                        <tr><td class="lbl">{{ $taxLine['label'] }} ({{ $taxLine['rate'] }})</td><td class="val">{{ $taxLine['amount'] }} {{ $currency }}</td></tr>
-                    @endforeach
-                    <tr class="grand"><td class="lbl">{{ $t('total_ttc') }}</td><td class="val">{{ $totals['total'] }} {{ $currency }}</td></tr>
-                </table>
-            </td>
-        </tr>
-    </table>
+{{-- ===== Totals — right after the item lines, no gap engineered here ===== --}}
+<table class="totals-row">
+    <tr>
+        <td style="width: 55%;">&nbsp;</td>
+        <td style="width: 45%;">
+            <table class="totals">
+                @if ($has_discount)
+                    <tr><td class="lbl">{{ $t('subtotal') }}</td><td class="val">{{ $totals['subtotal'] }} {{ $currency }}</td></tr>
+                    <tr><td class="lbl">{{ $t('discount') }}</td><td class="val">- {{ $totals['discount'] }} {{ $currency }}</td></tr>
+                    <tr class="strong"><td class="lbl">{{ $t('total_ht') }}</td><td class="val">{{ $totals['net'] }} {{ $currency }}</td></tr>
+                @else
+                    <tr><td class="lbl">{{ $t('total_ht') }}</td><td class="val">{{ $totals['subtotal'] }} {{ $currency }}</td></tr>
+                @endif
+                @foreach ($tax_lines as $taxLine)
+                    <tr><td class="lbl">{{ $taxLine['label'] }} ({{ $taxLine['rate'] }})</td><td class="val">{{ $taxLine['amount'] }} {{ $currency }}</td></tr>
+                @endforeach
+                <tr class="grand"><td class="lbl">{{ $t('total_ttc') }}</td><td class="val">{{ $totals['total'] }} {{ $currency }}</td></tr>
+            </table>
+        </td>
+    </tr>
+</table>
 
+{{-- ===== Flexible whitespace, then the lower cluster settled near the footer ===== --}}
+<div class="lower-spacer"></div>
+
+<div class="lower-cluster">
     <div class="words">
         <div class="words-rule"></div>
-        <div class="words-intro">{{ $t('amount_in_words_intro') }}</div>
+        <div class="words-intro">{{ $t('amount_in_words_intro_quotation') }}</div>
         <div class="words-value">{{ $amount_in_words }}</div>
     </div>
 
     @if ($metadata['issued_at'])
-        <p class="issued-meta">{{ $t('issued_by') }} {{ $metadata['issued_by'] ?: '—' }} · {{ $metadata['issued_at'] }}</p>
+        <p class="issued-meta">{{ $t('issued_by') }} {{ $metadata['issued_by'] ?: '—' }} {{ $metadata['issued_at'] }}</p>
     @endif
 </div>
 
