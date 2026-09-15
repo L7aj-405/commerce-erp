@@ -48,7 +48,9 @@ class DocumentTenantAttackTest extends DocumentTestCase
         }
         $this->actingAs($ownerA)->post(route('invoices.email', $invoiceB), ['email' => 'attacker@example.test'])->assertNotFound();
         $this->actingAs($ownerA)->post(route('delivery-notes.email', $noteB), ['email' => 'attacker@example.test'])->assertNotFound();
+        $this->actingAs($ownerA)->post(route('invoices.stamp', $invoiceB))->assertNotFound();
         Mail::assertNothingSent();
+        $this->assertDatabaseCount('document_stamp_appositions', 0);
     }
 
     public function test_render_download_and_email_routes_hide_documents_outside_the_active_store(): void

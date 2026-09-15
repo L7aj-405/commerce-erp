@@ -13,6 +13,7 @@ class QuotationDocumentRenderer
         private readonly DocumentTemplateRegistry $templates,
         private readonly DocumentValueFormatter $format,
         private readonly FrenchNumberToWords $numberToWords,
+        private readonly DocumentStampRenderer $stamps,
     ) {}
 
     /** @return array<string, mixed> */
@@ -91,6 +92,7 @@ class QuotationDocumentRenderer
                 'issued_at' => $quotation->issued_at?->timezone(config('app.timezone'))->format('d/m/Y H:i'),
                 'issued_by' => $quotation->issuedBy?->name,
             ],
+            'stamp' => $this->stamps->forQuotation($quotation),
         ];
     }
 

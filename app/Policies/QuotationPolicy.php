@@ -75,6 +75,15 @@ class QuotationPolicy
         return $this->allowed($user, $quotation, 'quotations.create');
     }
 
+    public function stamp(User $user, Quotation $quotation): bool
+    {
+        // Same eligibility as sharing: the current official version only —
+        // a superseded revision must remain immutable.
+        return $quotation->status->isOfficial()
+            && $quotation->status !== QuotationStatus::Superseded
+            && $this->allowed($user, $quotation, 'documents.stamp');
+    }
+
     private function allowed(User $user, Quotation $quotation, string $permission): bool
     {
         return $this->scope($quotation->organization_id, $quotation->store_id)

@@ -1,6 +1,7 @@
 import DocBadge from '@/components/ui/DocBadge';
 import { Button } from '@/components/ui/Button';
 import SendDocumentEmailModal from '@/components/documents/SendDocumentEmailModal';
+import StampDocumentAction from '@/components/documents/StampDocumentAction';
 import CorrectionLineEditor from './CorrectionLineEditor';
 import SalesLayout from '@/layouts/SalesLayout';
 import { formatDate, formatDateTime, formatMoney, formatQuantity } from '@/utils/format';
@@ -108,7 +109,17 @@ type Props = {
     relatedOrderPaymentSummary: { paid: string; remaining: string; status: string };
     sharing: Sharing | null;
     mailConfigured: boolean;
-    can: { updateDraft: boolean; issue: boolean; backdate: boolean; email: boolean; correct: boolean; editLines: boolean; configureMail: boolean };
+    stamp: { applied: boolean; appliedAt: string | null };
+    can: {
+        updateDraft: boolean;
+        issue: boolean;
+        backdate: boolean;
+        email: boolean;
+        correct: boolean;
+        editLines: boolean;
+        configureMail: boolean;
+        stamp: boolean;
+    };
 };
 
 export default function InvoiceShow({
@@ -123,6 +134,7 @@ export default function InvoiceShow({
     relatedOrderPaymentSummary,
     sharing,
     mailConfigured,
+    stamp,
     can,
 }: Props) {
     const isDraft = invoice.status === 'draft';
@@ -497,6 +509,20 @@ export default function InvoiceShow({
                             mailConfigured={mailConfigured}
                             canConfigureMail={can.configureMail}
                         />
+                    )}
+
+                    {isIssued && (
+                        <section className="rounded-card border border-line bg-surface p-5">
+                            <h2 className="text-sm font-semibold text-ink">Cachet de l’entreprise</h2>
+                            <div className="mt-3">
+                                <StampDocumentAction
+                                    postUrl={`/invoices/${invoice.id}/stamp`}
+                                    applied={stamp.applied}
+                                    appliedAt={stamp.appliedAt}
+                                    canStamp={can.stamp}
+                                />
+                            </div>
+                        </section>
                     )}
 
                     {history.length > 0 && (

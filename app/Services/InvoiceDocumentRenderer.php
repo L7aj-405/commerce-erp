@@ -13,6 +13,7 @@ class InvoiceDocumentRenderer
         private readonly DocumentTemplateRegistry $templates,
         private readonly DocumentValueFormatter $format,
         private readonly FrenchNumberToWords $numberToWords,
+        private readonly DocumentStampRenderer $stamps,
     ) {}
 
     /** @return array<string, mixed> */
@@ -79,6 +80,7 @@ class InvoiceDocumentRenderer
                 'issued_at' => $invoice->issued_at?->timezone(config('app.timezone'))->format('d/m/Y H:i'),
                 'issued_by' => $invoice->issuedBy?->name,
             ],
+            'stamp' => $this->stamps->forInvoice($invoice),
         ];
     }
 

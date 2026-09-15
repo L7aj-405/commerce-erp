@@ -145,6 +145,16 @@ class Organization extends Model
         return $this->hasOne(OrganizationMailSetting::class);
     }
 
+    public function documentStamps(): HasMany
+    {
+        return $this->hasMany(OrganizationDocumentStamp::class);
+    }
+
+    public function activeDocumentStamp(): HasOne
+    {
+        return $this->hasOne(OrganizationDocumentStamp::class)->where('active', true);
+    }
+
     public function resolveRouteBindingQuery($query, $value, $field = null)
     {
         return $query

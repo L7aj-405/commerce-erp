@@ -246,5 +246,7 @@
     @endif
 </div>
 
+@include('documents.partials.stamp', ['stamp' => $stamp ?? null])
+
 </body>
 </html>

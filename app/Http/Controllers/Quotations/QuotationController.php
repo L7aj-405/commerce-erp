@@ -153,6 +153,7 @@ class QuotationController extends Controller
             'convertedSalesOrder:id,organization_id,order_number,status',
             'revisedFrom:id,quotation_number,revision_number',
             'rootQuotation:id,quotation_number',
+            'stampApposition',
         ]);
 
         // On-screen preview needs no heavy logo data URI.
@@ -208,6 +209,10 @@ class QuotationController extends Controller
                 'attachmentName' => "Devis-{$quotation->quotation_number}.pdf",
             ] : null,
             'mailConfigured' => $mail->isConfigured($quotation->organization),
+            'stamp' => [
+                'applied' => $quotation->stampApposition !== null,
+                'appliedAt' => $quotation->stampApposition?->applied_at?->toIso8601String(),
+            ],
             'can' => [
                 'update' => $request->user()->can('update', $quotation),
                 'issue' => $request->user()->can('issue', $quotation),
@@ -222,6 +227,7 @@ class QuotationController extends Controller
                 'duplicate' => $request->user()->can('duplicate', $quotation),
                 'createCustomer' => $request->user()->hasPermission($quotation->organization_id, 'customers.create'),
                 'configureMail' => $request->user()->hasPermission($quotation->organization_id, 'settings.update'),
+                'stamp' => $request->user()->can('stamp', $quotation) && ! $quotation->stampApposition,
             ],
         ]);
     }

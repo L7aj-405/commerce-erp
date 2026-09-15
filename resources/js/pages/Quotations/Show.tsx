@@ -1,6 +1,7 @@
 import DocBadge from '@/components/ui/DocBadge';
 import { Button } from '@/components/ui/Button';
 import SendDocumentEmailModal from '@/components/documents/SendDocumentEmailModal';
+import StampDocumentAction from '@/components/documents/StampDocumentAction';
 import SalesLayout from '@/layouts/SalesLayout';
 import LineGrid, { type QLine } from './LineGrid';
 import { formatDate, formatDateTime, formatMoney, formatQuantity } from '@/utils/format';
@@ -66,6 +67,7 @@ type Props = {
     history: HistoryEntry[];
     sharing: Sharing | null;
     mailConfigured: boolean;
+    stamp: { applied: boolean; appliedAt: string | null };
     can: {
         update: boolean;
         issue: boolean;
@@ -76,6 +78,7 @@ type Props = {
         duplicate: boolean;
         createCustomer: boolean;
         configureMail: boolean;
+        stamp: boolean;
     };
 };
 
@@ -92,6 +95,7 @@ export default function QuotationShow({
     history,
     sharing,
     mailConfigured,
+    stamp,
     can,
 }: Props) {
     const isDraft = quotation.status === 'draft';
@@ -516,6 +520,20 @@ export default function QuotationShow({
                             mailConfigured={mailConfigured}
                             canConfigureMail={can.configureMail}
                         />
+                    )}
+
+                    {sharing && (
+                        <section className="rounded-card border border-line bg-surface p-5">
+                            <h2 className="text-sm font-semibold text-ink">Cachet de l’entreprise</h2>
+                            <div className="mt-3">
+                                <StampDocumentAction
+                                    postUrl={`/quotations/${quotation.id}/stamp`}
+                                    applied={stamp.applied}
+                                    appliedAt={stamp.appliedAt}
+                                    canStamp={can.stamp}
+                                />
+                            </div>
+                        </section>
                     )}
 
                     {history.length > 0 && (

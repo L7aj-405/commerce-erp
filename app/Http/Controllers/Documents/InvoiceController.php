@@ -71,6 +71,8 @@ class InvoiceController extends Controller
 
             'lines',
 
+            'stampApposition',
+
             'issuedBy:id,name',
 
             'cancelledBy:id,name',
@@ -174,6 +176,10 @@ class InvoiceController extends Controller
             ] : null,
             'history' => $this->correctionHistory($invoice),
             'mailConfigured' => $mail->isConfigured($invoice->organization),
+            'stamp' => [
+                'applied' => $invoice->stampApposition !== null,
+                'appliedAt' => $invoice->stampApposition?->applied_at?->toIso8601String(),
+            ],
             'can' => [
                 'updateDraft' => $request->user()->can('updateDraft', $invoice),
                 'issue' => $request->user()->can('issue', $invoice),
@@ -182,6 +188,7 @@ class InvoiceController extends Controller
                 'correct' => $request->user()->can('correct', $invoice) && ! $activeCorrectionExists,
                 'editLines' => $canEditLines,
                 'configureMail' => $request->user()->hasPermission($invoice->organization_id, 'settings.update'),
+                'stamp' => $request->user()->can('stamp', $invoice) && ! $invoice->stampApposition,
             ],
         ]);
     }

@@ -64,6 +64,12 @@ class InvoicePolicy
             && $this->allowed($user, $invoice->organization_id, $invoice->store_id, 'invoices.email');
     }
 
+    public function stamp(User $user, Invoice $invoice): bool
+    {
+        return $invoice->status === InvoiceStatus::Issued
+            && $this->allowed($user, $invoice->organization_id, $invoice->store_id, 'documents.stamp');
+    }
+
     private function allowed(User $user, int $organizationId, int $storeId, string $permission): bool
     {
         return $this->scope($organizationId, $storeId) && $user->hasPermission($organizationId, $permission);

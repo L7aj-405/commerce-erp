@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\Relations\MorphOne;
 
 class Invoice extends Model
 {
@@ -75,5 +76,15 @@ class Invoice extends Model
     public function correction(): HasOne
     {
         return $this->hasOne(self::class, 'corrected_invoice_id')->latestOfMany();
+    }
+
+    /**
+     * Whether/how the company stamp was applied to THIS specific Invoice row.
+     * A correction gets its own new row (see StartInvoiceCorrectionAction) and
+     * therefore never inherits this — it needs its own explicit apposition.
+     */
+    public function stampApposition(): MorphOne
+    {
+        return $this->morphOne(DocumentStampApposition::class, 'stampable');
     }
 }

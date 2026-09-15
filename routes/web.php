@@ -15,6 +15,7 @@ use App\Http\Controllers\Documents\DeliveryNoteController;
 use App\Http\Controllers\Documents\DocumentEmailController;
 use App\Http\Controllers\Documents\DocumentProfileController;
 use App\Http\Controllers\Documents\DocumentRenderingController;
+use App\Http\Controllers\Documents\DocumentStampController;
 use App\Http\Controllers\Documents\InvoiceController;
 use App\Http\Controllers\Documents\InvoiceCorrectionLineController;
 use App\Http\Controllers\Finance\FinanceDashboardController;
@@ -48,6 +49,7 @@ use App\Http\Controllers\Sales\CustomerController;
 use App\Http\Controllers\Sales\SalesOrderController;
 use App\Http\Controllers\Sales\SalesOrderLifecycleController;
 use App\Http\Controllers\Sales\SalesOrderLineController;
+use App\Http\Controllers\Settings\OrganizationDocumentStampController;
 use App\Http\Controllers\Settings\OrganizationMailSettingController;
 use App\Http\Controllers\StoreController;
 use App\Http\Controllers\StoreMembershipController;
@@ -99,6 +101,11 @@ Route::middleware('auth')->group(function () {
     Route::get('/email-settings', [OrganizationMailSettingController::class, 'edit'])->name('email-settings.edit');
     Route::put('/email-settings', [OrganizationMailSettingController::class, 'update'])->name('email-settings.update');
     Route::post('/email-settings/test', [OrganizationMailSettingController::class, 'test'])->name('email-settings.test');
+    Route::get('/document-stamp', [OrganizationDocumentStampController::class, 'edit'])->name('document-stamp.edit');
+    Route::post('/document-stamp', [OrganizationDocumentStampController::class, 'store'])->name('document-stamp.store');
+    Route::delete('/document-stamp', [OrganizationDocumentStampController::class, 'destroy'])->name('document-stamp.destroy');
+    Route::get('/document-stamp/image', [OrganizationDocumentStampController::class, 'image'])->name('document-stamp.image');
+    Route::get('/document-stamp/preview', [OrganizationDocumentStampController::class, 'preview'])->name('document-stamp.preview');
 
     Route::prefix('pos')->name('pos.')->group(function () {
         Route::get('/', [PosController::class, 'index'])->name('index');
@@ -263,6 +270,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/invoices/{invoice}/pdf', [DocumentRenderingController::class, 'invoicePdf'])->name('invoices.pdf');
     Route::get('/invoices/{invoice}/download', [DocumentRenderingController::class, 'downloadInvoice'])->name('invoices.download');
     Route::post('/invoices/{invoice}/email', [DocumentEmailController::class, 'invoice'])->name('invoices.email');
+    Route::post('/invoices/{invoice}/stamp', [DocumentStampController::class, 'invoice'])->name('invoices.stamp');
     Route::patch('/invoices/{invoice}', [InvoiceController::class, 'update'])->name('invoices.update');
     Route::post('/invoices/{invoice}/issue', [InvoiceController::class, 'issue'])->name('invoices.issue');
     Route::post('/invoices/{invoice}/cancel', [InvoiceController::class, 'cancel'])->name('invoices.cancel');
@@ -293,6 +301,7 @@ Route::middleware('auth')->group(function () {
     Route::post('/quotations/{quotation}/duplicate', [QuotationController::class, 'duplicate'])->name('quotations.duplicate');
     Route::post('/quotations/{quotation}/revise', [QuotationController::class, 'revise'])->name('quotations.revise');
     Route::post('/quotations/{quotation}/email', [QuotationEmailController::class, 'send'])->name('quotations.email');
+    Route::post('/quotations/{quotation}/stamp', [DocumentStampController::class, 'quotation'])->name('quotations.stamp');
     Route::post('/quotations/{quotation}/conversion', [QuotationConversionController::class, 'store'])->name('quotations.conversion.store');
     Route::post('/quotations/{quotation}/lines', [QuotationLineController::class, 'store'])->name('quotations.lines.store');
     Route::patch('/quotations/{quotation}/lines/{line}', [QuotationLineController::class, 'update'])->name('quotations.lines.update');

@@ -3,6 +3,7 @@
 namespace Tests\Support;
 
 use App\Models\Organization;
+use App\Models\OrganizationDocumentStamp;
 use App\Models\OrganizationMailSetting;
 use App\Models\OrganizationMembership;
 use App\Models\Permission;
@@ -13,6 +14,7 @@ use App\Models\User;
 use App\Services\OrganizationCreator;
 use App\Services\StoreCreator;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
@@ -121,5 +123,41 @@ abstract class PlatformTestCase extends TestCase
         $setting->save();
 
         return $setting;
+    }
+
+    /**
+     * Gives an organization an active stamp version directly (bypassing the
+     * upload HTTP endpoint), for tests about apposition/rendering rather than
+     * the upload flow itself. Call Storage::fake('local') first.
+     *
+     * @param  array<string, mixed>  $overrides
+     */
+    protected function configureOrganizationStamp(Organization $organization, array $overrides = []): OrganizationDocumentStamp
+    {
+        $path = $overrides['image_path'] ?? 'organization-stamps/'.$organization->getKey().'/'.Str::random(12).'.png';
+        // A valid 1x1 PNG — same fixture pixel used by InvoicePdfPaginationTest
+        // for the seller-logo snapshot tests.
+        Storage::disk('local')->put(
+            $path,
+            base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='),
+        );
+
+        $stamp = new OrganizationDocumentStamp;
+        $stamp->organization_id = $organization->getKey();
+        $stamp->image_path = $path;
+        $stamp->original_filename = $overrides['original_filename'] ?? 'cachet.png';
+        $stamp->mime_type = $overrides['mime_type'] ?? 'image/png';
+        $stamp->image_width = $overrides['image_width'] ?? 200;
+        $stamp->image_height = $overrides['image_height'] ?? 200;
+        $stamp->position_anchor = $overrides['position_anchor'] ?? 'bottom_left';
+        $stamp->offset_x_mm = $overrides['offset_x_mm'] ?? 0;
+        $stamp->offset_y_mm = $overrides['offset_y_mm'] ?? 5;
+        $stamp->display_width_mm = $overrides['display_width_mm'] ?? 35;
+        $stamp->rotation_deg = $overrides['rotation_deg'] ?? 0;
+        $stamp->source = $overrides['source'] ?? 'uploaded';
+        $stamp->active = $overrides['active'] ?? true;
+        $stamp->save();
+
+        return $stamp;
     }
 }

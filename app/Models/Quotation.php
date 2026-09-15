@@ -7,6 +7,7 @@ use App\Models\Concerns\ScopesToActiveStore;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\MorphOne;
 
 class Quotation extends Model
 {
@@ -84,6 +85,16 @@ class Quotation extends Model
     public function revisions(): HasMany
     {
         return $this->hasMany(self::class, 'revised_from_quotation_id');
+    }
+
+    /**
+     * Whether/how the company stamp was applied to THIS specific Devis row.
+     * A revision gets its own new row (see StartQuotationRevisionAction) and
+     * therefore never inherits this — it needs its own explicit apposition.
+     */
+    public function stampApposition(): MorphOne
+    {
+        return $this->morphOne(DocumentStampApposition::class, 'stampable');
     }
 
     /** True once the validity date has passed, regardless of the stored status. */
