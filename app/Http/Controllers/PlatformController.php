@@ -39,6 +39,8 @@ class PlatformController extends Controller
         $canViewInventory = $organization && $user->hasPermission($organization, 'inventory.view');
         $canViewSales = $organization && $store && $user->hasPermission($organization, 'sales_orders.view');
         $canViewPayments = $organization && $store && $user->hasPermission($organization, 'payments.view');
+        $canViewWooStockTasks = $organization && $user->hasPermission($organization, 'integrations.woocommerce.stock_tasks.view');
+        $canViewOutOfStockArticles = $organization && $user->hasPermission($organization, 'procurement.view');
 
         $productCount = $canViewProducts
             ? DB::table('products')->where('organization_id', $organizationId)->count()
@@ -76,6 +78,18 @@ class PlatformController extends Controller
                 ->where('status', '!=', 'cancelled')
                 ->exists()
             : false;
+        $wooStockTasksPending = $canViewWooStockTasks
+            ? DB::table('woocommerce_stock_tasks')
+                ->where('organization_id', $organizationId)
+                ->where('status', 'pending')
+                ->count()
+            : null;
+        $outOfStockArticlesPending = $canViewOutOfStockArticles
+            ? DB::table('out_of_stock_articles')
+                ->where('organization_id', $organizationId)
+                ->where('status', 'unresolved')
+                ->count()
+            : null;
 
         return Inertia::render('Platform/Index', [
             'organizations' => $organizations,
@@ -85,6 +99,8 @@ class PlatformController extends Controller
                 'stocked_item_count' => $stockedItemCount,
                 'sales_today' => $salesToday,
                 'payments_to_receive' => $paymentsToReceive,
+                'woo_stock_tasks_pending' => $wooStockTasksPending,
+                'out_of_stock_articles_pending' => $outOfStockArticlesPending,
             ],
             'onboarding' => [
                 'organization' => $organization !== null,

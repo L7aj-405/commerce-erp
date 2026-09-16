@@ -8,7 +8,14 @@ import type { FormEvent } from 'react';
 type Props = {
     organizations: TenantOrganization[];
     stores: TenantStore[];
-    dashboard: { product_count: number | null; stocked_item_count: number | null; sales_today: number | null; payments_to_receive: number | null };
+    dashboard: {
+        product_count: number | null;
+        stocked_item_count: number | null;
+        sales_today: number | null;
+        payments_to_receive: number | null;
+        woo_stock_tasks_pending: number | null;
+        out_of_stock_articles_pending: number | null;
+    };
     onboarding: { organization: boolean; store: boolean; products: boolean; stock: boolean; first_sale: boolean };
 };
 
@@ -46,6 +53,20 @@ export default function PlatformIndex({ organizations, stores, dashboard, onboar
         { label: 'Articles en stock', value: dashboard.stocked_item_count, href: '/inventory/stock', permission: 'inventory.view', needsStore: false },
         { label: 'Ventes aujourd’hui', value: dashboard.sales_today, href: '/sales/orders', permission: 'sales_orders.view', needsStore: true },
         { label: 'Paiements à recevoir', value: dashboard.payments_to_receive, href: '/payments', permission: 'payments.view', needsStore: true },
+        {
+            label: 'Stock WooCommerce à mettre à jour',
+            value: dashboard.woo_stock_tasks_pending,
+            href: '/integrations/woocommerce/stock-tasks',
+            permission: 'integrations.woocommerce.stock_tasks.view',
+            needsStore: false,
+        },
+        {
+            label: 'Articles à cataloguer',
+            value: dashboard.out_of_stock_articles_pending,
+            href: '/procurement/out-of-stock-articles',
+            permission: 'procurement.view',
+            needsStore: false,
+        },
     ];
 
     const quickEntries = [

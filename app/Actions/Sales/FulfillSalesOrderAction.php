@@ -3,6 +3,7 @@
 namespace App\Actions\Sales;
 
 use App\Actions\Sales\Concerns\AuthorizesSalesAction;
+use App\Actions\WooCommerce\RecordWooCommerceStockTaskAction;
 use App\Enums\InventoryReservationStatus;
 use App\Enums\SalesOrderFulfillmentStatus;
 use App\Enums\SalesOrderStatus;
@@ -18,7 +19,11 @@ class FulfillSalesOrderAction
 {
     use AuthorizesSalesAction;
 
-    public function __construct(private readonly InventoryReservationManager $inventory, private readonly AuditLogger $audit) {}
+    public function __construct(
+        private readonly InventoryReservationManager $inventory,
+        private readonly AuditLogger $audit,
+        private readonly RecordWooCommerceStockTaskAction $wooStockTasks,
+    ) {}
 
     public function execute(User $actor, SalesOrder $order): SalesOrder
     {
@@ -57,6 +62,10 @@ class FulfillSalesOrderAction
             }
             foreach ($reservations as $reservation) {
                 $this->inventory->consume($actor, $order->organization, $reservation);
+                // Manual WooCommerce bridge (deferred automatic write-back): a
+                // no-op unless this variant is actually Woo-linked. Never touches
+                // inventory — see RecordWooCommerceStockTaskAction.
+                $this->wooStockTasks->recordForConsumedSale($order->organization, $order, $reservation);
             }
             $order->fulfillment_status = SalesOrderFulfillmentStatus::Fulfilled;
             $order->fulfilled_at = now();

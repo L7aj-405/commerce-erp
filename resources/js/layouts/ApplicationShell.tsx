@@ -78,6 +78,12 @@ export default function ApplicationShell({ children, wide = false, flush = false
             label: 'Achats',
             items: [
                 { href: '/procurement', label: 'Approvisionnements', permission: 'procurement.view', icon: <IconTransfer /> },
+                {
+                    href: '/procurement/out-of-stock-articles',
+                    label: 'Articles à cataloguer',
+                    permission: 'procurement.view',
+                    icon: <IconTag />,
+                },
                 { href: '/procurement/suppliers', label: 'Fournisseurs', permission: 'suppliers.view', icon: <IconUsers /> },
             ],
         },
@@ -112,6 +118,12 @@ export default function ApplicationShell({ children, wide = false, flush = false
                 { href: '/catalog/brands', label: 'Marques', permission: 'brands.manage', icon: <IconTag /> },
                 { href: '/catalog/tax-rates', label: 'Taxes (TVA)', permission: 'tax_rates.view', icon: <IconInvoice /> },
                 { href: '/integrations/woocommerce', label: 'Intégrations', permission: 'integrations.view', icon: <IconPlug /> },
+                {
+                    href: '/integrations/woocommerce/stock-tasks',
+                    label: 'Stock WooCommerce à mettre à jour',
+                    permission: 'integrations.woocommerce.stock_tasks.view',
+                    icon: <IconPlug />,
+                },
                 { href: '/financial-accounts', label: 'Comptes financiers', permission: 'financial_accounts.view', icon: <IconWallet /> },
             ],
         },

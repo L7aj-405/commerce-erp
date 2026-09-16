@@ -21,8 +21,11 @@ import type { FormEvent, ReactNode } from 'react';
 import { useState } from 'react';
 
 type Allocation = { quantity: string; warehouse: { name: string; code: string }; inventory_reservation: { status: string } | null };
+type OutOfStockArticleRef = { id: number; status: string } | null;
 type Line = {
     id: number;
+    line_type: string;
+    product_variant_id: number | null;
     product_name: string;
     variant_name: string | null;
     sku: string | null;
@@ -35,6 +38,7 @@ type Line = {
     tax_amount: string;
     total_incl_tax: string;
     allocations: Allocation[];
+    out_of_stock_article: OutOfStockArticleRef;
 };
 type Customer = {
     id: number;
@@ -140,6 +144,7 @@ type Props = {
         backdatePayment: boolean;
         createInvoice: boolean;
         createDeliveryNote: boolean;
+        reportOutOfStockArticle: boolean;
     };
 };
 
@@ -446,6 +451,12 @@ export default function ShowOrder({ order, paymentSummary, payments, financialAc
             {/* Supplier procurement / special orders — a domain of its own,
                 deliberately not mixed with the internal transfer requests above. */}
             <ProcurementPanel order={order} data={procurement} />
+
+            {/* Articles hors stock — a Custom (not-yet-catalogued) line flagged for
+                the catalogue team to source or create. Separate queue: see
+                /procurement/out-of-stock-articles. Never mixed with the supplier
+                procurement panel above (distinct business problems). */}
+            <OutOfStockArticlePanel order={order} canReport={can.reportOutOfStockArticle} />
 
             {/* Invoice panel */}
             <section className="mb-6 rounded-card border border-line bg-surface p-5">
@@ -759,6 +770,49 @@ const PROC_STATUS_CLASS: Record<string, string> = {
     cancelled: 'bg-slate-100 text-slate-500',
     unavailable: 'bg-rose-50 text-rose-700',
 };
+
+function OutOfStockArticlePanel({ order, canReport }: { order: Order; canReport: boolean }) {
+    const unresolvedLines = order.lines.filter((l) => l.line_type === 'custom' && l.product_variant_id === null);
+    if (unresolvedLines.length === 0) return null;
+
+    const flag = (lineId: number) => router.post(`/sales/orders/${order.id}/out-of-stock-articles`, { sales_order_line_id: lineId }, { preserveScroll: true });
+
+    return (
+        <section className="mb-6 rounded-card border border-line bg-surface p-5">
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Articles hors catalogue</h2>
+            <ul className="mt-3 space-y-2">
+                {unresolvedLines.map((line) => (
+                    <li key={line.id} className="rounded-field border border-line p-3 text-sm">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span className="font-medium text-ink">
+                                {line.product_name} · {formatQuantity(line.quantity)} u.
+                            </span>
+                            {line.out_of_stock_article ? (
+                                <span
+                                    className={`rounded-full px-2.5 py-1 text-xs font-medium ${
+                                        line.out_of_stock_article.status === 'resolved'
+                                            ? 'bg-emerald-50 text-emerald-700'
+                                            : 'bg-amber-50 text-amber-700'
+                                    }`}
+                                >
+                                    {line.out_of_stock_article.status === 'resolved' ? 'Résolu' : 'Signalé — à traiter'}
+                                </span>
+                            ) : canReport ? (
+                                <button
+                                    type="button"
+                                    onClick={() => flag(line.id)}
+                                    className="rounded-field bg-primary px-3 py-1.5 text-xs font-medium text-primary-fg hover:bg-primary-hover"
+                                >
+                                    Signaler pour ajout au catalogue
+                                </button>
+                            ) : null}
+                        </div>
+                    </li>
+                ))}
+            </ul>
+        </section>
+    );
+}
 
 function ProcurementPanel({ order, data }: { order: Order; data: ProcurementData }) {
     const [addLine, setAddLine] = useState<number | null>(null);

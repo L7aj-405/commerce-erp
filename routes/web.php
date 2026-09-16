@@ -22,6 +22,7 @@ use App\Http\Controllers\Finance\FinanceDashboardController;
 use App\Http\Controllers\Finance\FinanceExportController;
 use App\Http\Controllers\Finance\FinanceJournalController;
 use App\Http\Controllers\Integrations\WooCommerceIntegrationController;
+use App\Http\Controllers\Integrations\WooCommerceStockTaskController;
 use App\Http\Controllers\Inventory\InventoryMovementController;
 use App\Http\Controllers\Inventory\InventoryReservationController;
 use App\Http\Controllers\Inventory\InventoryStockController;
@@ -36,6 +37,7 @@ use App\Http\Controllers\Payments\FinancialAccountController;
 use App\Http\Controllers\Payments\PaymentController;
 use App\Http\Controllers\PlatformController;
 use App\Http\Controllers\PosController;
+use App\Http\Controllers\Procurement\OutOfStockArticleController;
 use App\Http\Controllers\Procurement\ProcurementController;
 use App\Http\Controllers\Procurement\SupplierController;
 use App\Http\Controllers\Quotations\QuotationController;
@@ -252,6 +254,12 @@ Route::middleware('auth')->group(function () {
         Route::post('/woocommerce/{integration}/test', [WooCommerceIntegrationController::class, 'test'])->name('woocommerce.test');
         Route::post('/woocommerce/{integration}/sync', [WooCommerceIntegrationController::class, 'sync'])->name('woocommerce.sync');
         Route::get('/woocommerce/{integration}/status', [WooCommerceIntegrationController::class, 'runStatus'])->name('woocommerce.status');
+
+        // Manual Woo stock bridge — operator checklist (Part A). No automatic
+        // WooCommerce write-back: the operator updates the website by hand and
+        // ticks the task off here.
+        Route::get('/woocommerce/stock-tasks', [WooCommerceStockTaskController::class, 'index'])->name('woocommerce.stock-tasks.index');
+        Route::post('/woocommerce/stock-tasks/{task}/complete', [WooCommerceStockTaskController::class, 'complete'])->name('woocommerce.stock-tasks.complete');
     });
 
     Route::get('/financial-accounts', [FinancialAccountController::class, 'index'])->name('financial-accounts.index');
@@ -345,6 +353,8 @@ Route::middleware('auth')->group(function () {
         Route::post('/orders/{order}/delivery-notes', [DeliveryNoteController::class, 'store'])->name('orders.delivery-notes.store');
         // Raise a supplier special-order for one under-covered catalogue line.
         Route::post('/orders/{order}/procurements', [ProcurementController::class, 'store'])->name('orders.procurements.store');
+        // Flag a Custom (not-yet-catalogued) line as an "Article hors stock" to source/create.
+        Route::post('/orders/{order}/out-of-stock-articles', [OutOfStockArticleController::class, 'store'])->name('orders.out-of-stock-articles.store');
     });
 
     // Achats — supplier procurement / special orders. Distinct domain from the
@@ -359,6 +369,15 @@ Route::middleware('auth')->group(function () {
         Route::post('/{procurement}/order', [ProcurementController::class, 'order'])->name('order');
         Route::post('/{procurement}/receive', [ProcurementController::class, 'receive'])->name('receive');
         Route::post('/{procurement}/cancel', [ProcurementController::class, 'cancel'])->name('cancel');
+    });
+
+    // Articles hors stock (Part B): unresolved requests for an article that is
+    // not yet a catalogue Product/ProductVariant. Distinct queue from the
+    // supplier procurement list above — see OutOfStockArticleController.
+    Route::prefix('procurement/out-of-stock-articles')->name('procurement.out-of-stock-articles.')->group(function () {
+        Route::get('/', [OutOfStockArticleController::class, 'index'])->name('index');
+        Route::get('/{article}/variant-search', [OutOfStockArticleController::class, 'variantSearch'])->name('variant-search');
+        Route::post('/{article}/resolve', [OutOfStockArticleController::class, 'resolve'])->name('resolve');
     });
 
     // Finance V1 — read-only reporting over existing Sales/Invoice/Payment data.

@@ -7,6 +7,7 @@ use App\Enums\SalesOrderLineType;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Facades\Auth;
 
 class SalesOrderLine extends Model
@@ -55,6 +56,11 @@ class SalesOrderLine extends Model
     public function procurements(): HasMany
     {
         return $this->hasMany(SalesOrderProcurement::class);
+    }
+
+    public function outOfStockArticle(): HasOne
+    {
+        return $this->hasOne(OutOfStockArticle::class);
     }
 
     public function resolveRouteBindingQuery($query, $value, $field = null)

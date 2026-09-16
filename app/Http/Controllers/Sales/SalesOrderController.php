@@ -393,6 +393,7 @@ class SalesOrderController extends Controller
             'lines.productVariant:id,organization_id,label,sku,status',
             'lines.allocations.warehouse:id,name,code',
             'lines.allocations.inventoryReservation:id,status',
+            'lines.outOfStockArticle',
             'procurements',
         ]);
     }
@@ -405,6 +406,7 @@ class SalesOrderController extends Controller
             'cancel' => $request->user()->can('cancel', $order), 'fulfill' => $request->user()->can('fulfill', $order),
             'overridePrice' => $request->user()->hasPermission($order->organization_id, 'sales_orders.override_price'),
             'applyDiscount' => $request->user()->hasPermission($order->organization_id, 'sales_orders.apply_discount'),
+            'reportOutOfStockArticle' => $request->user()->hasPermission($order->organization_id, 'procurement.manage'),
         ];
     }
 }
