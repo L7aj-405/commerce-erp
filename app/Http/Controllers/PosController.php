@@ -174,7 +174,7 @@ class PosController extends Controller
             ->orderBy('product_id')
             ->orderByRaw('CASE WHEN sku IS NULL OR sku = ? THEN 1 ELSE 0 END', [''])
             ->orderBy('sku')
-            ->paginate(($filters['barcode'] ?? null) ? 1 : 24, ['id', 'organization_id', 'product_id', 'label', 'sku', 'reference', 'barcode', 'default_sale_price', 'public_price_ttc', 'unit_price_ht', 'tax_rate_id'])
+            ->paginate(($filters['barcode'] ?? null) ? 1 : 24, ['id', 'organization_id', 'product_id', 'label', 'sku', 'reference', 'barcode', 'image_url', 'default_sale_price', 'public_price_ttc', 'unit_price_ht', 'tax_rate_id'])
             ->withQueryString();
 
         $defaultTaxRate = $priceResolver->defaultTaxRate($store, $organization->getKey());
@@ -198,7 +198,11 @@ class PosController extends Controller
                 'sku' => $variant->sku,
                 'reference' => $variant->reference,
                 'barcode' => $variant->barcode,
-                'image_url' => $variant->product->image_url,
+                // The variant's own WooCommerce (or manually set) image first —
+                // never the parent Product's image unconditionally (§ variant
+                // image bug fix). Falls back to the parent when the variant has
+                // none of its own.
+                'image_url' => $variant->image_url ?? $variant->product->image_url,
                 'brand' => $variant->product->brand?->only(['id', 'name']),
                 'unit_price_excl_tax' => $price['unit_price_ht'] ?? '0.0000',
                 'unit_price_incl_tax' => $price['unit_price_ttc'] ?? $variant->default_sale_price,
@@ -848,7 +852,7 @@ class PosController extends Controller
                 'line_tax_amount' => $line->tax_amount,
                 'line_total' => $line->total_incl_tax,
                 'product_variant_id' => $line->product_variant_id,
-                'image_url' => $line->productVariant?->product?->image_url,
+                'image_url' => $line->productVariant?->image_url ?? $line->productVariant?->product?->image_url,
                 'brand' => $line->productVariant?->product?->brand?->only(['id', 'name']),
                 'warehouse' => $order->posWarehouse?->only(['id', 'name', 'code']),
                 'remote_required' => $remoteRequired,

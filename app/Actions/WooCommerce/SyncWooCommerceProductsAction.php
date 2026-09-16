@@ -365,6 +365,11 @@ class SyncWooCommerceProductsAction
             'sku' => $v->sku,
             'reference' => $v->reference,
             'barcode' => null,
+            // Variation's own Woo image, already falling back to the parent's main
+            // image inside the normalizer when the variation has none (see
+            // WooCommerceProductNormalizer::normalizeVariation) — never the parent
+            // image unconditionally.
+            'image_url' => $v->imageUrl,
             'purchase_price' => null,
             'regular_sale_price' => $regular,
             'promotional_sale_price' => $promo,
@@ -391,6 +396,10 @@ class SyncWooCommerceProductsAction
         $variant->regular_sale_price = $regular;
         $variant->promotional_sale_price = $promo;
         $variant->tax_rate_id = $taxRateId;
+        // Re-applied on every sync so a changed or removed Woo variation image is
+        // reflected here too — never left stale (see class doc on
+        // WooCommerceProductNormalizer::normalizeVariation for the fallback rule).
+        $variant->image_url = $v->imageUrl;
         if ($woo->isVariable()) {
             $variant->label = $v->label() ?? $variant->label;
         }

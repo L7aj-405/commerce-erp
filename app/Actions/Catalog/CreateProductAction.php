@@ -37,6 +37,7 @@ class CreateProductAction
             $variant->sku = $variantData['sku'];
             $variant->reference = $variantData['reference'] ?? null;
             $variant->barcode = $variantData['barcode'] ?? null;
+            $variant->image_url = $variantData['image_url'] ?? null;
             $variant->purchase_price = $variantData['purchase_price'] ?? null;
             $publicPrice = $variantData['public_price_ttc'] ?? $variantData['default_sale_price'] ?? $variantData['regular_sale_price'];
             $variant->public_price_ttc = $publicPrice;
@@ -60,7 +61,7 @@ class CreateProductAction
                 $actor,
                 $organization,
                 auditable: $variant,
-                newValues: $variant->only(['product_id', 'sku', 'reference', 'barcode', 'purchase_price', 'regular_sale_price', 'promotional_sale_price', 'default_sale_price', 'public_price_ttc', 'unit_price_ht', 'tax_rate_id', 'status']),
+                newValues: $variant->only(['product_id', 'sku', 'reference', 'barcode', 'image_url', 'purchase_price', 'regular_sale_price', 'promotional_sale_price', 'default_sale_price', 'public_price_ttc', 'unit_price_ht', 'tax_rate_id', 'status']),
             );
 
             return $product->load('variants');

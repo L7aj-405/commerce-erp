@@ -19,6 +19,7 @@ type StockRow = {
     sku: string;
     reference: string | null;
     barcode: string | null;
+    image_url: string | null;
     product: { id: number; name: string; image_url: string | null; brand: { id: number; name: string } | null; category: { id: number; name: string } | null };
     warehouses: Array<{ id: number; name: string; code: string; on_hand: string; reserved: string; available: string }>;
     summary: { id?: number; name?: string; code?: string; on_hand: string; reserved: string; available: string };
@@ -175,7 +176,7 @@ export default function StockIndex({ balances, filters, warehouses, brands, cate
                                                 <tr key={row.id} className="border-t align-top">
                                                     <td className="p-3">
                                                         <div className="flex items-center gap-3">
-                                                            {row.product.image_url ? <img src={row.product.image_url} alt="" className="h-11 w-11 rounded-lg object-cover" referrerPolicy="no-referrer" /> : <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-slate-100 font-semibold text-slate-500">{row.product.name.slice(0, 2).toUpperCase()}</div>}
+                                                            {(row.image_url ?? row.product.image_url) ? <img src={row.image_url ?? row.product.image_url ?? undefined} alt="" className="h-11 w-11 rounded-lg object-cover" referrerPolicy="no-referrer" /> : <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-slate-100 font-semibold text-slate-500">{row.product.name.slice(0, 2).toUpperCase()}</div>}
                                                             <div>
                                                                 <Link href={`/catalog/products/${row.product.id}`} className="font-semibold hover:underline">{row.product.name}</Link>
                                                                 <p className="text-xs text-slate-500">{row.label ?? 'Variante principale'}</p>

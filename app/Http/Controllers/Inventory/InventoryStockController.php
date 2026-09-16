@@ -106,6 +106,7 @@ class InventoryStockController extends Controller
                 'sku' => $variant->sku,
                 'reference' => $variant->reference,
                 'barcode' => $variant->barcode,
+                'image_url' => $variant->image_url ?? $variant->product->image_url,
                 'product' => [
                     'id' => $variant->product->getKey(),
                     'name' => $variant->product->name,
