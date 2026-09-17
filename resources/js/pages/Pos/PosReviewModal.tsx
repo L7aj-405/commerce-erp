@@ -130,11 +130,8 @@ export default function PosReviewModal({ open, data, sale, currencyCode, busy, e
                     {error && (
                         <p role="alert" className="mb-2.5 rounded-field bg-danger-soft px-3 py-2 text-[12px] text-danger">{error}</p>
                     )}
-                    <div className="flex items-center gap-2">
-                        <button type="button" disabled={busy} onClick={onBack} className="rounded-field border border-line-strong bg-surface px-3 py-2.5 text-[13px] font-medium text-ink transition-soft hover:bg-sage disabled:opacity-50">
-                            Retour
-                        </button>
-                        <Button type="button" loading={busy} loadingText="Validation…" onClick={() => onConfirm(false)} className="flex-1 px-3 py-2.5">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                        <Button type="button" loading={busy} loadingText="Validation…" onClick={() => onConfirm(false)} className="order-1 min-h-11 px-3 py-2.5 sm:order-2 sm:flex-1">
                             Valider
                         </Button>
                         <button
@@ -142,10 +139,13 @@ export default function PosReviewModal({ open, data, sale, currencyCode, busy, e
                             disabled={busy}
                             aria-busy={busy || undefined}
                             onClick={() => onConfirm(true)}
-                            className="inline-flex flex-1 items-center justify-center gap-2 rounded-field border border-primary bg-surface px-3 py-2.5 text-sm font-semibold text-primary transition-soft hover:bg-sage disabled:opacity-50"
+                            className="order-2 inline-flex min-h-11 items-center justify-center gap-2 rounded-field border border-primary bg-surface px-3 py-2.5 text-sm font-semibold text-primary transition-soft hover:bg-sage disabled:opacity-50 sm:order-3 sm:flex-1"
                         >
                             {busy && <Spinner size="sm" />}
                             {busy ? 'Validation…' : 'Valider & imprimer'}
+                        </button>
+                        <button type="button" disabled={busy} onClick={onBack} className="order-3 min-h-11 rounded-field border border-line-strong bg-surface px-3 py-2.5 text-[13px] font-medium text-ink transition-soft hover:bg-sage disabled:opacity-50 sm:order-1">
+                            Retour
                         </button>
                     </div>
                 </div>

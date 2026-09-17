@@ -31,6 +31,13 @@ class TwoFactorAuthenticationController extends Controller
         $currentSessionId = $request->session()->getId();
 
         return Inertia::render('Settings/Security', [
+            // Surfaces EnsureTwoFactorPolicy's redirect explanation (e.g. "Votre
+            // organisation exige la double authentification") — without this the
+            // policy's `->with('status', …)` flash was never actually read by
+            // anything, since it isn't part of the globally shared `flash` props
+            // (see HandleInertiaRequests) — same page-scoped-prop pattern as
+            // EmailVerificationPromptController's own `status`.
+            'status' => session('status'),
             'twoFactorEnabled' => $user->hasEnabledTwoFactorAuthentication(),
             'recoveryCodesRemaining' => $user->hasEnabledTwoFactorAuthentication()
                 ? count($user->two_factor_recovery_codes ?? [])

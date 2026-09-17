@@ -65,7 +65,9 @@ export default function UsersAccessIndex({ organization, memberships, roles, inv
                 <header className="border-b border-line px-5 py-3">
                     <h2 className="text-sm font-semibold text-ink">Membres ({memberships.length})</h2>
                 </header>
-                <div className="overflow-x-auto">
+
+                {/* Desktop/tablet: table */}
+                <div className="hidden overflow-x-auto md:block">
                     <table className="w-full text-left text-sm">
                         <thead className="bg-raised text-[11px] uppercase tracking-wide text-ink-faint">
                             <tr>
@@ -91,6 +93,20 @@ export default function UsersAccessIndex({ organization, memberships, roles, inv
                         </tbody>
                     </table>
                 </div>
+
+                {/* Mobile: stacked cards */}
+                <ul className="space-y-3 p-3 md:hidden">
+                    {memberships.map((member) => (
+                        <MemberCard
+                            key={member.id}
+                            member={member}
+                            roles={selectableRoles}
+                            stores={stores}
+                            isSelf={member.user.id === auth.user?.id}
+                            can={can}
+                        />
+                    ))}
+                </ul>
             </section>
 
             {can.manageMembers && (
@@ -124,7 +140,7 @@ export default function UsersAccessIndex({ organization, memberships, roles, inv
                                                         window.confirm(`Annuler l’invitation de ${invitation.email} ?`) &&
                                                         router.delete(`/invitations/${invitation.id}`, { preserveScroll: true })
                                                     }
-                                                    className="text-xs text-danger hover:underline"
+                                                    className="inline-flex min-h-9 items-center rounded-field px-2 text-xs text-danger hover:bg-danger-soft hover:underline"
                                                 >
                                                     Annuler
                                                 </button>
@@ -224,7 +240,7 @@ function AddMemberPanel({ organizationId, roles }: { organizationId: number; rol
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="nom@exemple.com"
-                    className="min-w-64 flex-1"
+                    className="w-full min-w-0 flex-1 sm:w-auto sm:min-w-64"
                 />
                 <label className="block">
                     <span className="mb-1.5 block text-[13px] font-medium text-ink">Rôle</span>
@@ -268,20 +284,8 @@ function TabButton({ active, onClick, children }: { active: boolean; onClick: ()
     );
 }
 
-function MemberRow({
-    member,
-    roles,
-    stores,
-    isSelf,
-    can,
-}: {
-    member: Member;
-    roles: RoleSummary[];
-    stores: StoreOption[];
-    isSelf: boolean;
-    can: Props['can'];
-}) {
-    const locked = member.is_owner || isSelf;
+/** Shared state/handlers for a membership row, reused by both the desktop `<tr>` and the mobile `<li>` card. */
+function useMemberRowActions(member: Member) {
     const [managingStores, setManagingStores] = useState(false);
 
     const changeRole = (roleId: number) => {
@@ -305,6 +309,26 @@ function MemberRow({
     const removeStore = (storeMembershipId: number) => {
         router.delete(`/store-memberships/${storeMembershipId}`, { preserveScroll: true });
     };
+
+    return { managingStores, setManagingStores, changeRole, toggleStatus, remove, memberStoreIds, addStore, removeStore };
+}
+
+function MemberRow({
+    member,
+    roles,
+    stores,
+    isSelf,
+    can,
+}: {
+    member: Member;
+    roles: RoleSummary[];
+    stores: StoreOption[];
+    isSelf: boolean;
+    can: Props['can'];
+}) {
+    const locked = member.is_owner || isSelf;
+    const { managingStores, setManagingStores, changeRole, toggleStatus, remove, memberStoreIds, addStore, removeStore } =
+        useMemberRowActions(member);
 
     return (
         <tr className="border-t border-line align-top">
@@ -372,14 +396,14 @@ function MemberRow({
             )}
             <td className="px-4 py-2.5 text-right">
                 {!locked && (can.updateMembers || can.deleteMembers) && (
-                    <div className="flex justify-end gap-3">
+                    <div className="flex justify-end gap-1">
                         {can.updateMembers && (
-                            <button type="button" onClick={toggleStatus} className="text-xs text-ink-muted hover:underline">
+                            <button type="button" onClick={toggleStatus} className="inline-flex min-h-9 items-center rounded-field px-2 text-xs text-ink-muted hover:bg-raised hover:underline">
                                 {member.status === 'active' ? 'Suspendre' : 'Réactiver'}
                             </button>
                         )}
                         {can.deleteMembers && (
-                            <button type="button" onClick={remove} className="text-xs text-danger hover:underline">
+                            <button type="button" onClick={remove} className="inline-flex min-h-9 items-center rounded-field px-2 text-xs text-danger hover:bg-danger-soft hover:underline">
                                 Retirer
                             </button>
                         )}
@@ -387,6 +411,130 @@ function MemberRow({
                 )}
             </td>
         </tr>
+    );
+}
+
+/** Mobile card counterpart of `MemberRow` — same actions/state via `useMemberRowActions`, stacked layout. */
+function MemberCard({
+    member,
+    roles,
+    stores,
+    isSelf,
+    can,
+}: {
+    member: Member;
+    roles: RoleSummary[];
+    stores: StoreOption[];
+    isSelf: boolean;
+    can: Props['can'];
+}) {
+    const locked = member.is_owner || isSelf;
+    const { managingStores, setManagingStores, changeRole, toggleStatus, remove, memberStoreIds, addStore, removeStore } =
+        useMemberRowActions(member);
+
+    return (
+        <li className="rounded-card border border-line bg-surface p-4">
+            <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-ink">{member.user.name}</p>
+                    <p className="truncate text-[13px] text-ink-muted">{member.user.email}</p>
+                </div>
+                <StatusBadge status={member.status} />
+            </div>
+
+            <div className="mt-3 text-[13px]">
+                <p className="text-ink-faint">Rôle</p>
+                {can.updateMembers && !locked ? (
+                    <select
+                        value={member.role.id}
+                        onChange={(e) => changeRole(Number(e.target.value))}
+                        className="mt-1 h-9 w-full rounded-field border border-line-strong bg-surface px-2 text-[13px]"
+                    >
+                        {roles.map((role) => (
+                            <option key={role.id} value={role.id}>
+                                {role.name}
+                            </option>
+                        ))}
+                    </select>
+                ) : (
+                    <p className="text-ink">
+                        {member.role.name}
+                        {member.is_owner && <span className="ml-1.5 text-[11px] text-ink-faint">(propriétaire)</span>}
+                    </p>
+                )}
+            </div>
+
+            {stores.length > 0 && (
+                <div className="mt-3 text-[13px]">
+                    <p className="text-ink-faint">Magasins</p>
+                    <div className="mt-1 flex flex-wrap items-center gap-1">
+                        {member.store_memberships.map((sm) => (
+                            <span key={sm.id} className="inline-flex items-center gap-1 rounded-full bg-raised px-2 py-0.5 text-[11px] text-ink-muted">
+                                {sm.store.code}
+                                {can.manageStoreAccess && (
+                                    <button
+                                        type="button"
+                                        onClick={() => removeStore(sm.id)}
+                                        className="text-ink-faint hover:text-danger"
+                                        aria-label={`Retirer l’accès à ${sm.store.name}`}
+                                    >
+                                        ×
+                                    </button>
+                                )}
+                            </span>
+                        ))}
+                        {can.manageStoreAccess && (
+                            <button
+                                type="button"
+                                onClick={() => setManagingStores((v) => !v)}
+                                className="rounded-full px-2 py-0.5 text-[11px] text-ink-muted hover:bg-raised hover:underline"
+                            >
+                                {managingStores ? 'Fermer' : '+ Magasin'}
+                            </button>
+                        )}
+                    </div>
+                    {managingStores && (
+                        <div className="mt-1.5 flex flex-wrap gap-1">
+                            {stores
+                                .filter((store) => !memberStoreIds.has(store.id))
+                                .map((store) => (
+                                    <button
+                                        key={store.id}
+                                        type="button"
+                                        onClick={() => addStore(store.id)}
+                                        className="rounded-full border border-line-strong px-2 py-1 text-[11px] text-ink-muted hover:bg-raised"
+                                    >
+                                        + {store.code}
+                                    </button>
+                                ))}
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {!locked && (can.updateMembers || can.deleteMembers) && (
+                <div className="mt-3 flex gap-2 border-t border-line pt-3">
+                    {can.updateMembers && (
+                        <button
+                            type="button"
+                            onClick={toggleStatus}
+                            className="inline-flex min-h-9 flex-1 items-center justify-center rounded-field border border-line-strong px-3 text-[13px] text-ink-muted hover:bg-raised"
+                        >
+                            {member.status === 'active' ? 'Suspendre' : 'Réactiver'}
+                        </button>
+                    )}
+                    {can.deleteMembers && (
+                        <button
+                            type="button"
+                            onClick={remove}
+                            className="inline-flex min-h-9 flex-1 items-center justify-center rounded-field border border-danger/30 px-3 text-[13px] text-danger hover:bg-danger-soft"
+                        >
+                            Retirer
+                        </button>
+                    )}
+                </div>
+            )}
+        </li>
     );
 }
 

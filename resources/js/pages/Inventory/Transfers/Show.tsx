@@ -47,8 +47,8 @@ export default function TransferShow({ transfer }: { transfer: Transfer }) {
                 </div>
             </section>
 
-            <section className="rounded-2xl border bg-white">
-                <table className="w-full text-left text-sm">
+            <section className="overflow-x-auto rounded-2xl border bg-white">
+                <table className="w-full min-w-[480px] text-left text-sm">
                     <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                         <tr>
                             <th className="p-3">Produit</th>

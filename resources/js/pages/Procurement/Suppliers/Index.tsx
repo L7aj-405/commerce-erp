@@ -179,57 +179,103 @@ export default function SuppliersIndex({ suppliers, filters, can }: Props) {
                 <SearchInput value={search} onChange={setSearch} searching={searching} placeholder="Nom, contact, téléphone" />
             </div>
 
-            <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
-                <table className="w-full min-w-[720px] text-left text-sm">
-                    <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-                        <tr>
-                            <th className="px-4 py-3 font-medium">Nom</th>
-                            <th className="px-4 py-3 font-medium">Contact</th>
-                            <th className="px-4 py-3 font-medium">Téléphone</th>
-                            <th className="px-4 py-3 font-medium">Email</th>
-                            <th className="px-4 py-3 font-medium">Statut</th>
-                            {can.manage && <th className="px-4 py-3" />}
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
+            {suppliers.data.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-10 text-center text-sm text-slate-500">
+                    Aucun fournisseur.
+                </div>
+            ) : (
+                <>
+                    {/* Desktop/tablet: table */}
+                    <div className="hidden overflow-x-auto rounded-xl border border-slate-200 bg-white md:block">
+                        <table className="w-full min-w-[720px] text-left text-sm">
+                            <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                                <tr>
+                                    <th className="px-4 py-3 font-medium">Nom</th>
+                                    <th className="px-4 py-3 font-medium">Contact</th>
+                                    <th className="px-4 py-3 font-medium">Téléphone</th>
+                                    <th className="px-4 py-3 font-medium">Email</th>
+                                    <th className="px-4 py-3 font-medium">Statut</th>
+                                    {can.manage && <th className="px-4 py-3" />}
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                                {suppliers.data.map((supplier) => (
+                                    <tr key={supplier.id}>
+                                        <td className="px-4 py-3 font-medium text-slate-900">{supplier.name}</td>
+                                        <td className="px-4 py-3 text-slate-600">{supplier.contact_person ?? '—'}</td>
+                                        <td className="px-4 py-3 text-slate-600">{supplier.phone ?? '—'}</td>
+                                        <td className="px-4 py-3 text-slate-600">{supplier.email ?? '—'}</td>
+                                        <td className="px-4 py-3">
+                                            <span
+                                                className={`rounded-full px-2.5 py-1 text-xs font-medium ${
+                                                    supplier.active ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'
+                                                }`}
+                                            >
+                                                {supplier.active ? 'Actif' : 'Inactif'}
+                                            </span>
+                                        </td>
+                                        {can.manage && (
+                                            <td className="px-4 py-3 text-right">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => startEdit(supplier)}
+                                                    className="text-sm text-slate-900 underline"
+                                                >
+                                                    Modifier
+                                                </button>
+                                            </td>
+                                        )}
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    {/* Mobile: stacked cards */}
+                    <ul className="space-y-3 md:hidden">
                         {suppliers.data.map((supplier) => (
-                            <tr key={supplier.id}>
-                                <td className="px-4 py-3 font-medium text-slate-900">{supplier.name}</td>
-                                <td className="px-4 py-3 text-slate-600">{supplier.contact_person ?? '—'}</td>
-                                <td className="px-4 py-3 text-slate-600">{supplier.phone ?? '—'}</td>
-                                <td className="px-4 py-3 text-slate-600">{supplier.email ?? '—'}</td>
-                                <td className="px-4 py-3">
+                            <li key={supplier.id} className="rounded-xl border border-slate-200 bg-white p-4">
+                                <div className="flex items-start justify-between gap-3">
+                                    <div className="min-w-0">
+                                        <p className="truncate text-sm font-semibold text-slate-900">{supplier.name}</p>
+                                        {supplier.contact_person && <p className="truncate text-[13px] text-slate-500">{supplier.contact_person}</p>}
+                                    </div>
                                     <span
-                                        className={`rounded-full px-2.5 py-1 text-xs font-medium ${
+                                        className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ${
                                             supplier.active ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'
                                         }`}
                                     >
                                         {supplier.active ? 'Actif' : 'Inactif'}
                                     </span>
-                                </td>
+                                </div>
+                                <dl className="mt-3 space-y-1 text-[13px]">
+                                    <div className="flex gap-1.5">
+                                        <dt className="shrink-0 text-slate-400">Tél.</dt>
+                                        <dd className="min-w-0 truncate text-slate-600">
+                                            {supplier.phone ? <a href={`tel:${supplier.phone}`} className="text-slate-900">{supplier.phone}</a> : '—'}
+                                        </dd>
+                                    </div>
+                                    <div className="flex gap-1.5">
+                                        <dt className="shrink-0 text-slate-400">Email</dt>
+                                        <dd className="min-w-0 truncate text-slate-600">
+                                            {supplier.email ? <a href={`mailto:${supplier.email}`} className="text-slate-900">{supplier.email}</a> : '—'}
+                                        </dd>
+                                    </div>
+                                </dl>
                                 {can.manage && (
-                                    <td className="px-4 py-3 text-right">
-                                        <button
-                                            type="button"
-                                            onClick={() => startEdit(supplier)}
-                                            className="text-sm text-slate-900 underline"
-                                        >
-                                            Modifier
-                                        </button>
-                                    </td>
+                                    <button
+                                        type="button"
+                                        onClick={() => startEdit(supplier)}
+                                        className="mt-3 inline-flex min-h-9 items-center justify-center rounded-lg border border-slate-300 px-3 text-[13px] font-medium text-slate-900 hover:bg-slate-50"
+                                    >
+                                        Modifier
+                                    </button>
                                 )}
-                            </tr>
+                            </li>
                         ))}
-                        {suppliers.data.length === 0 && (
-                            <tr>
-                                <td colSpan={can.manage ? 6 : 5} className="px-4 py-10 text-center text-slate-500">
-                                    Aucun fournisseur.
-                                </td>
-                            </tr>
-                        )}
-                    </tbody>
-                </table>
-            </div>
+                    </ul>
+                </>
+            )}
 
             <Pagination links={suppliers.links} />
         </ProcurementLayout>

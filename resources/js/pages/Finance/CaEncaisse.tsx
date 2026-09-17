@@ -69,55 +69,106 @@ export default function FinanceCaEncaisse({ organization, period, periodLabel, s
                 <p className="mt-2 text-2xl font-semibold text-ink">{formatMoney(total)}</p>
             </div>
 
-            <div className="overflow-x-auto rounded-card border border-line bg-surface">
-                <table className="w-full text-left text-sm">
-                    <thead className="bg-raised text-[11px] uppercase tracking-wide text-ink-faint">
-                        <tr>
-                            <th className="px-4 py-2.5">N° paiement</th>
-                            <th className="px-4 py-2.5">Date de vente</th>
-                            <th className="px-4 py-2.5">Date de paiement</th>
-                            <th className="px-4 py-2.5">N° facture / commande</th>
-                            <th className="px-4 py-2.5">Désignation</th>
-                            <th className="px-4 py-2.5">Client</th>
-                            <th className="px-4 py-2.5">Mode d’encaissement</th>
-                            <th className="px-4 py-2.5 text-right">Montant encaissé</th>
-                            <th className="px-4 py-2.5">Statut</th>
-                        </tr>
-                    </thead>
-                    <tbody>
+            {rows.data.length === 0 ? (
+                <div className="rounded-card border border-dashed border-line-strong bg-raised px-4 py-8 text-center text-sm text-ink-faint">
+                    Aucun encaissement sur cette période.
+                </div>
+            ) : (
+                <>
+                    {/* Desktop/tablet: table */}
+                    <div className="hidden overflow-x-auto rounded-card border border-line bg-surface md:block">
+                        <table className="w-full text-left text-sm">
+                            <thead className="bg-raised text-[11px] uppercase tracking-wide text-ink-faint">
+                                <tr>
+                                    <th className="px-4 py-2.5">N° paiement</th>
+                                    <th className="px-4 py-2.5">Date de vente</th>
+                                    <th className="px-4 py-2.5">Date de paiement</th>
+                                    <th className="px-4 py-2.5">N° facture / commande</th>
+                                    <th className="px-4 py-2.5">Désignation</th>
+                                    <th className="px-4 py-2.5">Client</th>
+                                    <th className="px-4 py-2.5">Mode d’encaissement</th>
+                                    <th className="px-4 py-2.5 text-right">Montant encaissé</th>
+                                    <th className="px-4 py-2.5">Statut</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {rows.data.map((row) => (
+                                    <tr key={row.id} className="border-t border-line">
+                                        <td className="px-4 py-2.5 font-medium text-ink">{row.payment_number}</td>
+                                        <td className="px-4 py-2.5 whitespace-nowrap text-ink-muted">{formatDate(row.sale_date)}</td>
+                                        <td className="px-4 py-2.5 whitespace-nowrap text-ink-muted">{formatDate(row.payment_date)}</td>
+                                        <td className="px-4 py-2.5">
+                                            {row.reference_type === 'invoice' && row.invoice_id ? (
+                                                <Link href={`/invoices/${row.invoice_id}`}>{row.reference}</Link>
+                                            ) : (
+                                                <Link href={`/sales/orders/${row.sales_order_id}`}>{row.reference}</Link>
+                                            )}
+                                        </td>
+                                        <td className="px-4 py-2.5">{row.designation}</td>
+                                        <td className="px-4 py-2.5">{row.customer}</td>
+                                        <td className="px-4 py-2.5 text-ink-muted">{row.method_label}</td>
+                                        <td className="px-4 py-2.5 text-right tabular-nums">{formatMoney(row.amount)}</td>
+                                        <td className="px-4 py-2.5">
+                                            <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold ${STATUS_STYLES[row.status_label] ?? 'bg-raised text-ink-muted'}`}>
+                                                {row.status_label}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    {/* Mobile: stacked cards */}
+                    <ul className="space-y-3 md:hidden">
                         {rows.data.map((row) => (
-                            <tr key={row.id} className="border-t border-line">
-                                <td className="px-4 py-2.5 font-medium text-ink">{row.payment_number}</td>
-                                <td className="px-4 py-2.5 whitespace-nowrap text-ink-muted">{formatDate(row.sale_date)}</td>
-                                <td className="px-4 py-2.5 whitespace-nowrap text-ink-muted">{formatDate(row.payment_date)}</td>
-                                <td className="px-4 py-2.5">
-                                    {row.reference_type === 'invoice' && row.invoice_id ? (
-                                        <Link href={`/invoices/${row.invoice_id}`}>{row.reference}</Link>
-                                    ) : (
-                                        <Link href={`/sales/orders/${row.sales_order_id}`}>{row.reference}</Link>
-                                    )}
-                                </td>
-                                <td className="px-4 py-2.5">{row.designation}</td>
-                                <td className="px-4 py-2.5">{row.customer}</td>
-                                <td className="px-4 py-2.5 text-ink-muted">{row.method_label}</td>
-                                <td className="px-4 py-2.5 text-right tabular-nums">{formatMoney(row.amount)}</td>
-                                <td className="px-4 py-2.5">
-                                    <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold ${STATUS_STYLES[row.status_label] ?? 'bg-raised text-ink-muted'}`}>
+                            <li key={row.id} className="rounded-card border border-line bg-surface p-4">
+                                <div className="flex items-start justify-between gap-3">
+                                    <div className="min-w-0">
+                                        <p className="truncate text-sm font-semibold text-ink">{row.payment_number}</p>
+                                        <p className="truncate text-[13px] text-ink-muted">{row.designation}</p>
+                                    </div>
+                                    <span className={`shrink-0 inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold ${STATUS_STYLES[row.status_label] ?? 'bg-raised text-ink-muted'}`}>
                                         {row.status_label}
                                     </span>
-                                </td>
-                            </tr>
+                                </div>
+                                <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1.5 text-[13px]">
+                                    <div className="min-w-0">
+                                        <dt className="text-ink-faint">Client</dt>
+                                        <dd className="truncate text-ink-muted">{row.customer}</dd>
+                                    </div>
+                                    <div className="min-w-0">
+                                        <dt className="text-ink-faint">Réf. facture/commande</dt>
+                                        <dd className="truncate">
+                                            {row.reference_type === 'invoice' && row.invoice_id ? (
+                                                <Link href={`/invoices/${row.invoice_id}`}>{row.reference}</Link>
+                                            ) : (
+                                                <Link href={`/sales/orders/${row.sales_order_id}`}>{row.reference}</Link>
+                                            )}
+                                        </dd>
+                                    </div>
+                                    <div className="min-w-0">
+                                        <dt className="text-ink-faint">Date de vente</dt>
+                                        <dd className="text-ink-muted">{formatDate(row.sale_date)}</dd>
+                                    </div>
+                                    <div className="min-w-0">
+                                        <dt className="text-ink-faint">Date de paiement</dt>
+                                        <dd className="text-ink-muted">{formatDate(row.payment_date)}</dd>
+                                    </div>
+                                    <div className="min-w-0">
+                                        <dt className="text-ink-faint">Mode</dt>
+                                        <dd className="text-ink-muted">{row.method_label}</dd>
+                                    </div>
+                                    <div className="min-w-0">
+                                        <dt className="text-ink-faint">Montant encaissé</dt>
+                                        <dd className="tabular-nums font-semibold text-ink">{formatMoney(row.amount)}</dd>
+                                    </div>
+                                </dl>
+                            </li>
                         ))}
-                        {rows.data.length === 0 && (
-                            <tr>
-                                <td colSpan={9} className="px-4 py-8 text-center text-ink-faint">
-                                    Aucun encaissement sur cette période.
-                                </td>
-                            </tr>
-                        )}
-                    </tbody>
-                </table>
-            </div>
+                    </ul>
+                </>
+            )}
             <Pagination links={rows.links} />
         </ApplicationShell>
     );
@@ -171,7 +222,7 @@ function PdfExportMenu({ baseHref }: { baseHref: string }) {
             </button>
 
             {open && (
-                <div className="absolute right-0 top-full z-20 mt-1.5 w-52 rounded-field border border-line bg-surface p-3 shadow-pop">
+                <div className="absolute right-0 top-full z-20 mt-1.5 w-52 max-w-[calc(100vw-1.5rem)] rounded-field border border-line bg-surface p-3 shadow-pop">
                     <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-ink-faint">Orientation</p>
                     <div className="flex gap-1.5">
                         <button type="button" onClick={() => setOrientation('landscape')} className={optionClass('landscape')}>

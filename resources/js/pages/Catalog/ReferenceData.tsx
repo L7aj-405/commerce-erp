@@ -60,8 +60,8 @@ export default function ReferenceData({ kind, title, records, parents = [], stor
             />
 
             <div className="grid gap-6 lg:grid-cols-[1fr_22rem]">
-                <section className="overflow-hidden rounded-card border border-line bg-surface">
-                    <table className="w-full text-left text-sm">
+                <section className="overflow-x-auto rounded-card border border-line bg-surface">
+                    <table className="w-full min-w-[520px] text-left text-sm">
                         <thead className="bg-raised text-[11px] uppercase tracking-wide text-ink-faint">
                             <tr>
                                 <th className="px-4 py-2.5">Nom</th>

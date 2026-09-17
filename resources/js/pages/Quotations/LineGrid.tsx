@@ -166,7 +166,7 @@ export default function LineGrid({ quotationId, currency, lines, searchUrl, taxR
 
     return (
         <div className="space-y-3">
-            <div className="overflow-x-auto">
+            <div className="hidden overflow-x-auto md:block">
                 <table className="w-full min-w-[820px] border-collapse text-sm">
                     <thead>
                         <tr className="border-b border-line-strong text-left text-xs uppercase tracking-wide text-ink-muted [&>th]:px-2 [&>th]:py-2 [&>th]:font-medium">
@@ -300,6 +300,139 @@ export default function LineGrid({ quotationId, currency, lines, searchUrl, taxR
                     </tbody>
                 </table>
             </div>
+
+            {/* Mobile: stacked editable line cards */}
+            <ul className="space-y-3 md:hidden">
+                {lines.map((line) => {
+                    const d = drafts[line.id] ?? draftFromLine(line);
+                    const busy = pending.isPending(`line:${line.id}`) || pending.isPending(`rm:${line.id}`);
+                    return (
+                        <li key={line.id} className={`rounded-card border border-line bg-surface p-3 ${busy ? 'opacity-60' : ''}`}>
+                            <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0">
+                                    <span className="mr-1 rounded bg-raised px-1 text-[10px] uppercase tracking-wide text-ink-faint">
+                                        {line.line_type === 'non_stock' ? 'Hors stock' : 'Catalogue'}
+                                    </span>
+                                    <p className="truncate font-medium text-ink">{line.product_name ?? line.description}</p>
+                                    {line.variant_name && <p className="truncate text-xs text-ink-muted">{line.variant_name}</p>}
+                                    <p className="truncate text-xs text-ink-faint">
+                                        {[line.reference ?? line.sku, line.unit_label].filter(Boolean).join(' · ')}
+                                    </p>
+                                    {rowError[line.id] && <p className="mt-1 text-xs text-danger">{rowError[line.id]}</p>}
+                                </div>
+                                <button
+                                    type="button"
+                                    disabled={busy}
+                                    onClick={() => removeLine(line.id)}
+                                    aria-label="Retirer la ligne"
+                                    className="flex size-9 shrink-0 items-center justify-center rounded-field text-ink-faint hover:text-danger disabled:opacity-40"
+                                >
+                                    ✕
+                                </button>
+                            </div>
+
+                            <div className="mt-3 grid grid-cols-2 gap-x-2 gap-y-2.5 text-xs text-ink-muted">
+                                <label className="block">
+                                    Qté
+                                    <input
+                                        inputMode="decimal"
+                                        disabled={busy}
+                                        value={d.quantity}
+                                        onChange={(e) => {
+                                            patchDraft(line.id, { quantity: e.target.value });
+                                            schedule(line.id);
+                                        }}
+                                        onBlur={() => commit(line.id)}
+                                        onKeyDown={(e) => e.key === 'Enter' && commit(line.id)}
+                                        className="mt-0.5 h-9 w-full rounded-field border border-line-strong px-2 text-right text-sm tabular-nums text-ink"
+                                    />
+                                </label>
+
+                                <label className="block">
+                                    TVA
+                                    <p className="mt-1.5 text-sm text-ink">
+                                        {formatQuantity(line.tax_rate)} % {line.tax_name && <span className="block text-xs text-ink-faint">{line.tax_name}</span>}
+                                    </p>
+                                </label>
+
+                                <label className="col-span-2 block">
+                                    Prix unitaire
+                                    <div className="mt-0.5 flex items-center gap-1.5">
+                                        <input
+                                            inputMode="decimal"
+                                            disabled={busy}
+                                            value={d.unit_price}
+                                            onChange={(e) => {
+                                                patchDraft(line.id, { unit_price: e.target.value });
+                                                schedule(line.id);
+                                            }}
+                                            onBlur={() => commit(line.id)}
+                                            className="h-9 w-full rounded-field border border-line-strong px-2 text-right text-sm tabular-nums text-ink"
+                                        />
+                                        <select
+                                            disabled={busy}
+                                            value={d.price_input_mode}
+                                            onChange={(e) => {
+                                                patchDraft(line.id, { price_input_mode: e.target.value as 'ht' | 'ttc' });
+                                                commit(line.id);
+                                            }}
+                                            className="h-9 shrink-0 rounded-field border border-line-strong px-1.5 text-xs text-ink"
+                                        >
+                                            <option value="ht">HT</option>
+                                            <option value="ttc">TTC</option>
+                                        </select>
+                                    </div>
+                                    <span className="mt-1 block text-right text-xs text-ink-faint">
+                                        {d.price_input_mode === 'ht'
+                                            ? `TTC ${formatMoney(line.unit_price_incl_tax, currency)}`
+                                            : `HT ${formatMoney(line.unit_price_excl_tax, currency)}`}
+                                    </span>
+                                </label>
+
+                                <label className="col-span-2 block">
+                                    Remise
+                                    <div className="mt-0.5 flex items-center gap-1.5">
+                                        <input
+                                            inputMode="decimal"
+                                            disabled={busy}
+                                            placeholder="0"
+                                            value={d.discount_value}
+                                            onChange={(e) => {
+                                                patchDraft(line.id, { discount_value: e.target.value });
+                                                schedule(line.id);
+                                            }}
+                                            onBlur={() => commit(line.id)}
+                                            className="h-9 w-full rounded-field border border-line-strong px-2 text-right text-sm tabular-nums text-ink"
+                                        />
+                                        <select
+                                            disabled={busy}
+                                            value={d.discount_unit}
+                                            onChange={(e) => {
+                                                patchDraft(line.id, { discount_unit: e.target.value as '%' | 'DH' });
+                                                commit(line.id);
+                                            }}
+                                            className="h-9 shrink-0 rounded-field border border-line-strong px-1.5 text-xs text-ink"
+                                        >
+                                            <option value="%">%</option>
+                                            <option value="DH">DH</option>
+                                        </select>
+                                    </div>
+                                </label>
+                            </div>
+
+                            <div className="mt-3 flex items-center justify-between border-t border-line pt-2.5 text-sm">
+                                <span className="text-ink-muted">Total HT <span className="tabular-nums">{formatMoney(line.taxable_amount, currency)}</span></span>
+                                <span className="font-semibold text-ink">Total TTC <span className="tabular-nums">{formatMoney(line.total_incl_tax, currency)}</span></span>
+                            </div>
+                        </li>
+                    );
+                })}
+                {lines.length === 0 && (
+                    <li className="rounded-card border border-dashed border-line-strong px-3 py-8 text-center text-sm text-ink-muted">
+                        Aucune ligne. Ajoutez un article ci-dessous.
+                    </li>
+                )}
+            </ul>
 
             {adderOpen ? (
                 <ArticleAdder
@@ -459,12 +592,12 @@ function ArticleAdder({
             ) : (
                 <div className="space-y-2">
                     <p className="text-sm font-medium text-ink">Nouvel article hors stock</p>
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                         <input
                             placeholder="Désignation *"
                             value={mForm.name}
                             onChange={(e) => setMForm((f) => ({ ...f, name: e.target.value }))}
-                            className="col-span-2 rounded-field border border-line-strong px-2 py-1"
+                            className="rounded-field border border-line-strong px-2 py-1 sm:col-span-2"
                         />
                         <input placeholder="Référence" value={mForm.reference} onChange={(e) => setMForm((f) => ({ ...f, reference: e.target.value }))} className="rounded-field border border-line-strong px-2 py-1" />
                         <input placeholder="Unité" value={mForm.unit_label} onChange={(e) => setMForm((f) => ({ ...f, unit_label: e.target.value }))} className="rounded-field border border-line-strong px-2 py-1" />

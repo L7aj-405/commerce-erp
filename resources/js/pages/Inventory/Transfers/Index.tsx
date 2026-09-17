@@ -65,8 +65,9 @@ export default function TransferIndex({ transfers, filters, can }: Props) {
                 />
             ) : (
                 <>
-                    <div className="overflow-hidden rounded-2xl border bg-white">
-                        <table className="w-full text-left text-sm">
+                    {/* Desktop/tablet: table */}
+                    <div className="hidden overflow-x-auto rounded-2xl border bg-white md:block">
+                        <table className="w-full min-w-[820px] text-left text-sm">
                             <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                                 <tr>
                                     <th className="p-3">Reference</th>
@@ -93,6 +94,50 @@ export default function TransferIndex({ transfers, filters, can }: Props) {
                             </tbody>
                         </table>
                     </div>
+
+                    {/* Mobile: stacked cards */}
+                    <ul className="space-y-3 md:hidden">
+                        {transfers.data.map(transfer => (
+                            <li key={transfer.id} className="rounded-2xl border bg-white p-4">
+                                <div className="flex items-start justify-between gap-3">
+                                    <div className="min-w-0">
+                                        <Link href={`/inventory/transfers/${transfer.id}`} className="block truncate text-sm font-semibold hover:underline">
+                                            {transfer.transfer_number}
+                                        </Link>
+                                        <p className="truncate text-[13px] text-slate-500">
+                                            {transfer.source_warehouse.name} → {transfer.destination_warehouse.name}
+                                        </p>
+                                    </div>
+                                    <span className="shrink-0 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">Effectue</span>
+                                </div>
+                                <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1.5 text-[13px]">
+                                    <div className="min-w-0">
+                                        <dt className="text-slate-400">Date</dt>
+                                        <dd>{formatDate(transfer.transferred_at)}</dd>
+                                    </div>
+                                    <div className="min-w-0">
+                                        <dt className="text-slate-400">Effectue par</dt>
+                                        <dd className="truncate">{transfer.performed_by?.name ?? 'Systeme'}</dd>
+                                    </div>
+                                    <div className="min-w-0">
+                                        <dt className="text-slate-400">Produits</dt>
+                                        <dd>{formatInteger(transfer.product_count)}</dd>
+                                    </div>
+                                    <div className="min-w-0">
+                                        <dt className="text-slate-400">Unites</dt>
+                                        <dd className="tabular-nums">{formatQuantity(transfer.unit_count)}</dd>
+                                    </div>
+                                </dl>
+                                <Link
+                                    href={`/inventory/transfers/${transfer.id}`}
+                                    className="mt-3 inline-flex min-h-9 items-center justify-center rounded-lg border px-3 text-[13px] font-medium hover:bg-slate-50"
+                                >
+                                    Voir
+                                </Link>
+                            </li>
+                        ))}
+                    </ul>
+
                     <Pagination links={transfers.links} />
                 </>
             )}

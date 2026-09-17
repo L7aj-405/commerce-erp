@@ -182,7 +182,7 @@ export default function OrderLineGrid({ orderId, currency, lines, searchUrl, tax
 
     return (
         <div className="space-y-3">
-            <div className="overflow-x-auto">
+            <div className="hidden overflow-x-auto md:block">
                 <table className="w-full min-w-[820px] border-collapse text-sm">
                     <thead>
                         <tr className="border-b border-line-strong text-left text-xs uppercase tracking-wide text-ink-muted [&>th]:px-2 [&>th]:py-2 [&>th]:font-medium">
@@ -361,6 +361,178 @@ export default function OrderLineGrid({ orderId, currency, lines, searchUrl, tax
                     </tbody>
                 </table>
             </div>
+
+            {/* Mobile: stacked editable line cards */}
+            <ul className="space-y-3 md:hidden">
+                {lines.map((line) => {
+                    const d = drafts[line.id] ?? draftFromLine(line, taxRates);
+                    const busy = pending.isPending(`line:${line.id}`) || pending.isPending(`rm:${line.id}`);
+                    const source = line.allocations.map((a) => `${formatQuantity(a.quantity)} ${a.warehouse.name}`).join(' · ');
+                    const priceEditable = line.line_type === 'custom' || canOverridePrice;
+                    return (
+                        <li key={line.id} className={`rounded-card border border-line bg-surface p-3 ${busy ? 'opacity-60' : ''}`}>
+                            <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0">
+                                    <span className="mr-1 rounded bg-raised px-1 text-[10px] uppercase tracking-wide text-ink-faint">
+                                        {line.line_type === 'catalog' ? 'Catalogue' : 'Personnalisé'}
+                                    </span>
+                                    <p className="truncate font-medium text-ink">{line.product_name}</p>
+                                    {line.variant_name && <p className="truncate text-xs text-ink-muted">{line.variant_name}</p>}
+                                    <p className="truncate text-xs text-ink-faint">
+                                        {[line.reference ?? line.sku, line.unit_label].filter(Boolean).join(' · ')}
+                                    </p>
+                                    {source && <p className="text-xs text-ink-faint">Source : {source}</p>}
+                                    {line.tax_unresolved && <p className="mt-1 text-xs text-warning">TVA à définir avant confirmation</p>}
+                                    {rowError[line.id] && <p className="mt-1 text-xs text-danger">{rowError[line.id]}</p>}
+                                </div>
+                                <button
+                                    type="button"
+                                    disabled={busy}
+                                    onClick={() => removeLine(line.id)}
+                                    aria-label="Retirer la ligne"
+                                    className="flex size-9 shrink-0 items-center justify-center rounded-field text-ink-faint hover:text-danger disabled:opacity-40"
+                                >
+                                    ✕
+                                </button>
+                            </div>
+
+                            <div className="mt-3 grid grid-cols-2 gap-x-2 gap-y-2.5 text-xs text-ink-muted">
+                                <label className="block">
+                                    Qté
+                                    <input
+                                        inputMode="decimal"
+                                        disabled={busy}
+                                        value={d.quantity}
+                                        onChange={(e) => {
+                                            patchDraft(line.id, { quantity: e.target.value });
+                                            schedule(line.id);
+                                        }}
+                                        onBlur={() => commit(line.id)}
+                                        onKeyDown={(e) => e.key === 'Enter' && commit(line.id)}
+                                        className="mt-0.5 h-9 w-full rounded-field border border-line-strong px-2 text-right text-sm tabular-nums text-ink"
+                                    />
+                                </label>
+
+                                <label className="block">
+                                    TVA
+                                    {line.line_type === 'custom' || line.tax_unresolved ? (
+                                        <select
+                                            disabled={busy}
+                                            value={d.tax_rate_id}
+                                            onChange={(e) => {
+                                                patchDraft(line.id, { tax_rate_id: e.target.value });
+                                                commit(line.id);
+                                            }}
+                                            className={`mt-0.5 h-9 w-full rounded-field border px-2 text-sm ${
+                                                line.tax_unresolved ? 'border-warning text-warning' : 'border-line-strong text-ink'
+                                            }`}
+                                        >
+                                            <option value="">{line.tax_unresolved && line.line_type === 'catalog' ? 'À définir' : '0 %'}</option>
+                                            {taxRates.map((t) => (
+                                                <option key={t.id} value={t.id}>
+                                                    {formatQuantity(t.rate)} %
+                                                </option>
+                                            ))}
+                                        </select>
+                                    ) : (
+                                        <p className="mt-1.5 text-sm text-ink">
+                                            {formatQuantity(line.tax_rate)} % {line.tax_name && <span className="block text-xs text-ink-faint">{line.tax_name}</span>}
+                                        </p>
+                                    )}
+                                </label>
+
+                                <label className="col-span-2 block">
+                                    PU HT
+                                    {priceEditable ? (
+                                        <>
+                                            <div className="mt-0.5 flex items-center gap-1.5">
+                                                <input
+                                                    inputMode="decimal"
+                                                    disabled={busy}
+                                                    value={d.unit_price}
+                                                    onChange={(e) => {
+                                                        patchDraft(line.id, { unit_price: e.target.value });
+                                                        schedule(line.id);
+                                                    }}
+                                                    onBlur={() => commit(line.id)}
+                                                    className="h-9 w-full rounded-field border border-line-strong px-2 text-right text-sm tabular-nums text-ink"
+                                                />
+                                                {line.line_type === 'custom' && (
+                                                    <select
+                                                        disabled={busy}
+                                                        value={d.price_mode}
+                                                        onChange={(e) => {
+                                                            const mode = e.target.value as 'ht' | 'ttc';
+                                                            patchDraft(line.id, {
+                                                                price_mode: mode,
+                                                                unit_price: mode === 'ttc' ? line.unit_price_incl_tax : line.unit_price_excl_tax,
+                                                            });
+                                                            commit(line.id);
+                                                        }}
+                                                        className="h-9 shrink-0 rounded-field border border-line-strong px-1.5 text-xs text-ink"
+                                                    >
+                                                        <option value="ht">HT</option>
+                                                        <option value="ttc">TTC</option>
+                                                    </select>
+                                                )}
+                                            </div>
+                                            <span className="mt-1 block text-right text-xs text-ink-faint">
+                                                {d.price_mode === 'ht'
+                                                    ? `TTC ${formatMoney(line.unit_price_incl_tax, currency)}`
+                                                    : `HT ${formatMoney(line.unit_price_excl_tax, currency)}`}
+                                            </span>
+                                        </>
+                                    ) : (
+                                        <p className="mt-1.5 text-right text-sm tabular-nums text-ink">{formatMoney(line.unit_price_excl_tax, currency)}</p>
+                                    )}
+                                </label>
+
+                                <label className="col-span-2 block">
+                                    Remise
+                                    {canApplyDiscount ? (
+                                        <div className="mt-0.5 flex items-center gap-1.5">
+                                            <input
+                                                inputMode="decimal"
+                                                disabled={busy}
+                                                placeholder="0"
+                                                value={d.discount_value}
+                                                onChange={(e) => {
+                                                    patchDraft(line.id, { discount_value: e.target.value });
+                                                    schedule(line.id);
+                                                }}
+                                                onBlur={() => commit(line.id)}
+                                                className="h-9 w-full rounded-field border border-line-strong px-2 text-right text-sm tabular-nums text-ink"
+                                            />
+                                            <select
+                                                disabled={busy}
+                                                value={d.discount_unit}
+                                                onChange={(e) => {
+                                                    patchDraft(line.id, { discount_unit: e.target.value as '%' | 'DH' });
+                                                    commit(line.id);
+                                                }}
+                                                className="h-9 shrink-0 rounded-field border border-line-strong px-1.5 text-xs text-ink"
+                                            >
+                                                <option value="%">%</option>
+                                                <option value="DH">DH</option>
+                                            </select>
+                                        </div>
+                                    ) : (
+                                        <p className="mt-1.5 text-right text-sm tabular-nums text-ink-muted">
+                                            {Number(line.discount_amount) > 0 ? `- ${formatMoney(line.discount_amount, currency)}` : '—'}
+                                        </p>
+                                    )}
+                                </label>
+                            </div>
+
+                            <div className="mt-3 flex items-center justify-between border-t border-line pt-2.5 text-sm font-semibold text-ink">
+                                <span>Total TTC</span>
+                                <span className="tabular-nums">{formatMoney(line.total_incl_tax, currency)}</span>
+                            </div>
+                        </li>
+                    );
+                })}
+                {lines.length === 0 && <li className="rounded-card border border-dashed border-line-strong px-3 py-8 text-center text-sm text-ink-muted">Aucun article.</li>}
+            </ul>
 
             {adderOpen ? (
                 <ArticleAdder
@@ -570,12 +742,12 @@ function ArticleAdder({
             ) : (
                 <div className="space-y-2">
                     <p className="text-sm font-medium text-ink">Nouvel article personnalisé</p>
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                         <input
                             placeholder="Désignation *"
                             value={mForm.name}
                             onChange={(e) => setMForm((f) => ({ ...f, name: e.target.value }))}
-                            className="col-span-2 rounded-field border border-line-strong px-2 py-1"
+                            className="rounded-field border border-line-strong px-2 py-1 sm:col-span-2"
                         />
                         <input placeholder="Référence" value={mForm.reference} onChange={(e) => setMForm((f) => ({ ...f, reference: e.target.value }))} className="rounded-field border border-line-strong px-2 py-1" />
                         <input placeholder="Unité" value={mForm.unit_label} onChange={(e) => setMForm((f) => ({ ...f, unit_label: e.target.value }))} className="rounded-field border border-line-strong px-2 py-1" />

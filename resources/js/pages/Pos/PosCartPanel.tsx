@@ -25,6 +25,8 @@ type Props = {
     onNewSale: () => void;
     onOpenHeld: () => void;
     onCheckout: () => void;
+    /** Present only in the mobile full-screen cart overlay: returns to the catalogue. */
+    onMobileBack?: () => void;
 };
 
 type DiscountUnit = 'percentage' | 'fixed';
@@ -133,6 +135,7 @@ export default function PosCartPanel({
     onNewSale,
     onOpenHeld,
     onCheckout,
+    onMobileBack,
 }: Props) {
     const lines = sale?.lines ?? [];
     const summary = sale?.summary;
@@ -159,14 +162,26 @@ export default function PosCartPanel({
         <div className="flex min-h-0 flex-1 flex-col">
             {/* Header */}
             <div className="flex shrink-0 items-center justify-between gap-2 border-b border-line px-4 py-3">
-                <div className="min-w-0">
-                    <h2 className="text-sm font-semibold text-ink">
-                        Panier{' '}
-                        {count > 0 && (
-                            <span className={`inline-block text-ink-muted transition-transform duration-200 ${bump ? 'scale-125 text-primary' : ''}`}>({count})</span>
-                        )}
-                    </h2>
-                    <p className="truncate text-[12px] text-ink-muted">{sale ? sale.order_number : 'Nouvelle vente'}</p>
+                <div className="flex min-w-0 items-center gap-1.5">
+                    {onMobileBack && (
+                        <button
+                            type="button"
+                            onClick={onMobileBack}
+                            aria-label="Retour au catalogue"
+                            className="flex size-9 shrink-0 items-center justify-center rounded-field text-ink-muted transition-soft hover:bg-sage hover:text-ink"
+                        >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 6 8 12l6 6" /></svg>
+                        </button>
+                    )}
+                    <div className="min-w-0">
+                        <h2 className="text-sm font-semibold text-ink">
+                            Panier{' '}
+                            {count > 0 && (
+                                <span className={`inline-block text-ink-muted transition-transform duration-200 ${bump ? 'scale-125 text-primary' : ''}`}>({count})</span>
+                            )}
+                        </h2>
+                        <p className="truncate text-[12px] text-ink-muted">{sale ? sale.order_number : 'Nouvelle vente'}</p>
+                    </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-1.5">
                     <button
@@ -238,7 +253,7 @@ export default function PosCartPanel({
                                                     disabled={removing || Number(line.quantity) <= 1}
                                                     onClick={() => onQuantityChange(line, Number(line.quantity) - 1)}
                                                     aria-label="Diminuer la quantité"
-                                                    className="grid size-7 place-items-center rounded-l-full text-ink-muted transition-soft hover:text-ink disabled:opacity-30"
+                                                    className="grid size-9 place-items-center rounded-l-full text-ink-muted transition-soft hover:text-ink disabled:opacity-30"
                                                 >
                                                     –
                                                 </button>
@@ -251,7 +266,7 @@ export default function PosCartPanel({
                                                     disabled={removing}
                                                     onClick={() => onQuantityChange(line, Number(line.quantity) + 1)}
                                                     aria-label="Augmenter la quantité"
-                                                    className="grid size-7 place-items-center rounded-r-full text-ink-muted transition-soft hover:text-ink disabled:opacity-30"
+                                                    className="grid size-9 place-items-center rounded-r-full text-ink-muted transition-soft hover:text-ink disabled:opacity-30"
                                                 >
                                                     +
                                                 </button>

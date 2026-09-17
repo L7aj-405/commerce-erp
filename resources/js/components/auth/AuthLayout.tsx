@@ -1,6 +1,9 @@
 import AppPreview from '@/components/marketing/AppPreview';
 import { BrandLockup } from '@/components/ui/brand';
-import { Link } from '@inertiajs/react';
+import { useToast } from '@/components/ui/toast';
+import type { SharedPageProps } from '@/types/app';
+import { Link, usePage } from '@inertiajs/react';
+import { useEffect } from 'react';
 import type { ReactNode } from 'react';
 
 type Props = {
@@ -13,8 +16,21 @@ type Props = {
 };
 
 export default function AuthLayout({ title, subtitle, children, footer, aside }: Props) {
+    // Same flash("success", …) → toast bridge as ApplicationShell — an
+    // authenticated user can land here mid-flow (e.g. redirected to
+    // /email/verify right after changing their email from Account Settings),
+    // so a flashed confirmation must not go silently unread just because this
+    // page sits outside the authenticated shell.
+    const { flash } = usePage<SharedPageProps>().props;
+    const toast = useToast();
+    useEffect(() => {
+        if (flash?.success) {
+            toast.success(flash.success);
+        }
+    }, [flash?.success, toast]);
+
     return (
-        <div className="min-h-screen bg-canvas lg:grid lg:grid-cols-[1.05fr_1fr]">
+        <div className="min-h-dvh bg-canvas lg:grid lg:grid-cols-[1.05fr_1fr]">
             {/* Brand panel */}
             <aside className="relative hidden flex-col justify-between overflow-hidden bg-sage px-10 py-10 lg:flex xl:px-14">
                 <Link href="/" className="w-fit rounded-lg">
@@ -34,7 +50,7 @@ export default function AuthLayout({ title, subtitle, children, footer, aside }:
             </aside>
 
             {/* Form panel */}
-            <main className="flex min-h-screen flex-col px-5 py-8 sm:px-8 lg:py-12">
+            <main className="flex min-h-dvh flex-col px-5 py-8 sm:px-8 lg:py-12">
                 <div className="lg:hidden">
                     <Link href="/" className="w-fit rounded-lg">
                         <BrandLockup />

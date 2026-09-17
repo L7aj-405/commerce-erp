@@ -1,4 +1,5 @@
 import { Button } from '@/components/ui/Button';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { usePendingKeys } from '@/hooks/usePendingKeys';
 import { useSerializedByKey } from '@/hooks/useSerializedByKey';
 import { formatMoney, formatQuantity } from '@/utils/format';
@@ -208,9 +209,11 @@ export default function CorrectionLineEditor({ invoiceId, currency, lines, searc
     }
 
     const addPending = pending.isPending('line:add');
+    const isDesktop = useMediaQuery('(min-width: 768px)');
 
     return (
         <div className="space-y-3">
+            {isDesktop ? (
             <div className="overflow-x-auto">
                 <table className="w-full min-w-[720px] border-collapse text-sm">
                     <thead>
@@ -364,6 +367,150 @@ export default function CorrectionLineEditor({ invoiceId, currency, lines, searc
                     </tbody>
                 </table>
             </div>
+            ) : (
+            <ul className="space-y-3">
+                {lines.map((line) => {
+                    const draft = drafts[line.id] ?? draftFromLine(line);
+                    const busy = pending.isPending(`line:update:${line.id}`);
+                    const removing = pending.isPending(`line:remove:${line.id}`);
+                    const disabled = busy || removing;
+
+                    return (
+                        <li key={line.id} className={`rounded-card border border-line bg-surface p-3 ${disabled ? 'opacity-60' : ''}`}>
+                            <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0">
+                                    <p className="truncate font-medium text-ink">{line.product_name ?? line.description}</p>
+                                    {line.variant_name && <p className="truncate text-xs text-ink-muted">{line.variant_name}</p>}
+                                    <p className="truncate text-xs text-ink-faint">
+                                        {line.reference ?? line.sku ?? '—'}
+                                        {line.unit_label ? ` · ${line.unit_label}` : ''}
+                                    </p>
+                                    <button
+                                        type="button"
+                                        disabled={disabled}
+                                        onClick={() => setPicker(picker === line.id ? null : line.id)}
+                                        className="mt-1 text-xs text-ink-muted underline hover:text-ink disabled:no-underline"
+                                    >
+                                        Changer le produit
+                                    </button>
+                                    {picker === line.id && (
+                                        <ProductSearch
+                                            searchUrl={searchUrl}
+                                            onPick={(result) => replaceProduct(line.id, result)}
+                                            onClose={() => setPicker(null)}
+                                        />
+                                    )}
+                                    {rowErrors[line.id] && <p className="mt-1 text-xs text-danger">{rowErrors[line.id]}</p>}
+                                </div>
+                                {confirmRemove === line.id ? (
+                                    <span className="flex shrink-0 flex-col items-end gap-1">
+                                        <button
+                                            type="button"
+                                            disabled={removing}
+                                            onClick={() => removeLine(line.id)}
+                                            className="text-xs font-medium text-danger hover:underline"
+                                        >
+                                            Retirer
+                                        </button>
+                                        <button type="button" onClick={() => setConfirmRemove(null)} className="text-xs text-ink-muted hover:underline">
+                                            Non
+                                        </button>
+                                    </span>
+                                ) : (
+                                    <button
+                                        type="button"
+                                        disabled={disabled || lines.length <= 1}
+                                        title={lines.length <= 1 ? 'Au moins une ligne est requise' : 'Retirer la ligne'}
+                                        onClick={() => setConfirmRemove(line.id)}
+                                        aria-label="Retirer la ligne"
+                                        className="flex size-9 shrink-0 items-center justify-center rounded-field text-ink-faint hover:text-danger disabled:opacity-40"
+                                    >
+                                        ✕
+                                    </button>
+                                )}
+                            </div>
+
+                            <div className="mt-3 grid grid-cols-2 gap-x-2 gap-y-2.5 text-xs text-ink-muted">
+                                <label className="block">
+                                    Qté
+                                    <input
+                                        inputMode="decimal"
+                                        disabled={disabled}
+                                        value={draft.quantity}
+                                        onChange={(e) => {
+                                            patchDraft(line.id, { quantity: e.target.value });
+                                            scheduleCommit(line.id);
+                                        }}
+                                        onBlur={() => commitLine(line.id)}
+                                        className="mt-0.5 h-9 w-full rounded-field border border-line-strong px-2 text-right text-sm tabular-nums text-ink"
+                                    />
+                                </label>
+
+                                <label className="block">
+                                    PU HT
+                                    <input
+                                        inputMode="decimal"
+                                        disabled={disabled}
+                                        value={draft.unit_price_excl_tax}
+                                        onChange={(e) => {
+                                            patchDraft(line.id, { unit_price_excl_tax: e.target.value });
+                                            scheduleCommit(line.id);
+                                        }}
+                                        onBlur={() => commitLine(line.id)}
+                                        className="mt-0.5 h-9 w-full rounded-field border border-line-strong px-2 text-right text-sm tabular-nums text-ink"
+                                    />
+                                </label>
+
+                                <label className="block">
+                                    TVA
+                                    <p className="mt-1.5 text-sm text-ink">
+                                        {formatQuantity(line.tax_rate)} % {line.tax_name && <span className="block text-xs text-ink-faint">{line.tax_name}</span>}
+                                    </p>
+                                </label>
+
+                                <label className="block">
+                                    Remise
+                                    <div className="mt-0.5 flex items-center gap-1.5">
+                                        <input
+                                            inputMode="decimal"
+                                            disabled={disabled}
+                                            placeholder="0"
+                                            value={draft.discount_value}
+                                            onChange={(e) => {
+                                                patchDraft(line.id, { discount_value: e.target.value });
+                                                scheduleCommit(line.id);
+                                            }}
+                                            onBlur={() => commitLine(line.id)}
+                                            className="h-9 w-full rounded-field border border-line-strong px-2 text-right text-sm tabular-nums text-ink"
+                                        />
+                                        <select
+                                            disabled={disabled}
+                                            value={draft.discount_unit}
+                                            onChange={(e) => {
+                                                patchDraft(line.id, { discount_unit: e.target.value as '%' | 'DH' });
+                                                commitLine(line.id);
+                                            }}
+                                            className="h-9 shrink-0 rounded-field border border-line-strong px-1.5 text-xs text-ink"
+                                        >
+                                            <option value="%">%</option>
+                                            <option value="DH">DH</option>
+                                        </select>
+                                    </div>
+                                    {Number(line.discount_amount) > 0 && (
+                                        <span className="mt-1 block text-right text-xs text-ink-faint">- {formatMoney(line.discount_amount, currency)}</span>
+                                    )}
+                                </label>
+                            </div>
+
+                            <div className="mt-3 flex items-center justify-between border-t border-line pt-2.5 text-sm font-semibold text-ink">
+                                <span>Total TTC</span>
+                                <span className="tabular-nums">{formatMoney(line.total_incl_tax, currency)}</span>
+                            </div>
+                        </li>
+                    );
+                })}
+            </ul>
+            )}
 
             <div>
                 {picker === 'add' ? (

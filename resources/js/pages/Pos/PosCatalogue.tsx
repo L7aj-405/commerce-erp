@@ -101,7 +101,7 @@ export default function PosCatalogue({ warehouseId, filters, isAdding, justAdded
             {/* Search + display controls */}
             <div className="shrink-0 space-y-3 border-b border-line p-3.5">
                 <div className="flex items-center gap-2">
-                    <div className="relative flex-1">
+                    <div className="relative min-w-0 flex-1">
                         <svg className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-faint" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                             <circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" />
                         </svg>
@@ -207,7 +207,10 @@ export default function PosCatalogue({ warehouseId, filters, isAdding, justAdded
                 {error && <p className="mb-3 rounded-field bg-danger-soft px-3.5 py-2.5 text-[13px] text-danger">{error}</p>}
 
                 {initialLoading && viewMode === 'grid' && (
-                    <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>
+                    <div
+                        className="grid gap-3 max-[479px]:!grid-cols-2 min-[480px]:max-sm:!grid-cols-3"
+                        style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}
+                    >
                         {Array.from({ length: columns * 3 }).map((_, index) => <ProductCardSkeleton key={index} size={cardSize} />)}
                     </div>
                 )}
@@ -224,7 +227,10 @@ export default function PosCatalogue({ warehouseId, filters, isAdding, justAdded
                 )}
 
                 {!initialLoading && viewMode === 'grid' && results.length > 0 && (
-                    <div className={`grid gap-3 transition-opacity ${refreshing ? 'opacity-60' : ''}`} style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>
+                    <div
+                        className={`grid gap-3 transition-opacity max-[479px]:!grid-cols-2 min-[480px]:max-sm:!grid-cols-3 ${refreshing ? 'opacity-60' : ''}`}
+                        style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}
+                    >
                         {results.map((product) => (
                             <PosProductCard
                                 key={product.id}
@@ -242,8 +248,8 @@ export default function PosCatalogue({ warehouseId, filters, isAdding, justAdded
                 )}
 
                 {!initialLoading && viewMode === 'table' && results.length > 0 && (
-                    <div className={`overflow-hidden rounded-card border border-line transition-opacity ${refreshing ? 'opacity-60' : ''}`}>
-                        <table className="min-w-full divide-y divide-line text-sm">
+                    <div className={`overflow-x-auto rounded-card border border-line transition-opacity ${refreshing ? 'opacity-60' : ''}`}>
+                        <table className="min-w-[640px] w-full divide-y divide-line text-sm">
                             <thead className="bg-raised text-left text-[11px] uppercase tracking-wide text-ink-faint">
                                 <tr>
                                     {showImages && <th className="w-12 px-3 py-2.5" />}

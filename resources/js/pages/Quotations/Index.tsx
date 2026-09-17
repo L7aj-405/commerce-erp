@@ -89,46 +89,83 @@ export default function QuotationIndex({ quotations, filters }: Props) {
                 />
             </div>
 
-            <div className="overflow-x-auto rounded-card border border-line bg-surface">
-                <table className="w-full min-w-[860px] text-left text-sm">
-                    <thead className="border-b border-line bg-raised text-xs uppercase tracking-wide text-ink-muted">
-                        <tr>
-                            <th className="px-4 py-3 font-medium">Devis</th>
-                            <th className="px-4 py-3 font-medium">Date</th>
-                            <th className="px-4 py-3 font-medium">Client</th>
-                            <th className="px-4 py-3 font-medium">Validité</th>
-                            <th className="px-4 py-3 font-medium">Statut</th>
-                            <th className="px-4 py-3 text-right font-medium">Total TTC</th>
-                            <th className="px-4 py-3 font-medium">Créé par</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-line">
+            {quotations.data.length === 0 ? (
+                <div className="rounded-card border border-dashed border-line-strong bg-raised px-4 py-10 text-center text-sm text-ink-muted">
+                    Aucun devis ne correspond à ces critères.
+                </div>
+            ) : (
+                <>
+                    {/* Desktop/tablet: table */}
+                    <div className="hidden overflow-x-auto rounded-card border border-line bg-surface md:block">
+                        <table className="w-full min-w-[860px] text-left text-sm">
+                            <thead className="border-b border-line bg-raised text-xs uppercase tracking-wide text-ink-muted">
+                                <tr>
+                                    <th className="px-4 py-3 font-medium">Devis</th>
+                                    <th className="px-4 py-3 font-medium">Date</th>
+                                    <th className="px-4 py-3 font-medium">Client</th>
+                                    <th className="px-4 py-3 font-medium">Validité</th>
+                                    <th className="px-4 py-3 font-medium">Statut</th>
+                                    <th className="px-4 py-3 text-right font-medium">Total TTC</th>
+                                    <th className="px-4 py-3 font-medium">Créé par</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-line">
+                                {quotations.data.map((q) => (
+                                    <tr key={q.id} onClick={() => router.visit(`/quotations/${q.id}`)} className="cursor-pointer transition-soft hover:bg-sage/50">
+                                        <td className="px-4 py-3 font-medium text-ink">{q.quotation_number ?? 'Brouillon'}</td>
+                                        <td className="px-4 py-3 text-ink-muted">{formatDate(q.quotation_date)}</td>
+                                        <td className="px-4 py-3 text-ink">{q.customer_company ?? q.customer_name ?? '—'}</td>
+                                        <td className="px-4 py-3 text-ink-muted">
+                                            {q.valid_until ? formatDate(q.valid_until) : '—'}
+                                            {expired(q) && <span className="ml-1 text-xs text-warning">(échu)</span>}
+                                        </td>
+                                        <td className="px-4 py-3">
+                                            <DocBadge tone={quotationStatusTone(q.status)}>{label(quotationStatusLabel, q.status)}</DocBadge>
+                                        </td>
+                                        <td className="px-4 py-3 text-right font-medium tabular-nums text-ink">{formatMoney(q.total_incl_tax, q.currency_code)}</td>
+                                        <td className="px-4 py-3 text-ink-muted">{q.created_by?.name ?? '—'}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    {/* Mobile: stacked cards */}
+                    <ul className="space-y-3 md:hidden">
                         {quotations.data.map((q) => (
-                            <tr key={q.id} onClick={() => router.visit(`/quotations/${q.id}`)} className="cursor-pointer transition-soft hover:bg-sage/50">
-                                <td className="px-4 py-3 font-medium text-ink">{q.quotation_number ?? 'Brouillon'}</td>
-                                <td className="px-4 py-3 text-ink-muted">{formatDate(q.quotation_date)}</td>
-                                <td className="px-4 py-3 text-ink">{q.customer_company ?? q.customer_name ?? '—'}</td>
-                                <td className="px-4 py-3 text-ink-muted">
-                                    {q.valid_until ? formatDate(q.valid_until) : '—'}
-                                    {expired(q) && <span className="ml-1 text-xs text-warning">(échu)</span>}
-                                </td>
-                                <td className="px-4 py-3">
-                                    <DocBadge tone={quotationStatusTone(q.status)}>{label(quotationStatusLabel, q.status)}</DocBadge>
-                                </td>
-                                <td className="px-4 py-3 text-right font-medium tabular-nums text-ink">{formatMoney(q.total_incl_tax, q.currency_code)}</td>
-                                <td className="px-4 py-3 text-ink-muted">{q.created_by?.name ?? '—'}</td>
-                            </tr>
+                            <li key={q.id}>
+                                <Link href={`/quotations/${q.id}`} className="block rounded-card border border-line bg-surface p-4">
+                                    <div className="flex items-start justify-between gap-3">
+                                        <div className="min-w-0">
+                                            <p className="truncate text-sm font-semibold text-ink">{q.quotation_number ?? 'Brouillon'}</p>
+                                            <p className="text-[13px] text-ink-muted">{formatDate(q.quotation_date)}</p>
+                                        </div>
+                                        <DocBadge tone={quotationStatusTone(q.status)}>{label(quotationStatusLabel, q.status)}</DocBadge>
+                                    </div>
+                                    <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1.5 text-[13px]">
+                                        <div className="min-w-0">
+                                            <dt className="text-ink-faint">Client</dt>
+                                            <dd className="truncate text-ink">{q.customer_company ?? q.customer_name ?? '—'}</dd>
+                                        </div>
+                                        <div className="min-w-0">
+                                            <dt className="text-ink-faint">Validité</dt>
+                                            <dd className="truncate text-ink-muted">
+                                                {q.valid_until ? formatDate(q.valid_until) : '—'}
+                                                {expired(q) && <span className="ml-1 text-warning">(échu)</span>}
+                                            </dd>
+                                        </div>
+                                        <div className="min-w-0">
+                                            <dt className="text-ink-faint">Créé par</dt>
+                                            <dd className="truncate text-ink-muted">{q.created_by?.name ?? '—'}</dd>
+                                        </div>
+                                    </dl>
+                                    <p className="mt-2 text-base font-semibold tabular-nums text-ink">{formatMoney(q.total_incl_tax, q.currency_code)}</p>
+                                </Link>
+                            </li>
                         ))}
-                        {quotations.data.length === 0 && (
-                            <tr>
-                                <td colSpan={7} className="px-4 py-10 text-center text-ink-muted">
-                                    Aucun devis ne correspond à ces critères.
-                                </td>
-                            </tr>
-                        )}
-                    </tbody>
-                </table>
-            </div>
+                    </ul>
+                </>
+            )}
 
             <Pagination links={quotations.links} />
         </SalesLayout>

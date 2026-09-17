@@ -158,7 +158,7 @@ export function Popover({ open, onClose, children }: { open: boolean; onClose: (
     return (
         <>
             <button type="button" aria-hidden className="fixed inset-0 z-30 cursor-default" tabIndex={-1} onClick={onClose} />
-            <div className="absolute right-0 top-full z-40 mt-2 w-72 rounded-2xl border border-slate-200 bg-white p-4 shadow-xl">
+            <div className="absolute right-0 top-full z-40 mt-2 max-h-[70vh] w-72 max-w-[calc(100vw-1.5rem)] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-4 shadow-xl">
                 {children}
             </div>
         </>

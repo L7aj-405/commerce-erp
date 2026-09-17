@@ -415,9 +415,9 @@ export default function WooCommerceSettings({ integration, runs, warehouses, sto
                         <p className="mt-2 rounded-field bg-raised px-3 py-2 text-[13px] text-ink">
                             Stock : {integration.sync_stock ? <>synchronisé vers « {warehouseName} » via des ajustements d’inventaire.</> : 'non modifié (catalogue uniquement).'}
                         </p>
-                        <div className="mt-5 flex justify-end gap-2">
-                            <Button type="button" variant="secondary" disabled={dispatching} onClick={() => setConfirmSync(false)}>Annuler</Button>
-                            <Button type="button" loading={dispatching} loadingText="Démarrage…" onClick={startSync}>Lancer la synchronisation</Button>
+                        <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                            <Button type="button" variant="secondary" disabled={dispatching} onClick={() => setConfirmSync(false)} className="w-full sm:w-auto">Annuler</Button>
+                            <Button type="button" loading={dispatching} loadingText="Démarrage…" onClick={startSync} className="w-full sm:w-auto">Lancer la synchronisation</Button>
                         </div>
                     </div>
                 </div>

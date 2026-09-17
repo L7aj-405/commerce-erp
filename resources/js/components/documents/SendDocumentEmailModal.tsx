@@ -59,8 +59,13 @@ export default function SendDocumentEmailModal({
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-ink/40 px-4" role="dialog" aria-modal="true" aria-label={title}>
             <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-card border border-line bg-surface p-5 shadow-pop">
                 <div className="flex items-start justify-between gap-3">
-                    <h2 className="text-base font-semibold text-ink">{title}</h2>
-                    <button type="button" onClick={onClose} aria-label="Fermer" className="text-ink-muted hover:text-ink">
+                    <h2 className="min-w-0 text-base font-semibold text-ink">{title}</h2>
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        aria-label="Fermer"
+                        className="flex size-9 shrink-0 items-center justify-center rounded-field text-ink-muted transition-soft hover:bg-sage hover:text-ink"
+                    >
                         ✕
                     </button>
                 </div>
@@ -114,9 +119,9 @@ export default function SendDocumentEmailModal({
                         />
                     </label>
 
-                    <div className="flex items-center gap-2 rounded-field border border-line bg-raised px-3 py-2 text-xs text-ink-muted">
-                        <span aria-hidden>📎</span>
-                        <span>{attachmentName}</span>
+                    <div className="flex min-w-0 items-center gap-2 rounded-field border border-line bg-raised px-3 py-2 text-xs text-ink-muted">
+                        <span aria-hidden className="shrink-0">📎</span>
+                        <span className="truncate">{attachmentName}</span>
                     </div>
 
                     {!canSend && (

@@ -140,77 +140,145 @@ export default function OutOfStockArticlesIndex({ articles, filters, unresolvedC
                 <SearchInput value={search} onChange={setSearch} searching={searching} placeholder="Article, commande, client" />
             </div>
 
-            <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
-                <table className="w-full min-w-[900px] text-left text-sm">
-                    <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-                        <tr>
-                            <th className="px-4 py-3 font-medium">Article demandé</th>
-                            <th className="px-4 py-3 text-right font-medium">Qté</th>
-                            <th className="px-4 py-3 font-medium">Commande</th>
-                            <th className="px-4 py-3 font-medium">Client</th>
-                            <th className="px-4 py-3 font-medium">Agent</th>
-                            <th className="px-4 py-3 font-medium">Date</th>
-                            <th className="px-4 py-3 font-medium">Statut</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                        {articles.data.map((row) => (
-                            <tr key={row.id}>
-                                <td className="px-4 py-3 text-slate-900">{row.description}</td>
-                                <td className="px-4 py-3 text-right tabular-nums">{formatQuantity(row.requested_quantity)}</td>
-                                <td className="px-4 py-3">
-                                    {row.sales_order ? (
-                                        <Link href={`/sales/orders/${row.sales_order.id}`} className="text-slate-900 underline">
-                                            {row.sales_order.order_number}
-                                        </Link>
-                                    ) : (
-                                        '—'
-                                    )}
-                                </td>
-                                <td className="px-4 py-3 text-slate-600">{row.customer ?? '—'}</td>
-                                <td className="px-4 py-3 text-slate-600">{row.requested_by ?? '—'}</td>
-                                <td className="px-4 py-3 text-slate-600">{row.created_at ? formatDate(row.created_at) : '—'}</td>
-                                <td className="px-4 py-3">
-                                    {row.status === 'resolved' ? (
-                                        <div>
-                                            <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">
-                                                Résolu
-                                            </span>
-                                            <p className="mt-1 text-xs text-slate-500">
-                                                → {row.resolved_article} · par {row.resolved_by ?? '—'}
-                                                {row.resolved_at ? ` le ${formatDate(row.resolved_at)}` : ''}
-                                            </p>
-                                        </div>
-                                    ) : resolving === row.id ? (
-                                        <ResolveForm articleId={row.id} onDone={() => setResolving(null)} />
-                                    ) : (
-                                        <div className="flex items-center gap-2">
-                                            <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700">
-                                                À traiter
-                                            </span>
-                                            {can.manage && (
-                                                <button
-                                                    onClick={() => setResolving(row.id)}
-                                                    className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-900 hover:bg-slate-50"
-                                                >
-                                                    Associer à un article
-                                                </button>
+            {articles.data.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-10 text-center text-sm text-slate-500">
+                    Aucun article hors stock.
+                </div>
+            ) : (
+                <>
+                    {/* Desktop/tablet: table */}
+                    <div className="hidden overflow-x-auto rounded-xl border border-slate-200 bg-white md:block">
+                        <table className="w-full min-w-[900px] text-left text-sm">
+                            <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                                <tr>
+                                    <th className="px-4 py-3 font-medium">Article demandé</th>
+                                    <th className="px-4 py-3 text-right font-medium">Qté</th>
+                                    <th className="px-4 py-3 font-medium">Commande</th>
+                                    <th className="px-4 py-3 font-medium">Client</th>
+                                    <th className="px-4 py-3 font-medium">Agent</th>
+                                    <th className="px-4 py-3 font-medium">Date</th>
+                                    <th className="px-4 py-3 font-medium">Statut</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                                {articles.data.map((row) => (
+                                    <tr key={row.id}>
+                                        <td className="px-4 py-3 text-slate-900">{row.description}</td>
+                                        <td className="px-4 py-3 text-right tabular-nums">{formatQuantity(row.requested_quantity)}</td>
+                                        <td className="px-4 py-3">
+                                            {row.sales_order ? (
+                                                <Link href={`/sales/orders/${row.sales_order.id}`} className="text-slate-900 underline">
+                                                    {row.sales_order.order_number}
+                                                </Link>
+                                            ) : (
+                                                '—'
                                             )}
-                                        </div>
+                                        </td>
+                                        <td className="px-4 py-3 text-slate-600">{row.customer ?? '—'}</td>
+                                        <td className="px-4 py-3 text-slate-600">{row.requested_by ?? '—'}</td>
+                                        <td className="px-4 py-3 text-slate-600">{row.created_at ? formatDate(row.created_at) : '—'}</td>
+                                        <td className="px-4 py-3">
+                                            {row.status === 'resolved' ? (
+                                                <div>
+                                                    <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">
+                                                        Résolu
+                                                    </span>
+                                                    <p className="mt-1 text-xs text-slate-500">
+                                                        → {row.resolved_article} · par {row.resolved_by ?? '—'}
+                                                        {row.resolved_at ? ` le ${formatDate(row.resolved_at)}` : ''}
+                                                    </p>
+                                                </div>
+                                            ) : resolving === row.id ? (
+                                                <ResolveForm articleId={row.id} onDone={() => setResolving(null)} />
+                                            ) : (
+                                                <div className="flex items-center gap-2">
+                                                    <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700">
+                                                        À traiter
+                                                    </span>
+                                                    {can.manage && (
+                                                        <button
+                                                            onClick={() => setResolving(row.id)}
+                                                            className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-900 hover:bg-slate-50"
+                                                        >
+                                                            Associer à un article
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    {/* Mobile: stacked cards */}
+                    <ul className="space-y-3 md:hidden">
+                        {articles.data.map((row) => (
+                            <li key={row.id} className="rounded-xl border border-slate-200 bg-white p-4">
+                                <div className="flex items-start justify-between gap-3">
+                                    <div className="min-w-0">
+                                        <p className="truncate text-sm font-semibold text-slate-900">{row.description}</p>
+                                        <p className="text-[13px] text-slate-500">
+                                            Qté <span className="tabular-nums">{formatQuantity(row.requested_quantity)}</span>
+                                        </p>
+                                    </div>
+                                    {row.status === 'resolved' ? (
+                                        <span className="shrink-0 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">Résolu</span>
+                                    ) : (
+                                        <span className="shrink-0 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700">À traiter</span>
                                     )}
-                                </td>
-                            </tr>
+                                </div>
+                                <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1.5 text-[13px]">
+                                    <div className="min-w-0">
+                                        <dt className="text-slate-400">Commande</dt>
+                                        <dd className="truncate">
+                                            {row.sales_order ? (
+                                                <Link href={`/sales/orders/${row.sales_order.id}`} className="text-slate-900 underline">
+                                                    {row.sales_order.order_number}
+                                                </Link>
+                                            ) : (
+                                                '—'
+                                            )}
+                                        </dd>
+                                    </div>
+                                    <div className="min-w-0">
+                                        <dt className="text-slate-400">Client</dt>
+                                        <dd className="truncate text-slate-600">{row.customer ?? '—'}</dd>
+                                    </div>
+                                    <div className="min-w-0">
+                                        <dt className="text-slate-400">Agent</dt>
+                                        <dd className="truncate text-slate-600">{row.requested_by ?? '—'}</dd>
+                                    </div>
+                                    <div className="min-w-0">
+                                        <dt className="text-slate-400">Date</dt>
+                                        <dd className="text-slate-600">{row.created_at ? formatDate(row.created_at) : '—'}</dd>
+                                    </div>
+                                </dl>
+                                {row.status === 'resolved' ? (
+                                    <p className="mt-2 text-[13px] text-slate-500">
+                                        → {row.resolved_article} · par {row.resolved_by ?? '—'}
+                                        {row.resolved_at ? ` le ${formatDate(row.resolved_at)}` : ''}
+                                    </p>
+                                ) : resolving === row.id ? (
+                                    <div className="mt-3 border-t border-slate-100 pt-3">
+                                        <ResolveForm articleId={row.id} onDone={() => setResolving(null)} />
+                                    </div>
+                                ) : (
+                                    can.manage && (
+                                        <button
+                                            onClick={() => setResolving(row.id)}
+                                            className="mt-3 inline-flex min-h-9 items-center justify-center rounded-lg border border-slate-300 bg-white px-3 text-[13px] font-medium text-slate-900 hover:bg-slate-50"
+                                        >
+                                            Associer à un article
+                                        </button>
+                                    )
+                                )}
+                            </li>
                         ))}
-                        {articles.data.length === 0 && (
-                            <tr>
-                                <td colSpan={7} className="px-4 py-10 text-center text-slate-500">
-                                    Aucun article hors stock.
-                                </td>
-                            </tr>
-                        )}
-                    </tbody>
-                </table>
-            </div>
+                    </ul>
+                </>
+            )}
 
             <Pagination links={articles.links} />
         </ProcurementLayout>

@@ -1,3 +1,4 @@
+import Pagination from '@/components/ui/Pagination';
 import PaymentsLayout from '@/layouts/PaymentsLayout';
 import { formatDate, formatMoney } from '@/utils/format';
 import { Head, Link, router } from '@inertiajs/react';
@@ -25,7 +26,86 @@ export default function PaymentIndex({ payments, accounts, filters }: Props) {
             <select name="account" defaultValue={String(filters.account ?? '')} className="rounded border px-3 py-2"><option value="">All accounts</option>{accounts.map((account) => <option key={account.id} value={account.id}>{account.code} · {account.name}</option>)}</select>
             <button className="rounded bg-slate-900 px-4 py-2 text-white">Filter</button>
         </form>
-        <div className="overflow-x-auto rounded-lg border"><table className="w-full text-left text-sm"><thead className="bg-slate-50"><tr><th className="p-3">Payment</th><th className="p-3">Date</th><th className="p-3">Order / customer</th><th className="p-3">Method / account</th><th className="p-3">Received by</th><th className="p-3">Status</th><th className="p-3 text-right">Amount</th></tr></thead><tbody>{payments.data.map((payment) => { const order = payment.allocations[0]?.sales_order; return <tr key={payment.id} className="border-t"><td className="p-3"><Link href={`/payments/${payment.id}`} className="font-medium underline">{payment.payment_number}</Link><br /><span className="text-slate-500">{payment.reference}</span></td><td className="p-3">{formatDate(payment.payment_date)}</td><td className="p-3">{order && <><Link href={`/sales/orders/${order.id}`} className="underline">{order.order_number}</Link><br /><span className="text-slate-500">{order.customer_name ?? order.customer_company ?? 'Walk-in'}</span></>}</td><td className="p-3 capitalize">{payment.method.replaceAll('_', ' ')}<br /><span className="text-slate-500">{payment.financial_account?.name}</span></td><td className="p-3">{payment.received_by?.name}</td><td className="p-3 capitalize">{payment.status}</td><td className="p-3 text-right font-medium">{formatMoney(payment.amount, payment.currency_code)}</td></tr>; })}{payments.data.length === 0 && <tr><td colSpan={7} className="p-8 text-center text-slate-500">No payments match these filters.</td></tr>}</tbody></table></div>
-        <nav className="mt-5 flex flex-wrap gap-2">{payments.links.map((link) => <Link key={link.label} href={link.url ?? '#'} preserveState className={`rounded border px-3 py-2 text-sm ${link.active ? 'bg-slate-900 text-white' : ''} ${!link.url ? 'pointer-events-none opacity-50' : ''}`} dangerouslySetInnerHTML={{ __html: link.label }} />)}</nav>
+        {payments.data.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm text-slate-500">No payments match these filters.</div>
+        ) : (
+            <>
+                {/* Desktop/tablet: table */}
+                <div className="hidden overflow-x-auto rounded-lg border md:block">
+                    <table className="w-full text-left text-sm">
+                        <thead className="bg-slate-50">
+                            <tr><th className="p-3">Payment</th><th className="p-3">Date</th><th className="p-3">Order / customer</th><th className="p-3">Method / account</th><th className="p-3">Received by</th><th className="p-3">Status</th><th className="p-3 text-right">Amount</th></tr>
+                        </thead>
+                        <tbody>
+                            {payments.data.map((payment) => {
+                                const order = payment.allocations[0]?.sales_order;
+                                return (
+                                    <tr key={payment.id} className="border-t">
+                                        <td className="p-3"><Link href={`/payments/${payment.id}`} className="font-medium underline">{payment.payment_number}</Link><br /><span className="text-slate-500">{payment.reference}</span></td>
+                                        <td className="p-3">{formatDate(payment.payment_date)}</td>
+                                        <td className="p-3">{order && <><Link href={`/sales/orders/${order.id}`} className="underline">{order.order_number}</Link><br /><span className="text-slate-500">{order.customer_name ?? order.customer_company ?? 'Walk-in'}</span></>}</td>
+                                        <td className="p-3 capitalize">{payment.method.replaceAll('_', ' ')}<br /><span className="text-slate-500">{payment.financial_account?.name}</span></td>
+                                        <td className="p-3">{payment.received_by?.name}</td>
+                                        <td className="p-3 capitalize">{payment.status}</td>
+                                        <td className="p-3 text-right font-medium">{formatMoney(payment.amount, payment.currency_code)}</td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
+
+                {/* Mobile: stacked cards */}
+                <ul className="space-y-3 md:hidden">
+                    {payments.data.map((payment) => {
+                        const order = payment.allocations[0]?.sales_order;
+                        return (
+                            <li key={payment.id} className="rounded-lg border p-4">
+                                <div className="flex items-start justify-between gap-3">
+                                    <div className="min-w-0">
+                                        <Link href={`/payments/${payment.id}`} className="block truncate font-medium underline">{payment.payment_number}</Link>
+                                        {payment.reference && <p className="truncate text-[13px] text-slate-500">{payment.reference}</p>}
+                                    </div>
+                                    <p className="shrink-0 text-sm font-semibold">{formatMoney(payment.amount, payment.currency_code)}</p>
+                                </div>
+                                <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1.5 text-[13px]">
+                                    <div className="min-w-0">
+                                        <dt className="text-slate-400">Date</dt>
+                                        <dd className="text-slate-600">{formatDate(payment.payment_date)}</dd>
+                                    </div>
+                                    <div className="min-w-0">
+                                        <dt className="text-slate-400">Statut</dt>
+                                        <dd className="capitalize text-slate-600">{payment.status}</dd>
+                                    </div>
+                                    <div className="min-w-0">
+                                        <dt className="text-slate-400">Commande / client</dt>
+                                        <dd className="truncate">
+                                            {order ? (
+                                                <>
+                                                    <Link href={`/sales/orders/${order.id}`} className="underline">{order.order_number}</Link>
+                                                    <span className="block text-slate-500">{order.customer_name ?? order.customer_company ?? 'Walk-in'}</span>
+                                                </>
+                                            ) : '—'}
+                                        </dd>
+                                    </div>
+                                    <div className="min-w-0">
+                                        <dt className="text-slate-400">Mode / compte</dt>
+                                        <dd className="truncate capitalize text-slate-600">
+                                            {payment.method.replaceAll('_', ' ')}
+                                            <span className="block normal-case text-slate-500">{payment.financial_account?.name}</span>
+                                        </dd>
+                                    </div>
+                                    <div className="min-w-0">
+                                        <dt className="text-slate-400">Reçu par</dt>
+                                        <dd className="truncate text-slate-600">{payment.received_by?.name ?? '—'}</dd>
+                                    </div>
+                                </dl>
+                            </li>
+                        );
+                    })}
+                </ul>
+            </>
+        )}
+        <Pagination links={payments.links} />
     </PaymentsLayout>;
 }

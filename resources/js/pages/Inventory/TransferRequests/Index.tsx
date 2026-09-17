@@ -116,59 +116,114 @@ export default function TransferRequestIndex({ requests, filters, warehouses, ca
                 )}
             </div>
 
-            <div className="overflow-hidden rounded-2xl border bg-white">
-                <table className="w-full text-left text-sm">
-                    <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-                        <tr>
-                            <th className="p-3">N°</th>
-                            <th className="p-3">De</th>
-                            <th className="p-3">Vers</th>
-                            <th className="p-3">Motif</th>
-                            <th className="p-3">Commande</th>
-                            <th className="p-3 text-right">Unités</th>
-                            <th className="p-3">Statut</th>
-                            <th className="p-3">Créée le</th>
-                        </tr>
-                    </thead>
-                    <tbody>
+            {requests.data.length === 0 ? (
+                <div className="rounded-2xl border border-dashed bg-slate-50 p-8 text-center text-sm text-slate-500">
+                    Aucune demande de transfert.
+                </div>
+            ) : (
+                <>
+                    {/* Desktop/tablet: table */}
+                    <div className="hidden overflow-x-auto rounded-2xl border bg-white md:block">
+                        <table className="w-full min-w-[880px] text-left text-sm">
+                            <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                                <tr>
+                                    <th className="p-3">N°</th>
+                                    <th className="p-3">De</th>
+                                    <th className="p-3">Vers</th>
+                                    <th className="p-3">Motif</th>
+                                    <th className="p-3">Commande</th>
+                                    <th className="p-3 text-right">Unités</th>
+                                    <th className="p-3">Statut</th>
+                                    <th className="p-3">Créée le</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {requests.data.map((r) => (
+                                    <tr key={r.id} className="border-t">
+                                        <td className="p-3 font-semibold">
+                                            <Link href={`/inventory/transfer-requests/${r.id}`} className="hover:underline">
+                                                {r.request_number}
+                                            </Link>
+                                        </td>
+                                        <td className="p-3">{r.source?.name ?? '—'}</td>
+                                        <td className="p-3">{r.destination?.name ?? '—'}</td>
+                                        <td className="p-3">{r.reasons.map((x) => REASON_LABEL[x] ?? x).join(' + ')}</td>
+                                        <td className="p-3">
+                                            {r.sales_order ? (
+                                                <Link href={`/sales/orders/${r.sales_order.id}`} className="hover:underline">
+                                                    {r.sales_order.order_number}
+                                                </Link>
+                                            ) : (
+                                                '—'
+                                            )}
+                                        </td>
+                                        <td className="p-3 text-right tabular-nums">{formatQuantity(r.unit_count)}</td>
+                                        <td className="p-3">
+                                            <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${statusClass(r.status)}`}>
+                                                {STATUS_LABEL[r.status] ?? r.status}
+                                            </span>
+                                        </td>
+                                        <td className="p-3 text-slate-500">{r.created_at ? formatDate(r.created_at) : '—'}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    {/* Mobile: stacked cards */}
+                    <ul className="space-y-3 md:hidden">
                         {requests.data.map((r) => (
-                            <tr key={r.id} className="border-t">
-                                <td className="p-3 font-semibold">
-                                    <Link href={`/inventory/transfer-requests/${r.id}`} className="hover:underline">
-                                        {r.request_number}
-                                    </Link>
-                                </td>
-                                <td className="p-3">{r.source?.name ?? '—'}</td>
-                                <td className="p-3">{r.destination?.name ?? '—'}</td>
-                                <td className="p-3">{r.reasons.map((x) => REASON_LABEL[x] ?? x).join(' + ')}</td>
-                                <td className="p-3">
-                                    {r.sales_order ? (
-                                        <Link href={`/sales/orders/${r.sales_order.id}`} className="hover:underline">
-                                            {r.sales_order.order_number}
+                            <li key={r.id} className="rounded-2xl border bg-white p-4">
+                                <div className="flex items-start justify-between gap-3">
+                                    <div className="min-w-0">
+                                        <Link href={`/inventory/transfer-requests/${r.id}`} className="block truncate text-sm font-semibold hover:underline">
+                                            {r.request_number}
                                         </Link>
-                                    ) : (
-                                        '—'
-                                    )}
-                                </td>
-                                <td className="p-3 text-right tabular-nums">{formatQuantity(r.unit_count)}</td>
-                                <td className="p-3">
-                                    <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${statusClass(r.status)}`}>
+                                        <p className="truncate text-[13px] text-slate-500">
+                                            {r.source?.name ?? '—'} → {r.destination?.name ?? '—'}
+                                        </p>
+                                    </div>
+                                    <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ${statusClass(r.status)}`}>
                                         {STATUS_LABEL[r.status] ?? r.status}
                                     </span>
-                                </td>
-                                <td className="p-3 text-slate-500">{r.created_at ? formatDate(r.created_at) : '—'}</td>
-                            </tr>
+                                </div>
+                                <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1.5 text-[13px]">
+                                    <div className="min-w-0">
+                                        <dt className="text-slate-400">Motif</dt>
+                                        <dd className="truncate">{r.reasons.map((x) => REASON_LABEL[x] ?? x).join(' + ') || '—'}</dd>
+                                    </div>
+                                    <div className="min-w-0">
+                                        <dt className="text-slate-400">Commande</dt>
+                                        <dd className="truncate">
+                                            {r.sales_order ? (
+                                                <Link href={`/sales/orders/${r.sales_order.id}`} className="hover:underline">
+                                                    {r.sales_order.order_number}
+                                                </Link>
+                                            ) : (
+                                                '—'
+                                            )}
+                                        </dd>
+                                    </div>
+                                    <div className="min-w-0">
+                                        <dt className="text-slate-400">Unités</dt>
+                                        <dd className="tabular-nums">{formatQuantity(r.unit_count)}</dd>
+                                    </div>
+                                    <div className="min-w-0">
+                                        <dt className="text-slate-400">Créée le</dt>
+                                        <dd className="text-slate-500">{r.created_at ? formatDate(r.created_at) : '—'}</dd>
+                                    </div>
+                                </dl>
+                                <Link
+                                    href={`/inventory/transfer-requests/${r.id}`}
+                                    className="mt-3 inline-flex min-h-9 items-center justify-center rounded-lg border px-3 text-[13px] font-medium hover:bg-slate-50"
+                                >
+                                    Voir
+                                </Link>
+                            </li>
                         ))}
-                        {requests.data.length === 0 && (
-                            <tr>
-                                <td colSpan={8} className="p-8 text-center text-slate-500">
-                                    Aucune demande de transfert.
-                                </td>
-                            </tr>
-                        )}
-                    </tbody>
-                </table>
-            </div>
+                    </ul>
+                </>
+            )}
             <Pagination links={requests.links} />
         </InventoryLayout>
     );

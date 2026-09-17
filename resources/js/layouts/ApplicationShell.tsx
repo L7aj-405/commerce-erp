@@ -43,6 +43,25 @@ export default function ApplicationShell({ children, wide = false, flush = false
         });
     };
 
+    // Mobile navigation drawer (the desktop sidebar is fixed/always visible from `lg:` up).
+    const [navOpen, setNavOpen] = useState(false);
+    useEffect(() => {
+        setNavOpen(false);
+    }, [currentPath]);
+    useEffect(() => {
+        if (!navOpen) return;
+        const previousOverflow = document.documentElement.style.overflow;
+        document.documentElement.style.overflow = 'hidden';
+        const handler = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') setNavOpen(false);
+        };
+        window.addEventListener('keydown', handler);
+        return () => {
+            document.documentElement.style.overflow = previousOverflow;
+            window.removeEventListener('keydown', handler);
+        };
+    }, [navOpen]);
+
     const groups: Array<{ label?: string; items: NavItem[] }> = [
         { items: [{ href: '/platform', label: 'Accueil', icon: <IconHome /> }] },
         { label: 'Vendre', items: [{ href: '/pos', label: 'Point de vente', permission: 'pos.access', needsStore: true, icon: <IconRegister /> }] },
@@ -137,6 +156,38 @@ export default function ApplicationShell({ children, wide = false, flush = false
         .filter((item) => allowed(item) && (currentPath === item.href || currentPath.startsWith(`${item.href}/`)))
         .sort((a, b) => b.href.length - a.href.length)[0]?.href;
 
+    const orgStoreSwitcher = (
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+            <select
+                aria-label="Organisation"
+                value={tenant.organization?.id ?? ''}
+                onChange={(event) => event.target.value && router.post(`/context/organizations/${event.target.value}`)}
+                className="h-11 max-w-full flex-1 rounded-field border border-line-strong bg-surface px-3 text-sm font-medium text-ink transition-soft focus:border-primary focus:outline-none sm:h-auto sm:max-w-56 sm:flex-none sm:py-2"
+            >
+                <option value="">Organisation</option>
+                {tenant.organizations.map((item) => (
+                    <option key={item.id} value={item.id}>
+                        {item.name}
+                    </option>
+                ))}
+            </select>
+            <select
+                aria-label="Magasin"
+                value={tenant.store?.id ?? ''}
+                onChange={(event) => event.target.value && router.post(`/context/stores/${event.target.value}`)}
+                disabled={!tenant.organization}
+                className="h-11 max-w-full flex-1 rounded-field border border-line-strong bg-surface px-3 text-sm text-ink transition-soft focus:border-primary focus:outline-none disabled:opacity-50 sm:h-auto sm:max-w-56 sm:flex-none sm:py-2"
+            >
+                <option value="">Magasin</option>
+                {tenant.stores.map((item) => (
+                    <option key={item.id} value={item.id}>
+                        {item.name} · {item.code}
+                    </option>
+                ))}
+            </select>
+        </div>
+    );
+
     const navigation = (dense: boolean) => (
         <nav className="space-y-5">
             {groups.map((group, index) => {
@@ -156,7 +207,7 @@ export default function ApplicationShell({ children, wide = false, flush = false
                                     href={item.href}
                                     title={dense ? item.label : undefined}
                                     aria-current={active ? 'page' : undefined}
-                                    className={`group relative mb-0.5 flex items-center gap-2.5 rounded-field px-3 py-2 text-sm transition-soft ${
+                                    className={`group relative mb-0.5 flex items-center gap-2.5 rounded-field px-3 py-2.5 text-sm transition-soft ${
                                         dense ? 'justify-center' : ''
                                     } ${
                                         active
@@ -177,7 +228,7 @@ export default function ApplicationShell({ children, wide = false, flush = false
     );
 
     return (
-        <div className={`bg-canvas text-ink ${flush ? 'h-screen overflow-hidden' : 'min-h-screen'}`}>
+        <div className={`bg-canvas text-ink ${flush ? 'h-dvh overflow-hidden' : 'min-h-dvh'}`}>
             {/* Desktop sidebar */}
             <aside
                 className={`fixed inset-y-0 left-0 z-20 hidden flex-col border-r border-line bg-surface lg:flex ${
@@ -205,51 +256,28 @@ export default function ApplicationShell({ children, wide = false, flush = false
                 </div>
             </aside>
 
-            <div className={`${collapsed ? 'lg:pl-16' : 'lg:pl-64'} ${flush ? 'flex h-screen flex-col' : ''}`}>
-                <header className={`z-10 border-b border-line bg-canvas/85 px-4 py-2.5 backdrop-blur sm:px-6 ${flush ? 'shrink-0' : 'sticky top-0'}`}>
-                    <div className={`mx-auto flex items-center justify-between gap-4 ${wide ? 'max-w-[1700px]' : 'max-w-7xl'}`}>
-                        {/* Mobile menu */}
-                        <details className="lg:hidden">
-                            <summary className="flex cursor-pointer items-center gap-2 rounded-field border border-line-strong bg-surface px-3 py-2 text-sm">
-                                Menu
-                            </summary>
-                            <div className="absolute left-4 top-14 z-30 w-64 rounded-card border border-line bg-surface p-3 shadow-pop">{navigation(false)}</div>
-                        </details>
+            <div className={`${collapsed ? 'lg:pl-16' : 'lg:pl-64'} ${flush ? 'flex h-dvh flex-col' : ''}`}>
+                <header className={`z-10 border-b border-line bg-canvas/85 px-3 py-2.5 backdrop-blur sm:px-6 ${flush ? 'shrink-0' : 'sticky top-0'}`}>
+                    <div className={`mx-auto flex items-center justify-between gap-2 sm:gap-4 ${wide ? 'max-w-[1700px]' : 'max-w-7xl'}`}>
+                        {/* Mobile menu trigger */}
+                        <button
+                            type="button"
+                            onClick={() => setNavOpen(true)}
+                            aria-label="Ouvrir le menu"
+                            aria-expanded={navOpen}
+                            className="flex size-11 shrink-0 items-center justify-center rounded-field border border-line-strong bg-surface text-ink transition-soft hover:bg-sage lg:hidden"
+                        >
+                            <IconMenu />
+                        </button>
 
-                        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-                            <select
-                                aria-label="Organisation"
-                                value={tenant.organization?.id ?? ''}
-                                onChange={(event) => event.target.value && router.post(`/context/organizations/${event.target.value}`)}
-                                className="max-w-56 rounded-field border border-line-strong bg-surface px-3 py-2 text-sm font-medium text-ink transition-soft focus:border-primary focus:outline-none"
-                            >
-                                <option value="">Organisation</option>
-                                {tenant.organizations.map((item) => (
-                                    <option key={item.id} value={item.id}>
-                                        {item.name}
-                                    </option>
-                                ))}
-                            </select>
-                            <select
-                                aria-label="Magasin"
-                                value={tenant.store?.id ?? ''}
-                                onChange={(event) => event.target.value && router.post(`/context/stores/${event.target.value}`)}
-                                disabled={!tenant.organization}
-                                className="max-w-56 rounded-field border border-line-strong bg-surface px-3 py-2 text-sm text-ink transition-soft focus:border-primary focus:outline-none disabled:opacity-50"
-                            >
-                                <option value="">Magasin</option>
-                                {tenant.stores.map((item) => (
-                                    <option key={item.id} value={item.id}>
-                                        {item.name} · {item.code}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
+                        {/* Org/store switcher — stays in the header from `sm:` up; folded into the drawer below that */}
+                        <div className="hidden min-w-0 flex-1 sm:flex">{orgStoreSwitcher}</div>
+                        <div className="min-w-0 flex-1 sm:hidden" />
 
                         {/* Profile menu */}
-                        <details className="relative">
-                            <summary className="flex cursor-pointer list-none items-center gap-2 rounded-field px-2 py-1.5 transition-soft hover:bg-sage">
-                                <span className="grid size-8 place-items-center rounded-full bg-primary text-[13px] font-semibold text-primary-fg">
+                        <details className="relative shrink-0">
+                            <summary className="flex cursor-pointer list-none items-center gap-2 rounded-field px-1.5 py-1.5 transition-soft hover:bg-sage sm:px-2">
+                                <span className="grid size-9 shrink-0 place-items-center rounded-full bg-primary text-[13px] font-semibold text-primary-fg sm:size-8">
                                     {(auth.user?.name ?? '?').trim().charAt(0).toUpperCase()}
                                 </span>
                                 <span className="hidden text-left sm:block">
@@ -257,15 +285,36 @@ export default function ApplicationShell({ children, wide = false, flush = false
                                     <span className="block text-[11px] leading-tight text-ink-muted">{auth.user?.email}</span>
                                 </span>
                             </summary>
-                            <div className="absolute right-0 top-12 z-30 w-60 rounded-card border border-line bg-surface p-1.5 shadow-pop">
+                            <div className="absolute right-0 top-12 z-30 w-60 max-w-[calc(100vw-1.5rem)] rounded-card border border-line bg-surface p-1.5 shadow-pop">
                                 <div className="px-3 py-2">
                                     <p className="text-[13px] font-medium text-ink">{auth.user?.name}</p>
                                     <p className="truncate text-[12px] text-ink-muted">{auth.user?.email}</p>
                                 </div>
+
+                                {/* Personal account — the current user's own profile/security, never
+                                    organization administration (kept in its own group below). */}
+                                <Link
+                                    href="/account/profile"
+                                    className="block rounded-field px-3 py-2.5 text-[13px] text-ink-muted transition-soft hover:bg-sage hover:text-ink"
+                                >
+                                    Mon profil
+                                </Link>
+                                <Link
+                                    href="/security"
+                                    className="block rounded-field px-3 py-2.5 text-[13px] text-ink-muted transition-soft hover:bg-sage hover:text-ink"
+                                >
+                                    Sécurité
+                                </Link>
+
+                                {(tenant.organization && tenant.permissions.includes('members.view')) ||
+                                hasPermission(['settings.view', 'settings.update']) ? (
+                                    <div className="my-1 border-t border-line" />
+                                ) : null}
+
                                 {tenant.organization && tenant.permissions.includes('members.view') && (
                                     <Link
                                         href={`/organizations/${tenant.organization.id}/users-access`}
-                                        className="block rounded-field px-3 py-2 text-[13px] text-ink-muted transition-soft hover:bg-sage hover:text-ink"
+                                        className="block rounded-field px-3 py-2.5 text-[13px] text-ink-muted transition-soft hover:bg-sage hover:text-ink"
                                     >
                                         Utilisateurs & accès
                                     </Link>
@@ -273,16 +322,16 @@ export default function ApplicationShell({ children, wide = false, flush = false
                                 {hasPermission(['settings.view', 'settings.update']) && (
                                     <Link
                                         href="/document-profile"
-                                        className="block rounded-field px-3 py-2 text-[13px] text-ink-muted transition-soft hover:bg-sage hover:text-ink"
+                                        className="block rounded-field px-3 py-2.5 text-[13px] text-ink-muted transition-soft hover:bg-sage hover:text-ink"
                                     >
-                                        Paramètres
+                                        Paramètres de l’organisation
                                     </Link>
                                 )}
                                 <div className="my-1 border-t border-line" />
                                 <button
                                     type="button"
                                     onClick={() => router.post('/logout')}
-                                    className="block w-full rounded-field px-3 py-2 text-left text-[13px] text-danger transition-soft hover:bg-danger-soft"
+                                    className="block w-full rounded-field px-3 py-2.5 text-left text-[13px] text-danger transition-soft hover:bg-danger-soft"
                                 >
                                     Déconnexion
                                 </button>
@@ -291,10 +340,32 @@ export default function ApplicationShell({ children, wide = false, flush = false
                     </div>
                 </header>
 
+                {/* Mobile navigation drawer */}
+                {navOpen && (
+                    <div className="fixed inset-0 z-40 flex lg:hidden">
+                        <button type="button" className="flex-1 bg-ink/40" onClick={() => setNavOpen(false)} aria-label="Fermer le menu" />
+                        <aside className="flex h-full w-[86vw] max-w-80 flex-col bg-surface shadow-pop">
+                            <div className="flex h-14 shrink-0 items-center justify-between border-b border-line px-4">
+                                <BrandLockup />
+                                <button
+                                    type="button"
+                                    onClick={() => setNavOpen(false)}
+                                    aria-label="Fermer le menu"
+                                    className="flex size-10 items-center justify-center rounded-field text-ink-muted transition-soft hover:bg-sage hover:text-ink"
+                                >
+                                    <IconClose />
+                                </button>
+                            </div>
+                            <div className="shrink-0 border-b border-line p-3 sm:hidden">{orgStoreSwitcher}</div>
+                            <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4">{navigation(false)}</div>
+                        </aside>
+                    </div>
+                )}
+
                 {flush ? (
                     <main className="min-h-0 flex-1 overflow-hidden">{children}</main>
                 ) : (
-                    <main className={`mx-auto px-4 py-8 sm:px-6 lg:px-8 ${wide ? 'max-w-[1700px]' : 'max-w-7xl'}`}>
+                    <main className={`mx-auto min-w-0 px-4 py-5 sm:px-6 sm:py-8 lg:px-8 ${wide ? 'max-w-[1700px]' : 'max-w-7xl'}`}>
                         {children}
                     </main>
                 )}
@@ -319,6 +390,8 @@ function IconInvoice() { return <svg {...s}><path d="M6 3h12v18l-3-2-3 2-3-2-3 2
 function IconWallet() { return <svg {...s}><path d="M4 7a2 2 0 0 1 2-2h11v4M4 7v10a2 2 0 0 0 2 2h13V9H6a2 2 0 0 1-2-2Z" /><circle cx="16" cy="14" r="1.3" /></svg>; }
 function IconBuilding() { return <svg {...s}><path d="M5 21V5a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v16M9 8h.01M12 8h.01M9 12h.01M12 12h.01M9 16h.01M12 16h.01M17 21V10h2a2 2 0 0 1 2 2v9" /></svg>; }
 function IconCollapse() { return <svg {...s}><path d="M14 6 8 12l6 6" /></svg>; }
+function IconMenu() { return <svg {...s}><path d="M4 6h16M4 12h16M4 18h16" /></svg>; }
+function IconClose() { return <svg {...s}><path d="M6 6l12 12M18 6 6 18" /></svg>; }
 function IconPlug() { return <svg {...s}><path d="M9 2v6M15 2v6M7 8h10v3a5 5 0 0 1-10 0V8ZM12 16v6" /></svg>; }
 function IconMail() { return <svg {...s}><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m4 7 8 6 8-6" /></svg>; }
 function IconStamp() { return <svg {...s}><circle cx="12" cy="8" r="5" /><path d="M9 8h6M9 6.5h6M9 9.5h4M6 21h12l-1.5-5h-9L6 21Z" /></svg>; }

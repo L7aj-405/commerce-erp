@@ -336,8 +336,8 @@ export default function TransferRequestShow({ request, members, can }: Props) {
                 <p className="mb-6 text-sm text-slate-500">Une demande expédiée ne peut plus être annulée sans procédure de retour.</p>
             )}
 
-            <div className="overflow-hidden rounded-2xl border bg-white">
-                <table className="w-full text-left text-sm">
+            <div className="overflow-x-auto rounded-2xl border bg-white">
+                <table className="w-full min-w-[480px] text-left text-sm">
                     <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                         <tr>
                             <th className="p-3">Article</th>

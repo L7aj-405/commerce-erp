@@ -34,6 +34,8 @@ type Props = {
     categories: Option[];
     value: CatalogueFilters;
     onChange: (next: CatalogueFilters) => void;
+    /** `sheet` drops the fixed sidebar width/border for use inside a mobile bottom sheet. */
+    variant?: 'sidebar' | 'sheet';
 };
 
 function Group({ title, defaultOpen = true, children }: { title: string; defaultOpen?: boolean; children: ReactNode }) {
@@ -74,21 +76,31 @@ function OptionRow({ active, label, onClick }: { active: boolean; label: string;
     );
 }
 
-export default function PosFilters({ brands, categories, value, onChange }: Props) {
+export default function PosFilters({ brands, categories, value, onChange, variant = 'sidebar' }: Props) {
     const set = (patch: Partial<CatalogueFilters>) => onChange({ ...value, ...patch });
+    const isSheet = variant === 'sheet';
 
     return (
-        <aside className="flex h-full w-56 shrink-0 flex-col rounded-card border border-line bg-surface">
-            <div className="flex items-center justify-between border-b border-line px-3.5 py-3">
-                <h2 className="text-sm font-semibold text-ink">Filtres</h2>
-                {filtersActive(value) && (
+        <aside className={isSheet ? 'flex h-full w-full flex-col' : 'flex h-full w-56 shrink-0 flex-col rounded-card border border-line bg-surface'}>
+            {!isSheet && (
+                <div className="flex items-center justify-between border-b border-line px-3.5 py-3">
+                    <h2 className="text-sm font-semibold text-ink">Filtres</h2>
+                    {filtersActive(value) && (
+                        <button type="button" onClick={() => onChange(emptyFilters)} className="text-[12px] font-medium text-ink-muted transition-soft hover:text-ink">
+                            Réinitialiser
+                        </button>
+                    )}
+                </div>
+            )}
+            {isSheet && filtersActive(value) && (
+                <div className="flex justify-end px-4 pt-3">
                     <button type="button" onClick={() => onChange(emptyFilters)} className="text-[12px] font-medium text-ink-muted transition-soft hover:text-ink">
                         Réinitialiser
                     </button>
-                )}
-            </div>
+                </div>
+            )}
 
-            <div className="min-h-0 flex-1 overflow-y-auto px-3.5">
+            <div className={`min-h-0 flex-1 overflow-y-auto ${isSheet ? 'px-4' : 'px-3.5'}`}>
                 <Group title="Disponibilité">
                     <div className="space-y-0.5">
                         <OptionRow active={value.availability === 'all'} label="Tous les produits" onClick={() => set({ availability: 'all' })} />

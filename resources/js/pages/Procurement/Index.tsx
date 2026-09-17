@@ -108,61 +108,112 @@ export default function ProcurementIndex({ procurements, filters, can }: Props) 
                 </select>
             </div>
 
-            <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
-                <table className="w-full min-w-[900px] text-left text-sm">
-                    <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-                        <tr>
-                            <th className="px-4 py-3 font-medium">N°</th>
-                            <th className="px-4 py-3 font-medium">Commande client</th>
-                            <th className="px-4 py-3 font-medium">Fournisseur</th>
-                            <th className="px-4 py-3 font-medium">Article</th>
-                            <th className="px-4 py-3 text-right font-medium">Qté</th>
-                            <th className="px-4 py-3 font-medium">Statut</th>
-                            <th className="px-4 py-3 font-medium">Commandé le</th>
-                            <th className="px-4 py-3 font-medium">Réception prévue</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
+            {procurements.data.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-10 text-center text-sm text-slate-500">
+                    Aucun approvisionnement fournisseur.
+                </div>
+            ) : (
+                <>
+                    {/* Desktop/tablet: table */}
+                    <div className="hidden overflow-x-auto rounded-xl border border-slate-200 bg-white md:block">
+                        <table className="w-full min-w-[900px] text-left text-sm">
+                            <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                                <tr>
+                                    <th className="px-4 py-3 font-medium">N°</th>
+                                    <th className="px-4 py-3 font-medium">Commande client</th>
+                                    <th className="px-4 py-3 font-medium">Fournisseur</th>
+                                    <th className="px-4 py-3 font-medium">Article</th>
+                                    <th className="px-4 py-3 text-right font-medium">Qté</th>
+                                    <th className="px-4 py-3 font-medium">Statut</th>
+                                    <th className="px-4 py-3 font-medium">Commandé le</th>
+                                    <th className="px-4 py-3 font-medium">Réception prévue</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                                {procurements.data.map((row) => (
+                                    <tr key={row.id}>
+                                        <td className="px-4 py-3 font-medium text-slate-900">{row.procurement_number}</td>
+                                        <td className="px-4 py-3">
+                                            {row.sales_order ? (
+                                                <Link href={`/sales/orders/${row.sales_order.id}`} className="text-slate-900 underline">
+                                                    {row.sales_order.order_number}
+                                                </Link>
+                                            ) : (
+                                                '—'
+                                            )}
+                                        </td>
+                                        <td className="px-4 py-3 text-slate-600">{row.supplier?.name ?? '—'}</td>
+                                        <td className="px-4 py-3 text-slate-600">{row.product || '—'}</td>
+                                        <td className="px-4 py-3 text-right tabular-nums">{formatQuantity(row.quantity)}</td>
+                                        <td className="px-4 py-3">
+                                            <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${statusClass(row.status)}`}>
+                                                {row.status_label ?? STATUS_LABEL[row.status] ?? row.status}
+                                            </span>
+                                        </td>
+                                        <td className="px-4 py-3 text-slate-600">{row.ordered_at ? formatDate(row.ordered_at) : '—'}</td>
+                                        <td className="px-4 py-3 text-slate-600">
+                                            {row.received_at
+                                                ? `Reçu ${formatDate(row.received_at)}`
+                                                : row.expected_at
+                                                  ? formatDate(row.expected_at)
+                                                  : '—'}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    {/* Mobile: stacked cards */}
+                    <ul className="space-y-3 md:hidden">
                         {procurements.data.map((row) => (
-                            <tr key={row.id}>
-                                <td className="px-4 py-3 font-medium text-slate-900">{row.procurement_number}</td>
-                                <td className="px-4 py-3">
-                                    {row.sales_order ? (
-                                        <Link href={`/sales/orders/${row.sales_order.id}`} className="text-slate-900 underline">
-                                            {row.sales_order.order_number}
-                                        </Link>
-                                    ) : (
-                                        '—'
-                                    )}
-                                </td>
-                                <td className="px-4 py-3 text-slate-600">{row.supplier?.name ?? '—'}</td>
-                                <td className="px-4 py-3 text-slate-600">{row.product || '—'}</td>
-                                <td className="px-4 py-3 text-right tabular-nums">{formatQuantity(row.quantity)}</td>
-                                <td className="px-4 py-3">
-                                    <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${statusClass(row.status)}`}>
+                            <li key={row.id} className="rounded-xl border border-slate-200 bg-white p-4">
+                                <div className="flex items-start justify-between gap-3">
+                                    <div className="min-w-0">
+                                        <p className="truncate text-sm font-semibold text-slate-900">{row.procurement_number}</p>
+                                        <p className="truncate text-[13px] text-slate-500">{row.product || '—'}</p>
+                                    </div>
+                                    <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ${statusClass(row.status)}`}>
                                         {row.status_label ?? STATUS_LABEL[row.status] ?? row.status}
                                     </span>
-                                </td>
-                                <td className="px-4 py-3 text-slate-600">{row.ordered_at ? formatDate(row.ordered_at) : '—'}</td>
-                                <td className="px-4 py-3 text-slate-600">
-                                    {row.received_at
-                                        ? `Reçu ${formatDate(row.received_at)}`
-                                        : row.expected_at
-                                          ? formatDate(row.expected_at)
-                                          : '—'}
-                                </td>
-                            </tr>
+                                </div>
+                                <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1.5 text-[13px]">
+                                    <div className="min-w-0">
+                                        <dt className="text-slate-400">Commande client</dt>
+                                        <dd className="truncate">
+                                            {row.sales_order ? (
+                                                <Link href={`/sales/orders/${row.sales_order.id}`} className="text-slate-900 underline">
+                                                    {row.sales_order.order_number}
+                                                </Link>
+                                            ) : (
+                                                '—'
+                                            )}
+                                        </dd>
+                                    </div>
+                                    <div className="min-w-0">
+                                        <dt className="text-slate-400">Fournisseur</dt>
+                                        <dd className="truncate text-slate-600">{row.supplier?.name ?? '—'}</dd>
+                                    </div>
+                                    <div className="min-w-0">
+                                        <dt className="text-slate-400">Qté</dt>
+                                        <dd className="tabular-nums text-slate-600">{formatQuantity(row.quantity)}</dd>
+                                    </div>
+                                    <div className="min-w-0">
+                                        <dt className="text-slate-400">{row.received_at ? 'Reçu le' : 'Réception prévue'}</dt>
+                                        <dd className="text-slate-600">
+                                            {row.received_at
+                                                ? formatDate(row.received_at)
+                                                : row.expected_at
+                                                  ? formatDate(row.expected_at)
+                                                  : '—'}
+                                        </dd>
+                                    </div>
+                                </dl>
+                            </li>
                         ))}
-                        {procurements.data.length === 0 && (
-                            <tr>
-                                <td colSpan={8} className="px-4 py-10 text-center text-slate-500">
-                                    Aucun approvisionnement fournisseur.
-                                </td>
-                            </tr>
-                        )}
-                    </tbody>
-                </table>
-            </div>
+                    </ul>
+                </>
+            )}
 
             <Pagination links={procurements.links} />
         </ProcurementLayout>

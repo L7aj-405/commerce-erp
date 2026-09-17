@@ -1,4 +1,7 @@
+import { Money } from '@/components/pos/primitives';
+import { Sheet } from '@/components/ui/Sheet';
 import { useToast } from '@/components/ui/toast';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { usePendingKeys } from '@/hooks/usePendingKeys';
 import { useSerializedByKey } from '@/hooks/useSerializedByKey';
 import PosLayout from '@/layouts/PosLayout';
@@ -9,7 +12,7 @@ import HeldSalesDrawer from './HeldSalesDrawer';
 import PosCartPanel from './PosCartPanel';
 import PosCatalogue from './PosCatalogue';
 import PosCheckoutPanel from './PosCheckoutPanel';
-import PosFilters, { emptyFilters, type CatalogueFilters } from './PosFilters';
+import PosFilters, { emptyFilters, filtersActive, type CatalogueFilters } from './PosFilters';
 import PosReceipt from './PosReceipt';
 import PosReviewModal from './PosReviewModal';
 import PosSuccessToast from './PosSuccessToast';
@@ -97,6 +100,9 @@ export default function PosIndex({
     const [completing, setCompleting] = useState(false);
     const [showHeld, setShowHeld] = useState(false);
     const [successVisible, setSuccessVisible] = useState(true);
+    const isDesktop = useMediaQuery('(min-width: 1024px)');
+    const [mobileCartOpen, setMobileCartOpen] = useState(false);
+    const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
 
     // Immediate, optimistic quantity per line so +/- feels instant even while the
     // authoritative server write is in flight. Cleared once the server response
@@ -122,6 +128,7 @@ export default function PosIndex({
     useEffect(() => {
         if (!completedOrder) return;
         setPanelMode('cart');
+        setMobileCartOpen(false);
         setReviewData(null);
         setReviewError(null);
         setCompleting(false);
@@ -482,6 +489,8 @@ export default function PosIndex({
         };
     }, [activeSale, optimisticQty]);
 
+    const mobileCartCount = (decoratedSale?.lines ?? []).reduce((carry, line) => carry + Math.trunc(Number(line.quantity) || 0), 0);
+
     if (!store) {
         return (
             <PosLayout>
@@ -511,7 +520,7 @@ export default function PosIndex({
                         <select
                             value={warehouseId ?? ''}
                             onChange={(event) => setWarehouseId(event.target.value ? Number(event.target.value) : null)}
-                            className="h-8 rounded-field border border-line-strong bg-surface px-2 text-[13px] text-ink outline-none focus:border-primary"
+                            className="h-9 rounded-field border border-line-strong bg-surface px-2 text-[13px] text-ink outline-none focus:border-primary lg:h-8"
                         >
                             <option value="">Sélectionner…</option>
                             {warehouses.map((warehouse) => (
@@ -519,63 +528,165 @@ export default function PosIndex({
                             ))}
                         </select>
                     </label>
+                    {!isDesktop && (
+                        <button
+                            type="button"
+                            onClick={() => setMobileFiltersOpen(true)}
+                            className="relative flex h-9 items-center gap-1.5 rounded-field border border-line-strong bg-surface px-3 text-[13px] font-medium text-ink-muted transition-soft hover:text-ink"
+                        >
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M4 6h16M7 12h10M10 18h4" /></svg>
+                            Filtres
+                            {filtersActive(filters) && <span className="absolute -right-1 -top-1 size-2.5 rounded-full bg-primary" />}
+                        </button>
+                    )}
                 </div>
 
-                {/* 3-zone workspace */}
-                <div className="flex min-h-0 flex-1 gap-3">
-                    <PosFilters brands={brands} categories={categories} value={filters} onChange={setFilters} />
+                {isDesktop ? (
+                    /* 3-zone workspace */
+                    <div className="flex min-h-0 flex-1 gap-3">
+                        <PosFilters brands={brands} categories={categories} value={filters} onChange={setFilters} />
 
-                    <div className="flex min-h-0 min-w-0 flex-1">
-                        <PosCatalogue
-                            warehouseId={warehouseId}
-                            filters={filters}
-                            isAdding={(id) => pending.isPending(`product:add:${id}`)}
-                            justAdded={(id) => addedFlash[id] !== undefined}
-                            onAdd={addProduct}
-                        />
+                        <div className="flex min-h-0 min-w-0 flex-1">
+                            <PosCatalogue
+                                warehouseId={warehouseId}
+                                filters={filters}
+                                isAdding={(id) => pending.isPending(`product:add:${id}`)}
+                                justAdded={(id) => addedFlash[id] !== undefined}
+                                onAdd={addProduct}
+                            />
+                        </div>
+
+                        <div className="flex w-[26rem] shrink-0 flex-col overflow-hidden rounded-card border border-line bg-surface shadow-card">
+                            {panelMode === 'cart' || !activeSale ? (
+                                <PosCartPanel
+                                    sale={decoratedSale}
+                                    currencyCode={currencyCode}
+                                    pending={posPending}
+                                    canApplyDiscount={can.applyDiscount}
+                                    heldCount={heldSales.length}
+                                    suppliers={suppliers}
+                                    canManageProcurement={can.manageProcurement}
+                                    procurementBusy={pending.isPending('procurement:save')}
+                                    onProcurementSubmit={submitProcurement}
+                                    onQuantityChange={changeQuantity}
+                                    onDiscountChange={changeLineDiscount}
+                                    onRemove={removeLine}
+                                    onGlobalDiscountChange={changeGlobalDiscount}
+                                    onHold={() => holdCurrent(false)}
+                                    onNewSale={createNewSale}
+                                    onOpenHeld={() => setShowHeld(true)}
+                                    onCheckout={() => setPanelMode('checkout')}
+                                />
+                            ) : (
+                                <PosCheckoutPanel
+                                    sale={activeSale}
+                                    currencyCode={currencyCode}
+                                    financialAccounts={financialAccounts}
+                                    canCreateCustomer={can.createCustomer}
+                                    canUpdateCustomer={can.updateCustomer}
+                                    savingCheckout={pending.isPending('checkout:save')}
+                                    attachingCustomer={pending.anyPending('customer:')}
+                                    onBack={() => setPanelMode('cart')}
+                                    onCustomerSelected={selectCustomer}
+                                    onCustomerUpdated={updateCustomerLocal}
+                                    onCustomerDetach={detachCustomer}
+                                    onCheckoutStateSave={saveCheckoutState}
+                                    onReview={openReview}
+                                />
+                            )}
+                        </div>
                     </div>
+                ) : (
+                    /* Mobile: catalogue full-width, cart reachable via a sticky bar + full-screen overlay */
+                    <div className="flex min-h-0 flex-1 flex-col gap-2">
+                        <div className="flex min-h-0 flex-1">
+                            <PosCatalogue
+                                warehouseId={warehouseId}
+                                filters={filters}
+                                isAdding={(id) => pending.isPending(`product:add:${id}`)}
+                                justAdded={(id) => addedFlash[id] !== undefined}
+                                onAdd={addProduct}
+                            />
+                        </div>
 
-                    <div className="flex w-[26rem] shrink-0 flex-col overflow-hidden rounded-card border border-line bg-surface shadow-card">
-                        {panelMode === 'cart' || !activeSale ? (
-                            <PosCartPanel
-                                sale={decoratedSale}
-                                currencyCode={currencyCode}
-                                pending={posPending}
-                                canApplyDiscount={can.applyDiscount}
-                                heldCount={heldSales.length}
-                                suppliers={suppliers}
-                                canManageProcurement={can.manageProcurement}
-                                procurementBusy={pending.isPending('procurement:save')}
-                                onProcurementSubmit={submitProcurement}
-                                onQuantityChange={changeQuantity}
-                                onDiscountChange={changeLineDiscount}
-                                onRemove={removeLine}
-                                onGlobalDiscountChange={changeGlobalDiscount}
-                                onHold={() => holdCurrent(false)}
-                                onNewSale={createNewSale}
-                                onOpenHeld={() => setShowHeld(true)}
-                                onCheckout={() => setPanelMode('checkout')}
-                            />
-                        ) : (
-                            <PosCheckoutPanel
-                                sale={activeSale}
-                                currencyCode={currencyCode}
-                                financialAccounts={financialAccounts}
-                                canCreateCustomer={can.createCustomer}
-                                canUpdateCustomer={can.updateCustomer}
-                                savingCheckout={pending.isPending('checkout:save')}
-                                attachingCustomer={pending.anyPending('customer:')}
-                                onBack={() => setPanelMode('cart')}
-                                onCustomerSelected={selectCustomer}
-                                onCustomerUpdated={updateCustomerLocal}
-                                onCustomerDetach={detachCustomer}
-                                onCheckoutStateSave={saveCheckoutState}
-                                onReview={openReview}
-                            />
+                        {mobileCartCount > 0 && (
+                            <button
+                                type="button"
+                                onClick={() => setMobileCartOpen(true)}
+                                className="flex shrink-0 items-center justify-between gap-3 rounded-card bg-primary px-4 py-3.5 text-primary-fg shadow-pop transition-soft hover:bg-primary-hover"
+                            >
+                                <span className="flex items-center gap-2 text-sm font-semibold">
+                                    <span className="grid size-6 shrink-0 place-items-center rounded-full bg-primary-fg/20 text-[12px]">{mobileCartCount}</span>
+                                    Voir le panier
+                                </span>
+                                <span className="text-sm font-semibold">
+                                    <Money value={decoratedSale?.summary?.total ?? '0'} currency={currencyCode} />
+                                </span>
+                            </button>
                         )}
                     </div>
-                </div>
+                )}
             </div>
+
+            {!isDesktop && mobileCartOpen && activeSale && (
+                <div className="fixed inset-0 z-40 flex flex-col bg-surface">
+                    {panelMode === 'cart' ? (
+                        <PosCartPanel
+                            sale={decoratedSale}
+                            currencyCode={currencyCode}
+                            pending={posPending}
+                            canApplyDiscount={can.applyDiscount}
+                            heldCount={heldSales.length}
+                            suppliers={suppliers}
+                            canManageProcurement={can.manageProcurement}
+                            procurementBusy={pending.isPending('procurement:save')}
+                            onProcurementSubmit={submitProcurement}
+                            onQuantityChange={changeQuantity}
+                            onDiscountChange={changeLineDiscount}
+                            onRemove={removeLine}
+                            onGlobalDiscountChange={changeGlobalDiscount}
+                            onHold={() => holdCurrent(false)}
+                            onNewSale={createNewSale}
+                            onOpenHeld={() => setShowHeld(true)}
+                            onCheckout={() => setPanelMode('checkout')}
+                            onMobileBack={() => setMobileCartOpen(false)}
+                        />
+                    ) : (
+                        <PosCheckoutPanel
+                            sale={activeSale}
+                            currencyCode={currencyCode}
+                            financialAccounts={financialAccounts}
+                            canCreateCustomer={can.createCustomer}
+                            canUpdateCustomer={can.updateCustomer}
+                            savingCheckout={pending.isPending('checkout:save')}
+                            attachingCustomer={pending.anyPending('customer:')}
+                            onBack={() => setPanelMode('cart')}
+                            onCustomerSelected={selectCustomer}
+                            onCustomerUpdated={updateCustomerLocal}
+                            onCustomerDetach={detachCustomer}
+                            onCheckoutStateSave={saveCheckoutState}
+                            onReview={openReview}
+                        />
+                    )}
+                </div>
+            )}
+
+            <Sheet
+                open={!isDesktop && mobileFiltersOpen}
+                onClose={() => setMobileFiltersOpen(false)}
+                side="bottom"
+                footer={
+                    <button
+                        type="button"
+                        onClick={() => setMobileFiltersOpen(false)}
+                        className="flex min-h-11 w-full items-center justify-center rounded-field bg-primary px-4 text-sm font-semibold text-primary-fg transition-soft hover:bg-primary-hover"
+                    >
+                        Voir les résultats
+                    </button>
+                }
+            >
+                <PosFilters variant="sheet" brands={brands} categories={categories} value={filters} onChange={setFilters} />
+            </Sheet>
 
             <HeldSalesDrawer
                 open={showHeld}

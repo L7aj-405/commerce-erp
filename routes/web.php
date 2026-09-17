@@ -61,6 +61,8 @@ use App\Http\Controllers\Sales\SalesOrderLineController;
 use App\Http\Controllers\Settings\ActiveSessionController;
 use App\Http\Controllers\Settings\OrganizationDocumentStampController;
 use App\Http\Controllers\Settings\OrganizationMailSettingController;
+use App\Http\Controllers\Settings\PasswordController;
+use App\Http\Controllers\Settings\ProfileController;
 use App\Http\Controllers\Settings\TwoFactorAuthenticationController;
 use App\Http\Controllers\StoreController;
 use App\Http\Controllers\StoreMembershipController;
@@ -155,6 +157,16 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
     Route::get('/email-settings', [OrganizationMailSettingController::class, 'edit'])->name('email-settings.edit');
     Route::put('/email-settings', [OrganizationMailSettingController::class, 'update'])->name('email-settings.update');
     Route::post('/email-settings/test', [OrganizationMailSettingController::class, 'test'])->name('email-settings.test');
+
+    // Account Settings (V1) — the authenticated user's OWN profile, never
+    // organization membership/role/permissions (those stay under
+    // `/organizations/{organization}/users-access`). Sits in the same
+    // middleware group as `/security` below, deliberately: both are personal
+    // account pages, so they share the same verified-email + org-2FA-policy
+    // gate rather than inventing a carve-out for one and not the other.
+    Route::get('/account/profile', [ProfileController::class, 'edit'])->name('account.profile.edit');
+    Route::patch('/account/profile', [ProfileController::class, 'update'])->name('account.profile.update');
+    Route::patch('/account/password', [PasswordController::class, 'update'])->name('account.password.update');
 
     // Account security (§E) — TOTP two-factor authentication. Enrollment
     // itself never requires `password.confirm` (setting 2FA up for the first
