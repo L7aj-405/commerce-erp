@@ -2,8 +2,9 @@
 
 namespace App\Models;
 
-// use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Database\Factories\UserFactory;
+use Illuminate\Auth\MustVerifyEmail as MustVerifyEmailTrait;
+use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -14,11 +15,11 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 
 #[Fillable(['name', 'email', 'password'])]
-#[Hidden(['password', 'remember_token'])]
-class User extends Authenticatable
+#[Hidden(['password', 'remember_token', 'two_factor_secret', 'two_factor_recovery_codes'])]
+class User extends Authenticatable implements MustVerifyEmail
 {
     /** @use HasFactory<UserFactory> */
-    use HasFactory, Notifiable;
+    use HasFactory, MustVerifyEmailTrait, Notifiable;
 
     public function organizationMemberships(): HasMany
     {
@@ -111,6 +112,32 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'two_factor_secret' => 'encrypted',
+            'two_factor_recovery_codes' => 'encrypted:array',
+            'two_factor_confirmed_at' => 'datetime',
         ];
+    }
+
+    public function hasEnabledTwoFactorAuthentication(): bool
+    {
+        return $this->two_factor_secret !== null && $this->two_factor_confirmed_at !== null;
+    }
+
+    /**
+     * Sprint 1.1 §7 — organization owners and admins are privileged accounts
+     * on a public multi-tenant SaaS (they can manage members, roles,
+     * integrations and settings for the whole organization), so 2FA is
+     * mandatory for them regardless of the organization's own `require_2fa`
+     * toggle — see EnsureTwoFactorPolicy. The `roles` table is unique per
+     * (organization_id, slug), so a custom role can never itself take the
+     * 'owner'/'admin' slug — checking the slug alone is sufficient.
+     */
+    public function hasPrivilegedRoleIn(Organization $organization): bool
+    {
+        return $this->organizationMemberships()
+            ->where('organization_id', $organization->getKey())
+            ->where('status', 'active')
+            ->whereHas('role', fn ($query) => $query->whereIn('slug', ['owner', 'admin']))
+            ->exists();
     }
 }

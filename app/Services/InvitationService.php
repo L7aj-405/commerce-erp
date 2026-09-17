@@ -131,6 +131,10 @@ class InvitationService
                     'email' => $locked->email,
                     'password' => $newAccount['password'] ?? Str::password(40),
                 ]);
+                // Accepting a single-use invitation token emailed to this exact
+                // address already proves ownership — no separate verification
+                // email needed.
+                $user->forceFill(['email_verified_at' => now()])->save();
             }
 
             $alreadyMember = OrganizationMembership::query()

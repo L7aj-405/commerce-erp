@@ -4,13 +4,18 @@ namespace App\Http\Controllers\Integrations;
 
 use App\Actions\WooCommerce\SaveWooCommerceIntegrationAction;
 use App\Actions\WooCommerce\TestWooCommerceConnectionAction;
+use App\Exceptions\Security\UnsafeOutboundDestinationException;
 use App\Http\Controllers\Controller;
 use App\Jobs\SyncWooCommerceProductsJob;
+use App\Models\Organization;
 use App\Models\TaxRate;
+use App\Models\User;
 use App\Models\Warehouse;
 use App\Models\WooCommerceIntegration;
 use App\Models\WooCommerceSyncRun;
 use App\Services\ActiveTenantContext;
+use App\Services\AuditLogger;
+use App\Services\Security\OutboundDestinationGuard;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -66,26 +71,46 @@ class WooCommerceIntegrationController extends Controller
         ]);
     }
 
-    public function store(Request $request, ActiveTenantContext $context, SaveWooCommerceIntegrationAction $action): RedirectResponse
+    public function store(Request $request, ActiveTenantContext $context, SaveWooCommerceIntegrationAction $action, OutboundDestinationGuard $guard, AuditLogger $audit): RedirectResponse
     {
         $organization = $context->organizationOrFail();
         $this->authorize('create', [WooCommerceIntegration::class, $organization]);
 
         $data = $this->validated($request, $organization->getKey(), creating: true);
+        $this->assertSafeStoreUrl($data['store_url'], $guard, $audit, $request->user(), $organization);
         $action->execute($request->user(), $organization, $data);
 
         return redirect()->route('integrations.woocommerce.index')->with('success', 'Intégration WooCommerce enregistrée.');
     }
 
-    public function update(Request $request, ActiveTenantContext $context, WooCommerceIntegration $integration, SaveWooCommerceIntegrationAction $action): RedirectResponse
+    public function update(Request $request, ActiveTenantContext $context, WooCommerceIntegration $integration, SaveWooCommerceIntegrationAction $action, OutboundDestinationGuard $guard, AuditLogger $audit): RedirectResponse
     {
         $context->organizationOrFail();
         $this->authorize('update', $integration);
 
         $data = $this->validated($request, $integration->organization_id, creating: false);
+        $this->assertSafeStoreUrl($data['store_url'], $guard, $audit, $request->user(), $integration->organization);
         $action->execute($request->user(), $integration->organization, $data, $integration);
 
         return back()->with('success', 'Intégration WooCommerce mise à jour.');
+    }
+
+    /**
+     * SSRF guard at save-time (fail fast with a friendly field error). The
+     * WooCommerceClient re-validates again at request-time — see its class
+     * doc — since DNS can change between saving and using the integration.
+     */
+    private function assertSafeStoreUrl(string $storeUrl, OutboundDestinationGuard $guard, AuditLogger $audit, User $actor, Organization $organization): void
+    {
+        try {
+            $guard->assertPublicUrl($storeUrl, ['https'], 'WooCommerce');
+        } catch (UnsafeOutboundDestinationException $exception) {
+            $audit->record('woocommerce.destination_rejected', $actor, $organization, newValues: [
+                'category' => $exception->category,
+            ]);
+
+            throw ValidationException::withMessages(['store_url' => $exception->userMessage()]);
+        }
     }
 
     public function test(Request $request, ActiveTenantContext $context, WooCommerceIntegration $integration, TestWooCommerceConnectionAction $action): JsonResponse

@@ -145,6 +145,22 @@ class Organization extends Model
         return $this->hasOne(OrganizationMailSetting::class);
     }
 
+    public function securitySetting(): HasOne
+    {
+        return $this->hasOne(OrganizationSecuritySetting::class);
+    }
+
+    public function requiresTwoFactor(): bool
+    {
+        return (bool) $this->securitySetting?->require_2fa;
+    }
+
+    /** Sprint 1.1 §7 — see EnsureTwoFactorPolicy and User::hasPrivilegedRoleIn(). */
+    public function requiresTwoFactorForPrivilegedRoles(): bool
+    {
+        return (bool) $this->securitySetting?->require_2fa_for_privileged_roles;
+    }
+
     public function documentStamps(): HasMany
     {
         return $this->hasMany(OrganizationDocumentStamp::class);

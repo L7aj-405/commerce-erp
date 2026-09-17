@@ -4,13 +4,17 @@ namespace App\Http\Controllers\Settings;
 
 use App\Actions\Settings\SaveOrganizationMailSettingAction;
 use App\Actions\Settings\SendOrganizationMailTestAction;
+use App\Exceptions\Security\UnsafeOutboundDestinationException;
 use App\Http\Controllers\Controller;
 use App\Models\OrganizationMailSetting;
 use App\Services\ActiveTenantContext;
+use App\Services\AuditLogger;
+use App\Services\Security\OutboundDestinationGuard;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -39,7 +43,7 @@ class OrganizationMailSettingController extends Controller
         ]);
     }
 
-    public function update(Request $request, ActiveTenantContext $context, SaveOrganizationMailSettingAction $action): RedirectResponse
+    public function update(Request $request, ActiveTenantContext $context, SaveOrganizationMailSettingAction $action, OutboundDestinationGuard $guard, AuditLogger $audit): RedirectResponse
     {
         $organization = $context->organizationOrFail();
         $this->authorize('updateSettings', $organization);
@@ -58,6 +62,16 @@ class OrganizationMailSettingController extends Controller
             'reply_to_name' => ['nullable', 'string', 'max:255'],
             'is_enabled' => ['boolean'],
         ]);
+
+        try {
+            $guard->assertPublicHost($data['smtp_host'], 'SMTP');
+        } catch (UnsafeOutboundDestinationException $exception) {
+            $audit->record('smtp.destination_rejected', $request->user(), $organization, newValues: [
+                'category' => $exception->category,
+            ]);
+
+            throw ValidationException::withMessages(['smtp_host' => $exception->userMessage()]);
+        }
 
         $action->execute($request->user(), $organization, $data);
 

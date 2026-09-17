@@ -64,11 +64,11 @@ export default function Register() {
                         name="password"
                         autoComplete="new-password"
                         required
-                        placeholder="8 caractères minimum"
+                        placeholder="10 caractères minimum"
                         value={form.data.password}
                         onChange={(event) => form.setData('password', event.target.value)}
                         error={form.errors.password}
-                        hint="Au moins 8 caractères."
+                        hint="Au moins 10 caractères — une phrase de passe fonctionne bien."
                     />
 
                     <PasswordField

@@ -225,3 +225,33 @@ point Coolify's health check at `/up`.
   registration), so no runtime write to `vendor/` is expected. If a "cannot
   write font cache" error ever appears, set a custom `fontDir`/`fontCache`
   under `storage/` in `DompdfPdfGenerator`.
+
+## 16. Reverse proxy / trusted client IP (Security Sprint 1.1)
+
+- The app container must **never** be exposed directly to the internet —
+  Coolify's built-in Traefik reverse proxy must be the only internet-facing
+  hop, forwarding to the app container over Coolify's internal Docker
+  network only. If a custom Dockerfile/compose setup is ever introduced,
+  do not publish the app container's HTTP port to a public interface.
+- `bootstrap/app.php` trusts any private-range address (`10.0.0.0/8`,
+  `172.16.0.0/12`, `192.168.0.0/16`) as a proxy — not `'*'` — because Traefik
+  always connects to the app from a private-range address on that internal
+  network, but its exact IP is not fixed across redeploys, so an explicit
+  IP/CIDR is not practical here. If the deployment can provide one, set the
+  `TRUSTED_PROXIES` env var (comma-separated IPs/CIDRs) to override this
+  default with the exact address(es).
+- **Requirement on whatever sits in front of Traefik (or Traefik itself, if
+  it is the true internet edge):** it must overwrite — not blindly forward —
+  `X-Forwarded-For`/`X-Forwarded-Proto`/`X-Forwarded-Host` for internet-facing
+  traffic, so an external client cannot inject a spoofed value into the
+  chain Laravel then trusts. Coolify's default Traefik configuration is the
+  internet edge in the standard single-server setup; if this is ever changed
+  (a CDN or an external load balancer placed in front of Traefik), that
+  edge — not just Traefik — must be the one sanitizing these headers, and
+  Traefik's own trusted-hop configuration must be updated to only trust that
+  edge in turn.
+- Why this matters here specifically: `LoginThrottle` (login failure
+  throttling/cooldown, §D) keys entirely on `$request->ip()`. If an
+  untrusted client's `X-Forwarded-For` were honoured, an attacker could
+  rotate the header value on every request to defeat per-IP throttling
+  entirely.

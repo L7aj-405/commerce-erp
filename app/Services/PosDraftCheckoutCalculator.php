@@ -118,11 +118,13 @@ class PosDraftCheckoutCalculator
 
         foreach ($lines as $index => $line) {
             $maxAdditional = Decimal::subtract($line->subtotal_excl_tax, $line->discount_amount);
+            // Exact decimal proportional share — $base is already verified > 0
+            // above, so no float zero-guard is needed here.
             $allocated = $index === $lastIndex
                 ? $remaining
                 : $this->min(
                     $maxAdditional,
-                    Decimal::normalize((string) round(((float) $line->taxable_amount / max((float) $base, 0.0001)) * (float) $globalDiscount, 4)),
+                    Decimal::multiply(Decimal::divide($line->taxable_amount, $base, 4), $globalDiscount),
                 );
 
             if ($index !== $lastIndex && Decimal::compare($allocated, $remaining) > 0) {
@@ -141,6 +143,26 @@ class PosDraftCheckoutCalculator
                 'discount_type' => SalesOrderDiscountType::Fixed->value,
                 'discount_value' => $newDiscount,
             ];
+        }
+
+        // Reconciliation pass: each line's own subtotal is a hard ceiling on
+        // how much of it can be discounted, and the proportional pass above
+        // can round the earlier lines' shares down just enough that the last
+        // line's ceiling can't absorb 100% of what's left (worst case: the
+        // discount equals the full subtotal). Total capacity across every
+        // line always equals `$base`, which callers cap the discount at
+        // (see globalDiscountAmount()/bounded()), so walking backward and
+        // topping up whichever line still has headroom always fully absorbs
+        // the leftover — the allocations must sum to exactly $globalDiscount,
+        // never 99.9999 / 100.0001.
+        for ($i = count($result) - 1; $i >= 0 && Decimal::compare($remaining, '0.0000') > 0; $i--) {
+            $headroom = Decimal::subtract($result[$i]['line']->subtotal_excl_tax, $result[$i]['discount_value']);
+            if (Decimal::compare($headroom, '0.0000') <= 0) {
+                continue;
+            }
+            $topUp = $this->min($headroom, $remaining);
+            $result[$i]['discount_value'] = Decimal::add($result[$i]['discount_value'], $topUp);
+            $remaining = Decimal::subtract($remaining, $topUp);
         }
 
         return $result;

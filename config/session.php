@@ -169,7 +169,15 @@ return [
     |
     */
 
-    'secure' => env('SESSION_SECURE_COOKIE'),
+    // Defaults to secure-only cookies in production without requiring every
+    // deployment to remember to set SESSION_SECURE_COOKIE explicitly; still
+    // overridable via the env var for an environment that genuinely needs it
+    // off (e.g. an internal HTTP-only staging box). Reads APP_ENV directly
+    // (env()), never app()->environment() — the container's 'env' binding
+    // isn't set up yet when the console kernel loads config files, so
+    // app()->environment() fatals with "Target class [env] does not exist"
+    // for every artisan command.
+    'secure' => env('SESSION_SECURE_COOKIE', env('APP_ENV') === 'production'),
 
     /*
     |--------------------------------------------------------------------------

@@ -4,9 +4,12 @@ namespace App\Services;
 
 use App\Exceptions\Mail\OrganizationMailDeliveryException;
 use App\Exceptions\Mail\OrganizationMailNotConfiguredException;
+use App\Exceptions\Security\UnsafeOutboundDestinationException;
 use App\Models\Organization;
 use App\Models\OrganizationMailSetting;
+use App\Services\Security\OutboundDestinationGuard;
 use Illuminate\Mail\Mailable;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 use Throwable;
@@ -30,6 +33,8 @@ use Throwable;
  */
 class OrganizationOutboundMailService
 {
+    public function __construct(private readonly OutboundDestinationGuard $guard) {}
+
     public function isConfigured(Organization $organization): bool
     {
         return $organization->mailSetting()->first()?->isUsable() ?? false;
@@ -57,10 +62,29 @@ class OrganizationOutboundMailService
      */
     private function deliver(OrganizationMailSetting $setting, Mailable $mailable, string|array $to): void
     {
+        // Defense in depth: the host is also validated at save time
+        // (OrganizationMailSettingController::update), but DNS can change
+        // between saving and sending, and this is the one path every send —
+        // document email and the "test connection" button alike — goes
+        // through. Never leak the resolved IP; log a sanitized category only.
+        try {
+            $this->guard->assertPublicHost($setting->smtp_host, 'SMTP');
+        } catch (UnsafeOutboundDestinationException $exception) {
+            Log::warning('smtp.destination_rejected', [
+                'organization_id' => $setting->organization_id,
+                'category' => $exception->category,
+            ]);
+
+            throw new OrganizationMailDeliveryException($exception);
+        }
+
         $mailerName = 'org_smtp_'.$setting->organization_id.'_'.Str::random(16);
 
         config(["mail.mailers.{$mailerName}" => [
-            'transport' => 'smtp',
+            // `tenant_smtp`, not `smtp` — routes through TenantSmtpTransportFactory
+            // so this tenant-supplied host is DNS-pinned the same way the
+            // WooCommerce client pins its store URL (see that factory's doc).
+            'transport' => 'tenant_smtp',
             'host' => $setting->smtp_host,
             'port' => $setting->smtp_port,
             'username' => $setting->smtp_username,

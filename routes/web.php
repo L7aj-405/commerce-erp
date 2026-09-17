@@ -1,8 +1,15 @@
 <?php
 
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
+use App\Http\Controllers\Auth\ConfirmablePasswordController;
+use App\Http\Controllers\Auth\EmailVerificationNotificationController;
+use App\Http\Controllers\Auth\EmailVerificationPromptController;
 use App\Http\Controllers\Auth\InvitationAcceptController;
+use App\Http\Controllers\Auth\NewPasswordController;
+use App\Http\Controllers\Auth\PasswordResetLinkController;
 use App\Http\Controllers\Auth\RegisteredUserController;
+use App\Http\Controllers\Auth\TwoFactorChallengeController;
+use App\Http\Controllers\Auth\VerifyEmailController;
 use App\Http\Controllers\Catalog\BrandController;
 use App\Http\Controllers\Catalog\CategoryController;
 use App\Http\Controllers\Catalog\NonStockItemController;
@@ -51,8 +58,10 @@ use App\Http\Controllers\Sales\CustomerController;
 use App\Http\Controllers\Sales\SalesOrderController;
 use App\Http\Controllers\Sales\SalesOrderLifecycleController;
 use App\Http\Controllers\Sales\SalesOrderLineController;
+use App\Http\Controllers\Settings\ActiveSessionController;
 use App\Http\Controllers\Settings\OrganizationDocumentStampController;
 use App\Http\Controllers\Settings\OrganizationMailSettingController;
+use App\Http\Controllers\Settings\TwoFactorAuthenticationController;
 use App\Http\Controllers\StoreController;
 use App\Http\Controllers\StoreMembershipController;
 use App\Http\Controllers\TenantContextController;
@@ -78,6 +87,27 @@ Route::middleware('guest')->group(function () {
     Route::post('/register', [RegisteredUserController::class, 'store'])
         ->middleware('throttle:6,1')
         ->name('register.store');
+
+    // §3 — forgot/reset password. Both endpoints are throttled independently
+    // of the Password broker's own per-email throttle (config('auth.passwords
+    // .users.throttle')), which limits repeat emails to the SAME address —
+    // this route-level throttle limits total attempts from one IP instead.
+    Route::get('/forgot-password', [PasswordResetLinkController::class, 'create'])->name('password.request');
+    Route::post('/forgot-password', [PasswordResetLinkController::class, 'store'])
+        ->middleware('throttle:6,1')
+        ->name('password.email');
+    Route::get('/reset-password/{token}', [NewPasswordController::class, 'create'])->name('password.reset');
+    Route::post('/reset-password', [NewPasswordController::class, 'store'])
+        ->middleware('throttle:6,1')
+        ->name('password.update');
+
+    // §E4 — reached only mid-login, after the password check but before a
+    // 2FA-enabled account gets an authenticated session (no Auth::check() yet,
+    // so this cannot live behind `auth`; `guest` is exactly the right gate).
+    Route::get('/two-factor-challenge', [TwoFactorChallengeController::class, 'create'])->name('two-factor.challenge.show');
+    Route::post('/two-factor-challenge', [TwoFactorChallengeController::class, 'store'])
+        ->middleware('throttle:10,1')
+        ->name('two-factor.challenge.store');
 });
 
 // Invitation acceptance is reachable whether or not the visitor is currently
@@ -92,9 +122,31 @@ Route::post('/invitations/{token}', [InvitationAcceptController::class, 'store']
     ->middleware('throttle:10,1')
     ->name('invitations.accept.store');
 
+// Logout and the verification flow itself must stay reachable by an
+// authenticated-but-unverified user — they cannot live inside the `verified`
+// group below (a locked-out user could never log out or verify).
 Route::middleware('auth')->group(function () {
     Route::post('/logout', [AuthenticatedSessionController::class, 'destroy'])->name('logout');
 
+    Route::get('/email/verify', EmailVerificationPromptController::class)->name('verification.notice');
+    Route::get('/email/verify/{id}/{hash}', VerifyEmailController::class)
+        ->middleware(['signed', 'throttle:6,1'])
+        ->name('verification.verify');
+    Route::post('/email/verification-notification', [EmailVerificationNotificationController::class, 'store'])
+        ->middleware('throttle:6,1')
+        ->name('verification.send');
+
+    // §E8 — the "confirm your password" step before a sensitive account
+    // action (see the `password.confirm` middleware on the 2FA routes below).
+    Route::get('/confirm-password', [ConfirmablePasswordController::class, 'show'])->name('password.confirm');
+    Route::post('/confirm-password', [ConfirmablePasswordController::class, 'store'])->middleware('throttle:6,1');
+});
+
+// Every business route in the ERP requires a verified email (§C — existing
+// users were backfilled with email_verified_at at migration time, so this is
+// non-breaking for accounts that predate the requirement; only newly
+// registered, still-unverified accounts are actually gated by it).
+Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () {
     Route::get('/platform', PlatformController::class)->name('platform.index');
     Route::get('/document-profile', [DocumentProfileController::class, 'edit'])->name('document-profile.edit');
     Route::put('/document-profile', [DocumentProfileController::class, 'update'])->name('document-profile.update');
@@ -103,6 +155,30 @@ Route::middleware('auth')->group(function () {
     Route::get('/email-settings', [OrganizationMailSettingController::class, 'edit'])->name('email-settings.edit');
     Route::put('/email-settings', [OrganizationMailSettingController::class, 'update'])->name('email-settings.update');
     Route::post('/email-settings/test', [OrganizationMailSettingController::class, 'test'])->name('email-settings.test');
+
+    // Account security (§E) — TOTP two-factor authentication. Enrollment
+    // itself never requires `password.confirm` (setting 2FA up for the first
+    // time from an already-authenticated session is the normal, expected
+    // flow); disabling it or regenerating recovery codes does (§E8).
+    Route::get('/security', [TwoFactorAuthenticationController::class, 'show'])->name('security.edit');
+    Route::post('/two-factor-authentication', [TwoFactorAuthenticationController::class, 'store'])
+        ->middleware('throttle:6,1')->name('two-factor.enable');
+    Route::post('/two-factor-authentication/confirm', [TwoFactorAuthenticationController::class, 'confirm'])
+        ->middleware('throttle:6,1')->name('two-factor.confirm');
+    // Password.confirm's automatic redirect-and-replay only really suits a
+    // GET page view — these are JSON DELETE/POST mutations, so re-auth is
+    // enforced directly in the controller (the submitted password is part of
+    // THIS request) rather than a stale session timestamp from an earlier
+    // unrelated page visit. password.confirm/ConfirmablePasswordController
+    // stay in place as ready-made infra for a future GET-gated settings page
+    // (change password/email) where the timestamp approach fits naturally.
+    Route::delete('/two-factor-authentication', [TwoFactorAuthenticationController::class, 'destroy'])
+        ->middleware('throttle:6,1')->name('two-factor.disable');
+    Route::post('/two-factor-recovery-codes', [TwoFactorAuthenticationController::class, 'regenerateRecoveryCodes'])
+        ->middleware('throttle:6,1')->name('two-factor.recovery-codes.regenerate');
+    // §8 — active sessions (see ActiveSessionController's class doc).
+    Route::delete('/security/sessions/{token}', [ActiveSessionController::class, 'destroy'])->name('security.sessions.destroy');
+    Route::delete('/security/sessions', [ActiveSessionController::class, 'destroyOthers'])->name('security.sessions.destroy-others');
     Route::get('/document-stamp', [OrganizationDocumentStampController::class, 'edit'])->name('document-stamp.edit');
     Route::post('/document-stamp', [OrganizationDocumentStampController::class, 'store'])->name('document-stamp.store');
     Route::delete('/document-stamp', [OrganizationDocumentStampController::class, 'destroy'])->name('document-stamp.destroy');
