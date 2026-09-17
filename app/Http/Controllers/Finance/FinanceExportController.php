@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Finance;
 use App\Http\Controllers\Controller;
 use App\Services\ActiveTenantContext;
 use App\Services\Finance\Export\FinanceCaEncaisseExcelExport;
+use App\Services\Finance\Export\FinanceCaEncaisseInvoiceZipExport;
 use App\Services\Finance\Export\FinanceCaEncaissePdfExport;
 use App\Services\Finance\Export\FinanceSituationExcelExport;
 use App\Services\Finance\Export\FinanceSituationPdfExport;
@@ -14,6 +15,7 @@ use App\Services\Finance\FinancePeriod;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Validation\Rule;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 /**
  * All three Finance exports require `finance.export` specifically — holding
@@ -122,6 +124,32 @@ class FinanceExportController extends Controller
         $result = $export->build($organization, $periods, $store, $orientation);
 
         return $this->download($result['bytes'], $result['filename'], $result['mime']);
+    }
+
+    /**
+     * "Exporter les factures (.ZIP)" — the individual official PDF for every
+     * issued invoice that received a Posted payment during the selected
+     * month/store scope (the exact same scope as caEncaisseXlsx/caEncaissePdf
+     * above), one file per invoice, deduplicated by invoice identity. A
+     * read-only export: it never stamps, issues, or otherwise mutates a
+     * document — see FinanceCaEncaisseInvoiceZipExport's own doc for the
+     * memory/temp-file strategy.
+     */
+    public function caEncaisseInvoicesZip(Request $request, ActiveTenantContext $context, FinanceAccessGuard $guard, FinanceCaEncaisseInvoiceZipExport $export): BinaryFileResponse
+    {
+        $organization = $context->organizationOrFail();
+        $guard->authorizeExport($request->user(), $organization);
+
+        $period = $this->period($request);
+        $store = $guard->resolveStore($organization, $request->query('store_id'));
+
+        $result = $export->build($organization, $period, $store);
+
+        return response()->download($result['path'], $result['filename'], [
+            'Content-Type' => 'application/zip',
+            'Cache-Control' => 'private, no-store, max-age=0',
+            'X-Content-Type-Options' => 'nosniff',
+        ])->deleteFileAfterSend(true);
     }
 
     private function period(Request $request): FinancePeriod

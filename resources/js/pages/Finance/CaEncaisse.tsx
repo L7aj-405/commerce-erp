@@ -1,7 +1,8 @@
 import FinanceFilters, { type FinanceStore } from '@/components/finance/FinanceFilters';
-import { DownloadLink } from '@/components/ui/Button';
 import PageHeader from '@/components/ui/PageHeader';
 import Pagination from '@/components/ui/Pagination';
+import { Spinner } from '@/components/ui/Spinner';
+import { useToast } from '@/components/ui/toast';
 import ApplicationShell from '@/layouts/ApplicationShell';
 import { formatDate, formatMoney } from '@/utils/format';
 import { Head, Link } from '@inertiajs/react';
@@ -53,12 +54,12 @@ export default function FinanceCaEncaisse({ organization, period, periodLabel, s
                 description={`${organization.name} · ${periodLabel} · Encaissements réellement reçus pendant la période`}
                 actions={
                     can.export ? (
-                        <div className="flex gap-2">
-                            <DownloadLink href={`/finance/ca-encaisse/export/xlsx?${q}`} variant="secondary" size="sm">
-                                Export XLSX
-                            </DownloadLink>
-                            <PdfExportMenu baseHref={`/finance/ca-encaisse/export/pdf?${q}`} />
-                        </div>
+                        <ExportMenu
+                            xlsxHref={`/finance/ca-encaisse/export/xlsx?${q}`}
+                            pdfHrefBase={`/finance/ca-encaisse/export/pdf?${q}`}
+                            zipHref={`/finance/ca-encaisse/export/invoices-zip?${q}`}
+                            zipFilename={`Factures_${period}.zip`}
+                        />
                     ) : undefined
                 }
             />
@@ -175,16 +176,30 @@ export default function FinanceCaEncaisse({ organization, period, periodLabel, s
 }
 
 /**
- * Compact PDF export menu: pick Paysage (default — CA encaissé has 9
- * columns and reads far better wide) or Portrait, then download. A plain
- * `<a>` for the actual download — never Inertia's `<Link>`, which would
- * intercept the click and try to render the binary PDF response as a page
- * instead of letting the browser download it.
+ * Unified "Exporter" menu — Excel, the PDF report (either orientation), and
+ * the invoice ZIP — replacing what used to be two separate action buttons.
+ * A single dropdown keeps the header action area from growing a third
+ * button that would crowd the mobile layout (see the app-wide responsive
+ * pass): plain `<a>` downloads for Excel/PDF (never Inertia's `<Link>`,
+ * which would try to render the binary response as a page), and a
+ * fetch-then-save flow for the ZIP so a "no invoices"/oversized-selection
+ * error can be shown as a message instead of downloading a corrupt file.
  */
-function PdfExportMenu({ baseHref }: { baseHref: string }) {
+function ExportMenu({
+    xlsxHref,
+    pdfHrefBase,
+    zipHref,
+    zipFilename,
+}: {
+    xlsxHref: string;
+    pdfHrefBase: string;
+    zipHref: string;
+    zipFilename: string;
+}) {
     const [open, setOpen] = useState(false);
-    const [orientation, setOrientation] = useState<'landscape' | 'portrait'>('landscape');
+    const [zipBusy, setZipBusy] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
+    const toast = useToast();
 
     useEffect(() => {
         if (!open) return;
@@ -202,11 +217,34 @@ function PdfExportMenu({ baseHref }: { baseHref: string }) {
         };
     }, [open]);
 
-    const downloadHref = `${baseHref}&orientation=${orientation}`;
-    const optionClass = (value: 'landscape' | 'portrait') =>
-        `flex-1 rounded-field px-2.5 py-1.5 text-xs font-medium transition-soft ${
-            orientation === value ? 'bg-primary text-primary-fg' : 'border border-line-strong text-ink-muted hover:bg-raised'
-        }`;
+    const itemClass = 'block rounded-field px-3 py-2.5 text-[13px] text-ink transition-soft hover:bg-sage';
+
+    const downloadZip = async () => {
+        if (zipBusy) return;
+        setZipBusy(true);
+        try {
+            const response = await fetch(zipHref, { headers: { Accept: 'application/json' } });
+            if (!response.ok) {
+                const data = (await response.json().catch(() => ({}))) as { message?: string };
+                toast.error(data.message ?? 'Échec de l’export des factures.');
+                return;
+            }
+            const blob = await response.blob();
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = zipFilename;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            URL.revokeObjectURL(url);
+        } catch {
+            toast.error('Échec de l’export des factures.');
+        } finally {
+            setZipBusy(false);
+            setOpen(false);
+        }
+    };
 
     return (
         <div ref={containerRef} className="relative">
@@ -215,30 +253,38 @@ function PdfExportMenu({ baseHref }: { baseHref: string }) {
                 aria-haspopup="true"
                 aria-expanded={open}
                 onClick={() => setOpen((current) => !current)}
-                className="inline-flex min-h-8 items-center justify-center gap-1.5 rounded-field border border-line-strong bg-surface px-3 text-xs font-medium text-ink transition-soft hover:bg-raised"
+                className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-field border border-line-strong bg-surface px-3.5 text-sm font-medium text-ink transition-soft hover:bg-raised"
             >
-                Format PDF
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="m6 9 6 6 6-6" /></svg>
+                Exporter
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="m6 9 6 6 6-6" /></svg>
             </button>
 
             {open && (
-                <div className="absolute right-0 top-full z-20 mt-1.5 w-52 max-w-[calc(100vw-1.5rem)] rounded-field border border-line bg-surface p-3 shadow-pop">
-                    <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-ink-faint">Orientation</p>
-                    <div className="flex gap-1.5">
-                        <button type="button" onClick={() => setOrientation('landscape')} className={optionClass('landscape')}>
-                            Paysage
-                        </button>
-                        <button type="button" onClick={() => setOrientation('portrait')} className={optionClass('portrait')}>
-                            Portrait
-                        </button>
-                    </div>
-                    <a
-                        href={downloadHref}
-                        onClick={() => setOpen(false)}
-                        className="mt-3 flex min-h-8 items-center justify-center rounded-field bg-primary px-3 text-xs font-semibold text-primary-fg transition-soft hover:bg-primary-hover"
-                    >
-                        Télécharger
+                <div
+                    role="menu"
+                    className="absolute right-0 top-full z-20 mt-1.5 w-64 max-w-[calc(100vw-1.5rem)] rounded-field border border-line bg-surface p-1.5 shadow-pop"
+                >
+                    <a href={xlsxHref} role="menuitem" onClick={() => setOpen(false)} className={itemClass}>
+                        Excel (.xlsx)
                     </a>
+                    <a href={`${pdfHrefBase}&orientation=landscape`} role="menuitem" onClick={() => setOpen(false)} className={itemClass}>
+                        Rapport PDF (Paysage)
+                    </a>
+                    <a href={`${pdfHrefBase}&orientation=portrait`} role="menuitem" onClick={() => setOpen(false)} className={itemClass}>
+                        Rapport PDF (Portrait)
+                    </a>
+                    <div className="my-1 border-t border-line" />
+                    <button
+                        type="button"
+                        role="menuitem"
+                        onClick={downloadZip}
+                        disabled={zipBusy}
+                        aria-busy={zipBusy || undefined}
+                        className="flex min-h-10 w-full items-center gap-2 rounded-field px-3 py-2.5 text-left text-[13px] text-ink transition-soft hover:bg-sage disabled:opacity-60"
+                    >
+                        {zipBusy && <Spinner size="xs" />}
+                        {zipBusy ? 'Génération du ZIP…' : 'Factures (.ZIP)'}
+                    </button>
                 </div>
             )}
         </div>

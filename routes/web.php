@@ -486,6 +486,7 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
         Route::get('/export/invoices', [FinanceExportController::class, 'invoicesPdf'])->name('export.invoices');
         Route::get('/ca-encaisse/export/xlsx', [FinanceExportController::class, 'caEncaisseXlsx'])->name('ca-encaisse.export.xlsx');
         Route::get('/ca-encaisse/export/pdf', [FinanceExportController::class, 'caEncaissePdf'])->name('ca-encaisse.export.pdf');
+        Route::get('/ca-encaisse/export/invoices-zip', [FinanceExportController::class, 'caEncaisseInvoicesZip'])->name('ca-encaisse.export.invoices-zip');
     });
 });
 

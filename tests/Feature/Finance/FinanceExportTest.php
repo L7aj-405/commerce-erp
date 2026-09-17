@@ -228,4 +228,27 @@ class FinanceExportTest extends DocumentTestCase
         $pdfResult = app(FinanceCaEncaissePdfExport::class)->build($organization, [$period], null);
         $this->assertSame('%PDF', substr($pdfResult['bytes'], 0, 4));
     }
+
+    /**
+     * Audit fix: Journal des ventes used to render an "Export XLSX" button
+     * wired to `/finance/export/xlsx` — the SITUATION workbook (Ventes /
+     * Facturation / Encaissements aggregates), not the Journal's own
+     * per-invoice rows. That silently violated "the same filter scope drives
+     * screen + export" for this one page (every other Finance drill-down —
+     * Ventes/Facturation/Encaissements/Créances — correctly has no export
+     * button at all). The fix removes the mismatched button/prop rather than
+     * inventing a new, unrequested Journal-specific export; this pins that
+     * the page no longer advertises an export capability it does not have.
+     */
+    public function test_journal_des_ventes_no_longer_advertises_an_unrelated_export_action(): void
+    {
+        [$owner, $organization, , $order] = $this->documentFixture(total: '500.0000');
+        $this->issueInvoice($owner, $this->createInvoice($owner, $order, ['invoice_date' => '2026-05-29']));
+
+        $response = $this->actingAs($owner)->withHeader('X-Inertia', 'true')
+            ->get(route('finance.journal', ['month' => '2026-05']));
+
+        $response->assertOk();
+        $this->assertArrayNotHasKey('can', $response->json('props'));
+    }
 }

@@ -1,5 +1,4 @@
 import FinanceFilters, { type FinanceStore } from '@/components/finance/FinanceFilters';
-import { DownloadLink } from '@/components/ui/Button';
 import PageHeader from '@/components/ui/PageHeader';
 import Pagination from '@/components/ui/Pagination';
 import ApplicationShell from '@/layouts/ApplicationShell';
@@ -23,26 +22,13 @@ type Props = {
     storeId: number | null;
     stores: FinanceStore[];
     rows: { data: JournalRow[]; links: LinkData[]; total: number };
-    can: { export: boolean };
 };
 
-export default function FinanceJournal({ organization, period, periodLabel, storeId, stores, rows, can }: Props) {
-    const q = new URLSearchParams({ month: period, store_id: storeId ? String(storeId) : '' }).toString();
-
+export default function FinanceJournal({ organization, period, periodLabel, storeId, stores, rows }: Props) {
     return (
         <ApplicationShell wide>
             <Head title="Journal des ventes — Finance" />
-            <PageHeader
-                title="Journal des ventes"
-                description={`${organization.name} · ${periodLabel} · ${rows.total} facture(s)`}
-                actions={
-                    can.export ? (
-                        <DownloadLink href={`/finance/export/xlsx?${q}`} variant="secondary" size="sm">
-                            Export XLSX
-                        </DownloadLink>
-                    ) : undefined
-                }
-            />
+            <PageHeader title="Journal des ventes" description={`${organization.name} · ${periodLabel} · ${rows.total} facture(s)`} />
             <FinanceFilters path="/finance/journal" period={period} storeId={storeId} stores={stores} />
 
             {rows.data.length === 0 ? (
