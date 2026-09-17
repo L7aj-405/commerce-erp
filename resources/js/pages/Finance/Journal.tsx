@@ -1,4 +1,5 @@
 import FinanceFilters, { type FinanceStore } from '@/components/finance/FinanceFilters';
+import SoldLines, { type SoldLine } from '@/components/finance/SoldLines';
 import PageHeader from '@/components/ui/PageHeader';
 import Pagination from '@/components/ui/Pagination';
 import ApplicationShell from '@/layouts/ApplicationShell';
@@ -9,7 +10,7 @@ type JournalRow = {
     id: number;
     date: string;
     invoice_number: string;
-    designation: string;
+    lines: SoldLine[];
     total_incl_tax: string;
     customer: string;
     payment_method: string;
@@ -52,12 +53,14 @@ export default function FinanceJournal({ organization, period, periodLabel, stor
                             </thead>
                             <tbody>
                                 {rows.data.map((row) => (
-                                    <tr key={row.id} className="border-t border-line">
+                                    <tr key={row.id} className="border-t border-line align-top">
                                         <td className="px-4 py-2.5 text-ink-muted">{row.date}</td>
                                         <td className="px-4 py-2.5 font-medium text-ink">
                                             <Link href={`/invoices/${row.id}`}>{row.invoice_number}</Link>
                                         </td>
-                                        <td className="px-4 py-2.5">{row.designation}</td>
+                                        <td className="px-4 py-2.5">
+                                            <SoldLines lines={row.lines} />
+                                        </td>
                                         <td className="px-4 py-2.5">{row.customer}</td>
                                         <td className="px-4 py-2.5 text-right">{formatMoney(row.total_incl_tax)}</td>
                                         <td className="px-4 py-2.5 text-ink-muted">{row.payment_method}</td>
@@ -72,13 +75,16 @@ export default function FinanceJournal({ organization, period, periodLabel, stor
                         {rows.data.map((row) => (
                             <li key={row.id} className="rounded-card border border-line bg-surface p-4">
                                 <div className="flex items-start justify-between gap-3">
-                                    <div className="min-w-0">
-                                        <Link href={`/invoices/${row.id}`} className="block truncate text-sm font-semibold text-ink">
-                                            {row.invoice_number}
-                                        </Link>
-                                        <p className="truncate text-[13px] text-ink-muted">{row.designation}</p>
-                                    </div>
+                                    <Link href={`/invoices/${row.id}`} className="min-w-0 truncate text-sm font-semibold text-ink">
+                                        {row.invoice_number}
+                                    </Link>
                                     <p className="shrink-0 text-sm font-semibold text-ink">{formatMoney(row.total_incl_tax)}</p>
+                                </div>
+                                <div className="mt-2.5">
+                                    <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-faint">Désignation</p>
+                                    <div className="mt-1">
+                                        <SoldLines lines={row.lines} />
+                                    </div>
                                 </div>
                                 <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1.5 text-[13px]">
                                     <div className="min-w-0">

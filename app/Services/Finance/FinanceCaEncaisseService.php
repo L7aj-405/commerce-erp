@@ -122,29 +122,40 @@ class FinanceCaEncaisseService
     }
 
     /**
-     * Batch-enrich an already-fetched (bounded) set of rows with
-     * designation, invoice reference and the display classification — 3
-     * extra queries total regardless of how many rows are passed in. Never
-     * call the per-order helpers below inside a loop over rows.
+     * Batch-enrich an already-fetched (bounded) set of rows with full sold
+     * line detail, invoice reference and the display classification — 3
+     * extra queries total regardless of how many rows are passed in (one of
+     * them fetches every line for every order in the batch, never one query
+     * per order — see linesBySalesOrder()). Never call the per-order helpers
+     * below inside a loop over rows.
      *
      * @return array<int, array<string, mixed>> allocation_id => formatted row
      */
     private function enrich(Organization $organization, Collection $rows): array
     {
         $salesOrderIds = $rows->pluck('sales_order_id')->unique()->values()->all();
-        $designations = $this->designationsBySalesOrder($salesOrderIds);
+        $lines = $this->linesBySalesOrder($salesOrderIds);
         $invoices = $this->issuedInvoicesBySalesOrder($organization, $salesOrderIds);
         $orderedAllocations = $this->receivables->orderedAllocationsBySalesOrder($salesOrderIds);
 
         return $rows->mapWithKeys(fn ($row) => [
-            (int) $row->allocation_id => $this->formatRow($row, $designations, $invoices, $orderedAllocations),
+            (int) $row->allocation_id => $this->formatRow($row, $lines, $invoices, $orderedAllocations),
         ])->all();
     }
 
-    /** @param  list<int>  $salesOrderIds
-     * @return array<int, string> sales_order_id => compact designation
+    /**
+     * Every sold line for each order in the batch — the authoritative
+     * SalesOrderLine snapshot, never today's Product row, and never
+     * truncated/summarized: "Article A (+3 autres)" made it impossible for
+     * the accountant to see what was actually sold, which is exactly the
+     * defect this replaces. Works whether or not the order has an invoice
+     * yet (an advance-sur-commande payment still shows its real order
+     * lines) — one query for the whole batch, grouped in PHP.
+     *
+     * @param  list<int>  $salesOrderIds
+     * @return array<int, list<array{quantity: string, designation: string, reference: ?string, variant: ?string}>>
      */
-    private function designationsBySalesOrder(array $salesOrderIds): array
+    private function linesBySalesOrder(array $salesOrderIds): array
     {
         if ($salesOrderIds === []) {
             return [];
@@ -152,16 +163,15 @@ class FinanceCaEncaisseService
 
         return DB::table('sales_order_lines')
             ->whereIn('sales_order_id', $salesOrderIds)
-            ->orderBy('position')
-            ->get(['sales_order_id', 'product_name'])
+            ->orderBy('sales_order_id')->orderBy('position')
+            ->get(['sales_order_id', 'quantity', 'product_name', 'sku', 'reference', 'variant_name'])
             ->groupBy('sales_order_id')
-            ->map(function (Collection $lines) {
-                $first = $lines->first();
-
-                return $lines->count() > 1
-                    ? "{$first->product_name} (+".($lines->count() - 1).' autre(s))'
-                    : $first->product_name;
-            })
+            ->map(fn (Collection $lines) => $lines->map(fn ($line) => [
+                'quantity' => (string) $line->quantity,
+                'designation' => $line->product_name,
+                'reference' => $line->reference ?: $line->sku,
+                'variant' => $line->variant_name,
+            ])->values()->all())
             ->all();
     }
 
@@ -194,12 +204,12 @@ class FinanceCaEncaisseService
     }
 
     /**
-     * @param  array<int, string>  $designations
+     * @param  array<int, list<array{quantity: string, designation: string, reference: ?string, variant: ?string}>>  $lines
      * @param  array<int, array{id: int, invoice_number: string, total_incl_tax: string}>  $invoices
      * @param  array<int, list<array{payment_id: int, payment_date: string, amount: string}>>  $orderedAllocations
      * @return array<string, mixed>
      */
-    private function formatRow(object $row, array $designations, array $invoices, array $orderedAllocations): array
+    private function formatRow(object $row, array $lines, array $invoices, array $orderedAllocations): array
     {
         $salesOrderId = (int) $row->sales_order_id;
         $invoice = $invoices[$salesOrderId] ?? null;
@@ -215,7 +225,12 @@ class FinanceCaEncaisseService
             'invoice_id' => $invoice['id'] ?? null,
             'sales_order_id' => $salesOrderId,
             'order_number' => $row->order_number,
-            'designation' => $designations[$salesOrderId] ?? '—',
+            // Full sold-line detail (§ Finance Journal/CA designation fix) —
+            // never a truncated/summarized string. This is DOCUMENT DETAIL:
+            // it must never be treated as a per-line amount, and the
+            // payment-grain `amount` below stays exactly one value per row
+            // regardless of how many lines the order has.
+            'lines' => $lines[$salesOrderId] ?? [],
             'customer' => trim(($row->customer_company ?: $row->customer_name) ?: '') ?: '—',
             'method' => $row->method,
             'method_label' => PaymentMethod::from($row->method)->operationalLabel(),

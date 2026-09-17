@@ -74,12 +74,32 @@ class FinanceCaEncaissePdfExport
                 'sale_date' => $this->format->date(Carbon::parse($row['sale_date'])),
                 'payment_date' => $this->format->date(Carbon::parse($row['payment_date'])),
                 'reference' => $row['reference'],
-                'designation' => $row['designation'],
+                // Full sold-line detail, one PDF table row per line — never
+                // a truncated/summarized single string (see the Finance
+                // Journal/CA designation-fix audit).
+                'lines' => $this->lines($row['lines']),
                 'customer' => $row['customer'],
                 'method_label' => $row['method_label'],
                 'amount' => $this->format->money($row['amount']),
                 'status_label' => $row['status_label'],
             ])->all(),
         ];
+    }
+
+    /**
+     * @param  list<array{quantity: ?string, designation: string, reference: ?string, variant: ?string}>  $lines
+     * @return list<array{quantity: string, designation: string, reference: string}>
+     */
+    private function lines(array $lines): array
+    {
+        if ($lines === []) {
+            return [['quantity' => '', 'designation' => '—', 'reference' => '']];
+        }
+
+        return array_map(fn (array $line) => [
+            'quantity' => $line['quantity'] !== null ? $this->format->decimal($line['quantity']) : '',
+            'designation' => $line['designation'].($line['variant'] ? ' — '.$line['variant'] : ''),
+            'reference' => $line['reference'] ?? '',
+        ], $lines);
     }
 }

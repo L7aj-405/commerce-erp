@@ -34,7 +34,7 @@ class FinanceJournalService
             ->where('status', InvoiceStatus::Issued->value)
             ->whereDate('invoice_date', '>=', $period->start->toDateString())
             ->whereDate('invoice_date', '<=', $period->end->toDateString())
-            ->with(['lines:id,invoice_id,product_name,description'])
+            ->with(['lines:id,invoice_id,position,quantity,product_name,description,sku,reference,variant_name'])
             ->orderBy('invoice_date')->orderBy('id')
             ->paginate($perPage);
 
@@ -45,23 +45,25 @@ class FinanceJournalService
             'id' => $invoice->id,
             'date' => $invoice->invoice_date->toDateString(),
             'invoice_number' => $invoice->invoice_number,
-            'designation' => $this->designation($invoice),
+            // Full sold-line detail from the invoice's own immutable
+            // snapshot — never truncated/summarized and never today's
+            // Product row (see linesOf()).
+            'lines' => $this->lines($invoice),
             'total_incl_tax' => (string) $invoice->total_incl_tax,
             'customer' => trim($invoice->customer_company ?: $invoice->customer_name ?: '') ?: '—',
             'payment_method' => $this->methodLabel($methodsByOrder[$invoice->sales_order_id] ?? []),
         ]);
     }
 
-    private function designation(Invoice $invoice): string
+    /** @return list<array{quantity: string, designation: string, reference: ?string, variant: ?string}> */
+    private function lines(Invoice $invoice): array
     {
-        $lines = $invoice->lines;
-        if ($lines->isEmpty()) {
-            return '—';
-        }
-        $first = $lines->first();
-        $label = $first->product_name ?: $first->description;
-
-        return $lines->count() > 1 ? "{$label} (+".($lines->count() - 1).' autre(s))' : $label;
+        return $invoice->lines->map(fn ($line) => [
+            'quantity' => (string) $line->quantity,
+            'designation' => $line->product_name ?: $line->description,
+            'reference' => $line->reference ?: $line->sku,
+            'variant' => $line->variant_name,
+        ])->all();
     }
 
     /** @param  list<int>  $salesOrderIds

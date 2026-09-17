@@ -98,37 +98,49 @@
         <table class="lines">
             <thead>
                 <tr>
-                    <th style="width: 8%;">Numéro</th>
-                    <th style="width: 7%;">Date de vente</th>
-                    <th style="width: 7%;">Date de paiement</th>
-                    <th style="width: 9%;">N° facture / commande</th>
-                    <th style="width: 25%;">Désignation</th>
-                    <th style="width: 14%;">Client</th>
-                    <th style="width: 10%;">Mode de paiement</th>
-                    <th style="width: 10%;" class="num">Montant encaissé</th>
+                    <th style="width: 7%;">Numéro</th>
+                    <th style="width: 6%;">Date de vente</th>
+                    <th style="width: 6%;">Date de paiement</th>
+                    <th style="width: 8%;">N° facture / commande</th>
+                    <th style="width: 4%;" class="num">Qté</th>
+                    <th style="width: 8%;">Référence</th>
+                    <th style="width: 21%;">Désignation</th>
+                    <th style="width: 12%;">Client</th>
+                    <th style="width: 9%;">Mode de paiement</th>
+                    <th style="width: 9%;" class="num">Montant encaissé</th>
                     <th style="width: 10%;">Statut</th>
                 </tr>
             </thead>
             <tbody>
                 @forelse ($section['rows'] as $row)
-                    <tr>
-                        <td class="nowrap">{{ $row['payment_number'] }}</td>
-                        <td class="nowrap">{{ $row['sale_date'] }}</td>
-                        <td class="nowrap">{{ $row['payment_date'] }}</td>
-                        <td class="nowrap">{{ $row['reference'] }}</td>
-                        <td class="wrap">{{ $row['designation'] }}</td>
-                        <td class="wrap">{{ $row['customer'] }}</td>
-                        <td class="nowrap">{{ $row['method_label'] }}</td>
-                        <td class="num">{{ $row['amount'] }} DH</td>
-                        <td class="wrap">{{ $row['status_label'] }}</td>
-                    </tr>
+                    {{-- One PDF row per SOLD LINE, never a truncated "+N autres"
+                         summary. The identifying/payment columns are repeated
+                         on every line row of the group (never merged — Dompdf
+                         table rowspan across a page break is unreliable) EXCEPT
+                         "Montant encaissé", left blank after the first line so
+                         the figure only ever appears once per payment. --}}
+                    @foreach ($row['lines'] as $lineIndex => $line)
+                        <tr>
+                            <td class="nowrap">{{ $row['payment_number'] }}</td>
+                            <td class="nowrap">{{ $row['sale_date'] }}</td>
+                            <td class="nowrap">{{ $row['payment_date'] }}</td>
+                            <td class="nowrap">{{ $row['reference'] }}</td>
+                            <td class="num">{{ $line['quantity'] }}</td>
+                            <td class="nowrap">{{ $line['reference'] }}</td>
+                            <td class="wrap">{{ $line['designation'] }}</td>
+                            <td class="wrap">{{ $row['customer'] }}</td>
+                            <td class="nowrap">{{ $row['method_label'] }}</td>
+                            <td class="num">{{ $lineIndex === 0 ? $row['amount'].' DH' : '' }}</td>
+                            <td class="wrap">{{ $row['status_label'] }}</td>
+                        </tr>
+                    @endforeach
                 @empty
-                    <tr><td colspan="9" class="empty">Aucun encaissement sur cette période.</td></tr>
+                    <tr><td colspan="11" class="empty">Aucun encaissement sur cette période.</td></tr>
                 @endforelse
             </tbody>
             <tfoot class="total-row">
                 <tr>
-                    <td colspan="7">CA encaissé du mois</td>
+                    <td colspan="9">CA encaissé du mois</td>
                     <td class="num">{{ $section['total'] }} DH</td>
                     <td></td>
                 </tr>

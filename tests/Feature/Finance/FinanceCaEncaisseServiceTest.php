@@ -140,8 +140,8 @@ class FinanceCaEncaisseServiceTest extends DocumentTestCase
 
         $this->assertSame(0, Decimal::compare($rows[$orderA->id]['amount'], '100.0000'));
         $this->assertSame(0, Decimal::compare($rows[$orderB->id]['amount'], '200.0000'));
-        $this->assertStringContainsString('Produit A', $rows[$orderA->id]['designation']);
-        $this->assertStringContainsString('Produit B', $rows[$orderB->id]['designation']);
+        $this->assertStringContainsString('Produit A', $rows[$orderA->id]['lines'][0]['designation']);
+        $this->assertStringContainsString('Produit B', $rows[$orderB->id]['lines'][0]['designation']);
     }
 
     public function test_total_equals_the_sum_of_every_qualifying_row(): void

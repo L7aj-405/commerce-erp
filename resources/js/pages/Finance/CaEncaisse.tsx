@@ -1,4 +1,5 @@
 import FinanceFilters, { type FinanceStore } from '@/components/finance/FinanceFilters';
+import SoldLines, { type SoldLine } from '@/components/finance/SoldLines';
 import PageHeader from '@/components/ui/PageHeader';
 import Pagination from '@/components/ui/Pagination';
 import { Spinner } from '@/components/ui/Spinner';
@@ -18,7 +19,7 @@ type CaEncaisseRow = {
     invoice_id: number | null;
     sales_order_id: number;
     order_number: string;
-    designation: string;
+    lines: SoldLine[];
     customer: string;
     method_label: string;
     amount: string;
@@ -42,6 +43,7 @@ const STATUS_STYLES: Record<string, string> = {
     'Paiement partiel': 'bg-warning-soft text-warning',
     'Solde / Reliquat': 'bg-warning-soft text-warning',
 };
+
 
 export default function FinanceCaEncaisse({ organization, period, periodLabel, storeId, stores, total, rows, can }: Props) {
     const q = new URLSearchParams({ month: period, store_id: storeId ? String(storeId) : '' }).toString();
@@ -94,7 +96,7 @@ export default function FinanceCaEncaisse({ organization, period, periodLabel, s
                             </thead>
                             <tbody>
                                 {rows.data.map((row) => (
-                                    <tr key={row.id} className="border-t border-line">
+                                    <tr key={row.id} className="border-t border-line align-top">
                                         <td className="px-4 py-2.5 font-medium text-ink">{row.payment_number}</td>
                                         <td className="px-4 py-2.5 whitespace-nowrap text-ink-muted">{formatDate(row.sale_date)}</td>
                                         <td className="px-4 py-2.5 whitespace-nowrap text-ink-muted">{formatDate(row.payment_date)}</td>
@@ -105,7 +107,9 @@ export default function FinanceCaEncaisse({ organization, period, periodLabel, s
                                                 <Link href={`/sales/orders/${row.sales_order_id}`}>{row.reference}</Link>
                                             )}
                                         </td>
-                                        <td className="px-4 py-2.5">{row.designation}</td>
+                                        <td className="px-4 py-2.5">
+                                            <SoldLines lines={row.lines} />
+                                        </td>
                                         <td className="px-4 py-2.5">{row.customer}</td>
                                         <td className="px-4 py-2.5 text-ink-muted">{row.method_label}</td>
                                         <td className="px-4 py-2.5 text-right tabular-nums">{formatMoney(row.amount)}</td>
@@ -125,13 +129,16 @@ export default function FinanceCaEncaisse({ organization, period, periodLabel, s
                         {rows.data.map((row) => (
                             <li key={row.id} className="rounded-card border border-line bg-surface p-4">
                                 <div className="flex items-start justify-between gap-3">
-                                    <div className="min-w-0">
-                                        <p className="truncate text-sm font-semibold text-ink">{row.payment_number}</p>
-                                        <p className="truncate text-[13px] text-ink-muted">{row.designation}</p>
-                                    </div>
+                                    <p className="min-w-0 truncate text-sm font-semibold text-ink">{row.payment_number}</p>
                                     <span className={`shrink-0 inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold ${STATUS_STYLES[row.status_label] ?? 'bg-raised text-ink-muted'}`}>
                                         {row.status_label}
                                     </span>
+                                </div>
+                                <div className="mt-2.5">
+                                    <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-faint">Désignation</p>
+                                    <div className="mt-1">
+                                        <SoldLines lines={row.lines} />
+                                    </div>
                                 </div>
                                 <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1.5 text-[13px]">
                                     <div className="min-w-0">

@@ -91,7 +91,7 @@ class FinanceCaEncaissePdfLayoutTest extends DocumentTestCase
                     'sale_date' => '12/09/2026',
                     'payment_date' => '12/09/2026',
                     'reference' => '1/2026',
-                    'designation' => 'Consulting',
+                    'lines' => [['quantity' => '1', 'designation' => 'Consulting', 'reference' => null]],
                     'customer' => 'Client SARL',
                     'method_label' => 'Espèces',
                     'amount' => '11 853,00',
