@@ -27,9 +27,13 @@ class SystemDnsResolver implements DnsResolver
             $addresses = array_merge($addresses, $ipv4);
         }
 
-        $aaaaRecords = @dns_get_record($host, DNS_AAAA);
-        if (is_array($aaaaRecords)) {
-            foreach ($aaaaRecords as $record) {
+        $dnsRecords = @dns_get_record($host, DNS_A | DNS_AAAA);
+        if (is_array($dnsRecords)) {
+            foreach ($dnsRecords as $record) {
+                if (! empty($record['ip'])) {
+                    $addresses[] = $record['ip'];
+                }
+
                 if (! empty($record['ipv6'])) {
                     $addresses[] = $record['ipv6'];
                 }
