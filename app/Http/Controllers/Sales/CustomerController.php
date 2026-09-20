@@ -56,25 +56,25 @@ class CustomerController extends Controller
         $organizationId = $customer->organization_id;
         $customerId = $customer->getKey();
 
-        $salesTotal = (string) SalesOrder::query()
+        $salesTotal = Decimal::normalize((string) SalesOrder::query()
             ->where('organization_id', $organizationId)
             ->where('customer_id', $customerId)
             ->where('status', SalesOrderStatus::Confirmed->value)
-            ->sum('total_incl_tax');
+            ->sum('total_incl_tax'));
 
-        $invoicedTotal = (string) Invoice::query()
+        $invoicedTotal = Decimal::normalize((string) Invoice::query()
             ->where('organization_id', $organizationId)
             ->where('customer_id', $customerId)
             ->where('status', InvoiceStatus::Issued->value)
-            ->sum('total_incl_tax');
+            ->sum('total_incl_tax'));
 
-        $paidTotal = (string) DB::table('payment_allocations')
+        $paidTotal = Decimal::normalize((string) DB::table('payment_allocations')
             ->join('payments', 'payments.id', '=', 'payment_allocations.payment_id')
             ->join('sales_orders', 'sales_orders.id', '=', 'payment_allocations.sales_order_id')
             ->where('sales_orders.organization_id', $organizationId)
             ->where('sales_orders.customer_id', $customerId)
             ->where('payments.status', PaymentStatus::Posted->value)
-            ->sum('payment_allocations.amount');
+            ->sum('payment_allocations.amount'));
 
         $outstanding = Decimal::compare($invoicedTotal, $paidTotal) > 0
             ? Decimal::subtract($invoicedTotal, $paidTotal)
@@ -103,9 +103,11 @@ class CustomerController extends Controller
             'ordersCount' => SalesOrder::query()->where('organization_id', $organizationId)->where('customer_id', $customerId)->count(),
             'invoices' => Invoice::query()
                 ->where('organization_id', $organizationId)->where('customer_id', $customerId)
+                ->where('status', '!=', InvoiceStatus::Superseded->value)
                 ->orderByDesc('invoice_date')->limit($recentLimit)
-                ->get(['id', 'invoice_number', 'invoice_date', 'status', 'total_incl_tax']),
-            'invoicesCount' => Invoice::query()->where('organization_id', $organizationId)->where('customer_id', $customerId)->count(),
+                ->get(['id', 'invoice_number', 'version', 'invoice_date', 'status', 'total_incl_tax']),
+            'invoicesCount' => Invoice::query()->where('organization_id', $organizationId)->where('customer_id', $customerId)
+                ->where('status', '!=', InvoiceStatus::Superseded->value)->count(),
             'payments' => Payment::query()
                 ->where('organization_id', $organizationId)
                 ->whereHas('allocations.salesOrder', fn ($query) => $query->where('customer_id', $customerId))

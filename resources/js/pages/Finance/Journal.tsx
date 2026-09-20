@@ -16,6 +16,7 @@ type JournalRow = {
     payment_method: string;
 };
 type LinkData = { url: string | null; label: string; active: boolean };
+type AccountingEvent = { id: number; type: string; label: string; date: string; number: string; reference: string | null; customer: string; amount: string; negative: boolean; url: string };
 type Props = {
     organization: { id: number; name: string };
     period: string;
@@ -23,14 +24,24 @@ type Props = {
     storeId: number | null;
     stores: FinanceStore[];
     rows: { data: JournalRow[]; links: LinkData[]; total: number };
+    events: AccountingEvent[];
 };
 
-export default function FinanceJournal({ organization, period, periodLabel, storeId, stores, rows }: Props) {
+export default function FinanceJournal({ organization, period, periodLabel, storeId, stores, rows, events }: Props) {
     return (
         <ApplicationShell wide>
             <Head title="Journal des ventes — Finance" />
             <PageHeader title="Journal des ventes" description={`${organization.name} · ${periodLabel} · ${rows.total} facture(s)`} />
             <FinanceFilters path="/finance/journal" period={period} storeId={storeId} stores={stores} />
+
+            <section className="mb-6 overflow-x-auto rounded-card border border-line bg-surface">
+                <div className="border-b border-line p-4"><h2 className="font-semibold text-ink">Événements comptables et financiers</h2><p className="text-xs text-ink-muted">Factures, avoirs, encaissements et remboursements restent des événements distincts.</p></div>
+                <table className="w-full text-left text-sm">
+                    <thead className="bg-raised text-[11px] uppercase tracking-wide text-ink-faint"><tr><th className="px-4 py-2.5">Date</th><th className="px-4 py-2.5">Type</th><th className="px-4 py-2.5">N°</th><th className="px-4 py-2.5">Référence</th><th className="px-4 py-2.5">Client</th><th className="px-4 py-2.5 text-right">Montant</th></tr></thead>
+                    <tbody>{events.map((event) => <tr key={`${event.type}-${event.id}`} className="border-t border-line"><td className="px-4 py-2.5 text-ink-muted">{event.date}</td><td className="px-4 py-2.5">{event.label}</td><td className="px-4 py-2.5 font-medium"><Link href={event.url}>{event.number}</Link></td><td className="px-4 py-2.5 text-ink-muted">{event.reference || '—'}</td><td className="px-4 py-2.5">{event.customer}</td><td className={`px-4 py-2.5 text-right font-medium ${event.negative ? 'text-danger' : 'text-ink'}`}>{event.negative ? '− ' : '+ '}{formatMoney(event.amount)}</td></tr>)}</tbody>
+                </table>
+                {events.length === 0 && <p className="p-6 text-center text-sm text-ink-faint">Aucun événement sur cette période.</p>}
+            </section>
 
             {rows.data.length === 0 ? (
                 <div className="rounded-card border border-dashed border-line-strong bg-raised px-4 py-8 text-center text-sm text-ink-faint">

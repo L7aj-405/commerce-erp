@@ -12,18 +12,45 @@ class DocumentSnapshotVerifier
 {
     public function verifyInvoice(Invoice $invoice): void
     {
+        $invoice->loadMissing(['family', 'correctedInvoice']);
+        if (! $invoice->family || $invoice->version < 1) {
+            $this->invalid('Invoice family/version metadata is missing.');
+        }
+        if ($invoice->correctedInvoice) {
+            if ($invoice->correctedInvoice->organization_id !== $invoice->organization_id
+                || $invoice->correctedInvoice->invoice_family_id !== $invoice->invoice_family_id
+                || $invoice->version !== $invoice->correctedInvoice->version + 1) {
+                $this->invalid('Invoice correction does not continue the same tenant-scoped family in sequence.');
+            }
+        } elseif ($invoice->version !== 1) {
+            $this->invalid('The first Invoice in a family must be Version 1.');
+        }
+
         // A post-issue correction Draft/Invoice may intentionally differ from the
         // authoritative Sales Order snapshot (that is the whole point of a
         // financial line correction). It is verified for internal consistency
         // instead — never against the Order lines.
-        if ($invoice->corrected_invoice_id !== null) {
+        if ($invoice->corrected_invoice_id !== null
+            && $invoice->sales_order_revision_id === null
+            && $invoice->sales_order_addendum_id === null) {
             $this->verifyCorrectionInvoice($invoice);
 
             return;
         }
 
-        $invoice->loadMissing(['lines', 'salesOrder.lines']);
-        $sourceLines = $invoice->salesOrder->lines->keyBy('id');
+        $invoice->loadMissing(['lines', 'salesOrder.lines.addendum', 'salesOrderAddendum']);
+        $boundary = $invoice->salesOrderAddendum;
+        if ($boundary && ($boundary->organization_id !== $invoice->organization_id
+            || $boundary->sales_order_id !== $invoice->sales_order_id)) {
+            $this->invalid('Invoice addendum context is outside its tenant-scoped Sales Order.');
+        }
+
+        // An issued document is verified against the commercial boundary it
+        // snapshotted, not against additions made to the live Order later.
+        $sourceLines = $invoice->salesOrder->lines
+            ->filter(fn ($line) => $line->sales_order_addendum_id === null
+                || ($boundary && $line->addendum && $line->addendum->sequence <= $boundary->sequence))
+            ->keyBy('id');
         if ($invoice->lines->count() !== $sourceLines->count()) {
             $this->invalid('Invoice lines no longer represent the complete Sales Order snapshot.');
         }
@@ -54,7 +81,7 @@ class DocumentSnapshotVerifier
             $totals['total_incl_tax'] = Decimal::add($totals['total_incl_tax'], $line->total_incl_tax);
         }
         foreach ($totals as $field => $value) {
-            if (Decimal::compare($invoice->{$field}, $value) !== 0 || Decimal::compare($invoice->{$field}, $invoice->salesOrder->{$field}) !== 0) {
+            if (Decimal::compare($invoice->{$field}, $value) !== 0) {
                 $this->invalid("Invoice {$field} does not reconcile with its immutable line snapshots.");
             }
         }

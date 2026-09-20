@@ -1,4 +1,5 @@
 import { Button } from '@/components/ui/Button';
+import PageHeader from '@/components/ui/PageHeader';
 import ApplicationShell from '@/layouts/ApplicationShell';
 import { Head, useForm } from '@inertiajs/react';
 import type { FormEvent, ReactNode } from 'react';
@@ -98,21 +99,94 @@ export default function DocumentProfile({ organization, profile, logoUrl, defaul
 
     return (
         <ApplicationShell>
-            <Head title="Profil des documents" />
-            <main className="mx-auto max-w-3xl">
-                <h1 className="text-2xl font-semibold tracking-tight text-ink">Profil des documents · Facture</h1>
-                <p className="mt-1 text-sm text-ink-muted">
-                    Ces informations alimentent toutes les factures émises. Les factures déjà émises ne changent pas.
-                </p>
+            <Head title="Organisation / Société" />
+            <div className="mx-auto max-w-5xl">
+                <PageHeader
+                    title="Organisation / Société"
+                    description="Informations légales et coordonnées de votre entreprise."
+                />
 
                 {!canUpdate && (
-                    <p className="mt-4 rounded-field border border-line bg-raised px-3 py-2 text-xs text-ink-muted">
+                    <p className="mb-6 rounded-field border border-line bg-raised px-3 py-2 text-xs text-ink-muted">
                         Lecture seule — vous n’avez pas la permission de modifier le profil des documents.
                     </p>
                 )}
-                <form onSubmit={submit} className="mt-8 space-y-4">
-                <fieldset disabled={!canUpdate} className="space-y-4">
-                    <Section title="Identité">
+
+                <form onSubmit={submit} className="space-y-5">
+                <fieldset disabled={!canUpdate} className="space-y-5">
+                    <Section title="Informations générales" description="Nom commercial, raison sociale et identité visible sur vos documents.">
+                        <Grid>
+                            <TextField form={form} name="trade_name" label="Nom commercial" />
+                            <TextField form={form} name="legal_name" label="Raison sociale" required />
+                        </Grid>
+                    </Section>
+
+                    <Section title="Coordonnées" description="Adresse et contacts utilisés sur les documents commerciaux.">
+                        <TextField form={form} name="address" label="Adresse" />
+                        <Grid>
+                            <TextField form={form} name="phone" label="Téléphone" />
+                            <TextField form={form} name="fax" label="Fax" />
+                            <TextField form={form} name="email" label="Email" type="email" />
+                            <TextField form={form} name="website" label="Site web" type="url" />
+                        </Grid>
+                    </Section>
+
+                    <Section title="Informations légales" description="Identifiants fiscaux et registres existants de l’entreprise.">
+                        <Grid>
+                            <TextField form={form} name="tax_identifier" label="ICE" />
+                            <TextField form={form} name="registration_number" label="RC" />
+                            <TextField form={form} name="patente_number" label="Patente / TP" />
+                        </Grid>
+                        <fieldset className="mt-2">
+                            <legend className="text-xs font-medium text-ink-muted">Identifiants additionnels (IF, etc.)</legend>
+                            {form.data.additional_identifiers.map((identifier, index) => (
+                                <div key={index} className="mt-2 grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)_auto]">
+                                    <input
+                                        aria-label={`Libellé ${index + 1}`}
+                                        value={identifier.label}
+                                        onChange={(e) => setIdentifier(index, 'label', e.target.value)}
+                                        placeholder="Libellé"
+                                        className="rounded-field border border-line-strong bg-surface px-3 py-2 text-sm"
+                                    />
+                                    <input
+                                        aria-label={`Valeur ${index + 1}`}
+                                        value={identifier.value}
+                                        onChange={(e) => setIdentifier(index, 'value', e.target.value)}
+                                        placeholder="Valeur"
+                                        className="rounded-field border border-line-strong bg-surface px-3 py-2 text-sm"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() =>
+                                            form.setData(
+                                                'additional_identifiers',
+                                                form.data.additional_identifiers.filter((_, i) => i !== index),
+                                            )
+                                        }
+                                        className="rounded-field border border-line-strong px-3 py-2 text-sm text-ink-muted transition-soft hover:bg-sage hover:text-ink"
+                                    >
+                                        Retirer
+                                    </button>
+                                </div>
+                            ))}
+                            {form.data.additional_identifiers.length < 10 && (
+                                <button
+                                    type="button"
+                                    onClick={() =>
+                                        form.setData('additional_identifiers', [
+                                            ...form.data.additional_identifiers,
+                                            { label: '', value: '' },
+                                        ])
+                                    }
+                                    className="mt-3 rounded-field px-3 py-2 text-sm font-medium text-ink-muted transition-soft hover:bg-sage hover:text-ink"
+                                >
+                                    + Ajouter un identifiant
+                                </button>
+                            )}
+                        </fieldset>
+                    </Section>
+
+                    <Section title="Identité des documents" description="Logo, couleur, banque/RIB et pied de page des factures, devis et avoirs.">
                         <div className="flex items-start gap-4">
                             <div className="flex size-24 shrink-0 items-center justify-center overflow-hidden rounded-card border border-line bg-raised">
                                 {previewLogo ? (
@@ -146,84 +220,9 @@ export default function DocumentProfile({ organization, profile, logoUrl, defaul
                             </div>
                         </div>
                         <Grid>
-                            <TextField form={form} name="legal_name" label="Raison sociale" required />
-                            <TextField form={form} name="trade_name" label="Nom commercial" />
-                        </Grid>
-                    </Section>
-
-                    <Section title="Coordonnées">
-                        <TextField form={form} name="address" label="Adresse" />
-                        <Grid>
-                            <TextField form={form} name="phone" label="Téléphone" />
-                            <TextField form={form} name="fax" label="Fax" />
-                        </Grid>
-                        <TextField form={form} name="email" label="Email" type="email" />
-                    </Section>
-
-                    <Section title="Identifiants légaux">
-                        <Grid>
-                            <TextField form={form} name="tax_identifier" label="ICE" />
-                            <TextField form={form} name="registration_number" label="RC" />
-                            <TextField form={form} name="patente_number" label="TP (patente)" />
-                            <TextField form={form} name="website" label="Site web" type="url" />
-                        </Grid>
-                        <fieldset className="mt-2">
-                            <legend className="text-xs font-medium text-ink-muted">Identifiants additionnels (IF, etc.)</legend>
-                            {form.data.additional_identifiers.map((identifier, index) => (
-                                <div key={index} className="mt-2 flex gap-2">
-                                    <input
-                                        aria-label={`Libellé ${index + 1}`}
-                                        value={identifier.label}
-                                        onChange={(e) => setIdentifier(index, 'label', e.target.value)}
-                                        placeholder="Libellé"
-                                        className="w-1/3 rounded-field border border-line-strong px-3 py-2 text-sm"
-                                    />
-                                    <input
-                                        aria-label={`Valeur ${index + 1}`}
-                                        value={identifier.value}
-                                        onChange={(e) => setIdentifier(index, 'value', e.target.value)}
-                                        placeholder="Valeur"
-                                        className="flex-1 rounded-field border border-line-strong px-3 py-2 text-sm"
-                                    />
-                                    <button
-                                        type="button"
-                                        onClick={() =>
-                                            form.setData(
-                                                'additional_identifiers',
-                                                form.data.additional_identifiers.filter((_, i) => i !== index),
-                                            )
-                                        }
-                                        className="rounded-field border border-line-strong px-3 text-sm"
-                                    >
-                                        Retirer
-                                    </button>
-                                </div>
-                            ))}
-                            {form.data.additional_identifiers.length < 10 && (
-                                <button
-                                    type="button"
-                                    onClick={() =>
-                                        form.setData('additional_identifiers', [
-                                            ...form.data.additional_identifiers,
-                                            { label: '', value: '' },
-                                        ])
-                                    }
-                                    className="mt-2 text-sm text-ink-muted"
-                                >
-                                    + Ajouter un identifiant
-                                </button>
-                            )}
-                        </fieldset>
-                    </Section>
-
-                    <Section title="Banque">
-                        <Grid>
                             <TextField form={form} name="bank_name" label="Banque" />
                             <TextField form={form} name="bank_rib" label="RIB" />
                         </Grid>
-                    </Section>
-
-                    <Section title="Mise en page">
                         <label className="block">
                             <span className="mb-1 block text-xs font-medium text-ink-muted">Couleur principale</span>
                             <div className="flex items-center gap-2">
@@ -248,25 +247,30 @@ export default function DocumentProfile({ organization, profile, logoUrl, defaul
                             <textarea
                                 value={form.data.footer_text}
                                 onChange={(e) => form.setData('footer_text', e.target.value)}
-                                className="w-full rounded-field border border-line-strong px-3 py-2 text-sm"
+                                className="w-full rounded-field border border-line-strong bg-surface px-3 py-2 text-sm"
                             />
                         </label>
                     </Section>
 
-                    <Button type="submit" loading={form.processing} loadingText="Enregistrement…">
-                        Enregistrer le profil
-                    </Button>
+                    <div className="sticky bottom-4 z-10 flex justify-end rounded-card border border-line bg-surface/95 p-3 shadow-pop backdrop-blur">
+                        <Button type="submit" loading={form.processing} loadingText="Enregistrement…">
+                            Enregistrer
+                        </Button>
+                    </div>
                 </fieldset>
                 </form>
-            </main>
+            </div>
         </ApplicationShell>
     );
 }
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
+function Section({ title, description, children }: { title: string; description?: string; children: ReactNode }) {
     return (
-        <section className="rounded-card border border-line bg-surface p-5">
-            <h2 className="mb-3 text-sm font-semibold text-ink">{title}</h2>
+        <section className="rounded-card border border-line bg-surface p-5 shadow-soft">
+            <div className="mb-4">
+                <h2 className="text-sm font-semibold text-ink">{title}</h2>
+                {description && <p className="mt-1 text-sm text-ink-muted">{description}</p>}
+            </div>
             <div className="space-y-3">{children}</div>
         </section>
     );
@@ -286,7 +290,7 @@ function TextField({ form, name, label: l, type = 'text', required = false }: { 
                 required={required}
                 value={form.data[name] ?? ''}
                 onChange={(e) => form.setData(name, e.target.value)}
-                className="w-full rounded-field border border-line-strong px-3 py-2 text-sm"
+                className="w-full rounded-field border border-line-strong bg-surface px-3 py-2 text-sm"
             />
             {form.errors[name] && <span className="mt-1 block text-xs text-danger">{form.errors[name]}</span>}
         </label>

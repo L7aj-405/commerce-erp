@@ -4,12 +4,15 @@ namespace Tests\Feature\Quotations;
 
 use App\Actions\Quotations\RemoveQuotationLineAction;
 use App\Actions\Quotations\SaveQuotationLineAction;
+use App\Models\Organization;
+use App\Models\Store;
 use App\Models\User;
+use App\Services\QuotationDocumentRenderer;
 use Tests\Support\QuotationTestCase;
 
 class QuotationLineTest extends QuotationTestCase
 {
-    /** @return array{User, \App\Models\Organization, \App\Models\Store} */
+    /** @return array{User, Organization, Store} */
     private function tenant(): array
     {
         $owner = User::factory()->create();
@@ -97,7 +100,7 @@ class QuotationLineTest extends QuotationTestCase
         $this->assertSame('35.0000', $quotation->tax_total); // 7 + 28, not one blended 20%
         $this->assertSame('335.0000', $quotation->total_incl_tax);
 
-        $payload = app(\App\Services\QuotationDocumentRenderer::class)->payload($quotation);
+        $payload = app(QuotationDocumentRenderer::class)->payload($quotation);
         $this->assertCount(2, $payload['tax_lines']); // grouped per rate
     }
 
@@ -150,7 +153,7 @@ class QuotationLineTest extends QuotationTestCase
         $quotation = $this->createQuotation($owner, $organization, $store);
 
         $a = $this->addCatalogQuotationLine($owner, $quotation, $variant, ['quantity' => '1']);
-        $b = $this->addNonStockQuotationLine($owner, $quotation, ['unit_price' => '1000', 'quantity' => '2']);
+        $b = $this->addNonStockQuotationLine($owner, $quotation, ['tax_rate_id' => $tax->id, 'unit_price' => '1000', 'quantity' => '2']);
         $this->assertSame(2, $quotation->fresh()->lines()->count());
         // 600 (1x500 +20%) + 2400 (2x1000 +20%)
         $this->assertSame('3000.0000', $quotation->fresh()->total_incl_tax);

@@ -3,7 +3,6 @@
 namespace App\Actions\Documents\Concerns;
 
 use App\Enums\CatalogStatus;
-use App\Enums\InvoiceStatus;
 use App\Enums\SalesOrderLineType;
 use App\Models\Invoice;
 use App\Models\InvoiceLine;
@@ -35,21 +34,9 @@ trait MutatesInvoiceCorrection
     {
         $this->authorizeInvoice($actor, $invoice, 'invoices.update_draft');
 
-        $locked = Invoice::query()
-            ->where('organization_id', $invoice->organization_id)
-            ->where('store_id', $invoice->store_id)
-            ->whereKey($invoice->getKey())
-            ->lockForUpdate()
-            ->with(['lines', 'organization', 'store', 'correctedInvoice'])
-            ->firstOrFail();
-
-        if ($locked->status !== InvoiceStatus::Draft || $locked->corrected_invoice_id === null) {
-            throw ValidationException::withMessages([
-                'invoice' => 'Seules les lignes d’un brouillon de correction peuvent être modifiées.',
-            ]);
-        }
-
-        return $locked;
+        return throw ValidationException::withMessages([
+            'invoice' => 'Les articles, quantités, prix, remises et taxes sont gérés depuis la commande.',
+        ]);
     }
 
     /**

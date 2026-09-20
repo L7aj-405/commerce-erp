@@ -6,6 +6,7 @@ use App\Models\Organization;
 use App\Models\OrganizationDocumentStamp;
 use App\Models\OrganizationMailSetting;
 use App\Models\OrganizationMembership;
+use App\Models\OrganizationSecuritySetting;
 use App\Models\Permission;
 use App\Models\Role;
 use App\Models\Store;
@@ -93,6 +94,24 @@ abstract class PlatformTestCase extends TestCase
         $user->save();
     }
 
+    protected function configureOrganizationSecurity(
+        Organization $organization,
+        ?bool $requireTwoFactor = null,
+        ?bool $requireTwoFactorForPrivilegedRoles = null,
+    ): OrganizationSecuritySetting {
+        $setting = $organization->securitySetting()->firstOrFail();
+
+        if ($requireTwoFactor !== null) {
+            $setting->require_2fa = $requireTwoFactor;
+        }
+        if ($requireTwoFactorForPrivilegedRoles !== null) {
+            $setting->require_2fa_for_privileged_roles = $requireTwoFactorForPrivilegedRoles;
+        }
+        $setting->save();
+
+        return $setting;
+    }
+
     protected function permission(string $key): Permission
     {
         return Permission::query()->where('key', $key)->firstOrFail();
@@ -134,6 +153,8 @@ abstract class PlatformTestCase extends TestCase
      */
     protected function configureOrganizationStamp(Organization $organization, array $overrides = []): OrganizationDocumentStamp
     {
+        $willBeActive = $overrides['active'] ?? true;
+        $current = $willBeActive ? $organization->activeDocumentStamp()->first() : null;
         $path = $overrides['image_path'] ?? 'organization-stamps/'.$organization->getKey().'/'.Str::random(12).'.png';
         // A valid 1x1 PNG — same fixture pixel used by InvoicePdfPaginationTest
         // for the seller-logo snapshot tests.
@@ -155,8 +176,13 @@ abstract class PlatformTestCase extends TestCase
         $stamp->display_width_mm = $overrides['display_width_mm'] ?? 35;
         $stamp->rotation_deg = $overrides['rotation_deg'] ?? 0;
         $stamp->source = $overrides['source'] ?? 'uploaded';
-        $stamp->active = $overrides['active'] ?? true;
+        $stamp->active = $willBeActive;
         $stamp->save();
+
+        // Match SaveOrganizationDocumentStampAction: a replacement creates a
+        // new immutable version and deactivates the formerly active one. The
+        // old row and image remain available to historical appositions.
+        $current?->forceFill(['active' => false])->save();
 
         return $stamp;
     }

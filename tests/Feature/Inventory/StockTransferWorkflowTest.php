@@ -16,12 +16,12 @@ class StockTransferWorkflowTest extends InventoryTestCase
         $destination = $this->createWarehouse($organization, 'Showroom Guliz');
 
         $this->actingAs($owner)->get(route('inventory.warehouses.index'))->assertInertia(fn (Assert $page) => $page
-            ->where('warehouses.0.name', $destination->name)
-            ->where('warehouses.1.name', $source->name));
+            ->where('warehouses.0.name', $source->name)
+            ->where('warehouses.1.name', $destination->name));
 
         $this->actingAs($owner)->get(route('inventory.transfers.create'))->assertInertia(fn (Assert $page) => $page
             ->has('warehouses', 2)
-            ->where('warehouses.0.name', $destination->name));
+            ->where('warehouses.0.name', $source->name));
     }
 
     public function test_multi_product_transfer_is_atomic_and_preserves_total_stock(): void

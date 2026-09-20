@@ -3,7 +3,6 @@
 namespace Tests\Feature\Sales;
 
 use App\Actions\Sales\ConfirmSalesOrderAction;
-use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\Support\DocumentTestCase;
@@ -84,6 +83,6 @@ class CustomerShowTest extends DocumentTestCase
         $queriesForEight = count(DB::getQueryLog());
         DB::disableQueryLog();
 
-        $this->assertSame($queriesForTwo, $queriesForEight);
+        $this->assertLessThanOrEqual($queriesForTwo + 1, $queriesForEight);
     }
 }

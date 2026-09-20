@@ -2,9 +2,11 @@
 
 namespace Tests\Feature\Finance;
 
-use App\Actions\Documents\AddInvoiceCorrectionLineAction;
-use App\Actions\Documents\StartInvoiceCorrectionAction;
+use App\Actions\Documents\CreateFullInvoiceFromSalesOrderAction;
 use App\Actions\Payments\ReversePaymentAction;
+use App\Actions\Sales\ConfirmSalesOrderAction;
+use App\Actions\Sales\SaveSalesOrderLineAction;
+use App\Actions\Sales\StartSalesOrderCorrectionAction;
 use App\Enums\SalesOrderPaymentStatus;
 use App\Models\PaymentAllocation;
 use App\Services\SalesOrderPaymentCalculator;
@@ -59,7 +61,7 @@ class FinanceAuditFindingsTest extends DocumentTestCase
         [$owner, , , $order] = $this->documentFixture(total: '150.0000');
         // documentFixture fixes sale_date to 2026-05-29; the invoice keeps that
         // same fixed date regardless of when payments later land.
-        $invoice = $this->issueInvoice($owner, $this->createInvoice($owner, $order));
+        $invoice = $this->issueInvoice($owner, $this->createInvoice($owner, $order, ['invoice_date' => '2026-05-29']));
         $account = $this->createFinancialAccount($order->organization);
 
         $september = $this->recordPayment($owner, $order, $account, '50.0000', ['payment_date' => '2026-09-15']);
@@ -83,33 +85,25 @@ class FinanceAuditFindingsTest extends DocumentTestCase
         $this->assertSame(0, Decimal::compare((string) $octoberTotal, '100.0000'));
     }
 
-    public function test_an_issued_correction_can_change_the_invoice_total_away_from_the_sales_order_total(): void
+    public function test_replacement_invoice_total_remains_aligned_with_the_corrected_sales_order(): void
     {
         [$owner, $organization, , $order] = $this->documentFixture(total: '100.0000');
         $original = $this->issueInvoice($owner, $this->createInvoice($owner, $order));
         $orderTotal = $order->fresh()->total_incl_tax;
 
-        $correction = app(StartInvoiceCorrectionAction::class)->execute($owner, $original, 'Erreur de quantité');
+        app(StartSalesOrderCorrectionAction::class)->execute($owner, $order, 'Erreur de quantité');
+        $line = $order->fresh()->lines()->firstOrFail();
+        app(SaveSalesOrderLineAction::class)->execute($owner, $order->fresh(), [
+            'line_type' => 'custom', 'description' => 'Consulting', 'reference' => null, 'unit_label' => 'hour',
+            'quantity' => '2.0000', 'unit_price_excl_tax' => '100.0000', 'tax_rate_id' => null,
+            'discount_type' => 'none', 'discount_value' => '0.0000',
+        ], $line);
+        $order = app(ConfirmSalesOrderAction::class)->execute($owner, $order->fresh())->fresh();
+        $replacement = app(CreateFullInvoiceFromSalesOrderAction::class)->execute($owner, $order);
 
-        $taxRate = $this->createTaxRate($organization, 'TVA 20', '20.0000');
-        $variant = $this->createProduct($organization, 'Extra Item', 'EXTRA-1', [
-            'default_sale_price' => '25.0000',
-            'tax_rate_id' => $taxRate->getKey(),
-        ])->variants->first();
-        app(AddInvoiceCorrectionLineAction::class)->execute($owner, $correction, [
-            'product_variant_id' => $variant->getKey(),
-            'quantity' => '1.0000',
-            'discount_type' => 'none',
-        ]);
-
-        $correction->refresh();
-
-        // The correction's own total now differs from the sales order it came
-        // from — the order's total_incl_tax (and therefore
-        // SalesOrderPaymentCalculator, which is entirely order-total-based) is
-        // NOT automatically kept in sync with a corrected invoice's total.
-        $this->assertNotSame(0, Decimal::compare($correction->total_incl_tax, $orderTotal));
-        $this->assertSame(0, Decimal::compare($order->fresh()->total_incl_tax, $orderTotal));
+        $this->assertNotSame(0, Decimal::compare($order->total_incl_tax, $orderTotal));
+        $this->assertSame(0, Decimal::compare($replacement->total_incl_tax, $order->total_incl_tax));
+        $this->assertSame(0, Decimal::compare($original->fresh()->total_incl_tax, $orderTotal));
     }
 
     public function test_a_draft_invoice_can_only_be_cancelled_never_an_issued_one(): void

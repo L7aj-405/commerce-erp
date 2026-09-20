@@ -4,9 +4,9 @@ namespace Tests\Feature\Catalog;
 
 use App\Models\User;
 use Inertia\Testing\AssertableInertia as Assert;
-use Tests\Support\CatalogTestCase;
+use Tests\Support\InventoryTestCase;
 
-class ProductVisualsTest extends CatalogTestCase
+class ProductVisualsTest extends InventoryTestCase
 {
     public function test_product_index_exposes_image_url_and_safe_visual_fields(): void
     {

@@ -12,6 +12,8 @@ type InvoiceRow = {
     customer_name: string | null;
     customer_company: string | null;
     total_incl_tax: string;
+    credited_amount: string;
+    net_total_incl_tax: string;
     paid_amount: string;
     outstanding: string;
     fully_paid_at: string | null;
@@ -58,7 +60,9 @@ export default function FinanceFacturation({ organization, period, periodLabel, 
                                     <th className="px-4 py-2.5">N° facture</th>
                                     <th className="px-4 py-2.5">Date</th>
                                     <th className="px-4 py-2.5">Client</th>
-                                    <th className="px-4 py-2.5 text-right">Total TTC</th>
+                                    <th className="px-4 py-2.5 text-right">Facture brute</th>
+                                    <th className="px-4 py-2.5 text-right">Avoirs</th>
+                                    <th className="px-4 py-2.5 text-right">Net facturé</th>
                                     <th className="px-4 py-2.5 text-right">Payé</th>
                                     <th className="px-4 py-2.5 text-right">Solde</th>
                                     <th className="px-4 py-2.5">Statut</th>
@@ -73,6 +77,8 @@ export default function FinanceFacturation({ organization, period, periodLabel, 
                                         <td className="px-4 py-2.5 text-ink-muted">{invoice.invoice_date}</td>
                                         <td className="px-4 py-2.5">{invoice.customer_company || invoice.customer_name || '—'}</td>
                                         <td className="px-4 py-2.5 text-right">{formatMoney(invoice.total_incl_tax)}</td>
+                                        <td className="px-4 py-2.5 text-right text-danger">-{formatMoney(invoice.credited_amount)}</td>
+                                        <td className="px-4 py-2.5 text-right font-medium">{formatMoney(invoice.net_total_incl_tax)}</td>
                                         <td className="px-4 py-2.5 text-right text-ink-muted">{formatMoney(invoice.paid_amount)}</td>
                                         <td className="px-4 py-2.5 text-right">{formatMoney(invoice.outstanding)}</td>
                                         <td className="px-4 py-2.5 text-ink-muted">
@@ -113,8 +119,8 @@ export default function FinanceFacturation({ organization, period, periodLabel, 
                                         </dd>
                                     </div>
                                     <div className="min-w-0">
-                                        <dt className="text-ink-faint">Total TTC</dt>
-                                        <dd className="font-medium text-ink">{formatMoney(invoice.total_incl_tax)}</dd>
+                                        <dt className="text-ink-faint">Facture / avoirs / net</dt>
+                                        <dd className="font-medium text-ink">{formatMoney(invoice.total_incl_tax)} · -{formatMoney(invoice.credited_amount)} · {formatMoney(invoice.net_total_incl_tax)}</dd>
                                     </div>
                                     <div className="min-w-0">
                                         <dt className="text-ink-faint">Payé</dt>

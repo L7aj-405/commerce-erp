@@ -38,9 +38,9 @@ class SharedPermissionsPayloadTest extends PlatformTestCase
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->has('tenant.permissions')
-                ->where('tenant.permissions', fn ($permissions) => in_array('finance.view', $permissions, true)
-                    && in_array('finance.export', $permissions, true)
-                    && in_array('settings.view', $permissions, true)));
+                ->where('tenant.permissions', fn ($permissions) => $permissions->contains('finance.view')
+                    && $permissions->contains('finance.export')
+                    && $permissions->contains('settings.view')));
     }
 
     public function test_shared_tenant_permissions_exclude_settings_view_for_a_finance_preset_role(): void
@@ -64,8 +64,8 @@ class SharedPermissionsPayloadTest extends PlatformTestCase
         $this->actingAs($member)->get(route('platform.index'))
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
-                ->where('tenant.permissions', fn ($permissions) => in_array('finance.view', $permissions, true)
-                    && ! in_array('settings.view', $permissions, true)
-                    && ! in_array('pos.access', $permissions, true)));
+                ->where('tenant.permissions', fn ($permissions) => $permissions->contains('finance.view')
+                    && ! $permissions->contains('settings.view')
+                    && ! $permissions->contains('pos.access')));
     }
 }

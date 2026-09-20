@@ -5,10 +5,15 @@ namespace Tests\Feature\Quotations;
 use App\Actions\Quotations\DecideQuotationAction;
 use App\Actions\Quotations\IssueQuotationAction;
 use App\Enums\QuotationStatus;
+use App\Mail\QuotationDocumentMail;
+use App\Models\Organization;
+use App\Models\ProductVariant;
 use App\Models\Quotation;
+use App\Models\Store;
 use App\Models\User;
 use App\Services\DocumentPdfService;
 use App\Services\QuotationDocumentRenderer;
+use App\Services\QuotationNumberGenerator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Validation\ValidationException;
@@ -16,7 +21,7 @@ use Tests\Support\QuotationTestCase;
 
 class QuotationLifecycleTest extends QuotationTestCase
 {
-    /** @return array{User, \App\Models\Organization, \App\Models\Store, \App\Models\ProductVariant} */
+    /** @return array{User, Organization, Store, ProductVariant} */
     private function base(): array
     {
         $owner = User::factory()->create();
@@ -73,16 +78,34 @@ class QuotationLifecycleTest extends QuotationTestCase
 
     public function test_concurrent_number_allocation_is_row_locked_and_refused_outside_a_transaction(): void
     {
-        [$owner, $organization] = $this->base();
-        $this->expectException(\LogicException::class);
-        app(\App\Services\QuotationNumberGenerator::class)->next($organization, 2026);
+        [, $organization] = $this->base();
+        $defaultConnection = DB::getDefaultConnection();
+        $guardConnection = 'quotation_sequence_guard_sqlite';
+        config(["database.connections.{$guardConnection}" => [
+            'driver' => 'sqlite',
+            'database' => ':memory:',
+            'prefix' => '',
+            'foreign_key_constraints' => true,
+        ]]);
+
+        try {
+            // RefreshDatabase already owns a transaction on the normal test
+            // connection. Use an isolated connection at transaction level 0
+            // to exercise the generator's real outside-transaction guard.
+            DB::setDefaultConnection($guardConnection);
+            $this->expectException(\LogicException::class);
+            app(QuotationNumberGenerator::class)->next($organization, 2026);
+        } finally {
+            DB::setDefaultConnection($defaultConnection);
+            DB::purge($guardConnection);
+        }
     }
 
     public function test_number_allocation_inside_a_transaction_increments_the_locked_counter(): void
     {
         [$owner, $organization] = $this->base();
-        $a = DB::transaction(fn () => app(\App\Services\QuotationNumberGenerator::class)->next($organization, 2026));
-        $b = DB::transaction(fn () => app(\App\Services\QuotationNumberGenerator::class)->next($organization, 2026));
+        $a = DB::transaction(fn () => app(QuotationNumberGenerator::class)->next($organization, 2026));
+        $b = DB::transaction(fn () => app(QuotationNumberGenerator::class)->next($organization, 2026));
         $this->assertSame('DEV-1/2026', $a);
         $this->assertSame('DEV-2/2026', $b);
     }
@@ -174,7 +197,7 @@ class QuotationLifecycleTest extends QuotationTestCase
         $this->configureOrganizationMail($organization);
         $issued = $this->issueQuotation($owner, $quotation);
         $this->actingAs($owner)->post(route('quotations.email', $issued), ['email' => 'client@example.test'])->assertRedirect();
-        Mail::assertSent(\App\Mail\QuotationDocumentMail::class);
+        Mail::assertSent(QuotationDocumentMail::class);
 
         $this->actingAs($owner)->get(route('quotations.show', $issued))
             ->assertInertia(fn ($page) => $page->where('sharing.pdfUrl', fn ($u) => str_contains((string) $u, "/quotations/{$issued->id}/shared-pdf")));

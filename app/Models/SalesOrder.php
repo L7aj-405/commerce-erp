@@ -71,9 +71,56 @@ class SalesOrder extends Model
         return $this->hasMany(PaymentAllocation::class);
     }
 
+    public function paymentRefunds(): HasMany
+    {
+        return $this->hasMany(PaymentRefund::class);
+    }
+
+    public function customerReturns(): HasMany
+    {
+        return $this->hasMany(CustomerReturn::class);
+    }
+
+    public function customerExchanges(): HasMany
+    {
+        return $this->hasMany(CustomerExchange::class);
+    }
+
     public function invoices(): HasMany
     {
         return $this->hasMany(Invoice::class);
+    }
+
+    public function revisions(): HasMany
+    {
+        return $this->hasMany(SalesOrderRevision::class)->orderBy('revision_number');
+    }
+
+    public function addenda(): HasMany
+    {
+        return $this->hasMany(SalesOrderAddendum::class)->orderBy('sequence');
+    }
+
+    public function currentRevision(): BelongsTo
+    {
+        return $this->belongsTo(SalesOrderRevision::class, 'current_revision_id');
+    }
+
+    /**
+     * A normal Draft is editable. Once revision history exists, a Draft remains
+     * editable only while its current controlled correction is in progress.
+     */
+    public function isCommerciallyEditable(): bool
+    {
+        return $this->status === SalesOrderStatus::Draft
+            && ($this->current_revision_id === null || $this->currentRevision?->status === 'in_progress');
+    }
+
+    public function hasActiveCorrection(): bool
+    {
+        return $this->current_revision_id !== null
+            && $this->status === SalesOrderStatus::Draft
+            && $this->currentRevision?->status === 'in_progress';
     }
 
     public function deliveryNotes(): HasMany

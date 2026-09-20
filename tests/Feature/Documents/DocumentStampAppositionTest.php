@@ -2,6 +2,9 @@
 
 namespace Tests\Feature\Documents;
 
+use App\Actions\Documents\CreateFullInvoiceFromSalesOrderAction;
+use App\Actions\Sales\ConfirmSalesOrderAction;
+use App\Actions\Sales\StartSalesOrderCorrectionAction;
 use App\Contracts\PdfGenerator;
 use App\Mail\InvoiceDocumentMail;
 use App\Models\DocumentStampApposition;
@@ -102,8 +105,12 @@ class DocumentStampAppositionTest extends QuotationTestCase
         $quotationHtml = app(QuotationDocumentRenderer::class)->html($issuedQuotation->fresh());
         $this->assertStringContainsString('rotate(-4deg)', $quotationHtml);
 
-        // A NEW invoice, stamped after the change, uses V2.
-        $invoiceB = $this->issueInvoice($owner, $this->createInvoice($owner, $order));
+        // The replacement Invoice version is created through the current
+        // SalesOrder correction lifecycle; duplicate active full invoices
+        // from the same commercial version remain forbidden.
+        app(StartSalesOrderCorrectionAction::class)->execute($owner, $order->fresh(), 'Mise à jour commerciale');
+        $order = app(ConfirmSalesOrderAction::class)->execute($owner, $order->fresh())->fresh();
+        $invoiceB = $this->issueInvoice($owner, app(CreateFullInvoiceFromSalesOrderAction::class)->execute($owner, $order));
         $this->actingAs($owner)->post(route('invoices.stamp', $invoiceB))->assertRedirect();
         $invoiceBApposition = $invoiceB->fresh()->stampApposition;
         $this->assertSame('60.00', (string) $invoiceBApposition->display_width_mm);
@@ -165,13 +172,16 @@ class DocumentStampAppositionTest extends QuotationTestCase
         $apposition = $invoice->fresh()->stampApposition;
         $this->assertSame('bottom_left', $apposition->position_anchor);
 
-        // A NEW invoice may pick up the newly active stamp when explicitly stamped.
-        $newInvoice = $this->issueInvoice($owner, $this->createInvoice($owner, $order));
+        // A replacement version may pick up the newly active stamp when it is
+        // created through the commercial correction lifecycle and explicitly stamped.
+        app(StartSalesOrderCorrectionAction::class)->execute($owner, $order->fresh(), 'Mise à jour commerciale');
+        $order = app(ConfirmSalesOrderAction::class)->execute($owner, $order->fresh())->fresh();
+        $newInvoice = $this->issueInvoice($owner, app(CreateFullInvoiceFromSalesOrderAction::class)->execute($owner, $order));
         $this->actingAs($owner)->post(route('invoices.stamp', $newInvoice))->assertRedirect();
         $this->assertSame('top_right', $newInvoice->fresh()->stampApposition->position_anchor);
     }
 
-    public function test_invoice_correction_does_not_inherit_the_original_apposition(): void
+    public function test_sales_order_correction_replacement_invoice_does_not_inherit_the_original_apposition(): void
     {
         [$owner, $organization, , $order] = $this->documentFixture();
         Storage::fake('local');
@@ -179,19 +189,19 @@ class DocumentStampAppositionTest extends QuotationTestCase
         $invoice = $this->issueInvoice($owner, $this->createInvoice($owner, $order));
         $this->actingAs($owner)->post(route('invoices.stamp', $invoice))->assertRedirect();
 
-        $this->actingAs($owner)->post(route('invoices.corrections.store', $invoice), ['reason' => 'Erreur de montant'])
-            ->assertRedirect();
+        app(StartSalesOrderCorrectionAction::class)
+            ->execute($owner, $order->fresh(), 'Erreur de montant');
+        $order = app(ConfirmSalesOrderAction::class)->execute($owner, $order->fresh())->fresh();
+        $replacement = app(CreateFullInvoiceFromSalesOrderAction::class)->execute($owner, $order);
 
-        $correction = $invoice->fresh()->correction;
-        $this->assertNotNull($correction);
-        $this->assertNull($correction->stampApposition);
+        $this->assertNull($replacement->stampApposition);
         // The original keeps its own apposition untouched.
         $this->assertNotNull($invoice->fresh()->stampApposition);
     }
 
     public function test_quotation_revision_does_not_inherit_the_previous_apposition(): void
     {
-        [$owner, $organization, $store, $variant] = $this->base();
+        [$owner, $organization, $store, $variant] = $this->quotationCatalogFixture();
         Storage::fake('local');
         $this->configureOrganizationStamp($organization);
         $quotation = $this->createQuotation($owner, $organization, $store);
@@ -209,13 +219,14 @@ class DocumentStampAppositionTest extends QuotationTestCase
 
     public function test_superseded_quotation_revision_cannot_be_stamped(): void
     {
-        [$owner, $organization, $store, $variant] = $this->base();
+        [$owner, $organization, $store, $variant] = $this->quotationCatalogFixture();
         Storage::fake('local');
         $this->configureOrganizationStamp($organization);
         $quotation = $this->createQuotation($owner, $organization, $store);
         $this->addCatalogQuotationLine($owner, $quotation, $variant);
         $issued = $this->issueQuotation($owner, $quotation);
-        $this->reviseQuotation($owner, $issued->fresh());
+        $revision = $this->reviseQuotation($owner, $issued->fresh());
+        $this->issueQuotation($owner, $revision);
 
         $this->actingAs($owner)->post(route('quotations.stamp', $issued->fresh()))->assertForbidden();
     }
@@ -229,6 +240,7 @@ class DocumentStampAppositionTest extends QuotationTestCase
 
         $canEmailOnly = User::factory()->create();
         $this->addOrganizationMember($organization, $canEmailOnly, ['invoices.view', 'invoices.email']);
+        $this->addStoreMember($invoice->store, $canEmailOnly);
         $this->activate($canEmailOnly, $organization, $invoice->store);
 
         $this->actingAs($canEmailOnly)->post(route('invoices.stamp', $invoice))->assertForbidden();

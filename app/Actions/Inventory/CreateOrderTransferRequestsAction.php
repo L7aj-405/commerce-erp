@@ -159,6 +159,19 @@ class CreateOrderTransferRequestsAction
             ->first();
 
         if ($request) {
+            if ($request->status === TransferRequestStatus::Cancelled) {
+                $request->status = TransferRequestStatus::Requested;
+                $request->destination_warehouse_id = $destinationId;
+                $request->requested_by_user_id = $actor->getKey();
+                $request->requested_at = now();
+                $request->prepared_by_user_id = null;
+                $request->prepared_at = null;
+                $request->cancelled_by_user_id = null;
+                $request->cancelled_at = null;
+                $request->cancellation_reason = null;
+                $request->save();
+            }
+
             return $request;
         }
 

@@ -5,6 +5,7 @@ namespace App\Actions\Payments;
 use App\Actions\Payments\Concerns\AuthorizesPaymentAction;
 use App\Enums\PaymentStatus;
 use App\Models\Payment;
+use App\Models\PaymentAllocation;
 use App\Models\SalesOrder;
 use App\Models\User;
 use App\Services\AuditLogger;
@@ -28,23 +29,35 @@ class ReversePaymentAction
         }
 
         return DB::transaction(function () use ($actor, $payment, $reason) {
+            // Lock Orders before Payment, matching cancellation/refund lock order
+            // and avoiding a payment↔order deadlock under concurrent requests.
+            $orderIds = PaymentAllocation::query()
+                ->where('organization_id', $payment->organization_id)
+                ->where('payment_id', $payment->getKey())
+                ->orderBy('sales_order_id')
+                ->pluck('sales_order_id');
+            $orders = SalesOrder::query()
+                ->where('organization_id', $payment->organization_id)
+                ->whereIn('id', $orderIds)
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get();
+
             $payment = Payment::query()
                 ->where('organization_id', $payment->organization_id)
                 ->where('store_id', $payment->store_id)
                 ->whereKey($payment->getKey())
                 ->lockForUpdate()
-                ->with('allocations')
+                ->with(['allocations', 'refunds'])
                 ->firstOrFail();
             if ($payment->status !== PaymentStatus::Posted) {
                 throw ValidationException::withMessages(['payment' => 'Only a posted Payment can be reversed.']);
             }
-
-            $orders = SalesOrder::query()
-                ->where('organization_id', $payment->organization_id)
-                ->whereIn('id', $payment->allocations->pluck('sales_order_id')->sort()->values())
-                ->orderBy('id')
-                ->lockForUpdate()
-                ->get();
+            if ($payment->refunds->isNotEmpty()) {
+                throw ValidationException::withMessages([
+                    'payment' => 'A Payment with a posted refund cannot be reversed; both financial movements must remain historical.',
+                ]);
+            }
 
             $payment->status = PaymentStatus::Reversed;
             $payment->reversed_at = now();

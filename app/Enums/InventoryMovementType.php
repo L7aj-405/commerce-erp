@@ -10,6 +10,7 @@ enum InventoryMovementType: string
     case TransferIn = 'transfer_in';
     case TransferOut = 'transfer_out';
     case ReservationConsumed = 'reservation_consumed';
+    case CustomerReturn = 'customer_return';
 
     /** Goods received against a supplier special-order (earmarked, never free stock). */
     case SupplierReceipt = 'supplier_receipt';

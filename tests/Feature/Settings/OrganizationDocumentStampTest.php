@@ -185,7 +185,11 @@ class OrganizationDocumentStampTest extends PlatformTestCase
         $this->activate($owner, $organization);
 
         foreach ([-15, 0, 12] as $degrees) {
-            $this->actingAs($owner)->post(route('document-stamp.store'), $this->payload(['rotation_deg' => $degrees]))
+            $this->actingAs($owner)->post(route('document-stamp.store'), $this->payload([
+                'offset_x_mm' => 5,
+                'offset_y_mm' => 5,
+                'rotation_deg' => $degrees,
+            ]))
                 ->assertRedirect();
             $active = $organization->activeDocumentStamp()->first();
             $this->assertSame(number_format($degrees, 2, '.', ''), (string) $active->rotation_deg);
@@ -277,6 +281,7 @@ class OrganizationDocumentStampTest extends PlatformTestCase
 
         $response = $this->actingAs($owner)->post(route('document-stamp.store'), $this->payload([
             'image' => null,
+            'offset_x_mm' => 5,
             'display_width_mm' => 55,
             'rotation_deg' => 8,
         ]));

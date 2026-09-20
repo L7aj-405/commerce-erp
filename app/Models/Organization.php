@@ -120,6 +120,16 @@ class Organization extends Model
         return $this->hasMany(SalesOrder::class);
     }
 
+    public function customerReturns(): HasMany
+    {
+        return $this->hasMany(CustomerReturn::class);
+    }
+
+    public function creditNotes(): HasMany
+    {
+        return $this->hasMany(CreditNote::class);
+    }
+
     public function financialAccounts(): HasMany
     {
         return $this->hasMany(FinancialAccount::class);

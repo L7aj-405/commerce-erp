@@ -14,6 +14,17 @@ type PaymentRow = {
     financial_account: { id: number; name: string; code: string; type: string } | null;
     order: { id: number; order_number: string; customer_name: string | null; customer_company: string | null } | null;
 };
+type RefundRow = {
+    id: number;
+    refund_number: string;
+    refund_date: string;
+    method: string;
+    amount: string;
+    reason: string;
+    original_payment: { id: number; payment_number: string } | null;
+    financial_account: { id: number; name: string; code: string; type: string } | null;
+    order: { id: number; order_number: string; customer_name: string | null; customer_company: string | null } | null;
+};
 type LinkData = { url: string | null; label: string; active: boolean };
 type Props = {
     organization: { id: number; name: string };
@@ -22,11 +33,12 @@ type Props = {
     storeId: number | null;
     stores: FinanceStore[];
     payments: { data: PaymentRow[]; links: LinkData[]; total: number };
+    refunds: { data: RefundRow[]; links: LinkData[]; total: number };
 };
 
 const METHOD_LABELS: Record<string, string> = { cash: 'Espèces', card: 'TPE', bank_transfer: 'Virement', cheque: 'Chèque' };
 
-export default function FinanceEncaissements({ organization, period, periodLabel, storeId, stores, payments }: Props) {
+export default function FinanceEncaissements({ organization, period, periodLabel, storeId, stores, payments, refunds }: Props) {
     return (
         <ApplicationShell wide>
             <Head title="Encaissements — Finance" />
@@ -114,6 +126,45 @@ export default function FinanceEncaissements({ organization, period, periodLabel
                 </>
             )}
             <Pagination links={payments.links} />
+
+            <section className="mt-8">
+                <h2 className="mb-3 text-sm font-semibold text-ink">Remboursements · {refunds.total}</h2>
+                {refunds.data.length === 0 ? (
+                    <div className="rounded-card border border-dashed border-line-strong bg-raised px-4 py-6 text-center text-sm text-ink-faint">
+                        Aucun remboursement enregistré sur cette période.
+                    </div>
+                ) : (
+                    <div className="overflow-x-auto rounded-card border border-line bg-surface">
+                        <table className="w-full min-w-[820px] text-left text-sm">
+                            <thead className="bg-raised text-[11px] uppercase tracking-wide text-ink-faint">
+                                <tr>
+                                    <th className="px-4 py-2.5">N° remboursement</th>
+                                    <th className="px-4 py-2.5">Date</th>
+                                    <th className="px-4 py-2.5">Paiement original</th>
+                                    <th className="px-4 py-2.5">Mode / compte</th>
+                                    <th className="px-4 py-2.5">Commande</th>
+                                    <th className="px-4 py-2.5">Motif</th>
+                                    <th className="px-4 py-2.5 text-right">Sortie</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {refunds.data.map((refund) => (
+                                    <tr key={refund.id} className="border-t border-line">
+                                        <td className="px-4 py-2.5 font-medium text-ink">{refund.refund_number}</td>
+                                        <td className="px-4 py-2.5 text-ink-muted">{refund.refund_date}</td>
+                                        <td className="px-4 py-2.5 text-ink-muted">{refund.original_payment?.payment_number ?? '—'}</td>
+                                        <td className="px-4 py-2.5 text-ink-muted">{METHOD_LABELS[refund.method] ?? refund.method} · {refund.financial_account?.name ?? '—'}</td>
+                                        <td className="px-4 py-2.5">{refund.order ? <Link href={`/sales/orders/${refund.order.id}`}>{refund.order.order_number}</Link> : '—'}</td>
+                                        <td className="px-4 py-2.5 text-ink-muted">{refund.reason}</td>
+                                        <td className="px-4 py-2.5 text-right font-medium text-danger">− {formatMoney(refund.amount)}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+                <Pagination links={refunds.links} />
+            </section>
         </ApplicationShell>
     );
 }

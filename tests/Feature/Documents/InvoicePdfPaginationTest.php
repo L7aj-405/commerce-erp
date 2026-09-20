@@ -2,12 +2,17 @@
 
 namespace Tests\Feature\Documents;
 
+use App\Actions\Documents\CreateFullInvoiceFromSalesOrderAction;
+use App\Actions\Documents\IssueInvoiceAction;
 use App\Actions\Sales\ConfirmSalesOrderAction;
+use App\Actions\Sales\StartSalesOrderCorrectionAction;
+use App\Models\Invoice;
 use App\Models\User;
 use App\Services\DocumentPdfService;
 use App\Services\InvoiceDocumentRenderer;
 use Dompdf\Dompdf;
 use Dompdf\Options;
+use Illuminate\Support\Facades\Storage;
 use Tests\Support\DocumentTestCase;
 
 class InvoicePdfPaginationTest extends DocumentTestCase
@@ -74,8 +79,8 @@ class InvoicePdfPaginationTest extends DocumentTestCase
             'document_profile' => ['legal_name' => 'AV PRO SARL', 'logo_path' => 'document-profiles/test-logo.png'],
         ]);
         $organization->save();
-        \Illuminate\Support\Facades\Storage::fake('public');
-        \Illuminate\Support\Facades\Storage::disk('public')->put(
+        Storage::fake('public');
+        Storage::disk('public')->put(
             'document-profiles/test-logo.png',
             base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='),
         );
@@ -101,8 +106,10 @@ class InvoicePdfPaginationTest extends DocumentTestCase
         $this->assertStringContainsString('class="watermark-text"', $this->body(app(InvoiceDocumentRenderer::class)->html($draft)));
 
         $issued = $this->issueInvoice($owner, $draft->fresh());
-        $correction = app(\App\Actions\Documents\StartInvoiceCorrectionAction::class)->execute($owner, $issued, 'Motif');
-        app(\App\Actions\Documents\IssueInvoiceAction::class)->execute($owner, $correction->fresh());
+        app(StartSalesOrderCorrectionAction::class)->execute($owner, $order->fresh(), 'Motif');
+        $order = app(ConfirmSalesOrderAction::class)->execute($owner, $order->fresh())->fresh();
+        $replacement = app(CreateFullInvoiceFromSalesOrderAction::class)->execute($owner, $order);
+        app(IssueInvoiceAction::class)->execute($owner, $replacement);
 
         $supersededHtml = app(InvoiceDocumentRenderer::class)->html($issued->fresh());
         $this->assertStringContainsString('REMPLACÉE', $supersededHtml);
@@ -147,7 +154,7 @@ class InvoicePdfPaginationTest extends DocumentTestCase
     public function test_stamp_appears_exactly_once_on_a_multipage_invoice_not_on_every_page(): void
     {
         [$owner, $organization, $store] = $this->documentFixture();
-        \Illuminate\Support\Facades\Storage::fake('local');
+        Storage::fake('local');
         $this->configureOrganizationStamp($organization);
         $order = $this->createDraftOrder($owner, $organization, $store);
         for ($i = 1; $i <= 40; $i++) {
@@ -166,7 +173,8 @@ class InvoicePdfPaginationTest extends DocumentTestCase
 
         $html = app(InvoiceDocumentRenderer::class)->html($invoice);
         $this->assertSame(1, substr_count($html, 'data:image/png;base64,'));
-        $this->assertSame(1, substr_count($html, 'transform: rotate('));
+        $this->assertSame(1, substr_count($html, 'class="document-stamp-apposition"'));
+        $this->assertSame(1, substr_count($html, 'class="document-stamp-image"'));
     }
 
     private function orderWithLines(User $owner, int $count)
@@ -187,7 +195,7 @@ class InvoicePdfPaginationTest extends DocumentTestCase
         return app(ConfirmSalesOrderAction::class)->execute($owner, $order)->fresh();
     }
 
-    private function pageCount(\App\Models\Invoice $invoice): int
+    private function pageCount(Invoice $invoice): int
     {
         $html = app(InvoiceDocumentRenderer::class)->html($invoice);
         $options = new Options;

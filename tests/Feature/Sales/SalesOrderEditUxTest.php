@@ -10,9 +10,13 @@ use App\Actions\Sales\ConfirmSalesOrderAction;
 use App\Actions\Sales\SaveSalesOrderLineAction;
 use App\Models\InventoryMovement;
 use App\Models\InventoryReservation;
+use App\Models\Organization;
 use App\Models\ProductVariant;
+use App\Models\Store;
 use App\Models\TaxRate;
 use App\Models\User;
+use App\Models\Warehouse;
+use App\Support\Decimal;
 use Tests\Support\QuotationTestCase;
 
 /**
@@ -27,7 +31,7 @@ class SalesOrderEditUxTest extends QuotationTestCase
 
     private ProductVariant $variant;
 
-    /** @return array{User, \App\Models\Organization, \App\Models\Store, \App\Models\Warehouse} */
+    /** @return array{User, Organization, Store, Warehouse} */
     private function base(string $stock = '25.0000'): array
     {
         $owner = User::factory()->create();
@@ -39,7 +43,9 @@ class SalesOrderEditUxTest extends QuotationTestCase
         $this->variant = $this->createProduct($organization, 'Microphone Shure MV7i', 'MV7I-1', [
             'reference' => 'REF-MV7I', 'default_sale_price' => '3780.8333', 'tax_rate_id' => $this->tax20->id,
         ])->variants->first();
-        $this->openStock($owner, $organization, $warehouse, $this->variant, $stock);
+        if (Decimal::compare($stock, '0.0000') > 0) {
+            $this->openStock($owner, $organization, $warehouse, $this->variant, $stock);
+        }
 
         return [$owner, $organization, $store, $warehouse];
     }

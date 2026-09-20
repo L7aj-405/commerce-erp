@@ -20,7 +20,6 @@ class InvitationTest extends PlatformTestCase
         $owner = User::factory()->create();
         $organization = $this->createOrganization($owner);
         $role = $organization->roles()->where('slug', 'sales-employee')->firstOrFail();
-
         $response = $this->actingAs($owner)->post(route('organization-invitations.store', $organization), [
             'email' => 'new.teammate@example.test',
             'role_id' => $role->id,
@@ -277,13 +276,14 @@ class InvitationTest extends PlatformTestCase
         $owner = User::factory()->create();
         $organization = $this->createOrganization($owner);
         $role = $organization->roles()->where('slug', 'sales-employee')->firstOrFail();
+        $membershipCount = $organization->memberships()->count();
 
         $this->actingAs($owner)->postJson(route('organization-memberships.store', $organization), [
             'email' => 'nobody-yet@example.test',
             'role_id' => $role->id,
         ])->assertUnprocessable()->assertJsonValidationErrors('email');
 
-        $this->assertDatabaseMissing('organization_memberships', ['organization_id' => $organization->getKey()]);
+        $this->assertSame($membershipCount, $organization->memberships()->count());
     }
 
     public function test_existing_user_with_matching_email_can_accept_while_authenticated(): void

@@ -83,14 +83,17 @@ class StoreTaxHtFallbackTest extends PosTestCase
         $this->assertNull($price['unit_price_ht']);
 
         $order = $this->createDraftOrder($owner, $organization, $store);
+        $line = $this->addCatalogLine($owner, $order, $variant, $warehouse);
+        $this->assertTrue($line->tax_unresolved);
+
         try {
-            $this->addCatalogLine($owner, $order, $variant, $warehouse);
-            $this->fail('Expected a configuration failure when no tax rate can be resolved.');
+            app(ConfirmSalesOrderAction::class)->execute($owner, $order->fresh());
+            $this->fail('Expected confirmation to fail while the line tax is unresolved.');
         } catch (ValidationException $exception) {
-            $this->assertArrayHasKey('product_variant_id', $exception->errors());
-            $this->assertStringContainsString('aucune taxe par défaut', $exception->errors()['product_variant_id'][0]);
+            $this->assertArrayHasKey('lines', $exception->errors());
+            $this->assertStringContainsString('TVA non résolue', $exception->errors()['lines'][0]);
         }
-        $this->assertDatabaseCount('sales_order_lines', 0);
+        $this->assertSame('draft', $order->fresh()->status->value);
     }
 
     // F — the Order line snapshots the derived HT / tax at sale time and never changes.
@@ -143,9 +146,12 @@ class StoreTaxHtFallbackTest extends PosTestCase
         $this->openStock($owner, $organization, $warehouse, $variant, '10.0000');
 
         $blocked = $this->createDraftOrder($owner, $organization, $store);
+        $unresolved = $this->addCatalogLine($owner, $blocked, $variant->fresh(), $warehouse);
+        $this->assertTrue($unresolved->tax_unresolved);
+
         try {
-            $this->addCatalogLine($owner, $blocked, $variant->fresh(), $warehouse);
-            $this->fail('Legacy TTC-only product should not be sellable without a tax configuration.');
+            app(ConfirmSalesOrderAction::class)->execute($owner, $blocked->fresh());
+            $this->fail('Legacy TTC-only product must not be confirmable without a tax configuration.');
         } catch (ValidationException) {
             // expected
         }

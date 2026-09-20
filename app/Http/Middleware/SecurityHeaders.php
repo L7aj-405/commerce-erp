@@ -36,7 +36,7 @@ class SecurityHeaders
     {
         $response = $next($request);
 
-        if (! app()->environment('production') || ! method_exists($response, 'headers')) {
+        if (! app()->environment('production')) {
             return $response;
         }
 

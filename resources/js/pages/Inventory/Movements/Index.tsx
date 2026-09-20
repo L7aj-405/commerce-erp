@@ -1,3 +1,4 @@
+import EmptyState from '@/components/ui/EmptyState';
 import FilterSelect from '@/components/ui/FilterSelect';
 import PageHeader from '@/components/ui/PageHeader';
 import Pagination from '@/components/ui/Pagination';
@@ -6,89 +7,121 @@ import { formatDateTime, formatSignedQuantity } from '@/utils/format';
 import { Head, router } from '@inertiajs/react';
 
 type Warehouse = { id: number; name: string; code: string };
-type Movement = { id: number; movement_type: string; quantity: string; reason: string | null; reference: string | null; created_at: string; warehouse: Warehouse; product_variant: { label: string | null; sku: string; product: { name: string } }; performed_by: { name: string } | null };
+type Movement = {
+    id: number;
+    movement_type: string;
+    quantity: string;
+    reason: string | null;
+    reference: string | null;
+    created_at: string;
+    warehouse: Warehouse;
+    product_variant: { label: string | null; sku: string; product: { name: string } };
+    performed_by: { name: string } | null;
+};
 type LinkData = { url: string | null; label: string; active: boolean };
 type Props = { movements: { data: Movement[]; links: LinkData[] }; filters: { warehouse?: number }; warehouses: Warehouse[] };
 
 export default function MovementIndex({ movements, filters, warehouses }: Props) {
+    const updateWarehouse = (warehouse: string) => {
+        router.get('/inventory/movements', { warehouse: warehouse || undefined }, { preserveState: true, preserveScroll: true });
+    };
+
     return (
-        <InventoryLayout>
-            <Head title="Mouvements" />
+        <InventoryLayout wide>
+            <Head title="Mouvements de stock" />
             <PageHeader
-                title="Mouvements"
-                description="Suivez les entrees, sorties, ajustements et transferts qui alimentent votre stock."
-                actions={<FilterSelect value={filters.warehouse ?? ''} onChange={event => router.get('/inventory/movements', { warehouse: event.target.value || undefined }, { preserveState: true, preserveScroll: true })}><option value="">Tous les emplacements</option>{warehouses.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</FilterSelect>}
+                title="Mouvements de stock"
+                description="Journal opérationnel des entrées, sorties, ajustements et transferts du magasin actif."
             />
+
+            <section className="mb-6 rounded-card border border-line bg-surface p-4 shadow-soft">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                    <label className="block max-w-sm flex-1">
+                        <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-ink-faint">Entrepôt</span>
+                        <FilterSelect value={filters.warehouse ?? ''} onChange={(event) => updateWarehouse(event.target.value)}>
+                            <option value="">Tous les emplacements</option>
+                            {warehouses.map((item) => (
+                                <option key={item.id} value={item.id}>
+                                    {item.code} · {item.name}
+                                </option>
+                            ))}
+                        </FilterSelect>
+                    </label>
+                    <p className="text-sm text-ink-muted">
+                        {movements.data.length} mouvement{movements.data.length > 1 ? 's' : ''} affiché{movements.data.length > 1 ? 's' : ''}
+                    </p>
+                </div>
+            </section>
+
             {movements.data.length === 0 ? (
-                <div className="rounded-2xl border border-dashed bg-slate-50 p-8 text-center text-sm text-slate-500">Aucun mouvement.</div>
+                <EmptyState title="Aucun mouvement de stock" description="Les mouvements apparaîtront ici dès qu’une opération d’inventaire est enregistrée." />
             ) : (
                 <>
-                    {/* Desktop/tablet: table */}
-                    <div className="hidden overflow-x-auto rounded-2xl border bg-white md:block">
-                        <table className="w-full min-w-[860px] text-left text-sm">
-                            <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                    <div className="hidden overflow-x-auto rounded-card border border-line bg-surface shadow-soft md:block">
+                        <table className="w-full min-w-[980px] text-left text-sm">
+                            <thead className="bg-raised text-[11px] uppercase tracking-wide text-ink-faint">
                                 <tr>
-                                    <th className="p-3">Date</th>
-                                    <th className="p-3">Produit</th>
-                                    <th className="p-3">Type</th>
-                                    <th className="p-3">Emplacement</th>
-                                    <th className="p-3 text-right">Quantite</th>
-                                    <th className="p-3">Reference</th>
-                                    <th className="p-3">Utilisateur</th>
+                                    <th className="px-4 py-3">Date</th>
+                                    <th className="px-4 py-3">Produit</th>
+                                    <th className="px-4 py-3">Référence / SKU</th>
+                                    <th className="px-4 py-3">Variante</th>
+                                    <th className="px-4 py-3">Entrepôt</th>
+                                    <th className="px-4 py-3">Type</th>
+                                    <th className="px-4 py-3 text-right">Quantité</th>
+                                    <th className="px-4 py-3">Source / référence</th>
+                                    <th className="px-4 py-3">Utilisateur</th>
                                 </tr>
                             </thead>
-                            <tbody>
-                                {movements.data.map(movement => (
-                                    <tr key={movement.id} className="border-t">
-                                        <td className="whitespace-nowrap p-3">{formatDateTime(movement.created_at)}</td>
-                                        <td className="p-3">
-                                            <div className="font-semibold">{movement.product_variant.product.name}</div>
-                                            <div className="text-xs text-slate-500">{movement.product_variant.label ?? 'Variante principale'} · {movement.product_variant.sku}</div>
+                            <tbody className="divide-y divide-line">
+                                {movements.data.map((movement) => (
+                                    <tr key={movement.id} className="transition-soft hover:bg-raised/70">
+                                        <td className="whitespace-nowrap px-4 py-3 text-ink-muted">{formatDateTime(movement.created_at)}</td>
+                                        <td className="px-4 py-3 font-semibold text-ink">{movement.product_variant.product.name}</td>
+                                        <td className="px-4 py-3 font-mono text-xs text-ink-muted">{movement.product_variant.sku || '—'}</td>
+                                        <td className="px-4 py-3 text-ink-muted">{movement.product_variant.label ?? 'Variante principale'}</td>
+                                        <td className="px-4 py-3">
+                                            <p className="font-medium text-ink">{movement.warehouse.name}</p>
+                                            <p className="text-xs text-ink-faint">{movement.warehouse.code}</p>
                                         </td>
-                                        <td className="p-3 capitalize">{movement.movement_type.replaceAll('_', ' ')}</td>
-                                        <td className="p-3">{movement.warehouse.name}</td>
-                                        <td className="p-3 text-right font-semibold">{formatSignedQuantity(movement.quantity)}</td>
-                                        <td className="p-3">{movement.reference ?? movement.reason ?? '—'}</td>
-                                        <td className="p-3">{movement.performed_by?.name ?? 'Systeme'}</td>
+                                        <td className="px-4 py-3">
+                                            <MovementType value={movement.movement_type} />
+                                        </td>
+                                        <td className="px-4 py-3 text-right">
+                                            <QuantityBadge quantity={movement.quantity} />
+                                        </td>
+                                        <td className="px-4 py-3 text-ink-muted">{movement.reference ?? movement.reason ?? '—'}</td>
+                                        <td className="px-4 py-3 text-ink-muted">{movement.performed_by?.name ?? 'Système'}</td>
                                     </tr>
                                 ))}
                             </tbody>
                         </table>
                     </div>
 
-                    {/* Mobile: stacked cards */}
                     <ul className="space-y-3 md:hidden">
-                        {movements.data.map(movement => (
-                            <li key={movement.id} className="rounded-2xl border bg-white p-4">
+                        {movements.data.map((movement) => (
+                            <li key={movement.id} className="rounded-card border border-line bg-surface p-4 shadow-soft">
                                 <div className="flex items-start justify-between gap-3">
                                     <div className="min-w-0">
-                                        <p className="truncate text-sm font-semibold">{movement.product_variant.product.name}</p>
-                                        <p className="truncate text-[13px] text-slate-500">
-                                            {movement.product_variant.label ?? 'Variante principale'} · {movement.product_variant.sku}
+                                        <p className="truncate font-semibold text-ink">{movement.product_variant.product.name}</p>
+                                        <p className="truncate text-sm text-ink-muted">
+                                            {movement.product_variant.label ?? 'Variante principale'} · {movement.product_variant.sku || '—'}
                                         </p>
                                     </div>
-                                    <span className="shrink-0 text-right font-semibold">{formatSignedQuantity(movement.quantity)}</span>
+                                    <QuantityBadge quantity={movement.quantity} />
                                 </div>
-                                <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1.5 text-[13px]">
+                                <dl className="mt-4 grid grid-cols-2 gap-x-3 gap-y-2 text-[13px]">
+                                    <Info label="Date" value={formatDateTime(movement.created_at)} />
                                     <div className="min-w-0">
-                                        <dt className="text-slate-400">Date</dt>
-                                        <dd>{formatDateTime(movement.created_at)}</dd>
+                                        <dt className="text-ink-faint">Type</dt>
+                                        <dd className="mt-1">
+                                            <MovementType value={movement.movement_type} />
+                                        </dd>
                                     </div>
-                                    <div className="min-w-0">
-                                        <dt className="text-slate-400">Type</dt>
-                                        <dd className="capitalize">{movement.movement_type.replaceAll('_', ' ')}</dd>
-                                    </div>
-                                    <div className="min-w-0">
-                                        <dt className="text-slate-400">Emplacement</dt>
-                                        <dd className="truncate">{movement.warehouse.name}</dd>
-                                    </div>
-                                    <div className="min-w-0">
-                                        <dt className="text-slate-400">Utilisateur</dt>
-                                        <dd className="truncate">{movement.performed_by?.name ?? 'Systeme'}</dd>
-                                    </div>
+                                    <Info label="Entrepôt" value={movement.warehouse.name} />
+                                    <Info label="Utilisateur" value={movement.performed_by?.name ?? 'Système'} />
                                     <div className="col-span-2 min-w-0">
-                                        <dt className="text-slate-400">Reference</dt>
-                                        <dd className="truncate">{movement.reference ?? movement.reason ?? '—'}</dd>
+                                        <dt className="text-ink-faint">Source / référence</dt>
+                                        <dd className="truncate text-ink-muted">{movement.reference ?? movement.reason ?? '—'}</dd>
                                     </div>
                                 </dl>
                             </li>
@@ -96,7 +129,32 @@ export default function MovementIndex({ movements, filters, warehouses }: Props)
                     </ul>
                 </>
             )}
+
             <Pagination links={movements.links} />
         </InventoryLayout>
+    );
+}
+
+function MovementType({ value }: { value: string }) {
+    return <span className="inline-flex rounded-full bg-sage px-2.5 py-1 text-xs font-semibold text-ink">{value.replaceAll('_', ' ')}</span>;
+}
+
+function QuantityBadge({ quantity }: { quantity: string }) {
+    const numeric = Number(quantity);
+    const positive = numeric >= 0;
+
+    return (
+        <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold tabular-nums ${positive ? 'bg-success-soft text-success' : 'bg-danger-soft text-danger'}`}>
+            {formatSignedQuantity(quantity)}
+        </span>
+    );
+}
+
+function Info({ label, value }: { label: string; value: string }) {
+    return (
+        <div className="min-w-0">
+            <dt className="text-ink-faint">{label}</dt>
+            <dd className="truncate text-ink-muted">{value}</dd>
+        </div>
     );
 }

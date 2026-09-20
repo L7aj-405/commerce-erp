@@ -25,6 +25,13 @@ type CaEncaisseRow = {
     amount: string;
     status_label: string;
 };
+type PaymentLine = Pick<CaEncaisseRow, 'id' | 'payment_number' | 'payment_date' | 'method_label' | 'amount'>;
+type CaEncaisseGroup = Omit<CaEncaisseRow, 'id' | 'payment_number' | 'payment_date' | 'method_label' | 'amount' | 'status_label'> & {
+    id: string;
+    amount: string;
+    status_label: string;
+    payments: PaymentLine[];
+};
 type LinkData = { url: string | null; label: string; active: boolean };
 type Props = {
     organization: { id: number; name: string };
@@ -40,13 +47,78 @@ type Props = {
 const STATUS_STYLES: Record<string, string> = {
     'Avance sur commande': 'bg-sage text-ink',
     'Paiement comptant': 'bg-success-soft text-success',
+    'Paiement complété': 'bg-success-soft text-success',
     'Paiement partiel': 'bg-warning-soft text-warning',
     'Solde / Reliquat': 'bg-warning-soft text-warning',
 };
 
+const completedStatuses = new Set(['Paiement comptant', 'Solde / Reliquat']);
+
+function toTenThousandths(value: string): bigint {
+    const clean = value.trim();
+    const sign = clean.startsWith('-') ? -1n : 1n;
+    const [whole, fraction = ''] = clean.replace(/^-/, '').split('.');
+
+    return sign * (BigInt(whole || '0') * 10000n + BigInt(fraction.padEnd(4, '0').slice(0, 4)));
+}
+
+function fromTenThousandths(value: bigint): string {
+    const sign = value < 0n ? '-' : '';
+    const absolute = value < 0n ? -value : value;
+    const whole = absolute / 10000n;
+    const fraction = String(absolute % 10000n).padStart(4, '0');
+
+    return `${sign}${whole}.${fraction}`;
+}
+
+function groupRows(rows: CaEncaisseRow[]): CaEncaisseGroup[] {
+    const groups = new Map<string, CaEncaisseGroup>();
+
+    rows.forEach((row) => {
+        const key = row.reference_type === 'invoice' && row.invoice_id ? `invoice:${row.invoice_id}` : `order:${row.sales_order_id}`;
+        const existing = groups.get(key);
+        const payment = {
+            id: row.id,
+            payment_number: row.payment_number,
+            payment_date: row.payment_date,
+            method_label: row.method_label,
+            amount: row.amount,
+        };
+
+        if (!existing) {
+            groups.set(key, {
+                id: key,
+                sale_date: row.sale_date,
+                reference: row.reference,
+                reference_type: row.reference_type,
+                invoice_id: row.invoice_id,
+                sales_order_id: row.sales_order_id,
+                order_number: row.order_number,
+                lines: row.lines,
+                customer: row.customer,
+                amount: row.amount,
+                status_label: row.status_label,
+                payments: [payment],
+            });
+            return;
+        }
+
+        existing.amount = fromTenThousandths(toTenThousandths(existing.amount) + toTenThousandths(row.amount));
+        existing.payments.push(payment);
+        if (completedStatuses.has(row.status_label)) {
+            existing.status_label = 'Paiement complété';
+        }
+    });
+
+    return Array.from(groups.values()).map((group) => ({
+        ...group,
+        status_label: completedStatuses.has(group.status_label) ? 'Paiement complété' : group.status_label,
+    }));
+}
 
 export default function FinanceCaEncaisse({ organization, period, periodLabel, storeId, stores, total, rows, can }: Props) {
     const q = new URLSearchParams({ month: period, store_id: storeId ? String(storeId) : '' }).toString();
+    const groups = groupRows(rows.data);
 
     return (
         <ApplicationShell wide>
@@ -60,7 +132,9 @@ export default function FinanceCaEncaisse({ organization, period, periodLabel, s
                             xlsxHref={`/finance/ca-encaisse/export/xlsx?${q}`}
                             pdfHrefBase={`/finance/ca-encaisse/export/pdf?${q}`}
                             zipHref={`/finance/ca-encaisse/export/invoices-zip?${q}`}
+                            packageHref={`/finance/ca-encaisse/export/full-package?${q}`}
                             zipFilename={`Factures_${period}.zip`}
+                            packageFilename={`Package_CA_${period}.zip`}
                         />
                     ) : undefined
                 }
@@ -95,27 +169,51 @@ export default function FinanceCaEncaisse({ organization, period, periodLabel, s
                                 </tr>
                             </thead>
                             <tbody>
-                                {rows.data.map((row) => (
-                                    <tr key={row.id} className="border-t border-line align-top">
-                                        <td className="px-4 py-2.5 font-medium text-ink">{row.payment_number}</td>
-                                        <td className="px-4 py-2.5 whitespace-nowrap text-ink-muted">{formatDate(row.sale_date)}</td>
-                                        <td className="px-4 py-2.5 whitespace-nowrap text-ink-muted">{formatDate(row.payment_date)}</td>
+                                {groups.map((group) => (
+                                    <tr key={group.id} className="border-t-2 border-line-strong align-top">
                                         <td className="px-4 py-2.5">
-                                            {row.reference_type === 'invoice' && row.invoice_id ? (
-                                                <Link href={`/invoices/${row.invoice_id}`}>{row.reference}</Link>
+                                            <div className="divide-y divide-line">
+                                                {group.payments.map((payment) => (
+                                                    <div key={payment.id} className="py-1 first:pt-0 last:pb-0">
+                                                        <p className="font-medium text-ink">{payment.payment_number}</p>
+                                                        <p className="text-[11px] text-ink-faint">Montant partiel {formatMoney(payment.amount)}</p>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </td>
+                                        <td className="px-4 py-2.5 whitespace-nowrap text-ink-muted">{formatDate(group.sale_date)}</td>
+                                        <td className="px-4 py-2.5">
+                                            <div className="divide-y divide-line">
+                                                {group.payments.map((payment) => (
+                                                    <div key={payment.id} className="py-1 first:pt-0 last:pb-0 whitespace-nowrap text-ink-muted">{formatDate(payment.payment_date)}</div>
+                                                ))}
+                                            </div>
+                                        </td>
+                                        <td className="px-4 py-2.5">
+                                            {group.reference_type === 'invoice' && group.invoice_id ? (
+                                                <Link href={`/invoices/${group.invoice_id}`}>{group.reference}</Link>
                                             ) : (
-                                                <Link href={`/sales/orders/${row.sales_order_id}`}>{row.reference}</Link>
+                                                <Link href={`/sales/orders/${group.sales_order_id}`}>{group.reference}</Link>
                                             )}
                                         </td>
                                         <td className="px-4 py-2.5">
-                                            <SoldLines lines={row.lines} />
+                                            <SoldLines lines={group.lines} />
                                         </td>
-                                        <td className="px-4 py-2.5">{row.customer}</td>
-                                        <td className="px-4 py-2.5 text-ink-muted">{row.method_label}</td>
-                                        <td className="px-4 py-2.5 text-right tabular-nums">{formatMoney(row.amount)}</td>
+                                        <td className="px-4 py-2.5">{group.customer}</td>
                                         <td className="px-4 py-2.5">
-                                            <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold ${STATUS_STYLES[row.status_label] ?? 'bg-raised text-ink-muted'}`}>
-                                                {row.status_label}
+                                            <div className="divide-y divide-line">
+                                                {group.payments.map((payment) => (
+                                                    <div key={payment.id} className="py-1 first:pt-0 last:pb-0 text-ink-muted">{payment.method_label}</div>
+                                                ))}
+                                            </div>
+                                        </td>
+                                        <td className="px-4 py-2.5 text-right">
+                                            <p className="tabular-nums font-semibold text-ink">{formatMoney(group.amount)}</p>
+                                            {group.payments.length > 1 && <p className="text-[11px] text-ink-faint">Montant encaissé</p>}
+                                        </td>
+                                        <td className="px-4 py-2.5">
+                                            <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold ${STATUS_STYLES[group.status_label] ?? 'bg-raised text-ink-muted'}`}>
+                                                {group.status_label}
                                             </span>
                                         </td>
                                     </tr>
@@ -126,50 +224,56 @@ export default function FinanceCaEncaisse({ organization, period, periodLabel, s
 
                     {/* Mobile: stacked cards */}
                     <ul className="space-y-3 md:hidden">
-                        {rows.data.map((row) => (
-                            <li key={row.id} className="rounded-card border border-line bg-surface p-4">
+                        {groups.map((group) => (
+                            <li key={group.id} className="rounded-card border border-line bg-surface p-4">
                                 <div className="flex items-start justify-between gap-3">
-                                    <p className="min-w-0 truncate text-sm font-semibold text-ink">{row.payment_number}</p>
-                                    <span className={`shrink-0 inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold ${STATUS_STYLES[row.status_label] ?? 'bg-raised text-ink-muted'}`}>
-                                        {row.status_label}
+                                    <p className="min-w-0 truncate text-sm font-semibold text-ink">{group.reference}</p>
+                                    <span className={`shrink-0 inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold ${STATUS_STYLES[group.status_label] ?? 'bg-raised text-ink-muted'}`}>
+                                        {group.status_label}
                                     </span>
                                 </div>
                                 <div className="mt-2.5">
                                     <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-faint">Désignation</p>
                                     <div className="mt-1">
-                                        <SoldLines lines={row.lines} />
+                                        <SoldLines lines={group.lines} />
                                     </div>
+                                </div>
+                                <div className="mt-3 divide-y divide-line rounded-field bg-raised px-3">
+                                    {group.payments.map((payment) => (
+                                        <div key={payment.id} className="grid grid-cols-2 gap-2 py-2 text-[13px]">
+                                            <div>
+                                                <p className="font-medium text-ink">{payment.payment_number}</p>
+                                                <p className="text-ink-faint">{formatDate(payment.payment_date)} · {payment.method_label}</p>
+                                            </div>
+                                            <div className="text-right">
+                                                <p className="text-ink-faint">Montant partiel</p>
+                                                <p className="font-semibold tabular-nums text-ink">{formatMoney(payment.amount)}</p>
+                                            </div>
+                                        </div>
+                                    ))}
                                 </div>
                                 <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1.5 text-[13px]">
                                     <div className="min-w-0">
                                         <dt className="text-ink-faint">Client</dt>
-                                        <dd className="truncate text-ink-muted">{row.customer}</dd>
+                                        <dd className="truncate text-ink-muted">{group.customer}</dd>
                                     </div>
                                     <div className="min-w-0">
                                         <dt className="text-ink-faint">Réf. facture/commande</dt>
                                         <dd className="truncate">
-                                            {row.reference_type === 'invoice' && row.invoice_id ? (
-                                                <Link href={`/invoices/${row.invoice_id}`}>{row.reference}</Link>
+                                            {group.reference_type === 'invoice' && group.invoice_id ? (
+                                                <Link href={`/invoices/${group.invoice_id}`}>{group.reference}</Link>
                                             ) : (
-                                                <Link href={`/sales/orders/${row.sales_order_id}`}>{row.reference}</Link>
+                                                <Link href={`/sales/orders/${group.sales_order_id}`}>{group.reference}</Link>
                                             )}
                                         </dd>
                                     </div>
                                     <div className="min-w-0">
                                         <dt className="text-ink-faint">Date de vente</dt>
-                                        <dd className="text-ink-muted">{formatDate(row.sale_date)}</dd>
-                                    </div>
-                                    <div className="min-w-0">
-                                        <dt className="text-ink-faint">Date de paiement</dt>
-                                        <dd className="text-ink-muted">{formatDate(row.payment_date)}</dd>
-                                    </div>
-                                    <div className="min-w-0">
-                                        <dt className="text-ink-faint">Mode</dt>
-                                        <dd className="text-ink-muted">{row.method_label}</dd>
+                                        <dd className="text-ink-muted">{formatDate(group.sale_date)}</dd>
                                     </div>
                                     <div className="min-w-0">
                                         <dt className="text-ink-faint">Montant encaissé</dt>
-                                        <dd className="tabular-nums font-semibold text-ink">{formatMoney(row.amount)}</dd>
+                                        <dd className="tabular-nums font-semibold text-ink">{formatMoney(group.amount)}</dd>
                                     </div>
                                 </dl>
                             </li>
@@ -196,12 +300,16 @@ function ExportMenu({
     xlsxHref,
     pdfHrefBase,
     zipHref,
+    packageHref,
     zipFilename,
+    packageFilename,
 }: {
     xlsxHref: string;
     pdfHrefBase: string;
     zipHref: string;
+    packageHref: string;
     zipFilename: string;
+    packageFilename: string;
 }) {
     const [open, setOpen] = useState(false);
     const [zipBusy, setZipBusy] = useState(false);
@@ -226,27 +334,27 @@ function ExportMenu({
 
     const itemClass = 'block rounded-field px-3 py-2.5 text-[13px] text-ink transition-soft hover:bg-sage';
 
-    const downloadZip = async () => {
+    const downloadZip = async (href: string, filename: string, errorMessage: string) => {
         if (zipBusy) return;
         setZipBusy(true);
         try {
-            const response = await fetch(zipHref, { headers: { Accept: 'application/json' } });
+            const response = await fetch(href, { headers: { Accept: 'application/json' } });
             if (!response.ok) {
                 const data = (await response.json().catch(() => ({}))) as { message?: string };
-                toast.error(data.message ?? 'Échec de l’export des factures.');
+                toast.error(data.message ?? errorMessage);
                 return;
             }
             const blob = await response.blob();
             const url = URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.href = url;
-            link.download = zipFilename;
+            link.download = filename;
             document.body.appendChild(link);
             link.click();
             link.remove();
             URL.revokeObjectURL(url);
         } catch {
-            toast.error('Échec de l’export des factures.');
+            toast.error(errorMessage);
         } finally {
             setZipBusy(false);
             setOpen(false);
@@ -284,13 +392,24 @@ function ExportMenu({
                     <button
                         type="button"
                         role="menuitem"
-                        onClick={downloadZip}
+                        onClick={() => downloadZip(zipHref, zipFilename, 'Échec de l’export des factures.')}
                         disabled={zipBusy}
                         aria-busy={zipBusy || undefined}
                         className="flex min-h-10 w-full items-center gap-2 rounded-field px-3 py-2.5 text-left text-[13px] text-ink transition-soft hover:bg-sage disabled:opacity-60"
                     >
                         {zipBusy && <Spinner size="xs" />}
                         {zipBusy ? 'Génération du ZIP…' : 'Factures (.ZIP)'}
+                    </button>
+                    <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => downloadZip(packageHref, packageFilename, 'Échec de l’export du package complet.')}
+                        disabled={zipBusy}
+                        aria-busy={zipBusy || undefined}
+                        className="flex min-h-10 w-full items-center gap-2 rounded-field px-3 py-2.5 text-left text-[13px] text-ink transition-soft hover:bg-sage disabled:opacity-60"
+                    >
+                        {zipBusy && <Spinner size="xs" />}
+                        Package complet
                     </button>
                 </div>
             )}

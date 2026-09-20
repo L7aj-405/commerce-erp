@@ -3,6 +3,9 @@
 namespace Tests\Feature\Quotations;
 
 use App\Mail\QuotationDocumentMail;
+use App\Models\Organization;
+use App\Models\ProductVariant;
+use App\Models\Store;
 use App\Models\User;
 use Illuminate\Support\Facades\Mail;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -10,7 +13,7 @@ use Tests\Support\QuotationTestCase;
 
 class QuotationEmailTest extends QuotationTestCase
 {
-    /** @return array{User, \App\Models\Organization, \App\Models\Store, \App\Models\ProductVariant} */
+    /** @return array{User, Organization, Store, ProductVariant} */
     private function base(): array
     {
         $owner = User::factory()->create();
@@ -38,9 +41,10 @@ class QuotationEmailTest extends QuotationTestCase
         $this->actingAs($owner)->post(route('quotations.email', $issued), ['email' => 'client@example.test'])
             ->assertRedirect();
 
+        $expectedFilename = 'Devis-'.preg_replace('/[^A-Za-z0-9._-]+/', '-', $issued->quotation_number).'.pdf';
         Mail::assertSent(QuotationDocumentMail::class, fn (QuotationDocumentMail $mail) => $mail->hasTo('client@example.test')
-            && $mail->hasFrom('devis@example.test')
-            && $mail->attachments()[0]->as === 'Devis-'.$issued->quotation_number.'.pdf'
+            && ($mail->from[0]['address'] ?? null) === 'devis@example.test'
+            && $mail->attachments()[0]->as === $expectedFilename
             && $mail->attachments()[0]->mime === 'application/pdf');
     }
 

@@ -22,7 +22,9 @@ class DocumentNumberingTest extends DocumentTestCase
         $second = app(FulfillSalesOrderAction::class)->execute($owner, $second->fresh());
 
         $year = now()->year;
-        $this->assertSame("1/{$year}", $this->issueInvoice($owner, $this->createInvoice($owner, $first))->invoice_number);
+        $firstInvoice = $this->issueInvoice($owner, $this->createInvoice($owner, $first));
+        $this->assertSame("1/{$year}", $firstInvoice->invoice_number);
+        $this->assertSame(1, $firstInvoice->version);
         $this->assertSame('DN-000001', $this->issueDeliveryNote($owner, $this->createDeliveryNote($owner, $first))->delivery_note_number);
         $this->assertSame("2/{$year}", $this->issueInvoice($owner, $this->createInvoice($owner, $second))->invoice_number);
         $this->assertSame('DN-000002', $this->issueDeliveryNote($owner, $this->createDeliveryNote($owner, $second))->delivery_note_number);
@@ -30,28 +32,44 @@ class DocumentNumberingTest extends DocumentTestCase
 
     public function test_sequence_generators_refuse_allocation_outside_a_transaction(): void
     {
-        [$owner, $organization] = $this->documentFixture();
-
-        $connection = DB::connection();
-        $connection->rollBack();
+        [, $organization] = $this->documentFixture();
+        $defaultConnection = DB::getDefaultConnection();
+        $guardConnection = 'sequence_guard_sqlite';
+        config(["database.connections.{$guardConnection}" => [
+            'driver' => 'sqlite',
+            'database' => ':memory:',
+            'prefix' => '',
+            'foreign_key_constraints' => true,
+        ]]);
+        $invoiceRefused = false;
+        $deliveryNoteRefused = false;
 
         try {
+            // Use an isolated connection with transaction level zero. Never
+            // roll back/restart RefreshDatabase's framework-owned transaction:
+            // doing so desynchronizes Laravel's manager from SQLite/PDO.
+            DB::setDefaultConnection($guardConnection);
             try {
                 app(InvoiceNumberGenerator::class)->next($organization, now()->year);
                 $this->fail('Expected transaction-only sequence allocation.');
             } catch (LogicException) {
-                $this->assertDatabaseCount('invoice_sequences', 0);
+                $invoiceRefused = true;
             }
             try {
                 app(DeliveryNoteNumberGenerator::class)->next($organization);
                 $this->fail('Expected transaction-only sequence allocation.');
             } catch (LogicException) {
-                $this->assertDatabaseCount('delivery_note_sequences', 0);
+                $deliveryNoteRefused = true;
             }
         } finally {
-            // Restore the transaction expected by RefreshDatabase teardown.
-            $connection->beginTransaction();
+            DB::setDefaultConnection($defaultConnection);
+            DB::purge($guardConnection);
         }
+
+        $this->assertTrue($invoiceRefused);
+        $this->assertTrue($deliveryNoteRefused);
+        $this->assertDatabaseCount('invoice_sequences', 0);
+        $this->assertDatabaseCount('delivery_note_sequences', 0);
     }
 
     public function test_sequence_allocation_is_rolled_back_with_its_outer_transaction(): void

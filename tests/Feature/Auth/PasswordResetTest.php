@@ -4,6 +4,7 @@ namespace Tests\Feature\Auth;
 
 use App\Models\User;
 use Illuminate\Auth\Notifications\ResetPassword;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Notification;
@@ -20,6 +21,8 @@ use Tests\TestCase;
  */
 class PasswordResetTest extends TestCase
 {
+    use RefreshDatabase;
+
     public function test_the_forgot_password_response_is_identical_for_an_existing_and_a_nonexistent_email(): void
     {
         Notification::fake();

@@ -44,7 +44,7 @@ final class FinancePeriod
     /** French month/year label, e.g. "Septembre 2026". */
     public function label(): string
     {
-        return ucfirst($this->start->translatedFormat('F Y'));
+        return ucfirst($this->start->copy()->locale('fr')->translatedFormat('F Y'));
     }
 
     /**

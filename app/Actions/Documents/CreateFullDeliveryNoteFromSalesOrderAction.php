@@ -39,8 +39,9 @@ class CreateFullDeliveryNoteFromSalesOrderAction
             $order = SalesOrder::query()
                 ->where('organization_id', $order->organization_id)->where('store_id', $order->store_id)
                 ->whereKey($order->getKey())->lockForUpdate()->with(['lines', 'customer', 'organization', 'store'])->firstOrFail();
-            if ($order->status !== SalesOrderStatus::Confirmed || $order->fulfillment_status !== SalesOrderFulfillmentStatus::Fulfilled) {
-                throw ValidationException::withMessages(['order' => 'Only a confirmed, fulfilled Sales Order can receive a full Delivery Note.']);
+            if ($order->status !== SalesOrderStatus::Confirmed
+                || ! in_array($order->fulfillment_status, [SalesOrderFulfillmentStatus::Unfulfilled, SalesOrderFulfillmentStatus::Fulfilled], true)) {
+                throw ValidationException::withMessages(['order' => 'Only a confirmed Sales Order can receive a full Delivery Note.']);
             }
             if ($order->lines->isEmpty()) {
                 throw ValidationException::withMessages(['order' => 'A Sales Order must have lines before delivery can be documented.']);

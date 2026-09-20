@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Sales;
 
 use App\Actions\Sales\CreateSalesOrderAction;
+use App\Actions\Sales\StartSalesOrderCorrectionAction;
 use App\Actions\Sales\UpdateSalesOrderAction;
 use App\Enums\CatalogStatus;
 use App\Enums\InvoiceStatus;
@@ -26,12 +27,15 @@ use App\Models\Supplier;
 use App\Models\Warehouse;
 use App\Services\ActiveTenantContext;
 use App\Services\PosStockAllocator;
+use App\Services\Pos\PosOrderCompletionEligibility;
 use App\Services\ProductPriceResolver;
 use App\Services\SalesOrderPaymentCalculator;
+use App\Services\ReturnPolicyService;
 use App\Support\Decimal;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -65,12 +69,28 @@ class SalesOrderController extends Controller
             ->when($filters['fulfillment_status'] ?? null, fn ($query, string $value) => $query->where('fulfillment_status', $value))
             ->when($filters['payment_status'] ?? null, fn ($query, string $value) => $query->where('payment_status', $value))
             ->when($filters['sale_date'] ?? null, fn ($query, string $date) => $query->whereDate('sale_date', $date))
-            ->with('store:id,name,code')
+            ->with([
+                'store:id,name,code',
+                'lines:id,sales_order_id,product_variant_id,quantity',
+                'customerReturns' => fn ($query) => $query->where('status', 'received')
+                    ->select('id', 'sales_order_id', 'status', 'total_incl_tax')
+                    ->with('lines:id,customer_return_id,sales_order_line_id,quantity'),
+            ])
             ->withExists(['invoices as has_active_invoice' => fn ($query) => $query
                 ->whereIn('status', [InvoiceStatus::Draft->value, InvoiceStatus::Issued->value])])
             ->latest('ordered_at')
             ->paginate(20)
-            ->withQueryString();
+            ->withQueryString()
+            ->through(function (SalesOrder $order) {
+                $returnSummary = $this->returnSummary($order, $order->customerReturns);
+                $order->setAttribute('returned_total', $returnSummary['returns']);
+                $order->setAttribute('net_total', $returnSummary['net']);
+                $order->setAttribute('return_state', $returnSummary['state']);
+                $order->unsetRelation('lines');
+                $order->unsetRelation('customerReturns');
+
+                return $order;
+            });
 
         return Inertia::render('Sales/Orders/Index', [
             'orders' => $orders,
@@ -96,14 +116,48 @@ class SalesOrderController extends Controller
         return redirect()->route('sales.orders.edit', $order);
     }
 
-    public function show(SalesOrder $order, SalesOrderPaymentCalculator $payments, PosStockAllocator $stock): Response
+    public function show(SalesOrder $order, SalesOrderPaymentCalculator $payments, PosStockAllocator $stock, ReturnPolicyService $returnPolicies, PosOrderCompletionEligibility $completionEligibility): Response
     {
         $this->authorize('view', $order);
+        $order = $this->loadOrder($order);
 
         $canRecordPayment = request()->user()->can('create', [Payment::class, $order]);
+        $invoices = $order->invoices()->latest('id')->get([
+            'id',
+            'sales_order_revision_id',
+            'sales_order_addendum_id',
+            'invoice_number',
+            'version',
+            'invoice_date',
+            'status',
+            'total_incl_tax',
+        ]);
+        $currentRevision = $order->currentRevision;
+        $activeCorrection = $order->hasActiveCorrection() ? [
+            'id' => $currentRevision->id,
+            'revision_number' => $currentRevision->revision_number,
+            'reason' => $currentRevision->reason,
+        ] : null;
+        $pendingReplacementInvoice = $currentRevision?->status === 'completed'
+            && ! $invoices->contains(fn (Invoice $invoice) => $invoice->sales_order_revision_id === $currentRevision->id
+                && $invoice->status !== InvoiceStatus::Cancelled);
+        $latestIssuedInvoice = $order->invoices()
+            ->where('status', InvoiceStatus::Issued->value)
+            ->latest('version')
+            ->with('lines:id,invoice_id,sales_order_line_id')
+            ->first();
+        $invoiceStaleAfterCompletion = $latestIssuedInvoice !== null
+            && $latestIssuedInvoice->lines->pluck('sales_order_line_id')->filter()->map(fn ($id) => (int) $id)->sort()->values()->all()
+                !== $order->lines->pluck('id')->map(fn ($id) => (int) $id)->sort()->values()->all();
+        $pendingReplacementInvoice = $pendingReplacementInvoice || ($invoiceStaleAfterCompletion
+            && ! $invoices->contains(fn (Invoice $invoice) => $invoice->status === InvoiceStatus::Draft));
+        $returns = $order->customerReturns()->with(['lines', 'creditNotes:id,customer_return_id,credit_note_number,status,total_incl_tax', 'refunds:id,customer_return_id,status,amount'])->latest('id')->get();
+        $receivedReturns = $returns->where('status', 'received');
+        $returnSummary = $this->returnSummary($order, $receivedReturns);
+        $completion = $completionEligibility->evaluate(request()->user(), $order);
 
         return Inertia::render('Sales/Orders/Show', [
-            'order' => $this->loadOrder($order),
+            'order' => $order,
             'paymentSummary' => $payments->summary($order),
             'payments' => $order->paymentAllocations()
                 ->with(['payment.financialAccount:id,name,code,type', 'payment.receivedBy:id,name'])
@@ -115,6 +169,16 @@ class SalesOrderController extends Controller
                     'financial_account' => $allocation->payment->financialAccount,
                     'received_by' => $allocation->payment->receivedBy,
                 ]),
+            'refunds' => $order->paymentRefunds()
+                ->with(['payment:id,payment_number', 'financialAccount:id,name,code,type', 'refundedBy:id,name'])
+                ->latest('id')
+                ->get()
+                ->map(fn ($refund) => [
+                    ...$refund->only(['id', 'refund_number', 'method', 'status', 'amount', 'currency_code', 'refund_date', 'reason']),
+                    'original_payment' => $refund->payment,
+                    'financial_account' => $refund->financialAccount,
+                    'refunded_by' => $refund->refundedBy,
+                ]),
             'financialAccounts' => $canRecordPayment
                 ? FinancialAccount::query()
                     ->where('organization_id', $order->organization_id)
@@ -124,9 +188,23 @@ class SalesOrderController extends Controller
                     ->get(['id', 'name', 'code', 'type', 'currency_code', 'accepted_methods'])
                 : [],
             'documents' => [
-                'invoices' => $order->invoices()->latest('id')->get(['id', 'invoice_number', 'invoice_date', 'status', 'total_incl_tax']),
+                'invoices' => $invoices,
                 'deliveryNotes' => $order->deliveryNotes()->latest('id')->get(['id', 'delivery_note_number', 'delivery_date', 'status']),
             ],
+            'activeCorrection' => $activeCorrection,
+            'pendingReplacementInvoice' => $pendingReplacementInvoice,
+            'invoiceStaleAfterCompletion' => $invoiceStaleAfterCompletion,
+            'customerReturns' => $returns,
+            'customerExchanges' => $order->customerExchanges()->with(['customerReturn:id,return_number', 'salesOrderAddendum:id,sequence'])
+                ->latest('id')->get()->map(fn ($exchange) => [
+                    ...$exchange->only(['id', 'exchange_number', 'status', 'settlement_status', 'returned_total', 'new_items_total', 'difference_amount']),
+                    'created_at' => $exchange->created_at?->toIso8601String(),
+                    'return_number' => $exchange->customerReturn?->return_number,
+                    'addendum_sequence' => $exchange->salesOrderAddendum?->sequence,
+                ]),
+            'returnPolicy' => $order->fulfilled_at ? $returnPolicies->evaluate($order) : null,
+            'commercialSummary' => $returnSummary,
+            'completionEligibility' => $completion,
             'awaitingReplenishment' => $order->awaitingReplenishment(),
             'procurement' => $this->procurementPayload($order, $stock),
             'transferRequests' => $order->transferRequests()
@@ -140,14 +218,84 @@ class SalesOrderController extends Controller
                     'destination' => $req->destinationWarehouse?->name,
                     'unit_count' => $req->lines->reduce(fn ($c, $l) => $c + (float) $l->quantity, 0.0),
                 ]),
+            'revisions' => $order->revisions()->with(['initiatedBy:id,name', 'completedBy:id,name'])
+                ->orderBy('revision_number')->get()->map(fn ($revision) => [
+                    'id' => $revision->id,
+                    'revision_number' => $revision->revision_number,
+                    'status' => $revision->status,
+                    'reason' => $revision->reason,
+                    'initiated_at' => $revision->initiated_at?->toIso8601String(),
+                    'initiated_by' => $revision->initiatedBy?->name,
+                    'completed_at' => $revision->completed_at?->toIso8601String(),
+                    'completed_by' => $revision->completedBy?->name,
+                    'before_total' => data_get($revision->before_snapshot, 'totals.total_incl_tax'),
+                    'after_total' => data_get($revision->after_snapshot, 'totals.total_incl_tax'),
+                ]),
+            'addenda' => $order->addenda()->with(['createdBy:id,name', 'lines:id,sales_order_addendum_id,product_name,variant_name,quantity,total_incl_tax'])
+                ->get()->map(fn ($addendum) => [
+                    'id' => $addendum->id,
+                    'sequence' => $addendum->sequence,
+                    'before_total' => $addendum->before_total,
+                    'added_total' => $addendum->added_total,
+                    'after_total' => $addendum->after_total,
+                    'fulfilled_at' => $addendum->fulfilled_at?->toIso8601String(),
+                    'created_at' => $addendum->created_at?->toIso8601String(),
+                    'created_by' => $addendum->createdBy?->name,
+                    'lines' => $addendum->lines,
+                ]),
             'can' => [
                 ...$this->abilities(request(), $order),
                 'recordPayment' => $canRecordPayment,
                 'backdatePayment' => request()->user()->hasPermission($order->organization_id, 'payments.backdate'),
                 'createInvoice' => request()->user()->can('create', [Invoice::class, $order]),
                 'createDeliveryNote' => request()->user()->can('create', [DeliveryNote::class, $order]),
+                'correct' => request()->user()->can('correct', $order),
+                'completePos' => $completion['allowed'],
+                'createReturn' => $order->fulfillment_status === SalesOrderFulfillmentStatus::Fulfilled
+                    && request()->user()->hasPermission($order->organization_id, 'sales_returns.create'),
+                'createExchange' => $order->fulfillment_status === SalesOrderFulfillmentStatus::Fulfilled
+                    && $order->invoices()->where('status', InvoiceStatus::Issued->value)->exists()
+                    && request()->user()->can('create', [\App\Models\CustomerExchange::class, $order]),
             ],
         ]);
+    }
+
+    /** @return array{gross:string,returns:string,net:string,state:string,fully_returned:bool} */
+    private function returnSummary(SalesOrder $order, Collection $receivedReturns): array
+    {
+        $returnedTotal = $receivedReturns->reduce(
+            fn (string $sum, $return) => Decimal::add($sum, $return->total_incl_tax),
+            '0.0000',
+        );
+        $catalogLines = $order->lines->whereNotNull('product_variant_id');
+        $fullyReturned = $receivedReturns->isNotEmpty() && $catalogLines->isNotEmpty()
+            && $catalogLines->every(function ($line) use ($receivedReturns) {
+                $quantity = $receivedReturns->flatMap(fn ($return) => $return->lines->where('sales_order_line_id', $line->id))
+                    ->reduce(fn (string $sum, $returnLine) => Decimal::add($sum, $returnLine->quantity), '0.0000');
+
+                return Decimal::compare((string) $quantity, $line->quantity) >= 0;
+            });
+        $net = Decimal::subtract($order->total_incl_tax, $returnedTotal);
+        if (Decimal::compare($net, '0.0000') < 0) {
+            $net = '0.0000';
+        }
+
+        return [
+            'gross' => $order->total_incl_tax,
+            'returns' => $returnedTotal,
+            'net' => $net,
+            'state' => $fullyReturned ? 'full' : ($receivedReturns->isNotEmpty() ? 'partial' : 'none'),
+            'fully_returned' => $fullyReturned,
+        ];
+    }
+
+    public function correct(Request $request, SalesOrder $order, StartSalesOrderCorrectionAction $action): RedirectResponse
+    {
+        $this->authorize('correct', $order);
+        $data = $request->validate(['reason' => ['required', 'string', 'max:2000']]);
+        $action->execute($request->user(), $order, $data['reason']);
+
+        return redirect()->route('sales.orders.edit', $order);
     }
 
     public function edit(Request $request, SalesOrder $order, PosStockAllocator $stock): Response
@@ -182,7 +330,12 @@ class SalesOrderController extends Controller
             'taxRates' => $order->organization->taxRates()->where('status', 'active')->orderBy('name')->get(['id', 'name', 'rate']),
             'lineSearchUrl' => route('sales.orders.line-search', $order),
             'customerSearchUrl' => route('sales.orders.customer-search', $order),
-            'isEditable' => $order->status === SalesOrderStatus::Draft,
+            'isEditable' => $order->isCommerciallyEditable(),
+            'correction' => $order->hasActiveCorrection() ? [
+                'revision_number' => $order->currentRevision->revision_number,
+                'reason' => $order->currentRevision->reason,
+                'initiated_at' => $order->currentRevision->initiated_at?->toIso8601String(),
+            ] : null,
             'procurementUnderCovered' => $underCovered,
             'originatingQuotation' => $originatingQuotation ? [
                 'id' => $originatingQuotation->id,
@@ -390,11 +543,15 @@ class SalesOrderController extends Controller
             'store:id,name,code',
             'customer:id,type,display_name,company_name,email,phone,tax_identifier,billing_address',
             'createdBy:id,name',
+            'cancelledBy:id,name',
             'lines.productVariant:id,organization_id,label,sku,status',
+            'lines.addendum:id,sequence',
             'lines.allocations.warehouse:id,name,code',
             'lines.allocations.inventoryReservation:id,status',
             'lines.outOfStockArticle',
             'procurements',
+            'currentRevision:id,organization_id,store_id,sales_order_id,revision_number,status,reason,initiated_at',
+            'addenda',
         ]);
     }
 

@@ -11,6 +11,8 @@ type Order = {
     sale_date: string;
     customer: string;
     total_incl_tax: string;
+    returned_total: string;
+    net_total: string;
     payment_status: string;
 };
 type LinkData = { url: string | null; label: string; active: boolean };
@@ -46,7 +48,9 @@ export default function FinanceVentes({ organization, period, periodLabel, store
                                     <th className="px-4 py-2.5">N° commande</th>
                                     <th className="px-4 py-2.5">Date de vente</th>
                                     <th className="px-4 py-2.5">Client</th>
-                                    <th className="px-4 py-2.5 text-right">Total TTC</th>
+                                    <th className="px-4 py-2.5 text-right">Vente brute</th>
+                                    <th className="px-4 py-2.5 text-right">Retours reçus</th>
+                                    <th className="px-4 py-2.5 text-right">Net retenu</th>
                                     <th className="px-4 py-2.5">Statut paiement</th>
                                 </tr>
                             </thead>
@@ -59,6 +63,8 @@ export default function FinanceVentes({ organization, period, periodLabel, store
                                         <td className="px-4 py-2.5 text-ink-muted">{order.sale_date}</td>
                                         <td className="px-4 py-2.5">{order.customer}</td>
                                         <td className="px-4 py-2.5 text-right">{formatMoney(order.total_incl_tax)}</td>
+                                        <td className="px-4 py-2.5 text-right text-danger">-{formatMoney(order.returned_total)}</td>
+                                        <td className="px-4 py-2.5 text-right font-medium">{formatMoney(order.net_total)}</td>
                                         <td className="px-4 py-2.5 text-ink-muted">{STATUS_LABELS[order.payment_status] ?? order.payment_status}</td>
                                     </tr>
                                 ))}
@@ -77,7 +83,7 @@ export default function FinanceVentes({ organization, period, periodLabel, store
                                         </Link>
                                         <p className="truncate text-[13px] text-ink-muted">{order.customer}</p>
                                     </div>
-                                    <p className="shrink-0 text-sm font-semibold text-ink">{formatMoney(order.total_incl_tax)}</p>
+                                    <div className="shrink-0 text-right"><p className="text-sm font-semibold text-ink">{formatMoney(order.net_total)}</p><p className="text-[11px] text-ink-muted">Brut {formatMoney(order.total_incl_tax)} · retours -{formatMoney(order.returned_total)}</p></div>
                                 </div>
                                 <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1.5 text-[13px]">
                                     <div className="min-w-0">

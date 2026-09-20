@@ -32,7 +32,7 @@ type Customer = {
 };
 type Summary = { sales_total: string; invoiced_total: string; paid_total: string; outstanding: string; last_activity: string | null };
 type OrderRow = { id: number; order_number: string; sale_date: string; status: string; payment_status: string; total_incl_tax: string };
-type InvoiceRow = { id: number; invoice_number: string | null; invoice_date: string; status: string; total_incl_tax: string };
+type InvoiceRow = { id: number; invoice_number: string | null; version: number; invoice_date: string; status: string; total_incl_tax: string };
 type PaymentRow = { id: number; payment_number: string; payment_date: string; method: string; status: string; amount: string };
 type QuotationRow = { id: number; quotation_number: string | null; quotation_date: string; status: string; total_incl_tax: string };
 type DeliveryNoteRow = { id: number; delivery_note_number: string | null; delivery_date: string; status: string };
@@ -169,7 +169,7 @@ export default function CustomerShow({ customer, summary, orders, ordersCount, i
                         <tbody>
                             {invoices.map((invoice) => (
                                 <tr key={invoice.id} className="border-t border-line">
-                                    <td className="px-4 py-2.5 font-medium text-ink"><Link href={`/invoices/${invoice.id}`}>{invoice.invoice_number ?? `Brouillon #${invoice.id}`}</Link></td>
+                                    <td className="px-4 py-2.5 font-medium text-ink"><Link href={`/invoices/${invoice.id}`}>{invoice.invoice_number ?? `Brouillon #${invoice.id}`} · V{invoice.version}</Link></td>
                                     <td className="px-4 py-2.5 text-ink-muted">{formatDate(invoice.invoice_date)}</td>
                                     <td className="px-4 py-2.5"><DocBadge tone={invoiceStatusTone(invoice.status)}>{label(invoiceStatusLabel, invoice.status)}</DocBadge></td>
                                     <td className="px-4 py-2.5 text-right">{formatMoney(invoice.total_incl_tax)}</td>

@@ -3,9 +3,9 @@
 namespace Tests\Feature\Procurement;
 
 use App\Actions\Documents\CreateFullInvoiceFromSalesOrderAction;
+use App\Actions\Inventory\PrepareTransferRequestAction;
 use App\Actions\Inventory\ReceiveTransferRequestAction;
 use App\Actions\Inventory\ShipTransferRequestAction;
-use App\Actions\Inventory\PrepareTransferRequestAction;
 use App\Actions\Procurement\CancelProcurementAction;
 use App\Actions\Procurement\ChangeProcurementSupplierAction;
 use App\Actions\Procurement\CreateProcurementAction;
@@ -17,6 +17,7 @@ use App\Actions\Sales\ConfirmSalesOrderAction;
 use App\Actions\Sales\FulfillSalesOrderAction;
 use App\Enums\InventoryMovementType;
 use App\Enums\InventoryReservationStatus;
+use App\Enums\SalesOrderSource;
 use App\Enums\SupplierAvailabilityStatus;
 use App\Enums\SupplierProcurementStatus;
 use App\Models\InventoryBalance;
@@ -33,6 +34,7 @@ use App\Models\TransferRequest;
 use App\Models\User;
 use App\Models\Warehouse;
 use Illuminate\Validation\ValidationException;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 use Tests\Support\SalesTestCase;
 
 class SupplierProcurementTest extends SalesTestCase
@@ -269,7 +271,8 @@ class SupplierProcurementTest extends SalesTestCase
 
         $movement = InventoryMovement::query()->where('movement_type', InventoryMovementType::SupplierReceipt->value)->firstOrFail();
         $this->expectException(\LogicException::class);
-        $movement->update(['quantity' => '99.0000']);
+        $movement->quantity = '99.0000';
+        $movement->save();
     }
 
     // --- 12. receipt into the wrong warehouse triggers a transfer request ---
@@ -442,7 +445,7 @@ class SupplierProcurementTest extends SalesTestCase
         $otherOrg = $this->createOrganization($otherOwner, 'Other Org');
         $foreignSupplier = $this->makeSupplier($otherOrg, 'Foreign Supplier');
 
-        $this->expectException(\Symfony\Component\HttpKernel\Exception\HttpException::class);
+        $this->expectException(HttpException::class);
         $this->raise($owner, $order, $line, $foreignSupplier, '6.0000');
     }
 
@@ -516,7 +519,7 @@ class SupplierProcurementTest extends SalesTestCase
         [$owner, $org, $store, $showroom, , $variant, $supplier] = $this->context('4.0000');
         $order = $this->createDraftOrder($owner, $org, $store, null);
         $line = $this->addCatalogLine($owner, $order->fresh(), $variant, $showroom, ['quantity' => '10.0000']);
-        $order->source = \App\Enums\SalesOrderSource::Pos;
+        $order->source = SalesOrderSource::Pos;
         $order->pos_warehouse_id = $showroom->id;
         $order->save();
 

@@ -239,9 +239,17 @@ class PosOrganizationStockSourcingTest extends PosTestCase
         $draft = $this->createPosDraft($owner, $organization, $store, $showroom);
 
         $this->actingAs($owner)->postJson(route('pos.drafts.lines.store', $draft), $this->draftLine($variant->id, $showroom->id, '2'))
-            ->assertUnprocessable()->assertJsonValidationErrors('quantity');
+            ->assertOk()
+            ->assertJsonPath('active_sale.lines.0.company_covered', '1.0000')
+            ->assertJsonPath('active_sale.lines.0.to_procure', '1.0000')
+            ->assertJsonPath('active_sale.lines.0.needs_procurement', true);
 
-        $this->assertSame(0, SalesOrderInventoryAllocation::query()->where('organization_id', $organization->id)->count());
+        $this->assertSame(1, SalesOrderInventoryAllocation::query()->where('organization_id', $organization->id)->count());
+        $this->assertDatabaseHas('sales_order_inventory_allocations', [
+            'organization_id' => $organization->id,
+            'warehouse_id' => $showroom->id,
+            'quantity' => 2,
+        ]);
         $this->assertSame(0, SalesOrderInventoryAllocation::query()->where('warehouse_id', $foreignWarehouse->id)->count());
     }
 

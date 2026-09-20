@@ -2,8 +2,9 @@ import DocBadge from '@/components/ui/DocBadge';
 import { Button } from '@/components/ui/Button';
 import { Popover } from '@/components/pos/primitives';
 import SalesLayout from '@/layouts/SalesLayout';
-import { formatDate, formatMoney, formatQuantity } from '@/utils/format';
+import { formatDate, formatDateTime, formatMoney, formatQuantity } from '@/utils/format';
 import {
+    deliveryNoteStatusLabel,
     fulfillmentLabel,
     fulfillmentTone,
     invoiceStatusLabel,
@@ -39,6 +40,7 @@ type Line = {
     total_incl_tax: string;
     allocations: Allocation[];
     out_of_stock_article: OutOfStockArticleRef;
+    addendum: { id: number; sequence: number } | null;
 };
 type Customer = {
     id: number;
@@ -69,6 +71,9 @@ type Order = {
     total_incl_tax: string;
     pos_shipping_fee: string;
     notes: string | null;
+    cancelled_at: string | null;
+    cancellation_reason: string | null;
+    cancelled_by: { name: string } | null;
     store: { name: string; code: string };
     customer: Customer;
     created_by: { name: string } | null;
@@ -87,7 +92,24 @@ type Payment = {
     financial_account: Account;
     received_by: { name: string };
 };
-type InvoiceDoc = { id: number; invoice_number: string | null; invoice_date: string; status: string; total_incl_tax: string };
+type Refund = {
+    id: number;
+    refund_number: string;
+    method: string;
+    status: string;
+    amount: string;
+    currency_code: string;
+    refund_date: string;
+    reason: string;
+    original_payment: { id: number; payment_number: string };
+    financial_account: { id: number; name: string; code: string; type: string };
+    refunded_by: { name: string } | null;
+};
+type InvoiceDoc = { id: number; sales_order_revision_id: number | null; sales_order_addendum_id: number | null; invoice_number: string | null; version: number; invoice_date: string; status: string; total_incl_tax: string };
+type Revision = { id: number; revision_number: number; status: string; reason: string; initiated_at: string | null; initiated_by: string | null; completed_at: string | null; completed_by: string | null; before_total: string; after_total: string | null };
+type Addendum = { id: number; sequence: number; before_total: string; added_total: string; after_total: string; fulfilled_at: string | null; created_at: string | null; created_by: string | null; lines: Pick<Line, 'id' | 'product_name' | 'variant_name' | 'quantity' | 'total_incl_tax'>[] };
+type ActiveCorrection = { id: number; revision_number: number; reason: string };
+type CompletionEligibility = { allowed: boolean; code: string; reason: string | null };
 type PaymentEntry = { method: string; financial_account_id: string; amount: string; payment_date: string; reference: string; external_reference: string; notes: string };
 type TransferReq = { id: number; request_number: string; status: string; source: string | null; destination: string | null; unit_count: number };
 type ProcurementRow = {
@@ -126,15 +148,38 @@ type ProcurementData = {
     suppliers: { id: number; name: string }[];
     warehouses: { id: number; name: string; code: string }[];
 };
+type CustomerExchange = {
+    id: number;
+    exchange_number: string;
+    status: string;
+    settlement_status: string;
+    returned_total: string;
+    new_items_total: string;
+    difference_amount: string;
+    created_at: string | null;
+    return_number: string | null;
+    addendum_sequence: number | null;
+};
 type Props = {
     order: Order;
-    paymentSummary: { paid: string; remaining: string; status: string };
+    paymentSummary: { paid: string; collected: string; refunded: string; net: string; remaining: string; status: string };
     payments: Payment[];
+    refunds: Refund[];
     financialAccounts: Account[];
     documents: { invoices: InvoiceDoc[]; deliveryNotes: { id: number; delivery_note_number: string | null; delivery_date: string; status: string }[] };
     awaitingReplenishment: boolean;
     procurement: ProcurementData;
     transferRequests: TransferReq[];
+    revisions: Revision[];
+    activeCorrection: ActiveCorrection | null;
+    pendingReplacementInvoice: boolean;
+    invoiceStaleAfterCompletion: boolean;
+    addenda: Addendum[];
+    customerReturns: any[];
+    customerExchanges: CustomerExchange[];
+    returnPolicy: any | null;
+    commercialSummary: { gross: string; returns: string; net: string; state: 'none' | 'partial' | 'full'; fully_returned: boolean };
+    completionEligibility: CompletionEligibility;
     can: {
         update: boolean;
         confirm: boolean;
@@ -145,6 +190,10 @@ type Props = {
         createInvoice: boolean;
         createDeliveryNote: boolean;
         reportOutOfStockArticle: boolean;
+        correct: boolean;
+        completePos: boolean;
+        createReturn: boolean;
+        createExchange: boolean;
     };
 };
 
@@ -179,17 +228,22 @@ const TR_STATUS_LABEL: Record<string, string> = {
     cancelled: 'Annulée',
 };
 
-export default function ShowOrder({ order, paymentSummary, payments, financialAccounts, documents, awaitingReplenishment, procurement, transferRequests, can }: Props) {
+export default function ShowOrder({ order, paymentSummary, payments, refunds, financialAccounts, documents, awaitingReplenishment, procurement, transferRequests, revisions, activeCorrection, pendingReplacementInvoice, invoiceStaleAfterCompletion, addenda, customerReturns, customerExchanges, returnPolicy, commercialSummary, completionEligibility, can }: Props) {
     const [confirmCancel, setConfirmCancel] = useState(false);
     const cancellation = useForm({ reason: '' });
     const createInvoice = useForm({});
+    const correctionForm = useForm({ reason: '' });
+    const [showCorrection, setShowCorrection] = useState(false);
     const paymentForm = useForm<{ client_operation_id: string; payments: PaymentEntry[] }>({
         client_operation_id: crypto.randomUUID(),
         payments: [blankPayment(paymentSummary.remaining)],
     });
 
     const activeInvoice = documents.invoices.find((i) => i.status !== 'cancelled') ?? null;
+    const currentRevision = revisions.at(-1) ?? null;
+    const correctionOrderError = (correctionForm.errors as Record<string, string>).order;
     const activeDeliveryNote = documents.deliveryNotes.find((n) => n.status !== 'cancelled') ?? null;
+    const canCreateDeliveryNoteForOrder = order.status === 'confirmed' && order.fulfillment_status === 'unfulfilled' && !activeDeliveryNote && can.createDeliveryNote;
     const isCompany = (order.customer?.type ?? 'individual') === 'company' || !!order.customer_company;
     const net = (Number(order.subtotal_excl_tax) - Number(order.discount_total)).toFixed(4);
     const hasDiscount = Number(order.discount_total) > 0;
@@ -198,6 +252,10 @@ export default function ShowOrder({ order, paymentSummary, payments, financialAc
     const cancel = (event: FormEvent) => {
         event.preventDefault();
         cancellation.post(`/sales/orders/${order.id}/cancel`, { preserveScroll: true, onSuccess: () => setConfirmCancel(false) });
+    };
+    const startCorrection = (event: FormEvent) => {
+        event.preventDefault();
+        correctionForm.post(`/sales/orders/${order.id}/corrections`);
     };
     const recordPayments = (event: FormEvent) => {
         event.preventDefault();
@@ -227,25 +285,70 @@ export default function ShowOrder({ order, paymentSummary, payments, financialAc
                     </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                    {order.status === 'draft' && can.update && (
+                    {activeCorrection && can.update ? (
+                        <Link
+                            href={`/sales/orders/${order.id}/edit`}
+                            className="inline-flex min-h-10 items-center rounded-field bg-primary px-4 text-sm font-medium text-primary-fg hover:bg-primary-hover"
+                        >
+                            Continuer la correction
+                        </Link>
+                    ) : order.status === 'draft' && can.update ? (
                         <Link
                             href={`/sales/orders/${order.id}/edit`}
                             className="inline-flex min-h-10 items-center rounded-field border border-line-strong bg-surface px-4 text-sm text-ink hover:bg-raised"
                         >
                             Modifier
                         </Link>
-                    )}
-                    {order.status === 'draft' && can.confirm && (
+                    ) : null}
+                    {order.status === 'draft' && !activeCorrection && can.confirm && (
                         <Button onClick={() => router.post(`/sales/orders/${order.id}/confirm`)}>Confirmer</Button>
                     )}
 
-                    {order.status === 'confirmed' && !activeInvoice && can.createInvoice && (
+                    {order.status === 'confirmed' && order.fulfillment_status === 'unfulfilled' && can.correct && (
+                        <Button variant="secondary" onClick={() => setShowCorrection(true)}>Corriger la commande</Button>
+                    )}
+
+                    {can.completePos && (
+                        <Link
+                            href={`/sales/orders/${order.id}/completion`}
+                            className="inline-flex min-h-10 items-center rounded-field bg-primary px-4 text-sm font-medium text-primary-fg hover:bg-primary-hover"
+                        >
+                            Compléter la commande
+                        </Link>
+                    )}
+                    {!can.completePos && order.source === 'pos' && completionEligibility.code !== 'missing_permission' && (
+                        <span className="inline-flex flex-col items-start gap-1">
+                            <button
+                                type="button"
+                                disabled
+                                title={completionEligibility.reason ?? undefined}
+                                className="inline-flex min-h-10 cursor-not-allowed items-center rounded-field border border-line bg-raised px-4 text-sm font-medium text-ink-faint opacity-70"
+                            >
+                                Compléter la commande
+                            </button>
+                            {completionEligibility.reason && (
+                                <span className="max-w-xs text-xs text-ink-muted">{completionEligibility.reason}</span>
+                            )}
+                        </span>
+                    )}
+                    {can.createReturn && (
+                        <Link href={`/sales/orders/${order.id}/returns/create`} className="inline-flex min-h-10 items-center rounded-field border border-line-strong bg-surface px-4 text-sm font-medium text-ink hover:bg-raised">
+                            Retourner des articles
+                        </Link>
+                    )}
+                    {can.createExchange && (
+                        <Link href={`/sales/orders/${order.id}/exchanges/create`} className="inline-flex min-h-10 items-center rounded-field border border-line-strong bg-surface px-4 text-sm font-medium text-ink hover:bg-raised">
+                            Échanger des articles
+                        </Link>
+                    )}
+
+                    {order.status === 'confirmed' && (!activeInvoice || pendingReplacementInvoice) && can.createInvoice && (
                         <Button
                             loading={createInvoice.processing}
                             loadingText="Création…"
                             onClick={() => createInvoice.post(`/sales/orders/${order.id}/invoices`)}
                         >
-                            Créer facture
+                            {pendingReplacementInvoice ? 'Générer la nouvelle facture' : 'Créer facture'}
                         </Button>
                     )}
                     {activeInvoice && activeInvoice.status === 'draft' && (
@@ -256,7 +359,7 @@ export default function ShowOrder({ order, paymentSummary, payments, financialAc
                             Continuer la facture
                         </Link>
                     )}
-                    {activeInvoice && activeInvoice.status === 'issued' && (
+                    {activeInvoice && activeInvoice.status === 'issued' && !activeCorrection && !pendingReplacementInvoice && (
                         <>
                             <Link
                                 href={`/invoices/${activeInvoice.id}`}
@@ -275,10 +378,7 @@ export default function ShowOrder({ order, paymentSummary, payments, financialAc
                         </>
                     )}
 
-                    {order.status === 'confirmed' &&
-                        order.fulfillment_status === 'fulfilled' &&
-                        !activeDeliveryNote &&
-                        can.createDeliveryNote && (
+                    {canCreateDeliveryNoteForOrder && (
                             <button
                                 type="button"
                                 onClick={() => router.post(`/sales/orders/${order.id}/delivery-notes`)}
@@ -286,9 +386,75 @@ export default function ShowOrder({ order, paymentSummary, payments, financialAc
                             >
                                 Créer bon de livraison
                             </button>
-                        )}
+                    )}
                 </div>
             </div>
+
+            {showCorrection && can.correct && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="presentation">
+                    <form
+                        onSubmit={startCorrection}
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="correction-title"
+                        className="w-full max-w-lg space-y-4 rounded-card border border-line bg-surface p-5 shadow-xl"
+                    >
+                        <div>
+                            <h2 id="correction-title" className="text-lg font-semibold text-ink">Corriger la commande</h2>
+                            <p className="mt-1 text-sm text-ink-muted">Indiquez le motif de la correction avant de modifier la commande.</p>
+                        </div>
+                        <div>
+                            <label htmlFor="correction-reason" className="mb-1 block text-sm font-medium text-ink">Motif de la correction</label>
+                            <textarea
+                                id="correction-reason"
+                                required
+                                autoFocus
+                                value={correctionForm.data.reason}
+                                onChange={(event) => correctionForm.setData('reason', event.target.value)}
+                                placeholder="Ex. Ajout d’un article demandé par le client"
+                                className="min-h-28 w-full rounded-field border border-line-strong bg-surface px-3 py-2 text-sm"
+                            />
+                        </div>
+                        {correctionForm.errors.reason && <p className="text-sm text-danger">{correctionForm.errors.reason}</p>}
+                        {correctionOrderError && <p className="text-sm text-danger">{correctionOrderError}</p>}
+                        <div className="flex flex-wrap justify-end gap-2">
+                            <Button type="button" variant="secondary" onClick={() => setShowCorrection(false)}>Annuler</Button>
+                            <Button type="submit" loading={correctionForm.processing} loadingText="Ouverture…">Démarrer la correction</Button>
+                        </div>
+                    </form>
+                </div>
+            )}
+
+            {order.status === 'confirmed' && order.fulfillment_status === 'fulfilled' && (
+                <div className="mb-6 rounded-field border border-line bg-raised/60 px-4 py-3 text-sm text-ink-muted">
+                    Les articles déjà remis sont verrouillés. Vous pouvez uniquement ajouter un nouveau complément POS local ; toute réduction ou suppression relève d’un retour ou d’un avoir.
+                </div>
+            )}
+
+            {order.status === 'cancelled' && (
+                <section className="mb-6 rounded-card border border-danger/30 bg-danger-soft/40 p-5">
+                    <h2 className="font-semibold text-danger">Commande annulée</h2>
+                    <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-3">
+                        <div><dt className="text-ink-faint">Motif</dt><dd className="text-ink">{order.cancellation_reason ?? '—'}</dd></div>
+                        <div><dt className="text-ink-faint">Annulée par</dt><dd className="text-ink">{order.cancelled_by?.name ?? 'Utilisateur supprimé'}</dd></div>
+                        <div><dt className="text-ink-faint">Date d’annulation</dt><dd className="text-ink">{order.cancelled_at ? formatDate(order.cancelled_at) : '—'}</dd></div>
+                    </dl>
+                    <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                        <Card label="Encaissé">{formatMoney(paymentSummary.collected, order.currency_code)}</Card>
+                        <Card label="Remboursé">{formatMoney(paymentSummary.refunded, order.currency_code)}</Card>
+                        <Card label="Net encaissé">{formatMoney(paymentSummary.net, order.currency_code)}</Card>
+                    </div>
+                </section>
+            )}
+
+            {customerReturns.length > 0 && (
+                <section className="mb-6 rounded-card border border-line bg-surface p-5">
+                    <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="font-semibold">Retours</h2>{commercialSummary.state !== 'none' && <span className={`rounded-full px-3 py-1 text-xs font-semibold ${commercialSummary.fully_returned ? 'bg-danger-soft text-danger' : 'bg-warning-soft text-warning'}`}>{commercialSummary.fully_returned ? 'Retournée intégralement' : 'Retour partiel'}</span>}</div>
+                    <div className="mt-3 grid gap-3 sm:grid-cols-3"><Card label="Vente initiale">{formatMoney(commercialSummary.gross, order.currency_code)}</Card><Card label="Retours">-{formatMoney(commercialSummary.returns, order.currency_code)}</Card><Card label="Net commercial">{formatMoney(commercialSummary.net, order.currency_code)}</Card></div>
+                    <div className="mt-3 divide-y divide-line">{customerReturns.map((item) => <Link key={item.id} href={`/sales/returns/${item.id}`} className="flex justify-between py-2 text-sm"><span>{item.return_number} · {item.status}</span><span>-{formatMoney(item.total_incl_tax, order.currency_code)}</span></Link>)}</div>
+                    {returnPolicy && <p className="mt-3 text-xs text-ink-muted">{returnPolicy.within_policy ? 'Retour encore autorisé' : 'Délai de retour dépassé'} · échéance {returnPolicy.deadline ? formatDateTime(returnPolicy.deadline) : '—'}</p>}
+                </section>
+            )}
 
             <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
                 <Card label="Client">
@@ -389,6 +555,9 @@ export default function ShowOrder({ order, paymentSummary, payments, financialAc
                                     <div className="text-xs text-ink-muted">
                                         {[line.variant_name, line.reference ?? line.sku].filter(Boolean).join(' · ')}
                                     </div>
+                                    <div className="mt-0.5 text-xs text-ink-faint">
+                                        {line.addendum ? `Complément #${line.addendum.sequence} · remis` : 'Commande initiale · déjà remis'}
+                                    </div>
                                     {line.allocations.length > 0 && (
                                         <div className="mt-0.5 text-xs text-ink-faint">
                                             {line.allocations
@@ -458,57 +627,139 @@ export default function ShowOrder({ order, paymentSummary, payments, financialAc
                 procurement panel above (distinct business problems). */}
             <OutOfStockArticlePanel order={order} canReport={can.reportOutOfStockArticle} />
 
-            {/* Invoice panel */}
+            {revisions.length > 0 && (
+                <section className="mb-6 rounded-card border border-line bg-surface p-5">
+                    <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Historique des corrections commerciales</h2>
+                    <div className="mt-3 space-y-3">
+                        {revisions.map((revision) => (
+                            <div key={revision.revision_number} className="rounded-field border border-line bg-raised/50 p-3 text-sm">
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                    <span className="font-medium text-ink">Correction {revision.revision_number}</span>
+                                    <span className="text-ink-muted">{revision.initiated_by ?? 'Utilisateur'} · {revision.initiated_at ? formatDate(revision.initiated_at) : '—'}</span>
+                                </div>
+                                <p className="mt-1 text-ink-muted">{revision.reason}</p>
+                                <p className="mt-1 text-xs text-ink-faint">
+                                    {formatMoney(revision.before_total, order.currency_code)} → {revision.after_total ? formatMoney(revision.after_total, order.currency_code) : 'en cours'}
+                                </p>
+                            </div>
+                        ))}
+                    </div>
+                </section>
+            )}
+
+            {addenda.length > 0 && (
+                <section className="mb-6 rounded-card border border-line bg-surface p-5">
+                    <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Historique des compléments POS</h2>
+                    <div className="mt-3 space-y-3">
+                        <div className="rounded-field border border-line bg-raised/50 p-3 text-sm">
+                            <span className="font-medium text-ink">Commande initiale</span>
+                        </div>
+                        {addenda.map((addendum) => (
+                            <div key={addendum.id} className="rounded-field border border-line bg-raised/50 p-3 text-sm">
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                    <span className="font-medium text-ink">Complément #{addendum.sequence}</span>
+                                    <span className="text-ink-muted">{addendum.created_by ?? 'Utilisateur'} · {addendum.fulfilled_at ? formatDate(addendum.fulfilled_at) : '—'}</span>
+                                </div>
+                                <p className="mt-1 text-ink-muted">
+                                    {addendum.lines.map((line) => `${line.product_name} × ${formatQuantity(line.quantity)}`).join(' · ')}
+                                </p>
+                                <p className="mt-1 text-xs text-ink-faint">
+                                    + {formatMoney(addendum.added_total, order.currency_code)} · {formatMoney(addendum.before_total, order.currency_code)} → {formatMoney(addendum.after_total, order.currency_code)}
+                                </p>
+                            </div>
+                        ))}
+                    </div>
+                </section>
+            )}
+
+            {customerExchanges.length > 0 && (
+                <section className="mb-6 rounded-card border border-line bg-surface p-5">
+                    <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Historique des échanges</h2>
+                    <div className="mt-3 divide-y divide-line">
+                        {customerExchanges.map((exchange) => (
+                            <Link key={exchange.id} href={`/sales/exchanges/${exchange.id}`} className="grid gap-2 py-3 text-sm sm:grid-cols-[1fr_auto]">
+                                <div>
+                                    <p className="font-medium text-ink">{exchange.exchange_number} · {exchange.status}</p>
+                                    <p className="text-xs text-ink-muted">Retour {exchange.return_number ?? '—'}{exchange.addendum_sequence ? ` · Complément #${exchange.addendum_sequence}` : ''}</p>
+                                </div>
+                                <div className="text-right text-xs text-ink-muted">
+                                    <p>Retour : {formatMoney(exchange.returned_total, order.currency_code)}</p>
+                                    <p>Nouveaux : {formatMoney(exchange.new_items_total, order.currency_code)}</p>
+                                    <p className="font-semibold text-ink">Différence : {formatMoney(Math.abs(Number(exchange.difference_amount)), order.currency_code)}</p>
+                                </div>
+                            </Link>
+                        ))}
+                    </div>
+                </section>
+            )}
+
+            {/* Invoice history */}
             <section className="mb-6 rounded-card border border-line bg-surface p-5">
-                <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Facture</h2>
-                {!activeInvoice && (
-                    <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
-                        <p className="text-sm text-ink-muted">Aucune facture créée.</p>
+                <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Factures liées</h2>
+                {pendingReplacementInvoice && (
+                    <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-field border border-warning/30 bg-warning-soft/50 p-4">
+                        <div>
+                            <p className="font-semibold text-ink">{invoiceStaleAfterCompletion ? 'Commande complétée après cette facture' : 'Commande corrigée — nouvelle facture à générer'}</p>
+                            <p className="mt-1 text-sm text-ink-muted">La facture émise précédemment reste l’état commercial historique jusqu’à l’émission de sa remplaçante.</p>
+                        </div>
                         {order.status === 'confirmed' && can.createInvoice && (
                             <Button
                                 loading={createInvoice.processing}
                                 loadingText="Création…"
                                 onClick={() => createInvoice.post(`/sales/orders/${order.id}/invoices`)}
                             >
+                                Générer la nouvelle version
+                            </Button>
+                        )}
+                    </div>
+                )}
+                {documents.invoices.length === 0 && !pendingReplacementInvoice && (
+                    <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                        <p className="text-sm text-ink-muted">Aucune facture créée.</p>
+                        {order.status === 'confirmed' && can.createInvoice && (
+                            <Button loading={createInvoice.processing} loadingText="Création…" onClick={() => createInvoice.post(`/sales/orders/${order.id}/invoices`)}>
                                 Créer une facture
                             </Button>
                         )}
                     </div>
                 )}
-                {activeInvoice && (
-                    <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
-                        <div className="flex items-center gap-2 text-sm">
-                            <DocBadge tone={invoiceStatusTone(activeInvoice.status)}>
-                                {label(invoiceStatusLabel, activeInvoice.status)}
-                            </DocBadge>
-                            <span className="font-medium text-ink">
-                                {activeInvoice.status === 'issued'
-                                    ? `Facture ${activeInvoice.invoice_number}`
-                                    : 'Facture brouillon'}
-                            </span>
-                            <span className="text-ink-muted">
-                                {formatMoney(activeInvoice.total_incl_tax, order.currency_code)}
-                            </span>
-                        </div>
-                        <div className="flex gap-2">
-                            <Link
-                                href={`/invoices/${activeInvoice.id}`}
-                                className="inline-flex min-h-9 items-center rounded-field border border-line-strong bg-surface px-3 text-sm text-ink hover:bg-raised"
-                            >
-                                {activeInvoice.status === 'draft' ? 'Continuer' : 'Voir'}
-                            </Link>
-                            {activeInvoice.status === 'issued' && (
-                                <a
-                                    href={`/invoices/${activeInvoice.id}/pdf`}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="inline-flex min-h-9 items-center rounded-field border border-line-strong bg-surface px-3 text-sm text-ink hover:bg-raised"
-                                >
-                                    PDF
-                                </a>
-                            )}
-                        </div>
-                    </div>
+                {documents.invoices.length > 0 && (
+                    <ul className="mt-4 divide-y divide-line border-t border-line text-sm">
+                        {documents.invoices.map((invoice) => {
+                            const isPreviousCommercialState = currentRevision !== null
+                                && invoice.sales_order_revision_id !== currentRevision.id
+                                && invoice.status === 'issued';
+                            const isPreCompletionVersion = invoiceStaleAfterCompletion
+                                && invoice.status === 'issued'
+                                && invoice.sales_order_addendum_id !== addenda.at(-1)?.id;
+                            const isCurrentRevisionDraft = currentRevision !== null
+                                && invoice.sales_order_revision_id === currentRevision.id
+                                && invoice.status === 'draft';
+
+                            return (
+                                <li key={invoice.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
+                                    <div>
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <Link href={`/invoices/${invoice.id}`} className="font-medium text-ink underline">
+                                                {invoice.invoice_number ? `Facture ${invoice.invoice_number}` : 'Facture brouillon'}
+                                            </Link>
+                                            <DocBadge tone={invoiceStatusTone(invoice.status)}>{label(invoiceStatusLabel, invoice.status)}</DocBadge>
+                                        </div>
+                                        <p className="mt-1 text-xs font-medium text-ink-muted">Version {invoice.version}</p>
+                                        {(isPreviousCommercialState || isPreCompletionVersion) && <p className="mt-1 text-xs text-warning">Commande complétée après cette facture</p>}
+                                        {invoice.status === 'issued' && !isPreviousCommercialState && !isPreCompletionVersion && <p className="mt-1 text-xs text-ink-muted">Facture actuelle</p>}
+                                        {isCurrentRevisionDraft && <p className="mt-1 text-xs text-ink-muted">Nouvelle facture à vérifier avant émission</p>}
+                                    </div>
+                                    <div className="flex items-center gap-3">
+                                        <span className="tabular-nums text-ink-muted">{formatMoney(invoice.total_incl_tax, order.currency_code)}</span>
+                                        <Link href={`/invoices/${invoice.id}`} className="inline-flex min-h-9 items-center rounded-field border border-line-strong bg-surface px-3 text-ink hover:bg-raised">
+                                            {invoice.status === 'draft' ? 'Continuer' : 'Voir'}
+                                        </Link>
+                                    </div>
+                                </li>
+                            );
+                        })}
+                    </ul>
                 )}
             </section>
 
@@ -557,6 +808,38 @@ export default function ShowOrder({ order, paymentSummary, payments, financialAc
                     </table>
                 </div>
             </section>
+
+            {refunds.length > 0 && (
+                <section className="mb-6">
+                    <h2 className="mb-2 text-sm font-semibold text-ink">Historique des remboursements</h2>
+                    <div className="overflow-x-auto rounded-card border border-line bg-surface">
+                        <table className="w-full min-w-[760px] text-left text-sm">
+                            <thead className="border-b border-line bg-raised text-xs uppercase tracking-wide text-ink-muted">
+                                <tr>
+                                    <th className="px-4 py-3 font-medium">Date</th>
+                                    <th className="px-4 py-3 font-medium">Remboursement</th>
+                                    <th className="px-4 py-3 font-medium">Paiement original</th>
+                                    <th className="px-4 py-3 font-medium">Moyen / compte</th>
+                                    <th className="px-4 py-3 font-medium">Motif</th>
+                                    <th className="px-4 py-3 text-right font-medium">Sortie</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-line">
+                                {refunds.map((refund) => (
+                                    <tr key={refund.id}>
+                                        <td className="px-4 py-3 text-ink-muted">{formatDate(refund.refund_date)}</td>
+                                        <td className="px-4 py-3 font-medium text-ink">{refund.refund_number}</td>
+                                        <td className="px-4 py-3 text-ink-muted">{refund.original_payment.payment_number}</td>
+                                        <td className="px-4 py-3 text-ink-muted">{label(paymentMethodLabel, refund.method)} · {refund.financial_account.name}</td>
+                                        <td className="px-4 py-3 text-ink-muted">{refund.reason}</td>
+                                        <td className="px-4 py-3 text-right font-medium tabular-nums text-danger">− {formatMoney(refund.amount, order.currency_code)}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+            )}
 
             {/* Record payment (kept, secondary) */}
             {can.recordPayment && order.status === 'confirmed' && paymentSummary.remaining !== '0.0000' && (
@@ -688,7 +971,7 @@ export default function ShowOrder({ order, paymentSummary, payments, financialAc
             )}
 
             {/* Delivery notes */}
-            {documents.deliveryNotes.length > 0 && (
+            {(documents.deliveryNotes.length > 0 || canCreateDeliveryNoteForOrder) && (
                 <section className="mb-6 rounded-card border border-line bg-surface p-5">
                     <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Bons de livraison</h2>
                     <ul className="mt-2 space-y-1 text-sm">
@@ -697,9 +980,10 @@ export default function ShowOrder({ order, paymentSummary, payments, financialAc
                                 <Link href={`/delivery-notes/${note.id}`} className="text-ink underline">
                                     {note.delivery_note_number ?? 'Brouillon'}
                                 </Link>{' '}
-                                <span className="text-ink-muted">· {label(invoiceStatusLabel, note.status)}</span>
+                                <span className="text-ink-muted">· {label(deliveryNoteStatusLabel, note.status)}</span>
                             </li>
                         ))}
+                        {documents.deliveryNotes.length === 0 && <li className="text-ink-muted">Aucun bon de livraison créé.</li>}
                     </ul>
                 </section>
             )}
@@ -723,18 +1007,35 @@ export default function ShowOrder({ order, paymentSummary, payments, financialAc
                             Annuler la commande
                         </button>
                     ) : (
-                        <form onSubmit={cancel} className="max-w-xl space-y-3 rounded-card border border-danger/30 bg-danger-soft/40 p-4">
-                            <p className="text-sm font-medium text-danger">Annuler définitivement cette commande ?</p>
+                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="presentation">
+                        <form onSubmit={cancel} role="dialog" aria-modal="true" aria-labelledby="cancel-order-title" className="w-full max-w-lg space-y-4 rounded-card border border-line bg-surface p-5 shadow-xl">
+                            <div>
+                                <h2 id="cancel-order-title" className="text-lg font-semibold text-ink">Annuler la commande</h2>
+                                <p className="mt-1 text-sm text-ink-muted">Commande {order.order_number} · Total {formatMoney(order.total_incl_tax, order.currency_code)}</p>
+                                <p className="mt-1 text-sm text-ink-muted">État de livraison : {label(fulfillmentLabel, order.fulfillment_status)}</p>
+                            </div>
+                            {paymentSummary.collected !== '0.0000' && (
+                                <div className="rounded-field border border-warning/30 bg-warning-soft/50 p-3 text-sm">
+                                    <p>Montant encaissé : <strong>{formatMoney(paymentSummary.collected, order.currency_code)}</strong></p>
+                                    <p>Montant à rembourser : <strong>{formatMoney(paymentSummary.net, order.currency_code)}</strong></p>
+                                    <p className="mt-1 text-xs text-ink-muted">Le paiement original restera dans l’historique. Une sortie de remboursement distincte sera enregistrée sur le même compte.</p>
+                                </div>
+                            )}
+                            <label htmlFor="cancellation-reason" className="block text-sm font-medium text-ink">Motif de l’annulation</label>
                             <textarea
-                                required={order.status === 'confirmed'}
+                                id="cancellation-reason"
+                                required
+                                autoFocus
                                 value={cancellation.data.reason}
                                 onChange={(e) => cancellation.setData('reason', e.target.value)}
-                                placeholder={order.status === 'confirmed' ? 'Motif requis' : 'Motif (facultatif)'}
+                                placeholder="Ex. Client a changé d’avis"
                                 className="w-full rounded-field border border-line-strong px-3 py-2 text-sm"
                             />
+                            {cancellation.errors.reason && <p className="text-sm text-danger">{cancellation.errors.reason}</p>}
+                            {(cancellation.errors as Record<string, string>).order && <p className="text-sm text-danger">{(cancellation.errors as Record<string, string>).order}</p>}
                             <div className="flex gap-2">
                                 <Button type="submit" variant="danger" loading={cancellation.processing} loadingText="Annulation…">
-                                    Confirmer l’annulation
+                                    {paymentSummary.net !== '0.0000' ? 'Annuler et rembourser' : 'Confirmer l’annulation'}
                                 </Button>
                                 <button
                                     type="button"
@@ -745,6 +1046,7 @@ export default function ShowOrder({ order, paymentSummary, payments, financialAc
                                 </button>
                             </div>
                         </form>
+                        </div>
                     )}
                 </div>
             )}

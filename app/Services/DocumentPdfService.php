@@ -9,6 +9,7 @@ use App\Models\DeliveryNote;
 use App\Models\Invoice;
 use App\Models\Quotation;
 use App\Models\TransferRequest;
+use App\Models\CreditNote;
 use Illuminate\Validation\ValidationException;
 
 class DocumentPdfService
@@ -19,7 +20,17 @@ class DocumentPdfService
         private readonly DeliveryNoteDocumentRenderer $deliveryNotes,
         private readonly QuotationDocumentRenderer $quotations,
         private readonly TransferRequestDocumentRenderer $transferRequests,
+        private readonly CreditNoteDocumentRenderer $creditNotes,
     ) {}
+
+    /** @return array{bytes:string, filename:string, mime:string} */
+    public function creditNote(CreditNote $note): array
+    {
+        if ($note->status !== 'issued') {
+            throw ValidationException::withMessages(['credit_note' => 'Only an issued Credit Note has an official PDF.']);
+        }
+        return ['bytes' => $this->pdf->generate($this->creditNotes->html($note), ['pageNumbers' => true]), 'filename' => $this->filename('Avoir', $note->credit_note_number), 'mime' => 'application/pdf'];
+    }
 
     /**
      * The optional Bon de sortie for an internal Transfer Request. Purely a
@@ -67,7 +78,12 @@ class DocumentPdfService
             throw ValidationException::withMessages(['invoice' => 'Only an issued Invoice has an official PDF.']);
         }
 
-        return ['bytes' => $this->pdf->generate($this->invoices->html($invoice), ['pageNumbers' => true]), 'filename' => $this->filename('Facture', $invoice->invoice_number), 'mime' => 'application/pdf'];
+        $number = $invoice->invoice_number;
+        if ($invoice->version > 1 || $invoice->status === InvoiceStatus::Superseded) {
+            $number .= '-V'.$invoice->version;
+        }
+
+        return ['bytes' => $this->pdf->generate($this->invoices->html($invoice), ['pageNumbers' => true]), 'filename' => $this->filename('Facture', $number), 'mime' => 'application/pdf'];
     }
 
     /** @return array{bytes:string, filename:string, mime:string} */

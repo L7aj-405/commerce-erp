@@ -3,6 +3,7 @@
 namespace Tests\Unit;
 
 use App\Support\FrenchNumberToWords;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 class FrenchNumberToWordsTest extends TestCase
@@ -15,9 +16,7 @@ class FrenchNumberToWordsTest extends TestCase
         $this->words = new FrenchNumberToWords;
     }
 
-    /**
-     * @dataProvider wholeNumbers
-     */
+    #[DataProvider('wholeNumbers')]
     public function test_it_spells_whole_numbers(int $number, string $expected): void
     {
         $this->assertSame($expected, $this->words->words($number));

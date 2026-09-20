@@ -35,6 +35,7 @@ class FinanceJournalController extends Controller
             'stores' => Store::query()->where('organization_id', $organization->getKey())
                 ->where('status', 'active')->orderBy('name')->get(['id', 'name', 'code']),
             'rows' => $journal->rows($organization, $period, $store),
+            'events' => $journal->events($organization, $period, $store),
         ]);
     }
 }

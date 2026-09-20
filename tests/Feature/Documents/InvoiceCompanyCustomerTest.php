@@ -2,6 +2,8 @@
 
 namespace Tests\Feature\Documents;
 
+use App\Actions\Sales\ConfirmSalesOrderAction;
+use App\Models\User;
 use App\Services\InvoiceDocumentRenderer;
 use Tests\Support\DocumentTestCase;
 
@@ -9,11 +11,11 @@ class InvoiceCompanyCustomerTest extends DocumentTestCase
 {
     public function test_company_billing_identity_is_snapshotted_and_rendered(): void
     {
-        $owner = \App\Models\User::factory()->create();
+        $owner = User::factory()->create();
         $organization = $this->createOrganization($owner);
         $store = $this->createStore($organization, $owner);
         $customer = $this->createCustomer($organization, 'SOCIÉTÉ ATLAS', [
-            'type' => 'business',
+            'type' => 'company',
             'company_name' => 'SOCIÉTÉ ATLAS SARL',
             'tax_identifier' => 'ICE-0009988',
             'billing_address' => '45 Boulevard Zerktouni, Casablanca',
@@ -22,7 +24,7 @@ class InvoiceCompanyCustomerTest extends DocumentTestCase
 
         $order = $this->createDraftOrder($owner, $organization, $store, $customer);
         $this->addCustomLine($owner, $order, ['description' => 'Prestation', 'unit_price_excl_tax' => '1000.0000']);
-        $order = app(\App\Actions\Sales\ConfirmSalesOrderAction::class)->execute($owner, $order)->fresh();
+        $order = app(ConfirmSalesOrderAction::class)->execute($owner, $order)->fresh();
 
         $invoice = $this->createInvoice($owner, $order);
 

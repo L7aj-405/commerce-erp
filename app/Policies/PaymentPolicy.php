@@ -30,7 +30,9 @@ class PaymentPolicy
 
     public function reverse(User $user, Payment $payment): bool
     {
-        return $this->scope($payment->organization_id, $payment->store_id) && $user->hasPermission($payment->organization_id, 'payments.reverse');
+        return $this->scope($payment->organization_id, $payment->store_id)
+            && $user->hasPermission($payment->organization_id, 'payments.reverse')
+            && ! $payment->refunds()->where('status', 'posted')->exists();
     }
 
     private function scope(int $organizationId, int $storeId): bool

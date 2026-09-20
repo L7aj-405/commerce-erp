@@ -2,11 +2,13 @@
 
 namespace Tests\Feature\Finance;
 
+use App\Actions\Sales\ConfirmSalesOrderAction;
+use App\Actions\Sales\SaveSalesOrderLineAction;
+use App\Actions\Sales\StartSalesOrderCorrectionAction;
 use App\Contracts\PdfGenerator;
 use App\Models\DocumentStampApposition;
 use App\Models\Invoice;
 use App\Models\User;
-use App\Services\DocumentPdfService;
 use App\Services\Finance\Export\FinanceCaEncaisseInvoiceZipExport;
 use App\Services\Finance\FinanceInvoiceReadModel;
 use App\Services\Finance\FinancePeriod;
@@ -42,6 +44,11 @@ class FinanceCaEncaisseInvoiceZipExportTest extends QuotationTestCase
         return [$zip, $path];
     }
 
+    private function safeNumber(string $number): string
+    {
+        return trim(preg_replace('/[^A-Za-z0-9._-]+/', '-', $number), '-') ?: 'document';
+    }
+
     public function test_zip_contains_the_official_invoice_pdf_named_after_its_invoice_number(): void
     {
         $this->fakePdfGenerator();
@@ -52,9 +59,10 @@ class FinanceCaEncaisseInvoiceZipExportTest extends QuotationTestCase
 
         $result = app(FinanceCaEncaisseInvoiceZipExport::class)->build($organization, FinancePeriod::fromMonth('2026-09'), null);
 
-        $this->assertStringEndsWith("Factures_2026-09.zip", $result['filename']);
+        $this->assertStringEndsWith('Factures_2026-09.zip', $result['filename']);
         [$zip] = $this->openZip($result['path']);
-        $expectedEntry = 'Facture-'.$invoice->invoice_number.'.pdf';
+        $safeNumber = $this->safeNumber($invoice->invoice_number);
+        $expectedEntry = "Factures/{$safeNumber}/Facture-{$safeNumber}.pdf";
         $this->assertNotFalse($zip->locateName($expectedEntry), 'expected entry '.$expectedEntry);
         $this->assertSame('%PDF-1.4 fake', $zip->getFromName($expectedEntry));
         $zip->close();
@@ -75,7 +83,41 @@ class FinanceCaEncaisseInvoiceZipExportTest extends QuotationTestCase
         [$zip] = $this->openZip($result['path']);
         // manifest.csv + exactly one invoice entry, never two.
         $this->assertSame(2, $zip->numFiles);
-        $this->assertNotFalse($zip->locateName('Facture-'.$invoice->invoice_number.'.pdf'));
+        $safeNumber = $this->safeNumber($invoice->invoice_number);
+        $this->assertNotFalse($zip->locateName("Factures/{$safeNumber}/Facture-{$safeNumber}.pdf"));
+        $zip->close();
+        @unlink($result['path']);
+    }
+
+    public function test_corrected_invoice_zip_filename_and_manifest_are_version_aware(): void
+    {
+        $this->fakePdfGenerator();
+        [$owner, $organization, , $order] = $this->documentFixture(total: '100.0000');
+        $original = $this->issueInvoice($owner, $this->createInvoice($owner, $order, ['invoice_date' => '2026-09-01']));
+        $account = $this->createFinancialAccount($organization);
+        $this->recordPayment($owner, $order, $account, '100.0000', ['payment_date' => '2026-09-05']);
+
+        app(StartSalesOrderCorrectionAction::class)->execute($owner, $order, 'Ajout commercial');
+        $line = $order->fresh()->lines()->firstOrFail();
+        app(SaveSalesOrderLineAction::class)->execute($owner, $order->fresh(), [
+            'line_type' => 'custom', 'description' => 'Consulting', 'reference' => null, 'unit_label' => 'hour',
+            'quantity' => '2.0000', 'unit_price_excl_tax' => '100.0000', 'tax_rate_id' => null,
+            'discount_type' => 'none', 'discount_value' => '0.0000',
+        ], $line);
+        $order = app(ConfirmSalesOrderAction::class)->execute($owner, $order->fresh())->fresh();
+        $current = $this->issueInvoice($owner, $this->createInvoice($owner, $order, ['invoice_date' => '2026-09-02']));
+
+        $result = app(FinanceCaEncaisseInvoiceZipExport::class)->build($organization, FinancePeriod::fromMonth('2026-09'), null);
+        [$zip] = $this->openZip($result['path']);
+        $safeNumber = $this->safeNumber($original->invoice_number);
+        $entry = "Factures/{$safeNumber}/Facture-{$safeNumber}-V2.pdf";
+        $manifest = $zip->getFromName('manifest.csv');
+
+        $this->assertSame($original->invoice_number, $current->invoice_number);
+        $this->assertNotFalse($zip->locateName($entry));
+        $this->assertNotFalse($manifest);
+        $this->assertStringContainsString('Version', $manifest);
+        $this->assertStringContainsString(';2;', $manifest);
         $zip->close();
         @unlink($result['path']);
     }
@@ -110,7 +152,7 @@ class FinanceCaEncaisseInvoiceZipExportTest extends QuotationTestCase
         [$owner, $organization, $store] = $this->documentFixture();
         $order = $this->createDraftOrder($owner, $organization, $store, null, ['sale_date' => '2026-09-01']);
         $this->addCustomLine($owner, $order, ['unit_price_excl_tax' => '2000.0000']);
-        $order = app(\App\Actions\Sales\ConfirmSalesOrderAction::class)->execute($owner, $order)->fresh();
+        $order = app(ConfirmSalesOrderAction::class)->execute($owner, $order)->fresh();
         $account = $this->createFinancialAccount($organization);
         $this->recordPayment($owner, $order, $account, '2000.0000', ['payment_date' => '2026-09-03']);
         // Deliberately: no invoice at all for this advance.
@@ -152,7 +194,7 @@ class FinanceCaEncaisseInvoiceZipExportTest extends QuotationTestCase
 
         $order2 = $this->createDraftOrder($owner, $organization, $orderStamped->store, null, ['sale_date' => '2026-09-02']);
         $this->addCustomLine($owner, $order2, ['unit_price_excl_tax' => '250.0000']);
-        $order2 = app(\App\Actions\Sales\ConfirmSalesOrderAction::class)->execute($owner, $order2)->fresh();
+        $order2 = app(ConfirmSalesOrderAction::class)->execute($owner, $order2)->fresh();
         $unstampedInvoice = $this->issueInvoice($owner, $this->createInvoice($owner, $order2));
 
         $account = $this->createFinancialAccount($organization);
@@ -260,7 +302,6 @@ class FinanceCaEncaisseInvoiceZipExportTest extends QuotationTestCase
         $organizationB = $this->createOrganization($ownerB);
         $storeB = $this->createStore($organizationB, $ownerB);
 
-        $this->addOrganizationMember($organizationA, $ownerA, ['finance.view', 'finance.export']);
         $this->activate($ownerA, $organizationA);
 
         $this->actingAs($ownerA)

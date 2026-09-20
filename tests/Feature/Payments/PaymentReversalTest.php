@@ -47,12 +47,23 @@ class PaymentReversalTest extends PaymentTestCase
         app(ReversePaymentAction::class)->execute($owner, $payment, '  ');
     }
 
-    public function test_paid_confirmed_order_requires_payment_reversal_before_cancellation(): void
+    public function test_paid_unfulfilled_order_cancellation_preserves_collection_and_records_refund(): void
     {
-        [$owner, , , $order, $account] = $this->paymentFixture();
-        $this->recordPayment($owner, $order, $account, '10.0000');
-        $this->expectException(ValidationException::class);
-        app(CancelSalesOrderAction::class)->execute($owner, $order->fresh(), 'Customer request');
+        [$owner, $organization, , $order, $account] = $this->paymentFixture();
+        $payment = $this->recordPayment($owner, $order, $account, '10.0000');
+
+        $cancelled = app(CancelSalesOrderAction::class)->execute($owner, $order->fresh(), 'Customer request');
+
+        $this->assertSame('cancelled', $cancelled->status->value);
+        $this->assertSame('posted', $payment->fresh()->status->value);
+        $this->assertDatabaseHas('payment_refunds', [
+            'organization_id' => $organization->id,
+            'payment_id' => $payment->id,
+            'sales_order_id' => $order->id,
+            'financial_account_id' => $account->id,
+            'amount' => 10,
+        ]);
+        $this->assertDatabaseHas('audit_logs', ['event' => 'payment.refunded', 'organization_id' => $organization->id]);
     }
 
     public function test_order_can_be_cancelled_after_all_posted_payments_are_reversed(): void
@@ -62,5 +73,21 @@ class PaymentReversalTest extends PaymentTestCase
         app(ReversePaymentAction::class)->execute($owner, $payment, 'Void before cancellation');
         $cancelled = app(CancelSalesOrderAction::class)->execute($owner, $order->fresh(), 'Customer request');
         $this->assertSame('cancelled', $cancelled->status->value);
+        $this->assertDatabaseCount('payment_refunds', 0);
+    }
+
+    public function test_a_refunded_payment_cannot_later_be_reversed(): void
+    {
+        [$owner, , , $order, $account] = $this->paymentFixture();
+        $payment = $this->recordPayment($owner, $order, $account, '100.0000');
+        app(CancelSalesOrderAction::class)->execute($owner, $order, 'Customer refund');
+
+        try {
+            app(ReversePaymentAction::class)->execute($owner, $payment->fresh(), 'Attempt to erase collection');
+            $this->fail('A refunded Payment must remain posted and immutable.');
+        } catch (ValidationException) {
+            $this->assertSame('posted', $payment->fresh()->status->value);
+            $this->assertDatabaseCount('payment_refunds', 1);
+        }
     }
 }

@@ -17,12 +17,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 
-/**
- * Financial-line editing for a post-issue correction Draft ONLY. Every method is
- * gated by the `editLines` Invoice policy (Draft + correction + tenant/store
- * scope + `invoices.update_draft`), so issued / superseded invoices and plain
- * Order-sourced drafts get a 403 / hidden 404 here.
- */
+/** Legacy HTTP surface retained as a fail-closed 403 compatibility boundary. */
 class InvoiceCorrectionLineController extends Controller
 {
     /** Dynamic server-side catalogue search for the line editor's Product picker. */

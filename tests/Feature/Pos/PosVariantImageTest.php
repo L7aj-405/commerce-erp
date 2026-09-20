@@ -97,7 +97,7 @@ class PosVariantImageTest extends PosTestCase
         $draft = $this->createPosDraft($owner, $organization, $store, $warehouse);
         $response = $this->actingAs($owner)->postJson(
             "/pos/drafts/{$draft->id}/lines",
-            $this->posCatalogLine($black, ['warehouse_id' => $warehouse->getKey()]),
+            $this->posCatalogLine($black, ['warehouse_id' => $warehouse->getKey(), 'quantity' => '1']),
         );
 
         $response->assertOk();

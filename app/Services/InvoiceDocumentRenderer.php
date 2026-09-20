@@ -36,6 +36,7 @@ class InvoiceDocumentRenderer
             'has_discount' => $hasDiscount,
             'document' => [
                 'number' => $invoice->invoice_number,
+                'version' => $invoice->version,
                 'date' => $this->format->date($invoice->invoice_date),
                 'order_number' => $invoice->salesOrder?->order_number,
                 'currency' => $invoice->currency_code,

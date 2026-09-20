@@ -8,6 +8,7 @@ use App\Enums\PaymentMethod;
 use App\Enums\PaymentStatus;
 use App\Enums\SalesOrderStatus;
 use App\Models\Invoice;
+use App\Models\InvoiceFamily;
 use App\Models\InvoiceLine;
 use App\Models\PaymentAllocation;
 use App\Models\SalesOrder;
@@ -40,24 +41,75 @@ class CreateFullInvoiceFromSalesOrderAction
         return DB::transaction(function () use ($actor, $order, $data, $invoiceDate) {
             $order = SalesOrder::query()
                 ->where('organization_id', $order->organization_id)->where('store_id', $order->store_id)
-                ->whereKey($order->getKey())->lockForUpdate()->with(['lines', 'customer', 'organization', 'store', 'createdBy:id,name'])->firstOrFail();
+                ->whereKey($order->getKey())->lockForUpdate()->with(['lines', 'customer', 'organization', 'store', 'createdBy:id,name', 'currentRevision', 'addenda'])->firstOrFail();
             if ($order->status !== SalesOrderStatus::Confirmed) {
                 throw ValidationException::withMessages(['order' => 'Only a confirmed Sales Order can be invoiced.']);
             }
             if ($order->lines->isEmpty()) {
                 throw ValidationException::withMessages(['order' => 'A Sales Order must have lines before it can be invoiced.']);
             }
-            if (Invoice::query()->where('organization_id', $order->organization_id)->where('sales_order_id', $order->getKey())
-                ->whereIn('status', [InvoiceStatus::Draft->value, InvoiceStatus::Issued->value])->exists()) {
-                throw ValidationException::withMessages(['order' => 'This Sales Order already has an active full Invoice.']);
+            $revision = $order->currentRevision;
+            if ($revision && $revision->status !== 'completed') {
+                throw ValidationException::withMessages(['order' => 'La correction commerciale doit être confirmée avant de créer la facture.']);
+            }
+
+            $activeInvoices = Invoice::query()->where('organization_id', $order->organization_id)
+                ->where('sales_order_id', $order->getKey())
+                ->whereIn('status', [InvoiceStatus::Draft->value, InvoiceStatus::Issued->value]);
+            if ($revision) {
+                if ((clone $activeInvoices)->where('sales_order_revision_id', $revision->getKey())->exists()
+                    || (clone $activeInvoices)->where('status', InvoiceStatus::Draft->value)->exists()) {
+                    throw ValidationException::withMessages(['order' => 'Cette version commerciale possède déjà une facture active.']);
+                }
+            } elseif ((clone $activeInvoices)->where('status', InvoiceStatus::Draft->value)->exists()) {
+                throw ValidationException::withMessages(['order' => 'Cette commande possède déjà une facture brouillon active.']);
+            }
+
+            $latestIssued = Invoice::query()->where('organization_id', $order->organization_id)
+                ->where('sales_order_id', $order->getKey())
+                ->where('status', InvoiceStatus::Issued->value)
+                ->latest('version')->lockForUpdate()->with('lines:id,invoice_id,sales_order_line_id')->first();
+            $previousInvoice = $revision ? $latestIssued : null;
+            if (! $revision && $latestIssued) {
+                if ($this->representsCurrentOrder($latestIssued, $order)) {
+                    throw ValidationException::withMessages(['order' => 'Cette commande possède déjà une facture active à jour.']);
+                }
+
+                // A POS addendum expands the commercial snapshot without ever
+                // changing the previously issued document. Continue its family.
+                $previousInvoice = $latestIssued;
+            }
+
+            $latestAddendum = $order->addenda->sortByDesc('sequence')->first();
+
+            if ($previousInvoice) {
+                $family = InvoiceFamily::query()
+                    ->where('organization_id', $order->organization_id)
+                    ->whereKey($previousInvoice->invoice_family_id)
+                    ->lockForUpdate()
+                    ->firstOrFail();
+                $version = ((int) $family->invoices()->max('version')) + 1;
+            } else {
+                $family = new InvoiceFamily;
+                $family->organization_id = $order->organization_id;
+                $family->canonical_invoice_number = null;
+                $family->save();
+                $version = 1;
             }
 
             $invoice = new Invoice;
             $invoice->organization_id = $order->organization_id;
+            $invoice->invoice_family_id = $family->getKey();
             $invoice->store_id = $order->store_id;
             $invoice->sales_order_id = $order->getKey();
+            $invoice->sales_order_revision_id = $revision?->getKey();
+            $invoice->sales_order_addendum_id = $latestAddendum?->getKey();
+            $invoice->corrected_invoice_id = $previousInvoice?->getKey();
+            $invoice->correction_reason = $revision?->reason
+                ?? ($previousInvoice && $latestAddendum ? 'Complément POS #'.$latestAddendum->sequence : null);
             $invoice->customer_id = $order->customer_id;
-            $invoice->invoice_number = null;
+            $invoice->invoice_number = $previousInvoice?->invoice_number;
+            $invoice->version = $version;
             $invoice->status = InvoiceStatus::Draft;
             $invoice->currency_code = $order->currency_code;
             $invoice->invoice_date = $invoiceDate;
@@ -96,11 +148,23 @@ class CreateFullInvoiceFromSalesOrderAction
             $this->verifier->verifyInvoice($invoice);
             $this->audit->record('invoice.draft_created', $actor, $order->organization, $order->store, $invoice, newValues: [
                 'sales_order_number' => $order->order_number, 'invoice_date' => $invoiceDate,
+                'sales_order_revision_id' => $revision?->getKey(),
+                'sales_order_addendum_id' => $latestAddendum?->getKey(),
+                'replaces_invoice_number' => $previousInvoice?->invoice_number,
+                'invoice_version' => $version,
                 'status' => InvoiceStatus::Draft->value, 'total_incl_tax' => $invoice->total_incl_tax,
             ]);
 
             return $invoice->load(['lines', 'salesOrder']);
         });
+    }
+
+    private function representsCurrentOrder(Invoice $invoice, SalesOrder $order): bool
+    {
+        $invoiceLineIds = $invoice->lines->pluck('sales_order_line_id')->filter()->map(fn ($id) => (int) $id)->sort()->values();
+        $orderLineIds = $order->lines->pluck('id')->map(fn ($id) => (int) $id)->sort()->values();
+
+        return $invoiceLineIds->all() === $orderLineIds->all();
     }
 
     /**

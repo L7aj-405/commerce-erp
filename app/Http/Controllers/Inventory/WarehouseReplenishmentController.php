@@ -30,13 +30,15 @@ class WarehouseReplenishmentController extends Controller
             'default_minimum_quantity' => ['required', 'numeric', 'min:0', 'decimal:0,4'],
         ]);
 
-        $setting = WarehouseReplenishmentSetting::query()->updateOrCreate(
-            ['organization_id' => $organization->getKey(), 'warehouse_id' => $warehouse->getKey()],
-            [
-                'auto_replenish' => $data['auto_replenish'],
-                'default_minimum_quantity' => $data['default_minimum_quantity'],
-            ],
-        );
+        $setting = WarehouseReplenishmentSetting::query()
+            ->where('organization_id', $organization->getKey())
+            ->where('warehouse_id', $warehouse->getKey())
+            ->first() ?? new WarehouseReplenishmentSetting;
+        $setting->organization_id = $organization->getKey();
+        $setting->warehouse_id = $warehouse->getKey();
+        $setting->auto_replenish = $data['auto_replenish'];
+        $setting->default_minimum_quantity = $data['default_minimum_quantity'];
+        $setting->save();
 
         $audit->record('warehouse.replenishment_configured', $request->user(), $organization, auditable: $warehouse, newValues: [
             'warehouse_id' => $warehouse->getKey(),

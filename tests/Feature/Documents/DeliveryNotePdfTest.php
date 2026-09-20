@@ -34,7 +34,7 @@ class DeliveryNotePdfTest extends DocumentTestCase
         $this->assertStringContainsString('12 Rue des Fleurs, Casablanca', $html);
         $this->assertStringContainsString('ICE : ICE-999', $html);
         $this->assertStringContainsString('RC N° : RC-42', $html);
-        $this->assertStringContainsString('BON DE LIVRAISON', $html);
+        $this->assertStringContainsString('Bon de livraison', $html);
     }
 
     public function test_missing_optional_profile_fields_render_cleanly_without_blank_labels_or_broken_logo(): void

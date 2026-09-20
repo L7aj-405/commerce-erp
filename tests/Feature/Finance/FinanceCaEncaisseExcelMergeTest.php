@@ -15,13 +15,11 @@ use Tests\Support\DocumentTestCase;
 use ZipArchive;
 
 /**
- * Excel merge-cells fix: one commercial transaction (payment/order group)
- * occupies N physical rows (N = number of sold lines), with every
- * TRANSACTION-level column (Numéro, dates, N° facture/commande, Client,
- * Mode, Montant encaissé, Statut) merged vertically across those rows via
- * OpenSpout's native `Options::mergeCells()` — never simulated with repeated
- * or blank values, and never manual XLSX/XML manipulation. ITEM-level
- * columns (Qté, Référence, Désignation) are never merged.
+ * Excel merge-cells fix: one invoice/order group occupies N physical rows
+ * (N = max(number of sold lines, number of payments)). Shared group columns
+ * are merged vertically via OpenSpout's native `Options::mergeCells()`;
+ * payment columns stay as visible sub-lines and item columns are never
+ * merged.
  */
 class FinanceCaEncaisseExcelMergeTest extends DocumentTestCase
 {
@@ -87,14 +85,20 @@ class FinanceCaEncaisseExcelMergeTest extends DocumentTestCase
 
         // First data row is row 7 (5 metadata rows + 1 blank + the header) —
         // see FinanceCaEncaisseExcelExport::FIRST_DATA_ROW. Three items occupy
-        // rows 7-9. Columns: A=Numéro, B=Date de vente, C=Date de paiement,
-        // D=N° facture/commande, H=Client, I=Mode, J=Montant encaissé, K=Statut.
-        foreach (['A', 'B', 'C', 'D', 'H', 'I', 'J', 'K'] as $column) {
+        // rows 7-9. Shared group columns: B=Date de vente,
+        // D=N° facture/commande, H=Client, K=Montant encaissé, L=Statut.
+        foreach (['B', 'D', 'H', 'K', 'L'] as $column) {
             $this->assertStringContainsString(
                 "<mergeCell ref=\"{$column}7:{$column}9\"/>",
                 $xml,
                 "expected column {$column} to be merged across rows 7-9",
             );
+        }
+
+        // Payment sub-line columns stay unmerged so payment number/date/method
+        // and Montant partiel can vary independently inside the same group.
+        foreach (['A', 'C', 'I', 'J'] as $column) {
+            $this->assertStringNotContainsString("<mergeCell ref=\"{$column}7:{$column}9\"/>", $xml);
         }
     }
 
@@ -131,15 +135,14 @@ class FinanceCaEncaisseExcelMergeTest extends DocumentTestCase
         $bytes = app(FinanceCaEncaisseExcelExport::class)->build($organization, FinancePeriod::fromMonth('2026-09'), null);
         $xml = $this->sheetXmlOf($bytes);
 
-        // This is the ONLY payment this month, so the footer total equals the
-        // same figure — it may legitimately appear a SECOND time there, but
-        // never a third (which a "repeat the amount on every item row" bug
-        // would produce for a 5-line transaction).
+        // This is the ONLY payment this month, so the same figure appears as
+        // the payment's Montant partiel, the group's shared Montant encaissé,
+        // and the footer total — but never once per sold item row.
         $formatted = number_format((float) $orderTotal, 2, '.', '');
-        $this->assertLessThanOrEqual(2, substr_count($xml, $formatted));
+        $this->assertLessThanOrEqual(3, substr_count($xml, $formatted));
     }
 
-    public function test_two_separate_payments_on_the_same_order_are_never_merged_into_one_block(): void
+    public function test_two_payments_on_the_same_invoice_are_rendered_as_sub_lines_inside_one_group(): void
     {
         [$owner, $organization, , $order] = $this->multiLineOrder(3, '1000.0000');
         $this->issueInvoice($owner, $this->createInvoice($owner, $order));
@@ -151,11 +154,14 @@ class FinanceCaEncaisseExcelMergeTest extends DocumentTestCase
         $bytes = app(FinanceCaEncaisseExcelExport::class)->build($organization, FinancePeriod::fromMonth('2026-09'), null);
         $xml = $this->sheetXmlOf($bytes);
 
-        // Each payment keeps its own 3-row block (rows 7-9 and 10-12) —
-        // never collapsed into a single A7:A12 merge just because both
-        // belong to the same order/invoice (§10).
-        $this->assertStringContainsString('<mergeCell ref="A7:A9"/>', $xml);
-        $this->assertStringContainsString('<mergeCell ref="A10:A12"/>', $xml);
+        // The order/invoice appears once across rows 7-9; each payment remains
+        // a visible sub-line in the unmerged payment columns.
+        foreach (['B', 'D', 'H', 'K', 'L'] as $column) {
+            $this->assertStringContainsString("<mergeCell ref=\"{$column}7:{$column}9\"/>", $xml);
+        }
+        foreach (['A', 'C', 'I', 'J'] as $column) {
+            $this->assertStringNotContainsString("<mergeCell ref=\"{$column}7:{$column}9\"/>", $xml);
+        }
         $this->assertStringNotContainsString('<mergeCell ref="A7:A12"/>', $xml);
     }
 

@@ -57,7 +57,6 @@ class OutboundDestinationGuard
     private const IPV6_BLOCKED_CIDRS = [
         '::/128',           // unspecified
         '::1/128',          // loopback
-        '64:ff9b::/96',     // NAT64 well-known prefix (embeds an IPv4 — unwrapped separately)
         '100::/64',         // discard-only
         'fc00::/7',         // unique local (private)
         'fe80::/10',        // link-local
@@ -232,12 +231,14 @@ class OutboundDestinationGuard
         $isIpv6 = filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) !== false;
 
         // IPv4-mapped IPv6 (::ffff:10.0.0.1) and the NAT64 well-known prefix
-        // both embed a real IPv4 address in the low 32 bits — unwrap and
-        // re-check it, or a private address slips through disguised as v6.
+        // both embed a real IPv4 address in the low 32 bits. Validate that
+        // embedded address instead of rejecting NAT64 wholesale: DNS64
+        // resolvers legitimately synthesize 64:ff9b::/96 answers for public
+        // IPv4 destinations. A private/reserved embedded address still fails.
         if ($isIpv6) {
             $embeddedIpv4 = $this->embeddedIpv4($ip);
-            if ($embeddedIpv4 !== null && ! $this->isPublicIp($embeddedIpv4)) {
-                return false;
+            if ($embeddedIpv4 !== null) {
+                return $this->isPublicIp($embeddedIpv4);
             }
         }
 

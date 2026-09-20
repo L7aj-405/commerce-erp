@@ -38,7 +38,7 @@ class FinanceCaEncaisseService
     /** The month's CA encaissé total — a single aggregate query. */
     public function total(Organization $organization, FinancePeriod $period, ?Store $store): string
     {
-        return (string) $this->baseQuery($organization, $period, $store)->sum('payment_allocations.amount');
+        return Decimal::normalize((string) $this->baseQuery($organization, $period, $store)->sum('payment_allocations.amount'));
     }
 
     /** Paginated CA encaissé rows for the UI table. */
@@ -167,7 +167,7 @@ class FinanceCaEncaisseService
             ->get(['sales_order_id', 'quantity', 'product_name', 'sku', 'reference', 'variant_name'])
             ->groupBy('sales_order_id')
             ->map(fn (Collection $lines) => $lines->map(fn ($line) => [
-                'quantity' => (string) $line->quantity,
+                'quantity' => Decimal::normalize((string) $line->quantity),
                 'designation' => $line->product_name,
                 'reference' => $line->reference ?: $line->sku,
                 'variant' => $line->variant_name,
@@ -198,7 +198,7 @@ class FinanceCaEncaisseService
             ->map(fn ($row) => [
                 'id' => (int) $row->id,
                 'invoice_number' => $row->invoice_number,
-                'total_incl_tax' => (string) $row->total_incl_tax,
+                'total_incl_tax' => Decimal::normalize((string) $row->total_incl_tax),
             ])
             ->all();
     }
@@ -234,7 +234,7 @@ class FinanceCaEncaisseService
             'customer' => trim(($row->customer_company ?: $row->customer_name) ?: '') ?: '—',
             'method' => $row->method,
             'method_label' => PaymentMethod::from($row->method)->operationalLabel(),
-            'amount' => (string) $row->encaisse_amount,
+            'amount' => Decimal::normalize((string) $row->encaisse_amount),
             'status_label' => $this->classify((int) $row->payment_id, $invoice, $orderedAllocations[$salesOrderId] ?? []),
         ];
     }

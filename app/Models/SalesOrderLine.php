@@ -43,6 +43,11 @@ class SalesOrderLine extends Model
         return $this->belongsTo(SalesOrder::class);
     }
 
+    public function addendum(): BelongsTo
+    {
+        return $this->belongsTo(SalesOrderAddendum::class, 'sales_order_addendum_id');
+    }
+
     public function productVariant(): BelongsTo
     {
         return $this->belongsTo(ProductVariant::class);

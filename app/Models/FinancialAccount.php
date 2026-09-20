@@ -45,4 +45,9 @@ class FinancialAccount extends Model
     {
         return $this->hasMany(Payment::class);
     }
+
+    public function refunds(): HasMany
+    {
+        return $this->hasMany(PaymentRefund::class);
+    }
 }

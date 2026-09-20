@@ -6,6 +6,7 @@ use App\Actions\Documents\Concerns\AuthorizesDocumentAction;
 use App\Enums\InvoiceStatus;
 use App\Enums\SalesOrderStatus;
 use App\Models\Invoice;
+use App\Models\InvoiceFamily;
 use App\Models\SalesOrder;
 use App\Models\User;
 use App\Services\AuditLogger;
@@ -42,6 +43,14 @@ class IssueInvoiceAction
             if ($order->status !== SalesOrderStatus::Confirmed) {
                 throw ValidationException::withMessages(['order' => 'The source Sales Order is no longer eligible for invoicing.']);
             }
+            if ($invoice->sales_order_addendum_id !== null) {
+                $latestAddendumId = $order->addenda()->orderByDesc('sequence')->value('id');
+                if ((int) $latestAddendumId !== (int) $invoice->sales_order_addendum_id) {
+                    throw ValidationException::withMessages([
+                        'invoice' => 'Ce brouillon ne représente plus le dernier complément de commande.',
+                    ]);
+                }
+            }
             // A correction legitimately co-exists with the issued Invoice it
             // replaces until the moment it is issued — exclude that one original
             // from the "already invoiced" guard.
@@ -54,13 +63,27 @@ class IssueInvoiceAction
             $this->verifier->verifyInvoice($invoice);
             $this->sellerProfile->validate($invoice->seller_snapshot);
             $this->templates->invoiceView($invoice->template_version);
-            $invoice->invoice_number = $this->numbers->next($invoice->organization, (int) $invoice->invoice_date->format('Y'));
+            $family = InvoiceFamily::query()
+                ->where('organization_id', $invoice->organization_id)
+                ->whereKey($invoice->invoice_family_id)
+                ->lockForUpdate()
+                ->firstOrFail();
+            if ($invoice->version === 1) {
+                if ($family->canonical_invoice_number === null) {
+                    $family->canonical_invoice_number = $this->numbers->next($invoice->organization, (int) $invoice->invoice_date->format('Y'));
+                    $family->save();
+                }
+            } elseif ($family->canonical_invoice_number === null) {
+                throw ValidationException::withMessages(['invoice' => 'La famille de facture ne possède pas de numéro canonique.']);
+            }
+            $invoice->invoice_number = $family->canonical_invoice_number;
             $invoice->status = InvoiceStatus::Issued;
             $invoice->issued_at = now();
             $invoice->issued_by_user_id = $actor->getKey();
             $invoice->save();
             $this->audit->record('invoice.issued', $actor, $invoice->organization, $invoice->store, $invoice, oldValues: ['status' => InvoiceStatus::Draft->value], newValues: [
                 'invoice_number' => $invoice->invoice_number, 'sales_order_number' => $invoice->salesOrder->order_number,
+                'invoice_version' => $invoice->version,
                 'invoice_date' => $invoice->invoice_date->toDateString(), 'status' => InvoiceStatus::Issued->value,
                 'total_incl_tax' => $invoice->total_incl_tax,
             ]);

@@ -2,8 +2,12 @@
 
 namespace App\Actions\Sales;
 
+use App\Actions\Documents\CancelDeliveryNoteDraftAction;
+use App\Actions\Documents\CancelInvoiceDraftAction;
 use App\Actions\Inventory\CancelTransferRequestAction;
+use App\Actions\Payments\RefundPaymentAction;
 use App\Actions\Sales\Concerns\AuthorizesSalesAction;
+use App\Enums\DeliveryNoteStatus;
 use App\Enums\InventoryReservationStatus;
 use App\Enums\InvoiceStatus;
 use App\Enums\SalesOrderFulfillmentStatus;
@@ -11,6 +15,7 @@ use App\Enums\SalesOrderStatus;
 use App\Enums\SupplierProcurementStatus;
 use App\Enums\TransferRequestStatus;
 use App\Models\InventoryReservation;
+use App\Models\Payment;
 use App\Models\SalesOrder;
 use App\Models\SalesOrderProcurement;
 use App\Models\TransferRequest;
@@ -18,7 +23,6 @@ use App\Models\User;
 use App\Services\AuditLogger;
 use App\Services\InventoryReservationManager;
 use App\Services\SalesOrderPaymentCalculator;
-use App\Support\Decimal;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -30,6 +34,9 @@ class CancelSalesOrderAction
         private readonly InventoryReservationManager $inventory,
         private readonly SalesOrderPaymentCalculator $payments,
         private readonly CancelTransferRequestAction $transferRequests,
+        private readonly CancelInvoiceDraftAction $invoiceDrafts,
+        private readonly CancelDeliveryNoteDraftAction $deliveryNoteDrafts,
+        private readonly RefundPaymentAction $refunds,
         private readonly AuditLogger $audit,
     ) {}
 
@@ -42,17 +49,63 @@ class CancelSalesOrderAction
             if ($order->status === SalesOrderStatus::Cancelled) {
                 throw ValidationException::withMessages(['order' => 'The order is already cancelled.']);
             }
-            if ($order->invoices()->whereIn('status', [InvoiceStatus::Draft->value, InvoiceStatus::Issued->value])->exists()) {
-                throw ValidationException::withMessages(['order' => 'Active Invoice documents must be resolved before cancelling the Sales Order; issued Invoices require a future Credit Note workflow.']);
-            }
-            if (Decimal::compare($this->payments->paidAmount($order), '0.0000') > 0) {
-                throw ValidationException::withMessages(['order' => 'Posted Payments must be reversed before cancelling the Sales Order.']);
-            }
             if ($order->fulfillment_status !== SalesOrderFulfillmentStatus::Unfulfilled) {
                 throw ValidationException::withMessages(['order' => 'Fulfilled or partially fulfilled orders require a returns workflow.']);
             }
             if ($order->status === SalesOrderStatus::Confirmed && trim((string) $reason) === '') {
                 throw ValidationException::withMessages(['reason' => 'A cancellation reason is required for a confirmed order.']);
+            }
+
+            $issuedInvoice = $order->invoices()
+                ->whereIn('status', [InvoiceStatus::Issued->value, InvoiceStatus::Superseded->value])
+                ->lockForUpdate()
+                ->first();
+            if ($issuedInvoice) {
+                throw ValidationException::withMessages([
+                    'order' => 'Une facture émise existe. L’annulation nécessite un avoir.',
+                ]);
+            }
+
+            $activeDeliveryNotes = $order->deliveryNotes()
+                ->whereIn('status', [DeliveryNoteStatus::Draft->value, DeliveryNoteStatus::Issued->value])
+                ->lockForUpdate()
+                ->get();
+            if ($activeDeliveryNotes->contains(fn ($note) => $note->status === DeliveryNoteStatus::Issued)) {
+                throw ValidationException::withMessages([
+                    'order' => 'Un bon de livraison émis existe. Cette opération relève du workflow de retour.',
+                ]);
+            }
+
+            $shippedTransfer = TransferRequest::query()
+                ->where('organization_id', $order->organization_id)
+                ->where('sales_order_id', $order->getKey())
+                ->where('status', TransferRequestStatus::Shipped->value)
+                ->lockForUpdate()
+                ->first();
+            if ($shippedTransfer) {
+                throw ValidationException::withMessages([
+                    'order' => "Transfert {$shippedTransfer->request_number} déjà expédié. Réceptionnez-le avant d’annuler la commande.",
+                ]);
+            }
+
+            $draftInvoices = $order->invoices()->where('status', InvoiceStatus::Draft->value)->lockForUpdate()->get();
+            if ($draftInvoices->isNotEmpty() && ! $actor->hasPermission($order->organization_id, 'invoices.update_draft')) {
+                abort(403, 'You are not authorized to cancel the linked draft Invoice.');
+            }
+            if ($activeDeliveryNotes->isNotEmpty() && ! $actor->hasPermission($order->organization_id, 'delivery_notes.update_draft')) {
+                abort(403, 'You are not authorized to cancel the linked draft Delivery Note.');
+            }
+
+            $postedPayments = Payment::query()
+                ->where('organization_id', $order->organization_id)
+                ->where('store_id', $order->store_id)
+                ->where('status', 'posted')
+                ->whereHas('allocations', fn ($query) => $query->where('sales_order_id', $order->getKey()))
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get();
+            if ($postedPayments->isNotEmpty() && ! $actor->hasPermission($order->organization_id, 'payments.reverse')) {
+                abort(403, 'You are not authorized to refund posted Payments.');
             }
 
             // §22 — resolve supplier procurements by state before touching stock.
@@ -66,12 +119,24 @@ class CancelSalesOrderAction
                 ->where('sales_order_id', $order->getKey())
                 ->whereNotIn('status', [SupplierProcurementStatus::Cancelled->value, SupplierProcurementStatus::Completed->value])
                 ->lockForUpdate()->get();
+
+            if ($orderedProcurement = $procurements->first(fn ($procurement) => $procurement->status === SupplierProcurementStatus::Ordered)) {
+                throw ValidationException::withMessages([
+                    'order' => "Approvisionnement {$orderedProcurement->procurement_number} déjà commandé au fournisseur. Réceptionnez-le ou annulez-le explicitement avant d’annuler la commande.",
+                ]);
+            }
+
+            foreach ($draftInvoices as $invoice) {
+                $this->invoiceDrafts->execute($actor, $invoice, $reason);
+            }
+            foreach ($activeDeliveryNotes as $note) {
+                $this->deliveryNoteDrafts->execute($actor, $note, $reason);
+            }
+            foreach ($postedPayments as $payment) {
+                $this->refunds->execute($actor, $payment, $order, (string) $reason);
+            }
+
             foreach ($procurements as $procurement) {
-                if ($procurement->status === SupplierProcurementStatus::Ordered) {
-                    throw ValidationException::withMessages([
-                        'order' => "Approvisionnement {$procurement->procurement_number} déjà commandé au fournisseur. Réceptionnez-le ou annulez-le explicitement avant d’annuler la commande.",
-                    ]);
-                }
                 if ($procurement->status === SupplierProcurementStatus::Received) {
                     $this->audit->record('procurement.order_cancelled_stock_retained', $actor, $order->organization, $order->store, $procurement, newValues: [
                         'procurement_number' => $procurement->procurement_number,
@@ -119,9 +184,9 @@ class CancelSalesOrderAction
                 }
 
                 // Drop the order portion of any not-yet-shipped internal transfer
-                // request. A shipped/received request is left intact — its stock
-                // is already moving and needs an operational return, not a
-                // silent cancel. Minimum-replenishment demand survives.
+                // request. Shipped requests were rejected during preflight;
+                // received requests represent company stock and remain historical.
+                // Minimum-replenishment demand survives.
                 $pending = TransferRequest::query()
                     ->where('organization_id', $order->organization_id)
                     ->where('sales_order_id', $order->getKey())
@@ -136,9 +201,13 @@ class CancelSalesOrderAction
             $order->cancelled_by_user_id = $actor->getKey();
             $order->cancellation_reason = $reason;
             $order->save();
+            $financial = $this->payments->summary($order);
             $this->audit->record('sales_order.cancelled', $actor, $order->organization, $order->store, $order, oldValues: ['status' => $oldStatus->value], newValues: [
                 'order_number' => $order->order_number, 'status' => SalesOrderStatus::Cancelled->value,
                 'reason' => $reason, 'total_incl_tax' => $order->total_incl_tax,
+                'collected_amount' => $financial['collected'],
+                'refunded_amount' => $financial['refunded'],
+                'net_collected_amount' => $financial['net'],
             ]);
 
             return $order;

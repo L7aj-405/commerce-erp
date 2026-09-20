@@ -49,10 +49,13 @@ class FinancePerformanceTest extends DocumentTestCase
 
         $this->assertCount(3, $small);
         $this->assertCount(12, $large);
-        // Exactly 2 aggregate queries regardless of batch size (paid totals +
-        // ordered allocations) — the count must NOT scale with invoice count.
+        // Three bounded aggregate queries regardless of batch size: net paid
+        // totals, ordered allocations, and issued Credit Note totals. The
+        // third query is required now that invoice summaries expose the
+        // authoritative post-Avoir balance; the count must NOT scale with the
+        // number of invoices.
         $this->assertSame($queriesForThree, $queriesForTwelve);
-        $this->assertLessThanOrEqual(2, $queriesForTwelve);
+        $this->assertLessThanOrEqual(3, $queriesForTwelve);
     }
 
     public function test_facturation_drilldown_page_query_count_does_not_grow_with_invoice_count(): void

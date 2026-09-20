@@ -148,9 +148,19 @@ class SalesTenantAttackTest extends SalesTestCase
     {
         $this->actingAs($this->userA)->get(route('sales.orders.index', ['search' => 'SO']))->assertInertia(fn (Assert $page) => $page
             ->has('orders.data', 1)->where('orders.data.0.id', $this->orderA1->id)->where('orders.total', 1));
-        $this->actingAs($this->userA)->get(route('sales.orders.edit', ['order' => $this->createDraftOrder($this->userA, $this->organizationA, $this->storeA1), 'catalog_search' => 'SALE']))
-            ->assertInertia(fn (Assert $page) => $page->has('catalogResults', 1)->where('catalogResults.0.sku', 'SALE-A')
-                ->where('customers.0.display_name', 'Customer A'));
+        $draft = $this->createDraftOrder($this->userA, $this->organizationA, $this->storeA1);
+
+        $this->actingAs($this->userA)->getJson(route('sales.orders.line-search', $draft).'?search=SALE')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.sku', 'SALE-A')
+            ->assertJsonMissing(['sku' => 'SALE-B']);
+
+        $this->actingAs($this->userA)->getJson(route('sales.orders.customer-search', $draft).'?search=Customer')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.display_name', 'Customer A')
+            ->assertJsonMissing(['display_name' => 'Secret Customer B']);
     }
 
     public function test_sales_owned_reservation_cannot_be_manipulated_through_inventory_routes(): void

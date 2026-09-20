@@ -4,7 +4,6 @@ namespace App\Actions\Sales;
 
 use App\Actions\Sales\Concerns\AuthorizesSalesAction;
 use App\Enums\CustomerStatus;
-use App\Enums\SalesOrderStatus;
 use App\Models\Customer;
 use App\Models\SalesOrder;
 use App\Models\User;
@@ -25,7 +24,7 @@ class UpdateSalesOrderAction
 
         return DB::transaction(function () use ($actor, $order, $data) {
             $order = SalesOrder::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
-            if ($order->status !== SalesOrderStatus::Draft) {
+            if (! $order->isCommerciallyEditable()) {
                 throw ValidationException::withMessages(['order' => 'Confirmed or cancelled orders are commercially immutable.']);
             }
             $customer = $data['customer_id'] ?? null

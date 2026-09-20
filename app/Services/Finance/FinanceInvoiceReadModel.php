@@ -18,7 +18,7 @@ use Illuminate\Support\Facades\DB;
  * fully_paid_at column on `invoices` (deliberately not added for V1 — see
  * the Finance V1 audit). Every method here works over an already-bounded
  * batch (one page, one month, one explicit selection) and enriches it with
- * exactly one or two extra aggregate queries total — never one query per
+ * a small fixed set of aggregate queries — never one query per
  * invoice/order (that would be the N+1 SalesOrderPaymentCalculator::paidAmount()
  * pattern this whole read model exists to avoid).
  */
@@ -36,7 +36,7 @@ class FinanceInvoiceReadModel
             ->orderBy('invoice_date')->orderBy('id')
             ->paginate($perPage);
 
-        // Batch-enrich the page's invoices in 2 queries total BEFORE mapping —
+        // Batch-enrich the page's invoices in 3 queries total BEFORE mapping —
         // through() maps row-by-row, so building each row's summary lazily
         // inside that closure (one lookup per invoice) would be exactly the
         // N+1 pattern this read model exists to avoid.
@@ -49,7 +49,8 @@ class FinanceInvoiceReadModel
      * Enrich an arbitrary (already bounded) collection/paginator of Invoice
      * models with paid/outstanding/status/fully_paid_at, as of a given date
      * (defaults to "now" — the full picture, not just within-period paid
-     * amounts). Two batched queries regardless of collection size.
+     * amounts). Three batched queries regardless of collection size: net
+     * payments, ordered allocations, and issued Credit Note totals.
      */
     public function withPaymentSummaries(iterable $invoices, ?Carbon $asOf = null): Collection
     {
@@ -57,12 +58,15 @@ class FinanceInvoiceReadModel
         $asOf ??= now();
         $salesOrderIds = $invoices->pluck('sales_order_id')->unique()->values()->all();
         $paidTotals = $this->receivables->paidAmountsBySalesOrder($salesOrderIds, $asOf);
-        $orderedAllocations = $this->receivables->orderedAllocationsBySalesOrder($salesOrderIds);
+        $orderedAllocations = $this->receivables->orderedAllocationsBySalesOrder($salesOrderIds, $asOf);
+        $credits = DB::table('credit_notes')->whereIn('sales_order_id', $salesOrderIds)->where('status', 'issued')->whereDate('credit_note_date', '<=', $asOf->toDateString())
+            ->groupBy('sales_order_id')->select('sales_order_id', DB::raw('SUM(total_incl_tax) as amount'))->pluck('amount', 'sales_order_id');
 
         return $invoices->map(fn (Invoice $invoice) => $this->summaryRow(
             $invoice,
             $paidTotals[$invoice->sales_order_id] ?? '0.0000',
             $orderedAllocations[$invoice->sales_order_id] ?? [],
+            Decimal::normalize((string) ($credits[$invoice->sales_order_id] ?? '0.0000')),
         ));
     }
 
@@ -169,10 +173,11 @@ class FinanceInvoiceReadModel
      * @param  list<array{payment_date: string, amount: string}>  $orderedAllocations
      * @return array<string, mixed>
      */
-    private function summaryRow(Invoice $invoice, string $paidAmount, array $orderedAllocations): array
+    private function summaryRow(Invoice $invoice, string $paidAmount, array $orderedAllocations, string $creditedAmount): array
     {
-        $outstanding = $this->nonNegative(Decimal::subtract($invoice->total_incl_tax, $paidAmount));
-        $fullyPaidAt = $this->fullyPaidAt($invoice->total_incl_tax, $orderedAllocations);
+        $netTotal = $this->nonNegative(Decimal::subtract($invoice->total_incl_tax, $creditedAmount));
+        $outstanding = $this->nonNegative(Decimal::subtract($netTotal, $paidAmount));
+        $fullyPaidAt = $this->fullyPaidAt($netTotal, $orderedAllocations);
         $status = match (true) {
             Decimal::compare($paidAmount, '0.0000') <= 0 => 'unpaid',
             $fullyPaidAt !== null => 'paid',
@@ -188,6 +193,8 @@ class FinanceInvoiceReadModel
             'sales_order_id' => $invoice->sales_order_id,
             'store_id' => $invoice->store_id,
             'total_incl_tax' => (string) $invoice->total_incl_tax,
+            'credited_amount' => $creditedAmount,
+            'net_total_incl_tax' => $netTotal,
             'paid_amount' => $paidAmount,
             'outstanding' => $outstanding,
             'fully_paid_at' => $fullyPaidAt,

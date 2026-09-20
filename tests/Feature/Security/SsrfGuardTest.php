@@ -28,6 +28,17 @@ class SsrfGuardTest extends TestCase
         $this->assertTrue(true); // no exception thrown
     }
 
+    public function test_a_public_ipv4_with_its_dns64_nat64_answer_is_allowed(): void
+    {
+        $this->fakeDns()->map('dual-stack.example.com', [
+            '198.177.120.96',
+            '64:ff9b::c6b1:7860',
+        ]);
+
+        $this->guard()->assertPublicHost('dual-stack.example.com', 'test');
+        $this->assertTrue(true);
+    }
+
     public function test_localhost_by_name_is_rejected_without_even_resolving(): void
     {
         $this->expectException(UnsafeOutboundDestinationException::class);
@@ -77,8 +88,13 @@ class SsrfGuardTest extends TestCase
     {
         $this->fakeDns()->mapUnresolvable('nxdomain.evil.test');
 
-        $this->expectException(UnsafeOutboundDestinationException::class);
-        $this->guard()->assertPublicHost('nxdomain.evil.test', 'test');
+        try {
+            $this->guard()->assertPublicHost('nxdomain.evil.test', 'test');
+            $this->fail('Expected an unresolvable destination exception.');
+        } catch (UnsafeOutboundDestinationException $exception) {
+            $this->assertSame(UnsafeOutboundDestinationException::UNRESOLVABLE, $exception->category);
+            $this->assertSame('Impossible de résoudre le nom de domaine de cette adresse.', $exception->userMessage());
+        }
     }
 
     public function test_ipv6_loopback_is_rejected(): void
@@ -95,6 +111,22 @@ class SsrfGuardTest extends TestCase
 
         $this->expectException(UnsafeOutboundDestinationException::class);
         $this->guard()->assertPublicHost('v6-ula.evil.test', 'test');
+    }
+
+    public function test_ipv6_link_local_range_is_rejected(): void
+    {
+        $this->fakeDns()->map('v6-link-local.evil.test', ['fe80::1']);
+
+        $this->expectException(UnsafeOutboundDestinationException::class);
+        $this->guard()->assertPublicHost('v6-link-local.evil.test', 'test');
+    }
+
+    public function test_nat64_wrapping_a_private_ipv4_address_is_rejected(): void
+    {
+        $this->fakeDns()->map('nat64-private.evil.test', ['64:ff9b::a00:5']);
+
+        $this->expectException(UnsafeOutboundDestinationException::class);
+        $this->guard()->assertPublicHost('nat64-private.evil.test', 'test');
     }
 
     public function test_ipv4_mapped_ipv6_wrapping_a_private_address_is_rejected(): void
@@ -130,6 +162,14 @@ class SsrfGuardTest extends TestCase
         $this->fakeDns()->map('shop.example.com', ['93.184.216.34']);
 
         $this->guard()->assertPublicUrl('https://shop.example.com/wp-json/wc/v3', ['https'], 'test');
+        $this->assertTrue(true);
+    }
+
+    public function test_hostname_case_and_a_trailing_root_dot_are_normalized_for_resolution(): void
+    {
+        $this->fakeDns()->map('shop.example.com', ['93.184.216.34']);
+
+        $this->guard()->assertPublicUrl('https://Shop.Example.Com./wp-json/wc/v3', ['https'], 'test');
         $this->assertTrue(true);
     }
 

@@ -33,6 +33,9 @@ type Order = {
     source: string;
     currency_code: string;
     has_active_invoice: boolean;
+    returned_total: string;
+    net_total: string;
+    return_state: 'none' | 'partial' | 'full';
 };
 type PageLink = { url: string | null; label: string; active: boolean };
 type Props = {
@@ -159,9 +162,11 @@ export default function OrderIndex({ orders, filters, summary }: Props) {
                                             )}
                                         </td>
                                         <td className="px-4 py-3">
-                                            <DocBadge tone={orderStatusTone(order.status)}>
-                                                {label(orderStatusLabel, order.status)}
-                                            </DocBadge>
+                                            <div className="flex flex-wrap gap-1">
+                                                <DocBadge tone={orderStatusTone(order.status)}>{label(orderStatusLabel, order.status)}</DocBadge>
+                                                {order.return_state === 'partial' && <DocBadge tone="warning">Retour partiel</DocBadge>}
+                                                {order.return_state === 'full' && <DocBadge tone="danger">Retournée intégralement</DocBadge>}
+                                            </div>
                                         </td>
                                         <td className="px-4 py-3">
                                             <DocBadge tone={fulfillmentTone(order.fulfillment_status)}>
@@ -174,7 +179,8 @@ export default function OrderIndex({ orders, filters, summary }: Props) {
                                             </DocBadge>
                                         </td>
                                         <td className="px-4 py-3 text-right font-medium tabular-nums text-ink">
-                                            {formatMoney(order.total_incl_tax, order.currency_code)}
+                                            <span className={order.return_state === 'none' ? '' : 'text-ink-muted line-through'}>{formatMoney(order.total_incl_tax, order.currency_code)}</span>
+                                            {order.return_state !== 'none' && <span className="block text-xs font-semibold text-ink">Net {formatMoney(order.net_total, order.currency_code)}</span>}
                                         </td>
                                         <td className="px-4 py-3 text-ink-muted">{label(sourceLabel, order.source)}</td>
                                         <td className="relative px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
@@ -258,6 +264,8 @@ export default function OrderIndex({ orders, filters, summary }: Props) {
 
                                 <div className="mt-2 flex flex-wrap gap-1.5">
                                     <DocBadge tone={orderStatusTone(order.status)}>{label(orderStatusLabel, order.status)}</DocBadge>
+                                    {order.return_state === 'partial' && <DocBadge tone="warning">Retour partiel</DocBadge>}
+                                    {order.return_state === 'full' && <DocBadge tone="danger">Retournée intégralement</DocBadge>}
                                     <DocBadge tone={fulfillmentTone(order.fulfillment_status)}>{label(fulfillmentLabel, order.fulfillment_status)}</DocBadge>
                                     <DocBadge tone={paymentStatusTone(order.payment_status)}>{label(paymentStatusLabel, order.payment_status)}</DocBadge>
                                 </div>
@@ -275,8 +283,9 @@ export default function OrderIndex({ orders, filters, summary }: Props) {
                                 </dl>
 
                                 <p className="mt-2 text-base font-semibold tabular-nums text-ink">
-                                    {formatMoney(order.total_incl_tax, order.currency_code)}
+                                    {formatMoney(order.return_state === 'none' ? order.total_incl_tax : order.net_total, order.currency_code)}
                                 </p>
+                                {order.return_state !== 'none' && <p className="text-xs text-ink-muted">Vente initiale {formatMoney(order.total_incl_tax, order.currency_code)} · Retours -{formatMoney(order.returned_total, order.currency_code)}</p>}
                             </li>
                         ))}
                     </ul>

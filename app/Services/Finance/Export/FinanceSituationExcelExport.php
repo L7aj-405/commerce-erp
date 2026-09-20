@@ -14,7 +14,7 @@ use OpenSpout\Writer\XLSX\Writer;
 
 /**
  * The Situation mensuelle workbook: Situation / Ventes / Encaissements /
- * Créances. Built with the existing OpenSpout dependency (already used
+ * Documents / Avoirs / Remboursements / Créances. Built with the existing OpenSpout dependency (already used
  * elsewhere in the project to READ product-import spreadsheets) — no Laravel
  * Excel or other package added.
  *
@@ -39,7 +39,10 @@ class FinanceSituationExcelExport
 
         $this->writeSituationSheet($writer, $organization, $period, $store);
         $this->writeVentesSheet($writer, $organization, $period, $store);
+        $this->writeDocumentsSheet($writer, $organization, $period, $store);
         $this->writeEncaissementsSheet($writer, $organization, $period, $store);
+        $this->writeAvoirsSheet($writer, $organization, $period, $store);
+        $this->writeRemboursementsSheet($writer, $organization, $period, $store);
         $this->writeCreancesSheet($writer, $organization, $period, $store);
 
         $writer->close();
@@ -75,16 +78,24 @@ class FinanceSituationExcelExport
         $writer->addRow(Row::fromValues([]));
 
         $writer->addRow(Row::fromValues(['Indicateur', 'Montant TTC'], $this->headerStyle()));
-        $writer->addRow(Row::fromValues(['Ventes (sale_date)', $this->amount($situation['ventes'])]));
-        $writer->addRow(Row::fromValues(['Facturation (invoice_date)', $this->amount($situation['facturation'])]));
+        $writer->addRow(Row::fromValues(['Ventes brutes (sale_date)', $this->amount($situation['ventes'])]));
+        $writer->addRow(Row::fromValues(['Ventes nettes (ventes brutes - avoirs de la période)', $this->amount($situation['ventes_nettes'])]));
+        $writer->addRow(Row::fromValues(['Facturation brute (invoice_date)', $this->amount($situation['facturation_brute'])]));
+        $writer->addRow(Row::fromValues(['Avoirs émis (credit_note_date)', $this->amount($situation['avoirs'])]));
+        $writer->addRow(Row::fromValues(['Facturation nette', $this->amount($situation['facturation'])]));
         $writer->addRow(Row::fromValues(['Encaissements (payment_date)', $this->amount($situation['encaissements'])]));
+        $writer->addRow(Row::fromValues(['Remboursements (refund_date)', $this->amount($situation['remboursements'])]));
+        $writer->addRow(Row::fromValues(['Net encaissé', $this->amount($situation['net_encaisse'])]));
+        $writer->addRow(Row::fromValues(['Obligations de remboursement', $this->amount($situation['obligations_remboursement'])]));
         $writer->addRow(Row::fromValues([]));
         $writer->addRow(Row::fromValues(['Réconciliation créances', ''], $this->headerStyle()));
         $writer->addRow(Row::fromValues(['Créances début de période', $this->amount($situation['creances_debut'])]));
-        $writer->addRow(Row::fromValues(['+ Facturation', $this->amount($situation['facturation'])]));
-        $writer->addRow(Row::fromValues(['- Encaissements', $this->amount($situation['encaissements'])]));
+        $writer->addRow(Row::fromValues(['+ Facturation nette', $this->amount($situation['facturation'])]));
+        $writer->addRow(Row::fromValues(['- Encaissements nets', $this->amount($situation['net_encaisse'])]));
         $writer->addRow(Row::fromValues(['= Créances fin de période (attendu)', $this->amount($situation['reconciliation']['expected_fin'])]));
         $writer->addRow(Row::fromValues(['Créances fin de période (calculée)', $this->amount($situation['creances_fin'])]));
+        $writer->addRow(Row::fromValues(['Obligations de remboursement fin de période', $this->amount($situation['obligations_remboursement'])]));
+        $writer->addRow(Row::fromValues(['Position nette client fin de période', $this->amount($situation['position_nette_fin'])]));
         if (Decimal::compare($situation['reconciliation']['variance'], '0.0000') !== 0) {
             $writer->addRow(Row::fromValues([
                 'Écart (paiements sur commandes non encore facturées)',
@@ -139,6 +150,25 @@ class FinanceSituationExcelExport
         }
     }
 
+    private function writeDocumentsSheet(Writer $writer, Organization $organization, FinancePeriod $period, ?Store $store): void
+    {
+        $sheet = $writer->addNewSheetAndMakeItCurrent();
+        $sheet->setName('Documents');
+        $writer->addRow(Row::fromValues([
+            'Type document', 'N° document', 'Date', 'Client', 'Commande', 'Facture d’origine',
+            'HT net', 'TVA', 'TTC', 'Effet', 'Montant net signé',
+        ], $this->headerStyle()));
+
+        foreach ($this->report->accountingDocumentsCursor($organization, $period, $store) as $row) {
+            $writer->addRow(Row::fromValues([
+                $row['document_type'], $row['document_number'], $row['document_date'], $row['customer'] ?: '—',
+                $row['order_number'], $row['original_invoice_number'] ?: '—', $this->amount($row['net_ht']),
+                $this->amount($row['tax_total']), $this->amount($row['total_incl_tax']), $row['effect'],
+                $this->amount($row['net_amount']),
+            ]));
+        }
+    }
+
     private function writeCreancesSheet(Writer $writer, Organization $organization, FinancePeriod $period, ?Store $store): void
     {
         $sheet = $writer->addNewSheetAndMakeItCurrent();
@@ -160,6 +190,49 @@ class FinanceSituationExcelExport
                 $this->amount($row['paid_amount']),
                 $this->amount($row['outstanding']),
                 $this->receivableStatusLabel($row['status']),
+            ]));
+        }
+    }
+
+    private function writeAvoirsSheet(Writer $writer, Organization $organization, FinancePeriod $period, ?Store $store): void
+    {
+        $sheet = $writer->addNewSheetAndMakeItCurrent();
+        $sheet->setName('Avoirs');
+        $writer->addRow(Row::fromValues([
+            'N° avoir', 'Date avoir', 'Facture d’origine', 'Version', 'Commande', 'Client', 'Qté', 'Référence', 'SKU',
+            'Désignation', 'Variante', 'HT ligne', 'Remise ligne', 'Taux TVA', 'TVA ligne', 'TTC ligne',
+            'Total HT document', 'Total TVA document', 'Total TTC document',
+        ], $this->headerStyle()));
+
+        $lastCreditNoteId = null;
+        foreach ($this->report->creditNotesCursor($organization, $period, $store) as $row) {
+            $firstDocumentRow = $lastCreditNoteId !== $row['credit_note_id'];
+            $writer->addRow(Row::fromValues([
+                $row['credit_note_number'], $row['credit_note_date'], $row['invoice_number'], $row['invoice_version'],
+                $row['order_number'], $row['customer'] ?: '—', $this->amount($row['quantity']), $row['reference'], $row['sku'],
+                $row['description'], $row['variant'], $this->amount($row['line_ht']), $this->amount($row['line_discount']),
+                $this->amount($row['tax_rate']), $this->amount($row['line_tax']), $this->amount($row['line_ttc']),
+                $firstDocumentRow ? $this->amount($row['document_ht']) : null,
+                $firstDocumentRow ? $this->amount($row['document_tax']) : null,
+                $firstDocumentRow ? $this->amount($row['document_ttc']) : null,
+            ]));
+            $lastCreditNoteId = $row['credit_note_id'];
+        }
+    }
+
+    private function writeRemboursementsSheet(Writer $writer, Organization $organization, FinancePeriod $period, ?Store $store): void
+    {
+        $sheet = $writer->addNewSheetAndMakeItCurrent();
+        $sheet->setName('Remboursements');
+        $writer->addRow(Row::fromValues([
+            'N° remboursement', 'Date', 'Montant', 'Mode', 'Compte financier', 'Paiement source', 'Commande', 'Retour', 'Client', 'Motif',
+        ], $this->headerStyle()));
+
+        foreach ($this->report->refundsCursor($organization, $period, $store) as $row) {
+            $writer->addRow(Row::fromValues([
+                $row['refund_number'], $row['refund_date'], $this->amount($row['amount']), $row['method'],
+                $row['financial_account'], $row['payment_number'], $row['order_number'], $row['return_number'] ?: '—',
+                $row['customer'] ?: '—', $row['reason'],
             ]));
         }
     }

@@ -13,6 +13,7 @@ import { useEffect, useRef, useState } from 'react';
 type Invoice = {
     id: number;
     invoice_number: string | null;
+    version: number;
     invoice_date: string;
     customer_name: string | null;
     customer_company: string | null;
@@ -20,6 +21,9 @@ type Invoice = {
     currency_code: string;
     status: string;
     sales_order: { id: number; order_number: string };
+    credited_amount: string;
+    net_total_incl_tax: string;
+    credit_state: 'none' | 'partial' | 'full';
 };
 type PageLink = { url: string | null; label: string; active: boolean };
 type Props = { invoices: { data: Invoice[]; links: PageLink[] }; filters: { search?: string; status?: string; invoice_date?: string } };
@@ -94,7 +98,7 @@ export default function InvoiceIndex({ invoices, filters }: Props) {
                                         className="cursor-pointer transition-soft hover:bg-sage/50"
                                     >
                                         <td className="px-4 py-3 font-medium text-ink">
-                                            {invoice.invoice_number ?? 'Brouillon'}
+                                            {invoice.invoice_number ?? 'Brouillon'} · V{invoice.version}
                                         </td>
                                         <td className="px-4 py-3 text-ink-muted">{formatDate(invoice.invoice_date)}</td>
                                         <td className="px-4 py-3 text-ink-muted">{invoice.sales_order.order_number}</td>
@@ -102,12 +106,15 @@ export default function InvoiceIndex({ invoices, filters }: Props) {
                                             {invoice.customer_company ?? invoice.customer_name ?? 'Client comptoir'}
                                         </td>
                                         <td className="px-4 py-3">
-                                            <DocBadge tone={invoiceStatusTone(invoice.status)}>
-                                                {label(invoiceStatusLabel, invoice.status)}
-                                            </DocBadge>
+                                            <div className="flex flex-wrap gap-1">
+                                                <DocBadge tone={invoiceStatusTone(invoice.status)}>{label(invoiceStatusLabel, invoice.status)}</DocBadge>
+                                                {invoice.credit_state === 'partial' && <DocBadge tone="warning">Partiellement créditée</DocBadge>}
+                                                {invoice.credit_state === 'full' && <DocBadge tone="danger">Créditée intégralement</DocBadge>}
+                                            </div>
                                         </td>
                                         <td className="px-4 py-3 text-right font-medium tabular-nums text-ink">
-                                            {formatMoney(invoice.total_incl_tax, invoice.currency_code)}
+                                            <span className={invoice.credit_state === 'none' ? '' : 'text-ink-muted line-through'}>{formatMoney(invoice.total_incl_tax, invoice.currency_code)}</span>
+                                            {invoice.credit_state !== 'none' && <span className="block text-xs font-semibold text-ink">Net {formatMoney(invoice.net_total_incl_tax, invoice.currency_code)}</span>}
                                         </td>
                                     </tr>
                                 ))}
@@ -122,12 +129,14 @@ export default function InvoiceIndex({ invoices, filters }: Props) {
                                 <Link href={`/invoices/${invoice.id}`} className="block rounded-card border border-line bg-surface p-4">
                                     <div className="flex items-start justify-between gap-3">
                                         <div className="min-w-0">
-                                            <p className="truncate text-sm font-semibold text-ink">{invoice.invoice_number ?? 'Brouillon'}</p>
+                                            <p className="truncate text-sm font-semibold text-ink">{invoice.invoice_number ?? 'Brouillon'} · V{invoice.version}</p>
                                             <p className="text-[13px] text-ink-muted">{formatDate(invoice.invoice_date)}</p>
                                         </div>
-                                        <DocBadge tone={invoiceStatusTone(invoice.status)}>
-                                            {label(invoiceStatusLabel, invoice.status)}
-                                        </DocBadge>
+                                            <div className="flex flex-wrap gap-1">
+                                                <DocBadge tone={invoiceStatusTone(invoice.status)}>{label(invoiceStatusLabel, invoice.status)}</DocBadge>
+                                                {invoice.credit_state === 'partial' && <DocBadge tone="warning">Partiellement créditée</DocBadge>}
+                                                {invoice.credit_state === 'full' && <DocBadge tone="danger">Créditée intégralement</DocBadge>}
+                                            </div>
                                     </div>
                                     <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1.5 text-[13px]">
                                         <div className="min-w-0">
@@ -140,8 +149,9 @@ export default function InvoiceIndex({ invoices, filters }: Props) {
                                         </div>
                                     </dl>
                                     <p className="mt-2 text-base font-semibold tabular-nums text-ink">
-                                        {formatMoney(invoice.total_incl_tax, invoice.currency_code)}
+                                        {formatMoney(invoice.credit_state === 'none' ? invoice.total_incl_tax : invoice.net_total_incl_tax, invoice.currency_code)}
                                     </p>
+                                    {invoice.credit_state !== 'none' && <p className="text-xs text-ink-muted">Facture initiale {formatMoney(invoice.total_incl_tax, invoice.currency_code)} · Avoirs -{formatMoney(invoice.credited_amount, invoice.currency_code)}</p>}
                                 </Link>
                             </li>
                         ))}

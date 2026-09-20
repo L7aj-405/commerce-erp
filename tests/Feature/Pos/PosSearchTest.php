@@ -181,7 +181,7 @@ class PosSearchTest extends PosTestCase
         $foreignOrganization = $this->createOrganization($foreignOwner);
 
         $this->actingAs($owner)->patchJson(route('pos.customers.update', $customer), [
-            'type' => 'business',
+            'type' => 'company',
             'company_name' => 'Updated Showroom Client',
             'contact_name' => 'Front Desk',
             'phone' => '0611111111',

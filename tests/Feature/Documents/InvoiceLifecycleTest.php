@@ -21,6 +21,7 @@ class InvoiceLifecycleTest extends DocumentTestCase
         $this->assertNull($draft->invoice_number);
         $issued = $this->issueInvoice($owner, $draft);
         $this->assertSame('1/'.$issued->invoice_date->year, $issued->invoice_number);
+        $this->assertSame(1, $issued->version);
         $this->assertDatabaseHas('audit_logs', ['event' => 'invoice.issued', 'auditable_id' => $issued->id]);
         $this->expectException(ValidationException::class);
         try {
@@ -74,21 +75,30 @@ class InvoiceLifecycleTest extends DocumentTestCase
         }
     }
 
-    public function test_source_order_cannot_be_cancelled_behind_an_active_or_issued_invoice(): void
+    public function test_source_order_cancellation_cancels_its_draft_invoice_atomically(): void
     {
         [$owner, , , $order] = $this->documentFixture();
         $draft = $this->createInvoice($owner, $order);
-        foreach (['draft', 'issued'] as $expectedStatus) {
-            try {
-                app(CancelSalesOrderAction::class)->execute($owner, $order->fresh(), 'Attack');
-                $this->fail('Expected Sales Order cancellation to be blocked by its Invoice lifecycle.');
-            } catch (ValidationException) {
-                $this->assertSame('confirmed', $order->fresh()->status->value);
-                $this->assertSame($expectedStatus, $draft->fresh()->status->value);
-            }
-            if ($expectedStatus === 'draft') {
-                $draft = $this->issueInvoice($owner, $draft);
-            }
+
+        app(CancelSalesOrderAction::class)->execute($owner, $order->fresh(), 'Annulation client');
+
+        $this->assertSame('cancelled', $order->fresh()->status->value);
+        $this->assertSame('cancelled', $draft->fresh()->status->value);
+        $this->assertDatabaseHas('audit_logs', ['event' => 'invoice.draft_cancelled', 'auditable_id' => $draft->id]);
+    }
+
+    public function test_source_order_cannot_be_cancelled_behind_an_issued_invoice_without_an_avoir(): void
+    {
+        [$owner, , , $order] = $this->documentFixture();
+        $issued = $this->issueInvoice($owner, $this->createInvoice($owner, $order));
+
+        try {
+            app(CancelSalesOrderAction::class)->execute($owner, $order->fresh(), 'Annulation client');
+            $this->fail('Expected an issued Invoice to require an avoir before cancellation.');
+        } catch (ValidationException $exception) {
+            $this->assertSame('confirmed', $order->fresh()->status->value);
+            $this->assertSame('issued', $issued->fresh()->status->value);
+            $this->assertArrayHasKey('order', $exception->errors());
         }
     }
 

@@ -3,6 +3,7 @@
 namespace App\Actions\Documents;
 
 use App\Actions\Documents\Concerns\AuthorizesDocumentAction;
+use App\Actions\Sales\FulfillSalesOrderAction;
 use App\Enums\DeliveryNoteStatus;
 use App\Enums\SalesOrderFulfillmentStatus;
 use App\Models\DeliveryNote;
@@ -26,6 +27,7 @@ class IssueDeliveryNoteAction
         private readonly DocumentSellerProfile $sellerProfile,
         private readonly DocumentTemplateRegistry $templates,
         private readonly AuditLogger $audit,
+        private readonly FulfillSalesOrderAction $fulfillOrder,
     ) {}
 
     public function execute(User $actor, DeliveryNote $note): DeliveryNote
@@ -39,8 +41,11 @@ class IssueDeliveryNoteAction
                 throw ValidationException::withMessages(['delivery_note' => 'Only a draft Delivery Note can be issued.']);
             }
             $order = SalesOrder::query()->where('organization_id', $note->organization_id)->whereKey($note->sales_order_id)->lockForUpdate()->firstOrFail();
+            if ($order->fulfillment_status === SalesOrderFulfillmentStatus::Unfulfilled) {
+                $order = $this->fulfillOrder->execute($actor, $order)->fresh();
+            }
             if ($order->fulfillment_status !== SalesOrderFulfillmentStatus::Fulfilled) {
-                throw ValidationException::withMessages(['order' => 'The Sales Order is not fulfilled.']);
+                throw ValidationException::withMessages(['order' => 'The Sales Order could not be fulfilled.']);
             }
             if (DeliveryNote::query()->where('organization_id', $note->organization_id)->where('sales_order_id', $note->sales_order_id)
                 ->where('status', DeliveryNoteStatus::Issued->value)->where('id', '!=', $note->getKey())->exists()) {

@@ -19,7 +19,7 @@ use ZipArchive;
 
 class FinanceExportTest extends DocumentTestCase
 {
-    public function test_xlsx_export_produces_a_valid_workbook_with_the_four_required_sheets(): void
+    public function test_xlsx_export_produces_a_valid_workbook_with_accounting_event_sheets(): void
     {
         [$owner, $organization, , $order] = $this->documentFixture(total: '1000.0000');
         $this->issueInvoice($owner, $this->createInvoice($owner, $order, ['invoice_date' => '2026-05-29']));
@@ -41,7 +41,7 @@ class FinanceExportTest extends DocumentTestCase
         @unlink($tmp);
 
         $this->assertNotFalse($sheetXml);
-        foreach (['Situation', 'Ventes', 'Encaissements', 'Créances'] as $sheetName) {
+        foreach (['Situation', 'Ventes', 'Documents', 'Encaissements', 'Avoirs', 'Remboursements', 'Créances'] as $sheetName) {
             $this->assertStringContainsString($sheetName, $sheetXml);
         }
     }
@@ -76,9 +76,9 @@ class FinanceExportTest extends DocumentTestCase
             'storeName' => null,
             'generatedAt' => now()->format('d/m/Y H:i'),
             'sections' => [
-                ['label' => 'Mai 2026', 'ventes' => '0,00 DH', 'facturation' => '0,00 DH', 'encaissements' => '0,00 DH', 'creances_debut' => '0,00 DH', 'creances_fin' => '0,00 DH', 'has_variance' => false, 'variance' => '0,00 DH', 'invoices' => []],
-                ['label' => 'Juin 2026', 'ventes' => '0,00 DH', 'facturation' => '0,00 DH', 'encaissements' => '0,00 DH', 'creances_debut' => '0,00 DH', 'creances_fin' => '0,00 DH', 'has_variance' => false, 'variance' => '0,00 DH', 'invoices' => []],
-                ['label' => 'Juillet 2026', 'ventes' => '0,00 DH', 'facturation' => '0,00 DH', 'encaissements' => '0,00 DH', 'creances_debut' => '0,00 DH', 'creances_fin' => '0,00 DH', 'has_variance' => false, 'variance' => '0,00 DH', 'invoices' => []],
+                ['label' => 'Mai 2026', 'ventes' => '0,00 DH', 'ventes_nettes' => '0,00 DH', 'facturation' => '0,00 DH', 'facturation_brute' => '0,00 DH', 'avoirs' => '0,00 DH', 'encaissements' => '0,00 DH', 'remboursements' => '0,00 DH', 'net_encaisse' => '0,00 DH', 'creances_debut' => '0,00 DH', 'creances_fin' => '0,00 DH', 'obligations_remboursement' => '0,00 DH', 'position_nette_debut' => '0,00 DH', 'position_nette_fin' => '0,00 DH', 'has_variance' => false, 'variance' => '0,00 DH', 'invoices' => []],
+                ['label' => 'Juin 2026', 'ventes' => '0,00 DH', 'ventes_nettes' => '0,00 DH', 'facturation' => '0,00 DH', 'facturation_brute' => '0,00 DH', 'avoirs' => '0,00 DH', 'encaissements' => '0,00 DH', 'remboursements' => '0,00 DH', 'net_encaisse' => '0,00 DH', 'creances_debut' => '0,00 DH', 'creances_fin' => '0,00 DH', 'obligations_remboursement' => '0,00 DH', 'position_nette_debut' => '0,00 DH', 'position_nette_fin' => '0,00 DH', 'has_variance' => false, 'variance' => '0,00 DH', 'invoices' => []],
+                ['label' => 'Juillet 2026', 'ventes' => '0,00 DH', 'ventes_nettes' => '0,00 DH', 'facturation' => '0,00 DH', 'facturation_brute' => '0,00 DH', 'avoirs' => '0,00 DH', 'encaissements' => '0,00 DH', 'remboursements' => '0,00 DH', 'net_encaisse' => '0,00 DH', 'creances_debut' => '0,00 DH', 'creances_fin' => '0,00 DH', 'obligations_remboursement' => '0,00 DH', 'position_nette_debut' => '0,00 DH', 'position_nette_fin' => '0,00 DH', 'has_variance' => false, 'variance' => '0,00 DH', 'invoices' => []],
             ],
         ])->render();
 

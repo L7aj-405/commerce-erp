@@ -6,7 +6,6 @@ use App\Actions\Sales\Concerns\AuthorizesSalesAction;
 use App\Enums\CatalogStatus;
 use App\Enums\SalesOrderDiscountType;
 use App\Enums\SalesOrderLineType;
-use App\Enums\SalesOrderStatus;
 use App\Enums\WarehouseStatus;
 use App\Models\ProductVariant;
 use App\Models\SalesOrder;
@@ -45,7 +44,7 @@ class SaveSalesOrderLineAction
 
         return DB::transaction(function () use ($actor, $order, $data, $line) {
             $order = SalesOrder::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
-            if ($order->status !== SalesOrderStatus::Draft) {
+            if (! $order->isCommerciallyEditable()) {
                 throw ValidationException::withMessages(['order' => 'Lines cannot be changed after confirmation.']);
             }
             if ($line) {

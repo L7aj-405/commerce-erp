@@ -147,6 +147,12 @@ class TwoFactorAuthenticationTest extends PlatformTestCase
         $user->refresh();
         $response = $this->actingAs($user)->postJson('/two-factor-authentication/confirm', ['code' => $this->currentCodeFor($user)])->assertOk();
 
+        // Enrollment is an authenticated flow. End that browser session so
+        // callers that exercise login actually begin as guests and cannot
+        // accidentally bypass the password/2FA challenge middleware in the
+        // test fixture itself.
+        $this->post(route('logout'))->assertRedirect(route('login'));
+
         return [$user->fresh(), $response->json('recovery_codes')[0]];
     }
 
@@ -230,6 +236,7 @@ class TwoFactorAuthenticationTest extends PlatformTestCase
         $newCodes = $response->json('recovery_codes');
         $this->assertNotContains($oldCode, $newCodes);
 
+        $this->post(route('logout'))->assertRedirect(route('login'));
         $this->post(route('login.store'), ['email' => $user->email, 'password' => 'password']);
         $this->post(route('two-factor.challenge.store'), ['code' => $oldCode])->assertSessionHasErrors('code');
     }
@@ -263,7 +270,7 @@ class TwoFactorAuthenticationTest extends PlatformTestCase
         // A settings row already exists (created by OrganizationCreator) —
         // update it rather than create() a second row (organization_id is
         // unique on this table).
-        $organization->securitySetting()->update(['require_2fa' => true]);
+        $this->configureOrganizationSecurity($organization, requireTwoFactor: true);
 
         $this->actingAs($owner)->get(route('platform.index'))->assertRedirect(route('security.edit'));
 
@@ -277,7 +284,7 @@ class TwoFactorAuthenticationTest extends PlatformTestCase
         [$owner] = $this->enrolledUserWithRecoveryCode();
         $organization = $this->createOrganization($owner);
         $this->activate($owner, $organization);
-        $organization->securitySetting()->update(['require_2fa' => true]);
+        $this->configureOrganizationSecurity($organization, requireTwoFactor: true);
 
         $this->actingAs($owner)->get(route('platform.index'))->assertOk();
     }
@@ -287,7 +294,7 @@ class TwoFactorAuthenticationTest extends PlatformTestCase
         $owner = User::factory()->create();
         $organization = $this->createOrganization($owner);
         $this->activate($owner, $organization);
-        $organization->securitySetting()->update(['require_2fa_for_privileged_roles' => true]);
+        $this->configureOrganizationSecurity($organization, requireTwoFactorForPrivilegedRoles: true);
 
         $this->actingAs($owner)->get(route('platform.index'))->assertRedirect(route('security.edit'));
         // Enrollment itself must stay reachable.
@@ -298,7 +305,7 @@ class TwoFactorAuthenticationTest extends PlatformTestCase
     {
         $owner = User::factory()->create();
         $organization = $this->createOrganization($owner);
-        $organization->securitySetting()->update(['require_2fa_for_privileged_roles' => true]);
+        $this->configureOrganizationSecurity($organization, requireTwoFactorForPrivilegedRoles: true);
         $employee = User::factory()->create();
         $this->addOrganizationMember($organization, $employee, [], roleName: 'Employee');
         $this->activate($employee, $organization);
@@ -311,7 +318,7 @@ class TwoFactorAuthenticationTest extends PlatformTestCase
         [$owner] = $this->enrolledUserWithRecoveryCode();
         $organization = $this->createOrganization($owner);
         $this->activate($owner, $organization);
-        $organization->securitySetting()->update(['require_2fa_for_privileged_roles' => true]);
+        $this->configureOrganizationSecurity($organization, requireTwoFactorForPrivilegedRoles: true);
 
         $this->actingAs($owner)->get(route('platform.index'))->assertOk();
     }

@@ -12,6 +12,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Documents\CreateInvoiceRequest;
 use App\Http\Requests\Documents\UpdateInvoiceDraftRequest;
 use App\Models\Invoice;
+use App\Models\CreditNote;
 use App\Models\SalesOrder;
 use App\Services\ActiveTenantContext;
 use App\Services\DocumentSellerProfile;
@@ -40,15 +41,35 @@ class InvoiceController extends Controller
             'invoice_date' => ['nullable', 'date_format:Y-m-d'],
         ]);
         $invoices = Invoice::query()->where('organization_id', $organization->getKey())->where('store_id', $store->getKey())
-            ->when($filters['search'] ?? null, fn($query, string $search) => $query->where(fn($query) => $query
+            ->when($filters['search'] ?? null, fn ($query, string $search) => $query->where(fn ($query) => $query
                 ->where('invoice_number', 'like', "%{$search}%")
                 ->orWhere('customer_name', 'like', "%{$search}%")
                 ->orWhere('customer_company', 'like', "%{$search}%")
-                ->orWhereHas('salesOrder', fn($query) => $query->where('order_number', 'like', "%{$search}%"))))
-            ->when($filters['status'] ?? null, fn($query, string $status) => $query->where('status', $status))
-            ->when($filters['invoice_date'] ?? null, fn($query, string $date) => $query->whereDate('invoice_date', $date))
+                ->orWhereHas('salesOrder', fn ($query) => $query->where('order_number', 'like', "%{$search}%"))))
+            ->when(
+                $filters['status'] ?? null,
+                fn ($query, string $status) => $query->where('status', $status),
+                fn ($query) => $query->where('status', '!=', InvoiceStatus::Superseded->value),
+            )
+            ->when($filters['invoice_date'] ?? null, fn ($query, string $date) => $query->whereDate('invoice_date', $date))
             ->with(['store:id,name,code', 'salesOrder:id,order_number'])
-            ->latest('invoice_date')->latest('id')->paginate(20)->withQueryString();
+            ->addSelect(['credited_amount' => CreditNote::query()->selectRaw('COALESCE(SUM(total_incl_tax), 0)')
+                ->whereColumn('credit_notes.sales_order_id', 'invoices.sales_order_id')->where('status', 'issued')])
+            ->latest('invoice_date')->latest('id')->paginate(20)->withQueryString()
+            ->through(function (Invoice $invoice) {
+                $credited = Decimal::normalize((string) ($invoice->credited_amount ?? '0.0000'));
+                $net = Decimal::subtract($invoice->total_incl_tax, $credited);
+                if (Decimal::compare($net, '0.0000') < 0) {
+                    $net = '0.0000';
+                }
+                $invoice->setAttribute('credited_amount', $credited);
+                $invoice->setAttribute('net_total_incl_tax', $net);
+                $invoice->setAttribute('credit_state', Decimal::compare($credited, '0.0000') === 0
+                    ? 'none'
+                    : (Decimal::compare($credited, $invoice->total_incl_tax) >= 0 ? 'full' : 'partial'));
+
+                return $invoice;
+            });
 
         return Inertia::render('Documents/Invoices/Index', ['invoices' => $invoices, 'filters' => $filters]);
     }
@@ -81,6 +102,7 @@ class InvoiceController extends Controller
                 $query->select([
                     'invoices.id',
                     'invoices.invoice_number',
+                    'invoices.version',
                     'invoices.status',
                     'invoices.issued_at',
                     'invoices.correction_reason',
@@ -92,16 +114,6 @@ class InvoiceController extends Controller
                 ]);
             },
 
-            'correction' => function ($query) {
-                $query->select([
-                    'invoices.id',
-                    'invoices.corrected_invoice_id',
-                    'invoices.invoice_number',
-                    'invoices.status',
-                    'invoices.issued_at',
-                    'invoices.correction_reason',
-                ]);
-            },
         ]);
 
         // The seller snapshot carries the logo as a large base64 data URI for the
@@ -112,10 +124,11 @@ class InvoiceController extends Controller
         $invoice->setAttribute('seller_snapshot', $seller);
 
         $hasDiscount = Decimal::compare($invoice->discount_total, '0') !== 0
-            || $invoice->lines->contains(fn($line) => Decimal::compare($line->discount_amount, '0') !== 0);
+            || $invoice->lines->contains(fn ($line) => Decimal::compare($line->discount_amount, '0') !== 0);
 
         $isIssued = $invoice->status === InvoiceStatus::Issued;
-        $isCorrection = $invoice->corrected_invoice_id !== null;
+        $isReplacement = $invoice->corrected_invoice_id !== null;
+        $isCorrection = $isReplacement && $invoice->sales_order_addendum_id === null;
 
         // Original vs corrected financial comparison for the correction UI's
         // delta block. Totals are the server-authoritative stored aggregates.
@@ -135,8 +148,6 @@ class InvoiceController extends Controller
             'delta_incl_tax' => Decimal::subtract($invoice->total_incl_tax, $invoice->correctedInvoice->total_incl_tax),
         ] : null;
 
-        $canEditLines = $request->user()->can('editLines', $invoice);
-
         // A temporary signed PDF link + a prefilled WhatsApp message are only
         // meaningful for the currently-live official Invoice — never for a draft
         // and never for a superseded original (sharing must follow the
@@ -148,23 +159,33 @@ class InvoiceController extends Controller
                 $invoice,
             )
             : null;
-
-        $activeCorrectionExists = Invoice::query()
-            ->where('organization_id', $invoice->organization_id)
-            ->where('corrected_invoice_id', $invoice->getKey())
-            ->whereIn('status', [InvoiceStatus::Draft->value, InvoiceStatus::Issued->value])
-            ->exists();
+        $history = $this->correctionHistory($invoice);
+        $currentVersion = collect($history)->firstWhere('is_current', true);
+        $orderExpandedAfterInvoice = $invoice->status === InvoiceStatus::Issued
+            && $invoice->lines->pluck('sales_order_line_id')->filter()->map(fn ($id) => (int) $id)->sort()->values()->all()
+                !== $invoice->salesOrder->lines()->pluck('id')->map(fn ($id) => (int) $id)->sort()->values()->all();
+        $creditNotes = CreditNote::query()->where('organization_id', $invoice->organization_id)
+            ->where('sales_order_id', $invoice->sales_order_id)->where('status', 'issued')->orderBy('issued_at')
+            ->get(['id', 'invoice_id', 'credit_note_number', 'credit_note_date', 'status', 'total_incl_tax']);
+        $credited = $creditNotes->reduce(fn (string $sum, $note) => Decimal::add($sum, $note->total_incl_tax), '0.0000');
+        $netAfterCredits = Decimal::subtract($invoice->total_incl_tax, $credited);
+        if (Decimal::compare($netAfterCredits, '0.0000') < 0) $netAfterCredits = '0.0000';
+        $paymentSummary = $payments->summary($invoice->salesOrder);
+        $receivable = Decimal::subtract($netAfterCredits, $paymentSummary['net']);
+        $refundObligation = Decimal::subtract($paymentSummary['net'], $netAfterCredits);
+        if (Decimal::compare($receivable, '0.0000') < 0) $receivable = '0.0000';
+        if (Decimal::compare($refundObligation, '0.0000') < 0) $refundObligation = '0.0000';
 
         return Inertia::render('Documents/Invoices/Show', [
             'invoice' => $invoice,
             'hasDiscount' => $hasDiscount,
             'sellerHasLogo' => $hasLogo,
             'isCorrection' => $isCorrection,
+            'isReplacement' => $isReplacement,
             'correctionComparison' => $correctionComparison,
-            'productSearchUrl' => $canEditLines ? route('invoices.correction-lines.search', $invoice) : null,
             'previewUrl' => route('invoices.print', $invoice),
             'accentColor' => $seller['accent_color'] ?? DocumentSellerProfile::DEFAULT_ACCENT_COLOR,
-            'relatedOrderPaymentSummary' => $payments->summary($invoice->salesOrder),
+            'relatedOrderPaymentSummary' => $paymentSummary,
             'sharing' => $isIssued ? [
                 'pdfUrl' => $sharePdfUrl,
                 'email' => $invoice->customer_email,
@@ -172,9 +193,14 @@ class InvoiceController extends Controller
                 'whatsappPhone' => PhoneNumber::forWhatsApp($invoice->customer_phone),
                 'whatsappMessage' => $this->whatsappMessage($invoice, $formatter, $sharePdfUrl),
                 'defaultSubject' => "Facture {$invoice->invoice_number} — ".($seller['trade_name'] ?: $seller['legal_name'] ?? $invoice->organization->name),
-                'attachmentName' => "Facture-{$invoice->invoice_number}.pdf",
+                'attachmentName' => "Facture-{$invoice->invoice_number}-V{$invoice->version}.pdf",
             ] : null,
-            'history' => $this->correctionHistory($invoice),
+            'history' => $history,
+            'isCurrentVersion' => $invoice->status === InvoiceStatus::Issued,
+            'currentVersion' => $currentVersion,
+            'orderExpandedAfterInvoice' => $orderExpandedAfterInvoice,
+            'creditNotes' => $creditNotes,
+            'creditSummary' => ['credited' => $credited, 'net' => $netAfterCredits, 'receivable' => $receivable, 'refund_obligation' => $refundObligation, 'state' => Decimal::compare($credited, '0') === 0 ? 'none' : (Decimal::compare($credited, $invoice->total_incl_tax) >= 0 ? 'full' : 'partial')],
             'mailConfigured' => $mail->isConfigured($invoice->organization),
             'stamp' => [
                 'applied' => $invoice->stampApposition !== null,
@@ -185,62 +211,35 @@ class InvoiceController extends Controller
                 'issue' => $request->user()->can('issue', $invoice),
                 'backdate' => $request->user()->hasPermission($invoice->organization_id, 'invoices.backdate'),
                 'email' => $request->user()->can('email', $invoice),
-                'correct' => $request->user()->can('correct', $invoice) && ! $activeCorrectionExists,
-                'editLines' => $canEditLines,
                 'configureMail' => $request->user()->hasPermission($invoice->organization_id, 'settings.update'),
                 'stamp' => $request->user()->can('stamp', $invoice) && ! $invoice->stampApposition,
+                'viewOrder' => $request->user()->can('view', $invoice->salesOrder),
             ],
         ]);
     }
 
     /**
-     * A compact, ordered view of the original / correction chain for the
-     * HISTORIQUE panel. Empty when the Invoice is neither a correction nor a
-     * corrected original.
+     * A compact newest-first view of every immutable row in this Invoice's
+     * tenant-scoped canonical-number family.
      *
      * @return list<array<string, mixed>>
      */
     private function correctionHistory(Invoice $invoice): array
     {
-        $entries = [];
-
-        if ($invoice->correctedInvoice) {
-            $entries[] = [
-                'role' => 'original',
-                'id' => $invoice->correctedInvoice->id,
-                'invoice_number' => $invoice->correctedInvoice->invoice_number,
-                'status' => $invoice->correctedInvoice->status->value,
-                'issued_at' => $invoice->correctedInvoice->issued_at?->toIso8601String(),
-                'reason' => null,
-            ];
-            $entries[] = [
-                'role' => 'correction',
-                'id' => $invoice->id,
-                'invoice_number' => $invoice->invoice_number,
-                'status' => $invoice->status->value,
-                'issued_at' => $invoice->issued_at?->toIso8601String(),
-                'reason' => $invoice->correction_reason,
-            ];
-        } elseif ($invoice->correction) {
-            $entries[] = [
-                'role' => 'original',
-                'id' => $invoice->id,
-                'invoice_number' => $invoice->invoice_number,
-                'status' => $invoice->status->value,
-                'issued_at' => $invoice->issued_at?->toIso8601String(),
-                'reason' => null,
-            ];
-            $entries[] = [
-                'role' => 'correction',
-                'id' => $invoice->correction->id,
-                'invoice_number' => $invoice->correction->invoice_number,
-                'status' => $invoice->correction->status->value,
-                'issued_at' => $invoice->correction->issued_at?->toIso8601String(),
-                'reason' => $invoice->correction->correction_reason,
-            ];
-        }
-
-        return $entries;
+        return Invoice::query()
+            ->where('organization_id', $invoice->organization_id)
+            ->where('invoice_family_id', $invoice->invoice_family_id)
+            ->orderByDesc('version')
+            ->get(['id', 'invoice_family_id', 'invoice_number', 'version', 'status', 'issued_at', 'correction_reason'])
+            ->map(fn (Invoice $version) => [
+                'id' => $version->id,
+                'invoice_number' => $version->invoice_number,
+                'version' => $version->version,
+                'status' => $version->status->value,
+                'issued_at' => $version->issued_at?->toIso8601String(),
+                'reason' => $version->correction_reason,
+                'is_current' => $version->status === InvoiceStatus::Issued,
+            ])->all();
     }
 
     private function whatsappMessage(Invoice $invoice, DocumentValueFormatter $formatter, ?string $pdfUrl): string
@@ -252,7 +251,7 @@ class InvoiceController extends Controller
         return implode("\n", array_filter([
             $greeting,
             "Voici votre facture {$invoice->invoice_number}.",
-            'Montant : ' . $formatter->money($invoice->total_incl_tax) . ' ' . $currency . '.',
+            'Montant : '.$formatter->money($invoice->total_incl_tax).' '.$currency.'.',
             $pdfUrl ? "PDF : {$pdfUrl}" : null,
         ]));
     }

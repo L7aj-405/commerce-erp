@@ -4,16 +4,19 @@ namespace App\Services;
 
 use App\Enums\PaymentStatus;
 use App\Enums\SalesOrderPaymentStatus;
+use App\Enums\SalesOrderStatus;
 use App\Models\PaymentAllocation;
+use App\Models\PaymentRefund;
 use App\Models\SalesOrder;
+use App\Models\CustomerReturn;
 use App\Support\Decimal;
 use LogicException;
 
 class SalesOrderPaymentCalculator
 {
-    public function paidAmount(SalesOrder $order): string
+    public function collectedAmount(SalesOrder $order): string
     {
-        $paid = '0.0000';
+        $collected = '0.0000';
         $amounts = PaymentAllocation::query()
             ->where('organization_id', $order->organization_id)
             ->where('sales_order_id', $order->getKey())
@@ -21,38 +24,77 @@ class SalesOrderPaymentCalculator
             ->pluck('amount');
 
         foreach ($amounts as $amount) {
-            $paid = Decimal::add($paid, $amount);
+            $collected = Decimal::add($collected, $amount);
         }
 
-        return $paid;
+        return $collected;
+    }
+
+    public function refundedAmount(SalesOrder $order): string
+    {
+        $refunded = '0.0000';
+        $amounts = PaymentRefund::query()
+            ->where('organization_id', $order->organization_id)
+            ->where('sales_order_id', $order->getKey())
+            ->where('status', 'posted')
+            ->pluck('amount');
+
+        foreach ($amounts as $amount) {
+            $refunded = Decimal::add($refunded, $amount);
+        }
+
+        return $refunded;
+    }
+
+    /** Net money retained against the order: collections minus refunds. */
+    public function paidAmount(SalesOrder $order): string
+    {
+        $collected = $this->collectedAmount($order);
+        $refunded = $this->refundedAmount($order);
+        if (Decimal::compare($refunded, $collected) > 0) {
+            throw new LogicException('Posted refunds exceed posted payment allocations.');
+        }
+
+        return Decimal::subtract($collected, $refunded);
     }
 
     public function remainingAmount(SalesOrder $order): string
     {
-        return Decimal::subtract($order->total_incl_tax, $this->paidAmount($order));
+        if ($order->status === SalesOrderStatus::Cancelled) {
+            return '0.0000';
+        }
+
+        return $this->nonNegative(Decimal::subtract($this->commercialTotal($order), $this->paidAmount($order)));
     }
 
-    /** @return array{paid: string, remaining: string, status: string} */
+    /** @return array{paid: string, collected: string, refunded: string, net: string, remaining: string, status: string} */
     public function summary(SalesOrder $order): array
     {
-        $paid = $this->paidAmount($order);
-        $remaining = Decimal::subtract($order->total_incl_tax, $paid);
+        $collected = $this->collectedAmount($order);
+        $refunded = $this->refundedAmount($order);
+        if (Decimal::compare($refunded, $collected) > 0) {
+            throw new LogicException('Posted refunds exceed posted payment allocations.');
+        }
+        $paid = Decimal::subtract($collected, $refunded);
+        $commercialTotal = $this->commercialTotal($order);
+        $remaining = $order->status === SalesOrderStatus::Cancelled
+            ? '0.0000'
+            : $this->nonNegative(Decimal::subtract($commercialTotal, $paid));
 
         return [
             'paid' => $paid,
+            'collected' => $collected,
+            'refunded' => $refunded,
+            'net' => $paid,
             'remaining' => $remaining,
-            'status' => $this->status($order->total_incl_tax, $paid)->value,
+            'status' => $this->status($commercialTotal, $paid)->value,
         ];
     }
 
     public function recalculate(SalesOrder $order): SalesOrder
     {
         $paid = $this->paidAmount($order);
-        if (Decimal::compare($paid, $order->total_incl_tax) > 0) {
-            throw new LogicException('Posted payment allocations exceed the Sales Order total.');
-        }
-
-        $order->payment_status = $this->status($order->total_incl_tax, $paid);
+        $order->payment_status = $this->status($this->commercialTotal($order), $paid);
         $order->save();
 
         return $order;
@@ -67,5 +109,17 @@ class SalesOrderPaymentCalculator
         return Decimal::compare($paid, $total) < 0
             ? SalesOrderPaymentStatus::PartiallyPaid
             : SalesOrderPaymentStatus::Paid;
+    }
+
+    private function commercialTotal(SalesOrder $order): string
+    {
+        $returned = CustomerReturn::query()->where('organization_id', $order->organization_id)->where('sales_order_id', $order->id)->where('status', 'received')->pluck('total_incl_tax')
+            ->reduce(fn (string $sum, $amount) => Decimal::add($sum, $amount), '0.0000');
+        return $this->nonNegative(Decimal::subtract($order->total_incl_tax, $returned));
+    }
+
+    private function nonNegative(string $amount): string
+    {
+        return Decimal::compare($amount, '0.0000') < 0 ? '0.0000' : $amount;
     }
 }

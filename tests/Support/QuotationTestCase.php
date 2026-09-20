@@ -14,6 +14,20 @@ use App\Models\User;
 
 abstract class QuotationTestCase extends DocumentTestCase
 {
+    /** @return array{User, Organization, Store, ProductVariant} */
+    protected function quotationCatalogFixture(): array
+    {
+        $owner = User::factory()->create();
+        $organization = $this->createOrganization($owner);
+        $store = $this->createStore($organization, $owner);
+        $variant = $this->createProduct($organization, 'Micro', 'MIC-FIXTURE', [
+            'default_sale_price' => '500.0000',
+        ])->variants->firstOrFail();
+        $this->activate($owner, $organization, $store);
+
+        return [$owner, $organization, $store, $variant];
+    }
+
     protected function createQuotation(User $actor, Organization $organization, Store $store, array $data = []): Quotation
     {
         return app(CreateQuotationAction::class)->execute($actor, $organization, $store, array_replace([
@@ -35,7 +49,7 @@ abstract class QuotationTestCase extends DocumentTestCase
 
     protected function addNonStockQuotationLine(User $actor, Quotation $quotation, array $data = [])
     {
-        return app(SaveQuotationLineAction::class)->execute($actor, $quotation, array_replace([
+        $payload = array_replace([
             'line_type' => 'non_stock',
             'name' => 'Projecteur XYZ',
             'price_input_mode' => 'ht',
@@ -43,7 +57,13 @@ abstract class QuotationTestCase extends DocumentTestCase
             'quantity' => '1',
             'discount_type' => 'none',
             'discount_value' => '0',
-        ], $data));
+        ], $data);
+
+        if (array_key_exists('non_stock_item_id', $data) && ! array_key_exists('unit_price', $data)) {
+            unset($payload['price_input_mode'], $payload['unit_price']);
+        }
+
+        return app(SaveQuotationLineAction::class)->execute($actor, $quotation, $payload);
     }
 
     protected function issueQuotation(User $actor, Quotation $quotation): Quotation

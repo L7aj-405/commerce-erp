@@ -134,15 +134,23 @@
         <td style="width: 60%; padding-right: 16px;">
             @if ($seller['logo'] ?? null)
                 <img class="logo" src="{{ $seller['logo'] }}" alt="">
-            @else
-                <div style="font-size: 15px; font-weight: bold; text-transform: uppercase; margin-bottom: 8px;">{{ $seller['legal_name'] }}</div>
             @endif
+            <div style="font-size: 15px; font-weight: bold; text-transform: uppercase; margin-bottom: 8px;">
+                {{ ($seller['trade_name'] ?? null) ?: $seller['legal_name'] }}
+            </div>
             <div class="seller">
+                @if (($seller['trade_name'] ?? null) && ($seller['legal_name'] ?? null)){{ $seller['legal_name'] }}<br>@endif
                 @if ($seller['address'] ?? null){{ $seller['address'] }}<br>@endif
                 @if ($seller['tax_identifier'] ?? null)ICE : {{ $seller['tax_identifier'] }}<br>@endif
+                @if ($seller['registration_number'] ?? null)RC N° : {{ $seller['registration_number'] }}<br>@endif
+                @if ($seller['patente_number'] ?? null)TP : {{ $seller['patente_number'] }}<br>@endif
+                @foreach (($seller['additional_identifiers'] ?? []) as $identifier)
+                    {{ $identifier['label'] }} : {{ $identifier['value'] }}<br>
+                @endforeach
                 @if ($seller['phone'] ?? null)Tél : {{ $seller['phone'] }}<br>@endif
-                FAX : {{ $seller['fax'] ?? '' }}<br>
-                @if ($seller['email'] ?? null)Mail : {{ $seller['email'] }}@endif
+                @if ($seller['fax'] ?? null)FAX : {{ $seller['fax'] }}<br>@endif
+                @if ($seller['email'] ?? null)Mail : {{ $seller['email'] }}<br>@endif
+                @if ($seller['website'] ?? null){{ $seller['website'] }}@endif
             </div>
         </td>
         <td style="width: 40%;">

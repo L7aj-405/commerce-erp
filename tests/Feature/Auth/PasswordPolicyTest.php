@@ -3,6 +3,7 @@
 namespace Tests\Feature\Auth;
 
 use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Password;
 use Tests\TestCase;
 
@@ -16,6 +17,8 @@ use Tests\TestCase;
  */
 class PasswordPolicyTest extends TestCase
 {
+    use RefreshDatabase;
+
     public function test_registration_rejects_a_password_under_the_minimum(): void
     {
         $this->post('/register', [

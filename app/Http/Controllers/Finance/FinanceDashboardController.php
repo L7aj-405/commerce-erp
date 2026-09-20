@@ -115,6 +115,7 @@ class FinanceDashboardController extends Controller
             'storeId' => $store?->id,
             'stores' => $this->stores($organization),
             'payments' => $report->encaissementsBreakdown($organization, $period, $store),
+            'refunds' => $report->refundsBreakdown($organization, $period, $store),
         ]);
     }
 

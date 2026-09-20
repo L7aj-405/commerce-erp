@@ -7,12 +7,14 @@ use App\Models\InventoryBalance;
 use App\Models\InventoryMovement;
 use App\Models\InventoryReservation;
 use App\Models\NonStockItem;
+use App\Models\Organization;
+use App\Models\Store;
 use App\Models\User;
 use Tests\Support\QuotationTestCase;
 
 class NonStockItemTest extends QuotationTestCase
 {
-    /** @return array{User, \App\Models\Organization, \App\Models\Store} */
+    /** @return array{User, Organization, Store} */
     private function tenant(): array
     {
         $owner = User::factory()->create();
@@ -114,7 +116,7 @@ class NonStockItemTest extends QuotationTestCase
 
         $csv = $this->actingAs($owner)->get(route('catalog.non-stock-items.export'));
         $csv->assertOk();
-        $body = $csv->streamedContent();
+        $body = $csv->getContent();
         $this->assertStringContainsString('Projecteur XYZ', $body);
         $this->assertStringContainsString('Devis (utilisations)', $body);
         $this->assertStringNotContainsString('stock', strtolower($body));

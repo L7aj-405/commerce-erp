@@ -1,5 +1,5 @@
-import { ButtonLink } from '@/components/ui/Button';
-import { Spinner } from '@/components/ui/Spinner';
+import ProductImage from '@/components/catalog/ProductImage';
+import { Button, ButtonLink } from '@/components/ui/Button';
 import EmptyState from '@/components/ui/EmptyState';
 import FilterSelect from '@/components/ui/FilterSelect';
 import PageHeader from '@/components/ui/PageHeader';
@@ -59,8 +59,12 @@ export default function StockIndex({ balances, filters, warehouses, brands, cate
     const activeWarehouse = warehouses.find((warehouse) => warehouse.id === filters.warehouse);
     const hasFilters = Boolean(search || filters.warehouse || filters.brand || filters.category || filters.availability);
     const productCount = balances.total;
-    const totalUnits = balances.data.reduce((carry, row) => carry + Number(row.summary.available), 0);
-    const lowStockCount = balances.data.filter((row) => Number(row.summary.available) > 0 && Number(row.summary.available) <= 5).length;
+    const totalAvailable = balances.data.reduce((carry, row) => carry + Number(row.summary.available), 0);
+    const totalReserved = balances.data.reduce((carry, row) => carry + Number(row.summary.reserved), 0);
+    const outOfStockCount = balances.data.filter((row) => Number(row.summary.available) <= 0).length;
+    const stockState = (row: StockRow) => Number(row.summary.available) > 0
+        ? { label: 'En stock', className: 'bg-success-soft text-success' }
+        : { label: 'Rupture', className: 'bg-danger-soft text-danger' };
 
     function resetFilters() {
         setSearch('');
@@ -85,162 +89,184 @@ export default function StockIndex({ balances, filters, warehouses, brands, cate
 
     return (
         <InventoryLayout wide>
-            <Head title="Etat du stock" />
+            <Head title="État du stock" />
             <PageHeader
-                title="Etat du stock"
-                description="Suivez la disponibilite de vos produits par emplacement."
+                title="État du stock"
+                description="Vue actuelle des disponibilités par produit et entrepôt."
                 actions={can.transfer ? <ButtonLink href="/inventory/transfers/create">Nouveau transfert</ButtonLink> : undefined}
             />
 
             {warehouses.length === 0 ? (
                 <EmptyState
-                    title="Aucun emplacement de stock."
-                    description="Creez votre premier emplacement pour commencer a gerer le stock."
-                    actions={<ButtonLink href="/inventory/warehouses">+ Ajouter un emplacement</ButtonLink>}
+                    title="Aucun entrepôt de stock."
+                    description="Créez votre premier entrepôt pour commencer à gérer le stock."
+                    actions={<ButtonLink href="/inventory/warehouses">+ Ajouter un entrepôt</ButtonLink>}
                 />
             ) : (
                 <>
-                    <section className="mb-6 grid gap-4 md:grid-cols-3">
-                        <div className="rounded-2xl border bg-white p-5">
-                            <p className="text-sm text-slate-500">Produits visibles</p>
-                            <p className="mt-2 text-3xl font-semibold">{formatInteger(productCount)}</p>
-                        </div>
-                        <div className="rounded-2xl border bg-white p-5">
-                            <p className="text-sm text-slate-500">Unites disponibles</p>
-                            <p className="mt-2 text-3xl font-semibold">{formatQuantity(totalUnits)}</p>
-                        </div>
-                        <div className="rounded-2xl border bg-white p-5">
-                            <p className="text-sm text-slate-500">Stock faible</p>
-                            <p className="mt-2 text-3xl font-semibold">{formatInteger(lowStockCount)}</p>
+                    <section className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                        <MetricCard label="Produits / Variantes" value={formatInteger(productCount)} />
+                        <MetricCard label="Disponible" value={formatQuantity(totalAvailable)} />
+                        <MetricCard label="Réservé" value={formatQuantity(totalReserved)} />
+                        <MetricCard label="Ruptures visibles" value={formatInteger(outOfStockCount)} tone={outOfStockCount > 0 ? 'danger' : 'neutral'} />
+                    </section>
+
+                    <section className="mb-6 rounded-card border border-line bg-surface p-4 shadow-soft">
+                        <div className="grid gap-2 xl:grid-cols-[minmax(260px,1fr)_190px_180px_190px_190px_auto]">
+                            <SearchInput value={search} onChange={setSearch} searching={searching} placeholder="Produit, SKU, référence, code-barres ou marque" />
+                            <FilterSelect aria-label="Entrepôt" value={filters.warehouse ?? ''} onChange={event => visit({ ...filters, search: search || undefined, warehouse: event.target.value ? Number(event.target.value) : undefined, page: undefined })}>
+                                <option value="">Tous les entrepôts</option>
+                                {warehouses.map(warehouse => <option key={warehouse.id} value={warehouse.id}>{warehouse.name}</option>)}
+                            </FilterSelect>
+                            <FilterSelect aria-label="Marque" value={filters.brand ?? ''} onChange={event => visit({ ...filters, search: search || undefined, brand: event.target.value ? Number(event.target.value) : undefined, page: undefined })}>
+                                <option value="">Toutes les marques</option>
+                                {brands.map(brand => <option key={brand.id} value={brand.id}>{brand.name}</option>)}
+                            </FilterSelect>
+                            <FilterSelect aria-label="Catégorie" value={filters.category ?? ''} onChange={event => visit({ ...filters, search: search || undefined, category: event.target.value ? Number(event.target.value) : undefined, page: undefined })}>
+                                <option value="">Toutes les catégories</option>
+                                {categories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}
+                            </FilterSelect>
+                            <FilterSelect aria-label="Disponibilité" value={filters.availability ?? ''} onChange={event => visit({ ...filters, search: search || undefined, availability: event.target.value || undefined, page: undefined })}>
+                                <option value="">Toute disponibilité</option>
+                                <option value="in_stock">En stock</option>
+                                <option value="out_of_stock">Rupture</option>
+                                <option value="low_stock">Stock faible</option>
+                            </FilterSelect>
+                            {hasFilters && <button type="button" onClick={resetFilters} className="min-h-10 rounded-field px-3 text-sm font-medium text-ink-muted transition-soft hover:bg-sage hover:text-ink">Réinitialiser</button>}
                         </div>
                     </section>
 
-                    <div className="mb-6 flex flex-wrap gap-2">
-                        <SearchInput value={search} onChange={setSearch} searching={searching} placeholder="Produit, SKU, reference, code-barres ou marque" />
-                        <FilterSelect aria-label="Emplacement" value={filters.warehouse ?? ''} onChange={event => visit({ ...filters, search: search || undefined, warehouse: event.target.value ? Number(event.target.value) : undefined, page: undefined })}>
-                            <option value="">Tous les emplacements</option>
-                            {warehouses.map(warehouse => <option key={warehouse.id} value={warehouse.id}>{warehouse.name}</option>)}
-                        </FilterSelect>
-                        <FilterSelect aria-label="Marque" value={filters.brand ?? ''} onChange={event => visit({ ...filters, search: search || undefined, brand: event.target.value ? Number(event.target.value) : undefined, page: undefined })}>
-                            <option value="">Toutes les marques</option>
-                            {brands.map(brand => <option key={brand.id} value={brand.id}>{brand.name}</option>)}
-                        </FilterSelect>
-                        <FilterSelect aria-label="Categorie" value={filters.category ?? ''} onChange={event => visit({ ...filters, search: search || undefined, category: event.target.value ? Number(event.target.value) : undefined, page: undefined })}>
-                            <option value="">Toutes les categories</option>
-                            {categories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}
-                        </FilterSelect>
-                        <FilterSelect aria-label="Disponibilite" value={filters.availability ?? ''} onChange={event => visit({ ...filters, search: search || undefined, availability: event.target.value || undefined, page: undefined })}>
-                            <option value="">Toute disponibilite</option>
-                            <option value="in_stock">En stock</option>
-                            <option value="out_of_stock">Rupture</option>
-                            <option value="low_stock">Stock faible</option>
-                        </FilterSelect>
-                        {hasFilters && <button type="button" onClick={resetFilters} className="px-3 text-sm text-slate-600 hover:text-slate-950">Reinitialiser</button>}
-                    </div>
-
                     {activeWarehouse && (
-                        <div className="mb-4 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
-                            Emplacement actif : <strong>{activeWarehouse.name}</strong>. Les disponibilites ci-dessous correspondent a cet emplacement.
+                        <div className="mb-4 rounded-card border border-line bg-sage px-4 py-3 text-sm text-ink-muted">
+                            Entrepôt actif : <strong className="text-ink">{activeWarehouse.name}</strong>. Les disponibilités ci-dessous correspondent à cet entrepôt.
                         </div>
                     )}
 
                     {balances.data.length === 0 ? (
                         <EmptyState
-                            title={filters.warehouse ? 'Aucun produit disponible dans cet emplacement.' : 'Aucun stock a afficher'}
-                            description={filters.warehouse ? 'Essayez un autre emplacement, ajoutez un stock initial ou reinitialisez les filtres.' : 'Ajoutez un stock initial ou modifiez vos filtres pour commencer.'}
+                            title={filters.warehouse ? 'Aucun produit disponible dans cet entrepôt.' : 'Aucun stock à afficher'}
+                            description={filters.warehouse ? 'Essayez un autre entrepôt, ajoutez un stock initial ou réinitialisez les filtres.' : 'Ajoutez un stock initial ou modifiez vos filtres pour commencer.'}
                             actions={
                                 <>
-                                    <ButtonLink href="/inventory/warehouses" variant="secondary">Voir les emplacements</ButtonLink>
-                                    {can.transfer && warehouses.length > 1 && <ButtonLink href="/inventory/transfers/create">Creer un transfert</ButtonLink>}
+                                    <ButtonLink href="/inventory/warehouses" variant="secondary">Voir les entrepôts</ButtonLink>
+                                    {can.transfer && warehouses.length > 1 && <ButtonLink href="/inventory/transfers/create">Créer un transfert</ButtonLink>}
                                 </>
                             }
                         />
                     ) : (
                         <>
-                            <div className="overflow-hidden rounded-2xl border bg-white">
+                            <div className="overflow-hidden rounded-card border border-line bg-surface shadow-soft">
                                 <div className="hidden overflow-x-auto lg:block">
-                                    <table className="w-full min-w-[1100px] text-left text-sm">
-                                        <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                                    <table className="w-full min-w-[1120px] text-left text-sm">
+                                        <thead className="bg-raised text-[11px] uppercase tracking-wide text-ink-faint">
                                             <tr>
-                                                <th className="p-3">Produit</th>
-                                                <th className="p-3">SKU / Reference</th>
-                                                <th className="p-3">Marque</th>
-                                                {!filters.warehouse && <th className="p-3">Par emplacement</th>}
-                                                <th className="p-3 text-right">Total</th>
-                                                <th className="p-3 text-right">Disponible</th>
-                                                <th className="p-3 text-right"><span className="sr-only">Actions</span></th>
+                                                <th className="px-4 py-3">Produit</th>
+                                                <th className="px-4 py-3">Référence / SKU</th>
+                                                <th className="px-4 py-3">Variante</th>
+                                                {!filters.warehouse && <th className="px-4 py-3">Entrepôts</th>}
+                                                <th className="px-4 py-3 text-right">En stock</th>
+                                                <th className="px-4 py-3 text-right">Réservé</th>
+                                                <th className="px-4 py-3 text-right">Disponible</th>
+                                                <th className="px-4 py-3">État</th>
+                                                <th className="px-4 py-3 text-right"><span className="sr-only">Actions</span></th>
                                             </tr>
                                         </thead>
-                                        <tbody>
-                                            {balances.data.map(row => (
-                                                <tr key={row.id} className="border-t align-top">
-                                                    <td className="p-3">
-                                                        <div className="flex items-center gap-3">
-                                                            {(row.image_url ?? row.product.image_url) ? <img src={row.image_url ?? row.product.image_url ?? undefined} alt="" className="h-11 w-11 rounded-lg object-cover" referrerPolicy="no-referrer" /> : <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-slate-100 font-semibold text-slate-500">{row.product.name.slice(0, 2).toUpperCase()}</div>}
-                                                            <div>
-                                                                <Link href={`/catalog/products/${row.product.id}`} className="font-semibold hover:underline">{row.product.name}</Link>
-                                                                <p className="text-xs text-slate-500">{row.label ?? 'Variante principale'}</p>
-                                                            </div>
-                                                        </div>
-                                                    </td>
-                                                    <td className="p-3">
-                                                        <p>{row.sku}</p>
-                                                        <p className="text-xs text-slate-500">{row.reference ?? row.barcode ?? 'Sans reference'}</p>
-                                                    </td>
-                                                    <td className="p-3">{row.product.brand?.name ?? '—'}</td>
-                                                    {!filters.warehouse && (
-                                                        <td className="p-3">
-                                                            <div className="space-y-1">
-                                                                {row.warehouses.map(warehouse => (
-                                                                    <div key={warehouse.id} className="flex justify-between gap-3 text-xs text-slate-600">
-                                                                        <span>{warehouse.name}</span>
-                                                                        <span>{formatQuantity(warehouse.available)}</span>
-                                                                    </div>
-                                                                ))}
+                                        <tbody className="divide-y divide-line">
+                                            {balances.data.map(row => {
+                                                const state = stockState(row);
+
+                                                return (
+                                                    <tr key={row.id} className="align-top transition-soft hover:bg-raised/70">
+                                                        <td className="px-4 py-3">
+                                                            <div className="flex items-center gap-3">
+                                                                <ProductImage name={row.product.name} imageUrl={row.image_url ?? row.product.image_url} className="h-12 w-12 border border-line" />
+                                                                <div className="min-w-0">
+                                                                    <Link href={`/catalog/products/${row.product.id}`} className="font-semibold text-ink hover:underline">{row.product.name}</Link>
+                                                                    <p className="text-xs text-ink-faint">{row.product.brand?.name ?? 'Sans marque'}</p>
+                                                                </div>
                                                             </div>
                                                         </td>
-                                                    )}
-                                                    <td className="p-3 text-right font-medium tabular-nums">{formatQuantity(row.summary.on_hand)}</td>
-                                                    <td className="p-3 text-right font-semibold tabular-nums">{formatQuantity(row.summary.available)}</td>
-                                                    <td className="p-3 text-right">
-                                                        <div className="flex justify-end gap-2">
-                                                            {can.transfer && <Link href={`/inventory/transfers/create?variant_id=${row.id}`} className="text-sm font-medium text-slate-900 hover:underline">Transferer</Link>}
-                                                            <Link href={`/catalog/products/${row.product.id}`} className="text-sm text-slate-600 hover:underline">Historique</Link>
-                                                        </div>
-                                                    </td>
-                                                </tr>
-                                            ))}
+                                                        <td className="px-4 py-3">
+                                                            <p className="font-medium text-ink">{row.sku}</p>
+                                                            <p className="text-xs text-ink-faint">{row.reference ?? row.barcode ?? 'Sans référence'}</p>
+                                                        </td>
+                                                        <td className="px-4 py-3">
+                                                            <span className="inline-flex rounded-full bg-raised px-2.5 py-1 text-xs font-medium text-ink-muted">{row.label ?? 'Variante principale'}</span>
+                                                        </td>
+                                                        {!filters.warehouse && (
+                                                            <td className="px-4 py-3">
+                                                                <div className="space-y-1.5">
+                                                                    {row.warehouses.map(warehouse => (
+                                                                        <div key={warehouse.id} className="flex justify-between gap-3 text-xs text-ink-muted">
+                                                                            <span className="truncate">{warehouse.name}</span>
+                                                                            <span className="tabular-nums text-ink">{formatQuantity(warehouse.available)}</span>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            </td>
+                                                        )}
+                                                        <td className="px-4 py-3 text-right font-medium tabular-nums text-ink">{formatQuantity(row.summary.on_hand)}</td>
+                                                        <td className="px-4 py-3 text-right tabular-nums text-ink-muted">{formatQuantity(row.summary.reserved)}</td>
+                                                        <td className="px-4 py-3 text-right font-semibold tabular-nums text-ink">{formatQuantity(row.summary.available)}</td>
+                                                        <td className="px-4 py-3"><span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${state.className}`}>{state.label}</span></td>
+                                                        <td className="px-4 py-3 text-right">
+                                                            <div className="flex justify-end gap-2">
+                                                                {can.transfer && <Link href={`/inventory/transfers/create?variant_id=${row.id}`} className="rounded-field px-3 py-2 text-sm font-medium text-ink transition-soft hover:bg-sage">Transférer</Link>}
+                                                                <Link href={`/catalog/products/${row.product.id}`} className="rounded-field px-3 py-2 text-sm text-ink-muted transition-soft hover:bg-sage hover:text-ink">Produit</Link>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
                                         </tbody>
                                     </table>
                                 </div>
 
                                 <div className="grid gap-3 p-4 lg:hidden">
-                                    {balances.data.map(row => (
-                                        <article key={row.id} className="rounded-xl border border-slate-200 p-4">
-                                            <div className="flex items-start justify-between gap-3">
-                                                <div>
-                                                    <Link href={`/catalog/products/${row.product.id}`} className="font-semibold hover:underline">{row.product.name}</Link>
-                                                    <p className="text-sm text-slate-500">{row.sku} · {row.label ?? 'Variante principale'}</p>
-                                                </div>
-                                                <div className="text-right">
-                                                    <p className="text-xs uppercase tracking-wide text-slate-400">Disponible</p>
-                                                    <p className="text-lg font-semibold">{formatQuantity(row.summary.available)}</p>
-                                                </div>
-                                            </div>
-                                            <div className="mt-3 space-y-1 text-sm text-slate-600">
-                                                {(filters.warehouse ? row.warehouses.slice(0, 1) : row.warehouses).map(warehouse => (
-                                                    <div key={warehouse.id} className="flex justify-between gap-3">
-                                                        <span>{warehouse.name}</span>
-                                                        <span>{formatQuantity(warehouse.available)}</span>
+                                    {balances.data.map(row => {
+                                        const state = stockState(row);
+
+                                        return (
+                                            <article key={row.id} className="rounded-card border border-line bg-surface p-4">
+                                                <div className="flex items-start justify-between gap-3">
+                                                    <div className="flex min-w-0 gap-3">
+                                                        <ProductImage name={row.product.name} imageUrl={row.image_url ?? row.product.image_url} className="h-12 w-12 shrink-0 border border-line" />
+                                                        <div className="min-w-0">
+                                                            <Link href={`/catalog/products/${row.product.id}`} className="font-semibold text-ink hover:underline">{row.product.name}</Link>
+                                                            <p className="text-sm text-ink-muted">{row.sku} · {row.label ?? 'Variante principale'}</p>
+                                                        </div>
                                                     </div>
-                                                ))}
-                                            </div>
-                                            <div className="mt-4 flex gap-3 text-sm">
-                                                {can.transfer && <Link href={`/inventory/transfers/create?variant_id=${row.id}`} className="font-medium text-slate-900 hover:underline">Transferer</Link>}
-                                                <Link href={`/catalog/products/${row.product.id}`} className="text-slate-600 hover:underline">Voir le produit</Link>
-                                            </div>
-                                        </article>
-                                    ))}
+                                                    <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${state.className}`}>{state.label}</span>
+                                                </div>
+                                                <dl className="mt-4 grid grid-cols-3 gap-3 rounded-field bg-raised p-3 text-sm">
+                                                    <div>
+                                                        <dt className="text-xs text-ink-faint">En stock</dt>
+                                                        <dd className="mt-1 font-semibold tabular-nums text-ink">{formatQuantity(row.summary.on_hand)}</dd>
+                                                    </div>
+                                                    <div>
+                                                        <dt className="text-xs text-ink-faint">Réservé</dt>
+                                                        <dd className="mt-1 font-semibold tabular-nums text-ink">{formatQuantity(row.summary.reserved)}</dd>
+                                                    </div>
+                                                    <div>
+                                                        <dt className="text-xs text-ink-faint">Disponible</dt>
+                                                        <dd className="mt-1 font-semibold tabular-nums text-ink">{formatQuantity(row.summary.available)}</dd>
+                                                    </div>
+                                                </dl>
+                                                <div className="mt-3 space-y-1 text-sm text-ink-muted">
+                                                    {(filters.warehouse ? row.warehouses.slice(0, 1) : row.warehouses).map(warehouse => (
+                                                        <div key={warehouse.id} className="flex justify-between gap-3">
+                                                            <span>{warehouse.name}</span>
+                                                            <span className="tabular-nums text-ink">{formatQuantity(warehouse.available)}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                                <div className="mt-4 flex gap-3 text-sm">
+                                                    {can.transfer && <Link href={`/inventory/transfers/create?variant_id=${row.id}`} className="font-medium text-ink hover:underline">Transférer</Link>}
+                                                    <Link href={`/catalog/products/${row.product.id}`} className="text-ink-muted hover:text-ink hover:underline">Voir le produit</Link>
+                                                </div>
+                                            </article>
+                                        );
+                                    })}
                                 </div>
                             </div>
                             <Pagination links={balances.links} />
@@ -250,44 +276,44 @@ export default function StockIndex({ balances, filters, warehouses, brands, cate
                     {(can.opening || can.adjust) && (
                         <section className="mt-8 grid gap-6 lg:grid-cols-2">
                             {can.opening && (
-                                <form onSubmit={submitOpening} className="space-y-3 rounded-2xl border bg-white p-5">
-                                    <h2 className="font-semibold">Stock initial</h2>
-                                    <select required value={opening.data.warehouse_id} onChange={event => opening.setData('warehouse_id', event.target.value)} className="w-full rounded-lg border px-3 py-2">
-                                        <option value="">Selectionner un emplacement</option>
+                                <form onSubmit={submitOpening} className="space-y-3 rounded-card border border-line bg-surface p-5 shadow-soft">
+                                    <h2 className="font-semibold text-ink">Stock initial</h2>
+                                    <select required value={opening.data.warehouse_id} onChange={event => opening.setData('warehouse_id', event.target.value)} className="w-full rounded-field border border-line-strong bg-surface px-3 py-2 text-sm">
+                                        <option value="">Sélectionner un entrepôt</option>
                                         {warehouses.map(warehouse => <option key={warehouse.id} value={warehouse.id}>{warehouse.name}</option>)}
                                     </select>
-                                    <select required value={opening.data.product_variant_id} onChange={event => opening.setData('product_variant_id', event.target.value)} className="w-full rounded-lg border px-3 py-2">
-                                        <option value="">Selectionner un produit</option>
+                                    <select required value={opening.data.product_variant_id} onChange={event => opening.setData('product_variant_id', event.target.value)} className="w-full rounded-field border border-line-strong bg-surface px-3 py-2 text-sm">
+                                        <option value="">Sélectionner un produit</option>
                                         {variants.map(variant => <option key={variant.id} value={variant.id}>{variant.product.name} · {variant.label ?? 'Principale'} · {variant.sku}</option>)}
                                     </select>
-                                    <input required inputMode="decimal" value={opening.data.quantity} onChange={event => opening.setData('quantity', event.target.value)} placeholder="Quantite" className="w-full rounded-lg border px-3 py-2" />
-                                    <input value={opening.data.reason} onChange={event => opening.setData('reason', event.target.value)} placeholder="Motif (optionnel)" className="w-full rounded-lg border px-3 py-2" />
-                                    <input value={opening.data.reference} onChange={event => opening.setData('reference', event.target.value)} placeholder="Reference (optionnelle)" className="w-full rounded-lg border px-3 py-2" />
-                                    {Object.values(opening.errors).map((error, index) => <p key={index} className="text-sm text-red-600">{error}</p>)}
-                                    <button disabled={opening.processing} aria-busy={opening.processing || undefined} className="inline-flex items-center gap-2 rounded-lg bg-slate-950 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">{opening.processing && <Spinner size="sm" />}{opening.processing ? 'Enregistrement...' : 'Ajouter le stock initial'}</button>
+                                    <input required inputMode="decimal" value={opening.data.quantity} onChange={event => opening.setData('quantity', event.target.value)} placeholder="Quantité" className="w-full rounded-field border border-line-strong bg-surface px-3 py-2 text-sm" />
+                                    <input value={opening.data.reason} onChange={event => opening.setData('reason', event.target.value)} placeholder="Motif (optionnel)" className="w-full rounded-field border border-line-strong bg-surface px-3 py-2 text-sm" />
+                                    <input value={opening.data.reference} onChange={event => opening.setData('reference', event.target.value)} placeholder="Référence (optionnelle)" className="w-full rounded-field border border-line-strong bg-surface px-3 py-2 text-sm" />
+                                    {Object.values(opening.errors).map((error, index) => <p key={index} className="text-sm text-danger">{error}</p>)}
+                                    <Button type="submit" loading={opening.processing} loadingText="Enregistrement...">Ajouter le stock initial</Button>
                                 </form>
                             )}
 
                             {can.adjust && (
-                                <form onSubmit={submitAdjustment} className="space-y-3 rounded-2xl border bg-white p-5">
-                                    <h2 className="font-semibold">Ajustement de stock</h2>
-                                    <select required value={adjustment.data.warehouse_id} onChange={event => adjustment.setData('warehouse_id', event.target.value)} className="w-full rounded-lg border px-3 py-2">
-                                        <option value="">Selectionner un emplacement</option>
+                                <form onSubmit={submitAdjustment} className="space-y-3 rounded-card border border-line bg-surface p-5 shadow-soft">
+                                    <h2 className="font-semibold text-ink">Ajustement de stock</h2>
+                                    <select required value={adjustment.data.warehouse_id} onChange={event => adjustment.setData('warehouse_id', event.target.value)} className="w-full rounded-field border border-line-strong bg-surface px-3 py-2 text-sm">
+                                        <option value="">Sélectionner un entrepôt</option>
                                         {warehouses.map(warehouse => <option key={warehouse.id} value={warehouse.id}>{warehouse.name}</option>)}
                                     </select>
-                                    <select required value={adjustment.data.product_variant_id} onChange={event => adjustment.setData('product_variant_id', event.target.value)} className="w-full rounded-lg border px-3 py-2">
-                                        <option value="">Selectionner un produit</option>
+                                    <select required value={adjustment.data.product_variant_id} onChange={event => adjustment.setData('product_variant_id', event.target.value)} className="w-full rounded-field border border-line-strong bg-surface px-3 py-2 text-sm">
+                                        <option value="">Sélectionner un produit</option>
                                         {variants.map(variant => <option key={variant.id} value={variant.id}>{variant.product.name} · {variant.label ?? 'Principale'} · {variant.sku}</option>)}
                                     </select>
-                                    <select value={adjustment.data.type} onChange={event => adjustment.setData('type', event.target.value)} className="w-full rounded-lg border px-3 py-2">
-                                        <option value="adjustment_in">Entree</option>
+                                    <select value={adjustment.data.type} onChange={event => adjustment.setData('type', event.target.value)} className="w-full rounded-field border border-line-strong bg-surface px-3 py-2 text-sm">
+                                        <option value="adjustment_in">Entrée</option>
                                         <option value="adjustment_out">Sortie</option>
                                     </select>
-                                    <input required inputMode="decimal" value={adjustment.data.quantity} onChange={event => adjustment.setData('quantity', event.target.value)} placeholder="Quantite" className="w-full rounded-lg border px-3 py-2" />
-                                    <input required value={adjustment.data.reason} onChange={event => adjustment.setData('reason', event.target.value)} placeholder="Motif" className="w-full rounded-lg border px-3 py-2" />
-                                    <input value={adjustment.data.reference} onChange={event => adjustment.setData('reference', event.target.value)} placeholder="Reference (optionnelle)" className="w-full rounded-lg border px-3 py-2" />
-                                    {Object.values(adjustment.errors).map((error, index) => <p key={index} className="text-sm text-red-600">{error}</p>)}
-                                    <button disabled={adjustment.processing} aria-busy={adjustment.processing || undefined} className="inline-flex items-center gap-2 rounded-lg bg-slate-950 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">{adjustment.processing && <Spinner size="sm" />}{adjustment.processing ? 'Ajustement...' : 'Appliquer l ajustement'}</button>
+                                    <input required inputMode="decimal" value={adjustment.data.quantity} onChange={event => adjustment.setData('quantity', event.target.value)} placeholder="Quantité" className="w-full rounded-field border border-line-strong bg-surface px-3 py-2 text-sm" />
+                                    <input required value={adjustment.data.reason} onChange={event => adjustment.setData('reason', event.target.value)} placeholder="Motif" className="w-full rounded-field border border-line-strong bg-surface px-3 py-2 text-sm" />
+                                    <input value={adjustment.data.reference} onChange={event => adjustment.setData('reference', event.target.value)} placeholder="Référence (optionnelle)" className="w-full rounded-field border border-line-strong bg-surface px-3 py-2 text-sm" />
+                                    {Object.values(adjustment.errors).map((error, index) => <p key={index} className="text-sm text-danger">{error}</p>)}
+                                    <Button type="submit" loading={adjustment.processing} loadingText="Ajustement...">Appliquer l’ajustement</Button>
                                 </form>
                             )}
                         </section>
@@ -295,5 +321,14 @@ export default function StockIndex({ balances, filters, warehouses, brands, cate
                 </>
             )}
         </InventoryLayout>
+    );
+}
+
+function MetricCard({ label, value, tone = 'neutral' }: { label: string; value: string; tone?: 'neutral' | 'danger' }) {
+    return (
+        <div className="rounded-card border border-line bg-surface p-5 shadow-soft">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-faint">{label}</p>
+            <p className={`mt-2 text-2xl font-semibold tabular-nums ${tone === 'danger' ? 'text-danger' : 'text-ink'}`}>{value}</p>
+        </div>
     );
 }

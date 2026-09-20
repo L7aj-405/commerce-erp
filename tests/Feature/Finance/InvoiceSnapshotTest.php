@@ -3,6 +3,7 @@
 namespace Tests\Feature\Finance;
 
 use App\Actions\Sales\ConfirmSalesOrderAction;
+use App\Enums\CustomerType;
 use App\Models\User;
 use Tests\Support\DocumentTestCase;
 
@@ -17,7 +18,7 @@ class InvoiceSnapshotTest extends DocumentTestCase
         $tax20 = $this->createTaxRate($organization, 'TVA 20', '20.0000');
         $tax7 = $this->createTaxRate($organization, 'TVA 7', '7.0000');
         $customer = $this->createCustomer($organization, 'Ste Client', [
-            'type' => 'business', 'company_name' => 'Client SARL', 'tax_identifier' => 'ICE-999', 'billing_address' => '12 Rue Atlas',
+            'type' => CustomerType::Company->value, 'company_name' => 'Client SARL', 'tax_identifier' => 'ICE-999', 'billing_address' => '12 Rue Atlas',
         ]);
         $variant = $this->createProduct($organization, 'Microphone Shure', 'MIC-1', [
             'default_sale_price' => '1000.0000',

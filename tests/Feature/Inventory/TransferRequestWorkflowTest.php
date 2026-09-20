@@ -20,6 +20,7 @@ use App\Models\SalesOrder;
 use App\Models\SalesOrderInventoryAllocation;
 use App\Models\Store;
 use App\Models\TransferRequest;
+use App\Models\TransferRequestLine;
 use App\Models\User;
 use App\Models\Warehouse;
 use App\Models\WarehouseReplenishmentOverride;
@@ -56,12 +57,12 @@ class TransferRequestWorkflowTest extends PosTestCase
 
     private function override(Organization $org, Warehouse $warehouse, ProductVariant $variant, string $minimum): void
     {
-        WarehouseReplenishmentOverride::query()->create([
-            'organization_id' => $org->id,
-            'warehouse_id' => $warehouse->id,
-            'product_variant_id' => $variant->id,
-            'minimum_quantity' => $minimum,
-        ]);
+        $override = new WarehouseReplenishmentOverride;
+        $override->organization_id = $org->id;
+        $override->warehouse_id = $warehouse->id;
+        $override->product_variant_id = $variant->id;
+        $override->minimum_quantity = $minimum;
+        $override->save();
     }
 
     private function confirmedPosOrder(User $owner, Organization $org, Store $store, Warehouse $showroom, ProductVariant $variant, string $qty): SalesOrder
@@ -74,12 +75,12 @@ class TransferRequestWorkflowTest extends PosTestCase
 
     private function enableReplenishment(Organization $org, Warehouse $warehouse, string $minimum = '2.0000'): void
     {
-        WarehouseReplenishmentSetting::query()->create([
-            'organization_id' => $org->id,
-            'warehouse_id' => $warehouse->id,
-            'auto_replenish' => true,
-            'default_minimum_quantity' => $minimum,
-        ]);
+        $setting = new WarehouseReplenishmentSetting;
+        $setting->organization_id = $org->id;
+        $setting->warehouse_id = $warehouse->id;
+        $setting->auto_replenish = true;
+        $setting->default_minimum_quantity = $minimum;
+        $setting->save();
     }
 
     private function drive(User $owner, TransferRequest $request): TransferRequest
@@ -244,12 +245,13 @@ class TransferRequestWorkflowTest extends PosTestCase
         $existing->status = TransferRequestStatus::Requested;
         $existing->requested_at = now();
         $existing->save();
-        $existing->lines()->create([
-            'organization_id' => $org->id,
-            'product_variant_id' => $variant->id,
-            'quantity' => '1.0000',
-            'reason' => TransferRequestReason::MinimumReplenishment->value,
-        ]);
+        $line = new TransferRequestLine;
+        $line->organization_id = $org->id;
+        $line->transfer_request_id = $existing->id;
+        $line->product_variant_id = $variant->id;
+        $line->quantity = '1.0000';
+        $line->reason = TransferRequestReason::MinimumReplenishment;
+        $line->save();
 
         app(PlanShowroomReplenishmentAction::class)->execute($owner, $org, $showroom);
 
@@ -329,13 +331,18 @@ class TransferRequestWorkflowTest extends PosTestCase
         $this->confirmedPosOrder($owner, $org, $store, $showroom, $variant, '20.0000');
 
         $draft = $this->createPosDraft($owner, $org, $store, $showroom);
-        $this->expectException(ValidationException::class);
         $this->addCatalogLine($owner, $draft, $variant, $showroom, ['quantity' => '20.0000']);
+
+        // Draft allocation is provisional and may expose a procurement
+        // deficit. Confirmation remains authoritative and cannot reserve the
+        // same remote stock twice without confirmed procurement coverage.
+        $this->expectException(ValidationException::class);
+        app(ConfirmSalesOrderAction::class)->execute($owner, $draft->fresh());
     }
 
     // 18 + 19 ----------------------------------------------------
 
-    public function test_order_cancellation_drops_unshipped_transfer_demand_but_not_a_shipped_one(): void
+    public function test_order_cancellation_drops_unshipped_transfer_demand_but_is_blocked_by_a_shipped_one(): void
     {
         [$owner, $org, $store, $showroom, $depot, $variant] = $this->context('5.0000', '30.0000');
 
@@ -350,7 +357,12 @@ class TransferRequestWorkflowTest extends PosTestCase
         $requestB = TransferRequest::query()->where('sales_order_id', $orderB->id)->firstOrFail();
         app(PrepareTransferRequestAction::class)->execute($owner, $requestB->fresh());
         app(ShipTransferRequestAction::class)->execute($owner, $requestB->fresh());
-        app(CancelSalesOrderAction::class)->execute($owner, $orderB->fresh(), 'Trop tard');
+        try {
+            app(CancelSalesOrderAction::class)->execute($owner, $orderB->fresh(), 'Trop tard');
+            $this->fail('A shipped transfer must be received before order cancellation.');
+        } catch (ValidationException) {
+            $this->assertSame('confirmed', $orderB->fresh()->status->value);
+        }
         $this->assertSame(TransferRequestStatus::Shipped, $requestB->fresh()->status);
     }
 
@@ -479,12 +491,13 @@ class TransferRequestWorkflowTest extends PosTestCase
         $seed->status = TransferRequestStatus::Requested;
         $seed->requested_at = now();
         $seed->save();
-        $seed->lines()->create([
-            'organization_id' => $org->id,
-            'product_variant_id' => $variant->id,
-            'quantity' => '2.0000',
-            'reason' => TransferRequestReason::MinimumReplenishment->value,
-        ]);
+        $line = new TransferRequestLine;
+        $line->organization_id = $org->id;
+        $line->transfer_request_id = $seed->id;
+        $line->product_variant_id = $variant->id;
+        $line->quantity = '2.0000';
+        $line->reason = TransferRequestReason::MinimumReplenishment;
+        $line->save();
 
         $order = $this->confirmedPosOrder($owner, $org, $store, $showroom, $variant, '5.0000');
 

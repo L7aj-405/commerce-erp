@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Finance;
 use App\Http\Controllers\Controller;
 use App\Services\ActiveTenantContext;
 use App\Services\Finance\Export\FinanceCaEncaisseExcelExport;
+use App\Services\Finance\Export\FinanceCaEncaisseFullPackageExport;
 use App\Services\Finance\Export\FinanceCaEncaisseInvoiceZipExport;
 use App\Services\Finance\Export\FinanceCaEncaissePdfExport;
 use App\Services\Finance\Export\FinanceSituationExcelExport;
@@ -136,6 +137,23 @@ class FinanceExportController extends Controller
      * memory/temp-file strategy.
      */
     public function caEncaisseInvoicesZip(Request $request, ActiveTenantContext $context, FinanceAccessGuard $guard, FinanceCaEncaisseInvoiceZipExport $export): BinaryFileResponse
+    {
+        $organization = $context->organizationOrFail();
+        $guard->authorizeExport($request->user(), $organization);
+
+        $period = $this->period($request);
+        $store = $guard->resolveStore($organization, $request->query('store_id'));
+
+        $result = $export->build($organization, $period, $store);
+
+        return response()->download($result['path'], $result['filename'], [
+            'Content-Type' => 'application/zip',
+            'Cache-Control' => 'private, no-store, max-age=0',
+            'X-Content-Type-Options' => 'nosniff',
+        ])->deleteFileAfterSend(true);
+    }
+
+    public function caEncaisseFullPackage(Request $request, ActiveTenantContext $context, FinanceAccessGuard $guard, FinanceCaEncaisseFullPackageExport $export): BinaryFileResponse
     {
         $organization = $context->organizationOrFail();
         $guard->authorizeExport($request->user(), $organization);

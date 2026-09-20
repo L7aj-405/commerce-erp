@@ -21,7 +21,7 @@ class TwoFactorPolicyInterstitialTest extends PlatformTestCase
         $owner = User::factory()->create();
         $organization = $this->createOrganization($owner);
         $this->activate($owner, $organization);
-        $organization->securitySetting()->update(['require_2fa' => true]);
+        $this->configureOrganizationSecurity($organization, requireTwoFactor: true);
 
         $this->actingAs($owner)->get(route('platform.index'))->assertRedirect(route('security.edit'));
 

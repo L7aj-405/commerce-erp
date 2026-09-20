@@ -104,6 +104,7 @@ class OrganizationDocumentStampPreviewService
             'has_discount' => false,
             'document' => [
                 'number' => 'FA-APERÇU',
+                'version' => 1,
                 'date' => $this->format->date(now()),
                 'order_number' => null,
                 'currency' => 'MAD',

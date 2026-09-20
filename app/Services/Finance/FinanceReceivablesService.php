@@ -29,16 +29,37 @@ class FinanceReceivablesService
     /** The organization-wide (or one-store) outstanding total as of a date — a single aggregate query. */
     public function totalAsOf(Organization $organization, Carbon $asOf, ?Store $store): string
     {
-        // GREATEST(..., 0) floors EACH invoice's own outstanding at zero
+        // The CASE expression floors EACH invoice's own outstanding at zero
         // before it is summed — never after. An overpaid invoice (e.g. its
         // total was later reduced by a correction below what the order had
         // already collected) must never leave a negative contribution that
         // offsets other, unrelated invoices' positive balances in the total.
+        // CASE is deliberately used instead of MySQL's GREATEST() so the
+        // authoritative query behaves identically on MySQL and SQLite.
+        $netOutstanding = 'invoices.total_incl_tax - COALESCE(credits.credited_amount, 0) - COALESCE(paid.paid_amount, 0)';
         $result = $this->obligationsQuery($organization, $asOf, $store)
-            ->selectRaw('COALESCE(SUM(GREATEST(invoices.total_incl_tax - COALESCE(paid.paid_amount, 0), 0)), 0) as outstanding')
+            ->selectRaw("COALESCE(SUM(CASE WHEN {$netOutstanding} > 0 THEN {$netOutstanding} ELSE 0 END), 0) as outstanding")
             ->value('outstanding');
 
-        return (string) $result;
+        return Decimal::normalize((string) $result);
+    }
+
+    /**
+     * Customer money retained above the net issued-document obligation.
+     * This is not a negative receivable: it is a distinct refund obligation.
+     */
+    public function refundObligationAsOf(Organization $organization, Carbon $asOf, ?Store $store): string
+    {
+        // Keep each economic operand parenthesized. Without the parentheses,
+        // SQL evaluates `net collected - invoice total - credits` from left
+        // to right instead of `net collected - (invoice total - credits)`.
+        $netBilled = '(invoices.total_incl_tax - COALESCE(credits.credited_amount, 0))';
+        $netCollected = '(COALESCE(paid.paid_amount, 0))';
+        $result = $this->obligationsQuery($organization, $asOf, $store)
+            ->selectRaw("COALESCE(SUM(CASE WHEN {$netCollected} > {$netBilled} THEN {$netCollected} - {$netBilled} ELSE 0 END), 0) as obligation")
+            ->value('obligation');
+
+        return $this->nonNegative(Decimal::normalize((string) $result));
     }
 
     /**
@@ -57,7 +78,7 @@ class FinanceReceivablesService
                 'invoices.customer_company',
                 'invoices.sales_order_id',
                 'invoices.store_id',
-                'invoices.total_incl_tax',
+                DB::raw('invoices.total_incl_tax - COALESCE(credits.credited_amount, 0) as total_incl_tax'),
                 DB::raw('COALESCE(paid.paid_amount, 0) as paid_amount'),
             ])
             ->orderBy('invoices.invoice_date')
@@ -77,7 +98,7 @@ class FinanceReceivablesService
      */
     public function unappliedPaymentsTotal(Organization $organization, FinancePeriod $period, ?Store $store): string
     {
-        $result = DB::table('payments')
+        $collections = DB::table('payments')
             ->where('payments.organization_id', $organization->getKey())
             ->where('payments.status', PaymentStatus::Posted->value)
             ->whereDate('payments.payment_date', '>=', $period->start->toDateString())
@@ -97,7 +118,22 @@ class FinanceReceivablesService
             })
             ->sum('payments.amount');
 
-        return (string) $result;
+        $refunds = DB::table('payment_refunds')
+            ->where('payment_refunds.organization_id', $organization->getKey())
+            ->where('payment_refunds.status', 'posted')
+            ->whereDate('payment_refunds.refund_date', '>=', $period->start->toDateString())
+            ->whereDate('payment_refunds.refund_date', '<=', $period->end->toDateString())
+            ->when($store, fn ($query) => $query->where('payment_refunds.store_id', $store->getKey()))
+            ->whereNotExists(function ($query) use ($organization) {
+                $query->select(DB::raw(1))
+                    ->from('invoices')
+                    ->whereColumn('invoices.sales_order_id', 'payment_refunds.sales_order_id')
+                    ->where('invoices.organization_id', $organization->getKey())
+                    ->where('invoices.status', InvoiceStatus::Issued->value);
+            })
+            ->sum('payment_refunds.amount');
+
+        return Decimal::subtract((string) $collections, (string) $refunds);
     }
 
     /**
@@ -122,15 +158,23 @@ class FinanceReceivablesService
         // (the driver names the column after the raw expression itself), so
         // every row plucks as null/undefined. An explicit `as amount` alias
         // makes the plucked key match the column PDO actually returns.
+        $refunds = DB::table('payment_refunds')
+            ->whereIn('sales_order_id', $salesOrderIds)
+            ->where('status', 'posted')
+            ->whereDate('refund_date', '<=', $asOf->toDateString())
+            ->groupBy('sales_order_id')
+            ->select('sales_order_id', DB::raw('SUM(amount) as refunded_amount'));
+
         return DB::table('payment_allocations')
             ->join('payments', 'payments.id', '=', 'payment_allocations.payment_id')
+            ->leftJoinSub($refunds, 'refunds', 'refunds.sales_order_id', '=', 'payment_allocations.sales_order_id')
             ->whereIn('payment_allocations.sales_order_id', $salesOrderIds)
             ->where('payments.status', PaymentStatus::Posted->value)
             ->whereDate('payments.payment_date', '<=', $asOf->toDateString())
             ->groupBy('payment_allocations.sales_order_id')
-            ->select('payment_allocations.sales_order_id', DB::raw('SUM(payment_allocations.amount) as amount'))
+            ->select('payment_allocations.sales_order_id', DB::raw('SUM(payment_allocations.amount) - COALESCE(MAX(refunds.refunded_amount), 0) as amount'))
             ->pluck('amount', 'payment_allocations.sales_order_id')
-            ->map(fn ($amount) => (string) $amount)
+            ->map(fn ($amount) => Decimal::normalize((string) $amount))
             ->all();
     }
 
@@ -146,7 +190,7 @@ class FinanceReceivablesService
      * @param  list<int>  $salesOrderIds
      * @return array<int, list<array{payment_id: int, payment_date: string, amount: string}>> sales_order_id => ordered allocations
      */
-    public function orderedAllocationsBySalesOrder(array $salesOrderIds): array
+    public function orderedAllocationsBySalesOrder(array $salesOrderIds, ?Carbon $asOf = null): array
     {
         if ($salesOrderIds === []) {
             return [];
@@ -156,14 +200,15 @@ class FinanceReceivablesService
             ->join('payments', 'payments.id', '=', 'payment_allocations.payment_id')
             ->whereIn('payment_allocations.sales_order_id', $salesOrderIds)
             ->where('payments.status', PaymentStatus::Posted->value)
+            ->when($asOf, fn ($query) => $query->whereDate('payments.payment_date', '<=', $asOf->toDateString()))
             ->orderBy('payments.payment_date')
             ->orderBy('payments.id')
             ->get(['payment_allocations.sales_order_id', 'payments.id as payment_id', 'payments.payment_date', 'payment_allocations.amount'])
             ->groupBy('sales_order_id')
             ->map(fn ($rows) => $rows->map(fn ($row) => [
                 'payment_id' => (int) $row->payment_id,
-                'payment_date' => (string) $row->payment_date,
-                'amount' => (string) $row->amount,
+                'payment_date' => Carbon::parse((string) $row->payment_date)->toDateString(),
+                'amount' => Decimal::normalize((string) $row->amount),
             ])->all())
             ->all();
     }
@@ -180,7 +225,7 @@ class FinanceReceivablesService
             ->select([
                 'invoices.id', 'invoices.invoice_number', 'invoices.invoice_date',
                 'invoices.customer_name', 'invoices.customer_company', 'invoices.sales_order_id', 'invoices.store_id',
-                'invoices.subtotal_excl_tax', 'invoices.tax_total', 'invoices.total_incl_tax',
+                'invoices.subtotal_excl_tax', 'invoices.tax_total', DB::raw('invoices.total_incl_tax - COALESCE(credits.credited_amount, 0) as total_incl_tax'),
                 DB::raw('COALESCE(paid.paid_amount, 0) as paid_amount'),
             ])
             ->orderBy('invoices.invoice_date')
@@ -191,16 +236,43 @@ class FinanceReceivablesService
 
     private function obligationsQuery(Organization $organization, Carbon $asOf, ?Store $store)
     {
-        $paidSubquery = DB::table('payment_allocations')
+        $collectionsSubquery = DB::table('payment_allocations')
             ->join('payments', 'payments.id', '=', 'payment_allocations.payment_id')
             ->where('payments.organization_id', $organization->getKey())
             ->where('payments.status', PaymentStatus::Posted->value)
             ->whereDate('payments.payment_date', '<=', $asOf->toDateString())
             ->groupBy('payment_allocations.sales_order_id')
-            ->select('payment_allocations.sales_order_id', DB::raw('SUM(payment_allocations.amount) as paid_amount'));
+            ->select('payment_allocations.sales_order_id', DB::raw('SUM(payment_allocations.amount) as collected_amount'));
+
+        $refundsSubquery = DB::table('payment_refunds')
+            ->where('payment_refunds.organization_id', $organization->getKey())
+            ->where('payment_refunds.status', 'posted')
+            ->whereDate('payment_refunds.refund_date', '<=', $asOf->toDateString())
+            ->groupBy('payment_refunds.sales_order_id')
+            ->select('payment_refunds.sales_order_id', DB::raw('SUM(payment_refunds.amount) as refunded_amount'));
+
+        $paidSubquery = DB::query()
+            ->fromSub($collectionsSubquery, 'collections')
+            ->leftJoinSub($refundsSubquery, 'refunds', 'refunds.sales_order_id', '=', 'collections.sales_order_id')
+            ->select(
+                'collections.sales_order_id',
+                DB::raw('collections.collected_amount - COALESCE(refunds.refunded_amount, 0) as paid_amount'),
+            );
+
+        $creditsSubquery = DB::table('credit_notes')
+            ->where('credit_notes.organization_id', $organization->getKey())
+            ->where('credit_notes.status', 'issued')
+            ->whereDate('credit_notes.credit_note_date', '<=', $asOf->toDateString())
+            ->groupBy('credit_notes.sales_order_id')
+            ->select('credit_notes.sales_order_id', DB::raw('SUM(credit_notes.total_incl_tax) as credited_amount'));
 
         return DB::table('invoices')
             ->leftJoinSub($paidSubquery, 'paid', 'paid.sales_order_id', '=', 'invoices.sales_order_id')
+            // Credit Notes remain linked to the exact historical Invoice they
+            // credited, while the current effective Invoice may be a later
+            // version after a POS addendum/exchange. Aggregate the economic
+            // effect at the stable SalesOrder boundary.
+            ->leftJoinSub($creditsSubquery, 'credits', 'credits.sales_order_id', '=', 'invoices.sales_order_id')
             ->where('invoices.organization_id', $organization->getKey())
             ->where('invoices.status', InvoiceStatus::Issued->value)
             ->whereDate('invoices.invoice_date', '<=', $asOf->toDateString())
@@ -209,8 +281,10 @@ class FinanceReceivablesService
 
     private function toOutstandingRow(object $row): array
     {
-        $outstanding = $this->nonNegative(Decimal::subtract($row->total_incl_tax, $row->paid_amount));
-        $status = $this->status($row->total_incl_tax, $row->paid_amount);
+        $total = Decimal::normalize((string) $row->total_incl_tax);
+        $paid = Decimal::normalize((string) $row->paid_amount);
+        $outstanding = $this->nonNegative(Decimal::subtract($total, $paid));
+        $status = $this->status($total, $paid);
 
         return [
             'id' => $row->id,
@@ -220,10 +294,10 @@ class FinanceReceivablesService
             'customer_company' => $row->customer_company,
             'sales_order_id' => $row->sales_order_id,
             'store_id' => $row->store_id,
-            'subtotal_excl_tax' => isset($row->subtotal_excl_tax) ? (string) $row->subtotal_excl_tax : null,
-            'tax_total' => isset($row->tax_total) ? (string) $row->tax_total : null,
-            'total_incl_tax' => (string) $row->total_incl_tax,
-            'paid_amount' => (string) $row->paid_amount,
+            'subtotal_excl_tax' => isset($row->subtotal_excl_tax) ? Decimal::normalize((string) $row->subtotal_excl_tax) : null,
+            'tax_total' => isset($row->tax_total) ? Decimal::normalize((string) $row->tax_total) : null,
+            'total_incl_tax' => $total,
+            'paid_amount' => $paid,
             'outstanding' => $outstanding,
             'status' => $status,
         ];

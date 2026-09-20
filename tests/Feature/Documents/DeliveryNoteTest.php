@@ -7,7 +7,9 @@ use App\Actions\Documents\UpdateDeliveryNoteDraftAction;
 use App\Actions\Sales\ConfirmSalesOrderAction;
 use App\Actions\Sales\FulfillSalesOrderAction;
 use App\Models\InventoryBalance;
+use App\Models\InventoryMovement;
 use App\Models\User;
+use Inertia\Testing\AssertableInertia as Assert;
 use Illuminate\Validation\ValidationException;
 use Tests\Support\DocumentTestCase;
 
@@ -40,11 +42,80 @@ class DeliveryNoteTest extends DocumentTestCase
         $this->assertNotSame('Changed variant', $note->lines()->firstOrFail()->variant_name);
     }
 
-    public function test_unfulfilled_order_is_rejected(): void
+    public function test_confirmed_unfulfilled_order_can_create_draft_delivery_note_without_stock_consumption_until_issue(): void
+    {
+        $owner = User::factory()->create();
+        $organization = $this->createOrganization($owner);
+        $store = $this->createStore($organization, $owner);
+        $warehouse = $this->createWarehouse($organization);
+        $variant = $this->createProduct($organization)->variants->first();
+        $this->openStock($owner, $organization, $warehouse, $variant, '10.0000');
+        $order = $this->createDraftOrder($owner, $organization, $store);
+        $this->addCatalogLine($owner, $order, $variant, $warehouse, ['quantity' => '2.0000']);
+        $order = app(ConfirmSalesOrderAction::class)->execute($owner, $order)->fresh();
+
+        $beforeDraft = InventoryBalance::query()->firstOrFail()->only(['on_hand', 'reserved', 'available']);
+        $movementsBeforeDraft = InventoryMovement::query()->count();
+
+        $note = $this->createDeliveryNote($owner, $order, ['delivery_date' => '2026-06-03']);
+
+        $this->assertSame('draft', $note->status->value);
+        $this->assertSame('2.0000', $note->lines->first()->quantity);
+        $this->assertSame('unfulfilled', $order->fresh()->fulfillment_status->value);
+        $this->assertSame($beforeDraft, InventoryBalance::query()->firstOrFail()->only(array_keys($beforeDraft)));
+        $this->assertSame($movementsBeforeDraft, InventoryMovement::query()->count());
+
+        $issued = $this->issueDeliveryNote($owner, $note);
+
+        $this->assertSame('issued', $issued->status->value);
+        $this->assertSame('fulfilled', $order->fresh()->fulfillment_status->value);
+        $this->assertDatabaseHas('inventory_balances', [
+            'warehouse_id' => $warehouse->id,
+            'product_variant_id' => $variant->id,
+            'on_hand' => 8,
+            'reserved' => 0,
+        ]);
+        $this->assertSame($movementsBeforeDraft + 1, InventoryMovement::query()->count());
+
+        try {
+            app(FulfillSalesOrderAction::class)->execute($owner, $order->fresh());
+            $this->fail('Expected duplicate fulfillment rejection.');
+        } catch (ValidationException) {
+            $this->assertSame('fulfilled', $order->fresh()->fulfillment_status->value);
+            $this->assertSame($movementsBeforeDraft + 1, InventoryMovement::query()->count());
+        }
+    }
+
+    public function test_manual_order_show_exposes_delivery_note_action_without_pos_completion(): void
     {
         [$owner, , , $order] = $this->documentFixture(false);
-        $this->expectException(ValidationException::class);
-        $this->createDeliveryNote($owner, $order);
+
+        $this->actingAs($owner)->get(route('sales.orders.show', $order))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Sales/Orders/Show')
+                ->where('order.source', 'manual')
+                ->where('order.fulfillment_status', 'unfulfilled')
+                ->where('can.createDeliveryNote', true)
+                ->where('can.completePos', false)
+                ->where('completionEligibility.code', 'not_pos_order'));
+    }
+
+    public function test_delivery_issue_fulfills_physical_order_without_rewriting_invoice_or_payment(): void
+    {
+        [$owner, $organization, , $order] = $this->documentFixture(false, total: '250.0000');
+        $invoice = $this->issueInvoice($owner, $this->createInvoice($owner, $order));
+        $account = $this->createFinancialAccount($organization);
+        $payment = $this->recordPayment($owner, $order, $account, '250.0000');
+        $invoiceSnapshot = $invoice->fresh()->only(['id', 'invoice_number', 'status', 'total_incl_tax']);
+        $paymentSnapshot = $payment->fresh()->only(['id', 'status', 'amount']);
+
+        $issued = $this->issueDeliveryNote($owner, $this->createDeliveryNote($owner, $order));
+
+        $this->assertSame('issued', $issued->status->value);
+        $this->assertSame('fulfilled', $order->fresh()->fulfillment_status->value);
+        $this->assertSame($invoiceSnapshot, $invoice->fresh()->only(array_keys($invoiceSnapshot)));
+        $this->assertSame($paymentSnapshot, $payment->fresh()->only(array_keys($paymentSnapshot)));
     }
 
     public function test_number_is_assigned_on_issue_and_issued_note_is_immutable(): void

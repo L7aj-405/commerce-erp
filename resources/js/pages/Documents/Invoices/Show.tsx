@@ -2,7 +2,6 @@ import DocBadge from '@/components/ui/DocBadge';
 import { Button } from '@/components/ui/Button';
 import SendDocumentEmailModal from '@/components/documents/SendDocumentEmailModal';
 import StampDocumentAction from '@/components/documents/StampDocumentAction';
-import CorrectionLineEditor from './CorrectionLineEditor';
 import SalesLayout from '@/layouts/SalesLayout';
 import { formatDate, formatDateTime, formatMoney, formatQuantity } from '@/utils/format';
 import { invoiceStatusLabel, invoiceStatusTone, label } from '@/utils/labels';
@@ -55,6 +54,7 @@ type Seller = {
 type Invoice = {
     id: number;
     invoice_number: string | null;
+    version: number;
     status: string;
     invoice_date: string;
     customer_name: string | null;
@@ -90,12 +90,13 @@ type Sharing = {
     attachmentName: string;
 };
 type HistoryEntry = {
-    role: 'original' | 'correction';
     id: number;
     invoice_number: string | null;
+    version: number;
     status: string;
     issued_at: string | null;
     reason: string | null;
+    is_current: boolean;
 };
 type Props = {
     invoice: Invoice;
@@ -103,10 +104,15 @@ type Props = {
     accentColor: string;
     previewUrl: string;
     isCorrection: boolean;
+    isReplacement: boolean;
     correctionComparison: CorrectionComparison | null;
-    productSearchUrl: string | null;
     history: HistoryEntry[];
-    relatedOrderPaymentSummary: { paid: string; remaining: string; status: string };
+    isCurrentVersion: boolean;
+    currentVersion: HistoryEntry | null;
+    orderExpandedAfterInvoice: boolean;
+    relatedOrderPaymentSummary: { paid: string; collected: string; refunded: string; net: string; remaining: string; status: string };
+    creditNotes: { id: number; credit_note_number: string; credit_note_date: string; total_incl_tax: string }[];
+    creditSummary: { credited: string; net: string; receivable: string; refund_obligation: string; state: 'none' | 'partial' | 'full' };
     sharing: Sharing | null;
     mailConfigured: boolean;
     stamp: { applied: boolean; appliedAt: string | null };
@@ -115,10 +121,9 @@ type Props = {
         issue: boolean;
         backdate: boolean;
         email: boolean;
-        correct: boolean;
-        editLines: boolean;
         configureMail: boolean;
         stamp: boolean;
+        viewOrder: boolean;
     };
 };
 
@@ -128,10 +133,15 @@ export default function InvoiceShow({
     accentColor,
     previewUrl,
     isCorrection,
+    isReplacement,
     correctionComparison,
-    productSearchUrl,
     history,
+    isCurrentVersion,
+    currentVersion,
+    orderExpandedAfterInvoice,
     relatedOrderPaymentSummary,
+    creditNotes,
+    creditSummary,
     sharing,
     mailConfigured,
     stamp,
@@ -140,13 +150,10 @@ export default function InvoiceShow({
     const isDraft = invoice.status === 'draft';
     const isIssued = invoice.status === 'issued';
     const isSuperseded = invoice.status === 'superseded';
-    const canEditLines = Boolean(isCorrection && isDraft && can.editLines && productSearchUrl);
     const currency = invoice.currency_code;
     const seller = invoice.seller_snapshot ?? {};
     const [confirmCancel, setConfirmCancel] = useState(false);
-    const [confirmCorrect, setConfirmCorrect] = useState(false);
-    const originalEntry = history.find((h) => h.role === 'original') ?? null;
-    const correctionEntry = history.find((h) => h.role === 'correction') ?? null;
+    const previousVersion = history.find((entry) => entry.version === invoice.version - 1) ?? null;
 
     const form = useForm({
         invoice_date: invoice.invoice_date.slice(0, 10),
@@ -162,22 +169,16 @@ export default function InvoiceShow({
     });
     const issueForm = useForm({});
     const cancellation = useForm({ reason: '' });
-    const correction = useForm({ reason: '' });
 
     const save = (event: FormEvent) => {
         event.preventDefault();
         form.patch(`/invoices/${invoice.id}`, { preserveScroll: true });
     };
     const issue = () => issueForm.post(`/invoices/${invoice.id}/issue`, { preserveScroll: true });
-    const startCorrection = (event: FormEvent) => {
-        event.preventDefault();
-        correction.post(`/invoices/${invoice.id}/corrections`, { preserveScroll: true });
-    };
     const cancel = (event: FormEvent) => {
         event.preventDefault();
         cancellation.post(`/invoices/${invoice.id}/cancel`, { preserveScroll: true, onSuccess: () => setConfirmCancel(false) });
     };
-
     const net = (Number(invoice.subtotal_excl_tax) - Number(invoice.discount_total)).toFixed(4);
 
     return (
@@ -194,6 +195,9 @@ export default function InvoiceShow({
                     </h1>
                     <DocBadge tone={invoiceStatusTone(invoice.status)}>{label(invoiceStatusLabel, invoice.status)}</DocBadge>
                 </div>
+                <p className="mt-1 text-sm font-medium text-ink">
+                    Version {invoice.version} · {isCurrentVersion ? 'Facture actuelle' : isSuperseded ? 'Version remplacée' : 'Brouillon'}
+                </p>
                 <p className="text-sm text-ink-muted">
                     Commande{' '}
                     <Link href={`/sales/orders/${invoice.sales_order.id}`} className="text-ink underline">
@@ -203,23 +207,31 @@ export default function InvoiceShow({
                 </p>
             </div>
 
-            {isCorrection && originalEntry && (
+            {isReplacement && previousVersion && (
                 <div className="mb-4 rounded-card border border-line bg-sage/50 px-4 py-2.5 text-sm text-ink">
-                    {isDraft ? 'Correction de la ' : 'Cette facture corrige la '}
-                    <Link href={`/invoices/${originalEntry.id}`} className="font-medium underline">
-                        facture {originalEntry.invoice_number ?? 'brouillon'}
+                    {isDraft ? 'Nouvelle version de la ' : 'Cette version remplace la '}
+                    <Link href={`/invoices/${previousVersion.id}`} className="font-medium underline">
+                        facture {previousVersion.invoice_number ?? 'brouillon'} · V{previousVersion.version}
                     </Link>
                     {invoice.correction_reason && <> — {invoice.correction_reason}</>}
                 </div>
             )}
 
-            {isSuperseded && correctionEntry && (
+            {isSuperseded && currentVersion && (
                 <div className="mb-4 rounded-card border border-warning/30 bg-warning-soft/50 px-4 py-2.5 text-sm text-warning">
-                    Cette facture a été remplacée par la{' '}
-                    <Link href={`/invoices/${correctionEntry.id}`} className="font-medium underline">
-                        facture {correctionEntry.invoice_number ?? 'en cours'}
+                    Cette version a été remplacée.{' '}
+                    <Link href={`/invoices/${currentVersion.id}`} className="font-medium underline">
+                        Voir la version actuelle — V{currentVersion.version}
                     </Link>
                     . Le partage se fait depuis la version corrigée.
+                </div>
+            )}
+
+            {orderExpandedAfterInvoice && (
+                <div className="mb-4 rounded-card border border-warning/30 bg-warning-soft/50 px-4 py-2.5 text-sm text-ink">
+                    <p className="font-medium">Commande complétée après cette facture</p>
+                    <p className="mt-1 text-ink-muted">Cette version reste un historique valide et immuable. Une nouvelle version doit être générée depuis la commande.</p>
+                    {can.viewOrder && <Link href={`/sales/orders/${invoice.sales_order.id}`} className="mt-2 inline-block font-medium underline">Ouvrir la commande</Link>}
                 </div>
             )}
 
@@ -282,14 +294,6 @@ export default function InvoiceShow({
                             </tbody>
                         </table>
 
-                        {canEditLines && productSearchUrl ? (
-                            <CorrectionLineEditor
-                                invoiceId={invoice.id}
-                                currency={currency}
-                                lines={invoice.lines}
-                                searchUrl={productSearchUrl}
-                            />
-                        ) : (
                         <div className="overflow-x-auto">
                             <table className="w-full min-w-[640px] border-collapse text-sm">
                                 <thead>
@@ -339,7 +343,18 @@ export default function InvoiceShow({
                                 </tbody>
                             </table>
                         </div>
-                        )}
+
+                        <div className="mt-4 flex flex-col gap-2 rounded-field border border-line bg-raised/60 p-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+                            <p className="text-ink-muted">Les articles, quantités, prix, remises et taxes sont gérés depuis la commande.</p>
+                            {can.viewOrder ? (
+                                <Link
+                                    href={`/sales/orders/${invoice.sales_order.id}`}
+                                    className="inline-flex min-h-10 shrink-0 items-center justify-center rounded-field border border-line-strong bg-surface px-4 font-medium text-ink hover:bg-raised"
+                                >
+                                    Voir la commande
+                                </Link>
+                            ) : null}
+                        </div>
 
                         <div className="mt-4 ml-auto max-w-xs space-y-1 text-sm">
                             {hasDiscount ? (
@@ -376,14 +391,27 @@ export default function InvoiceShow({
                         )}
                     </section>
 
-                    <section className="rounded-card border border-line bg-surface p-4 text-sm text-ink-muted">
-                        <p className="font-medium text-ink">Paiement de la commande liée</p>
-                        <p className="mt-1">
-                            Payé {formatMoney(relatedOrderPaymentSummary.paid, currency)} · Reste{' '}
-                            {formatMoney(relatedOrderPaymentSummary.remaining, currency)}. Information au niveau de la commande,
-                            distincte du calcul de la facture.
-                        </p>
+                    <section className="rounded-card border border-line bg-surface p-4 text-sm">
+                        <p className="font-medium text-ink">Position financière</p>
+                        <dl className="mt-2 grid gap-1 text-ink-muted sm:grid-cols-2">
+                            <SummaryRow term="Facture originale" value={formatMoney(invoice.total_incl_tax, currency)} />
+                            <SummaryRow term="Avoirs émis" value={`-${formatMoney(creditSummary.credited, currency)}`} />
+                            <SummaryRow term="Facturation nette" value={formatMoney(creditSummary.net, currency)} />
+                            <SummaryRow term="Encaissements" value={formatMoney(relatedOrderPaymentSummary.collected, currency)} />
+                            <SummaryRow term="Remboursements" value={`-${formatMoney(relatedOrderPaymentSummary.refunded, currency)}`} />
+                            <SummaryRow term="Net encaissé" value={formatMoney(relatedOrderPaymentSummary.net, currency)} />
+                            <SummaryRow term="Créance restante" value={formatMoney(creditSummary.receivable, currency)} />
+                            <SummaryRow term="À rembourser au client" value={formatMoney(creditSummary.refund_obligation, currency)} />
+                        </dl>
+                        <p className="mt-2 text-xs text-ink-faint">Les avoirs et remboursements restent des événements distincts ; ni la facture ni les paiements d’origine ne sont réécrits.</p>
                     </section>
+                    {creditNotes.length > 0 && (
+                        <section className="rounded-card border border-line bg-surface p-4 text-sm">
+                            <div className="flex justify-between gap-3"><h2 className="font-medium">Avoirs</h2><span className="rounded-full bg-raised px-2 py-1 text-xs">{creditSummary.state === 'full' ? 'Créditée intégralement' : 'Partiellement créditée'}</span></div>
+                            <div className="mt-2 divide-y divide-line">{creditNotes.map(note => <Link key={note.id} href={`/credit-notes/${note.id}`} className="flex justify-between py-2"><span>{note.credit_note_number} · {formatDate(note.credit_note_date)}</span><span>-{formatMoney(note.total_incl_tax, currency)}</span></Link>)}</div>
+                            <div className="mt-3 flex justify-between border-t border-line pt-3 font-semibold"><span>Net après avoirs</span><span>{formatMoney(creditSummary.net, currency)}</span></div>
+                        </section>
+                    )}
                 </div>
 
                 {/* RIGHT — status & actions */}
@@ -427,7 +455,7 @@ export default function InvoiceShow({
                                     </a>
                                     {can.issue && (
                                         <Button loading={issueForm.processing} loadingText="Émission…" onClick={issue}>
-                                            {isCorrection ? 'Émettre la correction' : 'Émettre la facture'}
+                                            {isReplacement ? 'Émettre la nouvelle version' : 'Émettre la facture'}
                                         </Button>
                                     )}
                                 </>
@@ -452,53 +480,6 @@ export default function InvoiceShow({
                             )}
                         </div>
 
-                        {isIssued && can.correct && (
-                            <div className="mt-3 border-t border-line pt-3">
-                                {!confirmCorrect ? (
-                                    <button
-                                        type="button"
-                                        onClick={() => setConfirmCorrect(true)}
-                                        className="text-sm text-ink-muted hover:text-ink hover:underline"
-                                    >
-                                        Corriger la facture
-                                    </button>
-                                ) : (
-                                    <form onSubmit={startCorrection} className="space-y-2">
-                                        <p className="text-sm font-medium text-ink">Corriger cette facture ?</p>
-                                        <p className="text-xs text-ink-muted">
-                                            La version actuellement émise sera conservée dans l’historique.
-                                        </p>
-                                        <textarea
-                                            required
-                                            value={correction.data.reason}
-                                            onChange={(e) => correction.setData('reason', e.target.value)}
-                                            placeholder="Motif de la correction"
-                                            className="w-full rounded-field border border-line-strong px-3 py-2 text-sm"
-                                        />
-                                        {correction.errors.reason && (
-                                            <p className="text-sm text-danger">{correction.errors.reason}</p>
-                                        )}
-                                        <div className="flex gap-2">
-                                            <Button
-                                                type="submit"
-                                                variant="secondary"
-                                                loading={correction.processing}
-                                                loadingText="Création de la correction…"
-                                            >
-                                                Créer une correction
-                                            </Button>
-                                            <button
-                                                type="button"
-                                                onClick={() => setConfirmCorrect(false)}
-                                                className="rounded-field px-3 py-2 text-sm text-ink-muted"
-                                            >
-                                                Annuler
-                                            </button>
-                                        </div>
-                                    </form>
-                                )}
-                            </div>
-                        )}
                     </section>
 
                     {isIssued && sharing && (
@@ -532,9 +513,7 @@ export default function InvoiceShow({
                                 {history.map((entry) => (
                                     <li key={entry.id} className="flex flex-col">
                                         <div className="flex items-center justify-between gap-2">
-                                            <span className="text-ink-muted">
-                                                {entry.role === 'original' ? 'Facture originale' : 'Correction'}
-                                            </span>
+                                            <span className="text-ink-muted">Version {entry.version}{entry.is_current ? ' · Facture actuelle' : ''}</span>
                                             {entry.id === invoice.id ? (
                                                 <span className="font-medium text-ink">
                                                     {entry.invoice_number ?? 'Brouillon'}

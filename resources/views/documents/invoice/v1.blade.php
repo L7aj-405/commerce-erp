@@ -36,7 +36,9 @@
     // FINAL APPROVED RHYTHM:
     // Keep the closing cluster low on short documents. As real item rows grow,
     // spend this whitespace first so it can never be the reason for an
-    // artificial second page. 1 line ~= 102mm, 12 lines ~= 8.5mm.
+    // artificial second page. The version is rendered inline with the title,
+    // so it adds no extra vertical block to this established page geometry.
+    // 1 line ~= 102mm of flexible space; 12 lines ~= 8.5mm.
     $itemsSpacerMm = max(0, 102 - (($lineCount - 1) * 8.5) - $notesMm);
 
     // Item-table column widths (percentages, each variant sums to 100).
@@ -152,7 +154,13 @@
             padding: 6px 5px;
         }
         table.items td {
-            border-bottom: 1px solid #e2e2da; padding: 5px 5px;
+            /* Compact but readable A4 row rhythm. Medium-length commercial
+               descriptions commonly wrap to two lines; the old 5px vertical
+               padding plus the document-wide 1.42 line-height made the rows,
+               rather than the adaptive spacer, force ordinary invoices onto
+               a second page. This applies uniformly at every line count. */
+            border-bottom: 1px solid #e2e2da; padding: 3px 5px;
+            font-size: 8.5px; line-height: 1.3;
             vertical-align: top; word-wrap: break-word; overflow-wrap: break-word;
         }
         .num { text-align: right; white-space: nowrap; }
@@ -199,7 +207,7 @@
 <div class="runhead">
     <span class="r1">
         <span class="who">{{ $seller['legal_name'] }}</span>
-        <span class="doc">{{ $title }} {{ $numberLabel }}</span>
+        <span class="doc">{{ $title }} {{ $numberLabel }} · V{{ $document['version'] }}</span>
     </span>
     <span class="r2">
         {{ $t('customer') }} : {{ $buyerLabel }}
@@ -247,7 +255,9 @@
     </tr>
 </table>
 
-<h1 class="title">{{ $title }}</h1>
+<h1 class="title">
+    {{ $title }}
+</h1>
 
 <table class="meta">
     <thead>

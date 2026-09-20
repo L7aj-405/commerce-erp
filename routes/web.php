@@ -25,6 +25,7 @@ use App\Http\Controllers\Documents\DocumentRenderingController;
 use App\Http\Controllers\Documents\DocumentStampController;
 use App\Http\Controllers\Documents\InvoiceController;
 use App\Http\Controllers\Documents\InvoiceCorrectionLineController;
+use App\Http\Controllers\Documents\CreditNoteController;
 use App\Http\Controllers\Finance\FinanceDashboardController;
 use App\Http\Controllers\Finance\FinanceExportController;
 use App\Http\Controllers\Finance\FinanceJournalController;
@@ -58,12 +59,16 @@ use App\Http\Controllers\Sales\CustomerController;
 use App\Http\Controllers\Sales\SalesOrderController;
 use App\Http\Controllers\Sales\SalesOrderLifecycleController;
 use App\Http\Controllers\Sales\SalesOrderLineController;
+use App\Http\Controllers\Sales\PosOrderCompletionController;
+use App\Http\Controllers\Sales\CustomerReturnController;
+use App\Http\Controllers\Sales\CustomerExchangeController;
 use App\Http\Controllers\Settings\ActiveSessionController;
 use App\Http\Controllers\Settings\OrganizationDocumentStampController;
 use App\Http\Controllers\Settings\OrganizationMailSettingController;
 use App\Http\Controllers\Settings\PasswordController;
 use App\Http\Controllers\Settings\ProfileController;
 use App\Http\Controllers\Settings\TwoFactorAuthenticationController;
+use App\Http\Controllers\Settings\ReturnPolicyController;
 use App\Http\Controllers\StoreController;
 use App\Http\Controllers\StoreMembershipController;
 use App\Http\Controllers\TenantContextController;
@@ -156,6 +161,8 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
     Route::put('/quotation-settings', [QuotationSettingsController::class, 'update'])->name('quotation-settings.update');
     Route::get('/email-settings', [OrganizationMailSettingController::class, 'edit'])->name('email-settings.edit');
     Route::put('/email-settings', [OrganizationMailSettingController::class, 'update'])->name('email-settings.update');
+    Route::get('/return-policy', [ReturnPolicyController::class, 'edit'])->name('return-policy.edit');
+    Route::put('/return-policy', [ReturnPolicyController::class, 'update'])->name('return-policy.update');
     Route::post('/email-settings/test', [OrganizationMailSettingController::class, 'test'])->name('email-settings.test');
 
     // Account Settings (V1) — the authenticated user's OWN profile, never
@@ -371,9 +378,13 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
     Route::post('/invoices/{invoice}/issue', [InvoiceController::class, 'issue'])->name('invoices.issue');
     Route::post('/invoices/{invoice}/cancel', [InvoiceController::class, 'cancel'])->name('invoices.cancel');
     Route::post('/invoices/{invoice}/corrections', [InvoiceController::class, 'correct'])->name('invoices.corrections.store');
+    Route::get('/credit-notes/{creditNote}', [CreditNoteController::class, 'show'])->name('credit-notes.show');
+    Route::get('/credit-notes/{creditNote}/print', [CreditNoteController::class, 'print'])->name('credit-notes.print');
+    Route::get('/credit-notes/{creditNote}/pdf', [CreditNoteController::class, 'pdf'])->name('credit-notes.pdf');
 
-    // Financial-line editing — only ever reaches a post-issue correction Draft
-    // (enforced by the `editLines` Invoice policy inside the controller).
+    // Legacy URLs are retained so old clients fail closed with 403. The
+    // `editLines` policy permanently disables direct Invoice line mutation;
+    // commercial changes now originate from the SalesOrder correction flow.
     Route::get('/invoices/{invoice}/correction-lines/search', [InvoiceCorrectionLineController::class, 'search'])->name('invoices.correction-lines.search');
     Route::post('/invoices/{invoice}/correction-lines', [InvoiceCorrectionLineController::class, 'store'])->name('invoices.correction-lines.store');
     Route::patch('/invoices/{invoice}/correction-lines/{line}', [InvoiceCorrectionLineController::class, 'update'])->name('invoices.correction-lines.update');
@@ -414,6 +425,12 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
     Route::post('/delivery-notes/{deliveryNote}/cancel', [DeliveryNoteController::class, 'cancel'])->name('delivery-notes.cancel');
 
     Route::prefix('sales')->name('sales.')->group(function () {
+        Route::get('/returns', [CustomerReturnController::class, 'index'])->name('returns.index');
+        Route::get('/returns/search', [CustomerReturnController::class, 'search'])->name('returns.search');
+        Route::get('/returns/{customerReturn}', [CustomerReturnController::class, 'show'])->name('returns.show');
+        Route::post('/returns/{customerReturn}/receive', [CustomerReturnController::class, 'receive'])->name('returns.receive');
+        Route::post('/returns/{customerReturn}/cancel', [CustomerReturnController::class, 'cancel'])->name('returns.cancel');
+        Route::post('/returns/{customerReturn}/refunds', [CustomerReturnController::class, 'refund'])->name('returns.refunds.store');
         Route::get('/customers', [CustomerController::class, 'index'])->name('customers.index');
         Route::get('/customers/create', [CustomerController::class, 'create'])->name('customers.create');
         Route::post('/customers', [CustomerController::class, 'store'])->name('customers.store');
@@ -434,8 +451,23 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
         Route::patch('/orders/{order}/lines/{lineId}', [SalesOrderLineController::class, 'update'])->whereNumber('lineId')->name('orders.lines.update');
         Route::delete('/orders/{order}/lines/{lineId}', [SalesOrderLineController::class, 'destroy'])->whereNumber('lineId')->name('orders.lines.destroy');
         Route::post('/orders/{order}/confirm', [SalesOrderLifecycleController::class, 'confirm'])->name('orders.confirm');
+        Route::post('/orders/{order}/corrections', [SalesOrderController::class, 'correct'])->name('orders.corrections.store');
+        Route::get('/orders/{order}/completion', [PosOrderCompletionController::class, 'create'])->name('orders.completion.create');
+        Route::get('/orders/{order}/completion/search', [PosOrderCompletionController::class, 'search'])->name('orders.completion.search');
+        Route::post('/orders/{order}/completion', [PosOrderCompletionController::class, 'store'])->name('orders.completion.store');
+        Route::get('/orders/{order}/exchanges/create', [CustomerExchangeController::class, 'create'])->name('orders.exchanges.create');
+        Route::get('/orders/{order}/exchanges/search', [CustomerExchangeController::class, 'search'])->name('orders.exchanges.search');
+        Route::post('/orders/{order}/exchanges', [CustomerExchangeController::class, 'store'])->name('orders.exchanges.store');
+        Route::get('/exchanges/{exchange}', [CustomerExchangeController::class, 'show'])->name('exchanges.show');
+        Route::post('/exchanges/{exchange}/receive', [CustomerExchangeController::class, 'receive'])->name('exchanges.receive');
+        Route::post('/exchanges/{exchange}/fulfill', [CustomerExchangeController::class, 'fulfill'])->name('exchanges.fulfill');
+        Route::post('/exchanges/{exchange}/payments', [CustomerExchangeController::class, 'pay'])->name('exchanges.payments.store');
+        Route::post('/exchanges/{exchange}/refunds', [CustomerExchangeController::class, 'refund'])->name('exchanges.refunds.store');
+        Route::post('/exchanges/{exchange}/cancel', [CustomerExchangeController::class, 'cancel'])->name('exchanges.cancel');
         Route::post('/orders/{order}/cancel', [SalesOrderLifecycleController::class, 'cancel'])->name('orders.cancel');
         Route::post('/orders/{order}/fulfill', [SalesOrderLifecycleController::class, 'fulfill'])->name('orders.fulfill');
+        Route::get('/orders/{order}/returns/create', [CustomerReturnController::class, 'create'])->name('orders.returns.create');
+        Route::post('/orders/{order}/returns', [CustomerReturnController::class, 'store'])->name('orders.returns.store');
         Route::post('/orders/{order}/payments', [PaymentController::class, 'store'])->name('orders.payments.store');
         Route::post('/orders/{order}/invoices', [InvoiceController::class, 'store'])->name('orders.invoices.store');
         Route::post('/orders/{order}/delivery-notes', [DeliveryNoteController::class, 'store'])->name('orders.delivery-notes.store');
@@ -487,6 +519,7 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
         Route::get('/ca-encaisse/export/xlsx', [FinanceExportController::class, 'caEncaisseXlsx'])->name('ca-encaisse.export.xlsx');
         Route::get('/ca-encaisse/export/pdf', [FinanceExportController::class, 'caEncaissePdf'])->name('ca-encaisse.export.pdf');
         Route::get('/ca-encaisse/export/invoices-zip', [FinanceExportController::class, 'caEncaisseInvoicesZip'])->name('ca-encaisse.export.invoices-zip');
+        Route::get('/ca-encaisse/export/full-package', [FinanceExportController::class, 'caEncaisseFullPackage'])->name('ca-encaisse.export.full-package');
     });
 });
 

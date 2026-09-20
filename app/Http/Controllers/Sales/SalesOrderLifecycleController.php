@@ -23,8 +23,8 @@ class SalesOrderLifecycleController extends Controller
     public function cancel(Request $request, SalesOrder $order, CancelSalesOrderAction $action): RedirectResponse
     {
         $this->authorize('cancel', $order);
-        $data = $request->validate(['reason' => ['nullable', 'string', 'max:2000']]);
-        $action->execute($request->user(), $order, $data['reason'] ?? null);
+        $data = $request->validate(['reason' => ['required', 'string', 'max:2000']]);
+        $action->execute($request->user(), $order, $data['reason']);
 
         return back();
     }

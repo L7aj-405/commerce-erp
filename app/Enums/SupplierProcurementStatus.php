@@ -56,7 +56,7 @@ enum SupplierProcurementStatus: string
     /** The supplier / quantity / availability may still be edited freely. */
     public function isEditable(): bool
     {
-        return in_array($this, [self::PendingSupplier, self::SupplierConfirmed], true);
+        return in_array($this, [self::PendingSupplier, self::SupplierConfirmed, self::Unavailable], true);
     }
 
     public function isTerminal(): bool

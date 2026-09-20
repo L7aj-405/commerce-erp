@@ -3,12 +3,14 @@
 namespace App\Services\Finance\Export;
 
 use App\Enums\PaymentStatus;
+use App\Models\CreditNote;
 use App\Models\Invoice;
 use App\Models\Organization;
 use App\Models\Store;
 use App\Services\DocumentPdfService;
 use App\Services\Finance\FinanceInvoiceReadModel;
 use App\Services\Finance\FinancePeriod;
+use App\Support\Decimal;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use RuntimeException;
@@ -55,15 +57,15 @@ class FinanceCaEncaisseInvoiceZipExport
     /** @return array{path: string, filename: string} absolute path to the built ZIP — caller streams it, then deletes it */
     public function build(Organization $organization, FinancePeriod $period, ?Store $store): array
     {
-        $eligible = $this->invoices->receivedPaymentDuringMonth($organization, $period, $store);
+        ['invoices' => $eligible, 'creditNotes' => $creditNotes] = $this->documents($organization, $period, $store);
 
         abort_if($eligible->isEmpty(), 422, 'Aucune facture émise n’est associée à la période sélectionnée.');
 
-        if ($eligible->count() > self::MAX_INVOICES) {
+        if ($eligible->count() + $creditNotes->count() > self::MAX_INVOICES) {
             abort(422, sprintf(
                 'Cette sélection contient %d factures, au-delà de la limite de %d pour un export ZIP en une fois. '
                 .'Filtrez par magasin pour réduire la sélection.',
-                $eligible->count(),
+                $eligible->count() + $creditNotes->count(),
                 self::MAX_INVOICES,
             ));
         }
@@ -82,21 +84,27 @@ class FinanceCaEncaisseInvoiceZipExport
 
         $workingDir = $this->workingDirectory($organization);
 
-        $zipPath = $workingDir.DIRECTORY_SEPARATOR.'archive.zip';
+        $zipPath = tempnam(sys_get_temp_dir(), 'finance_invoice_zip_');
         $zip = new ZipArchive;
         if ($zip->open($zipPath, ZipArchive::CREATE) !== true) {
             $this->cleanup($workingDir);
+            @unlink($zipPath);
             throw new RuntimeException('Impossible de créer l’archive ZIP.');
         }
 
         $usedNames = [];
         $manifestRows = [];
+        $creditNoteManifestRows = [];
         $tempPdfPaths = [];
 
         try {
             foreach ($eligible as $invoice) {
                 $document = $this->documents->invoice($invoice);
-                $entryName = $this->uniqueEntryName($document['filename'], $invoice->id, $usedNames);
+                $entryName = $this->uniqueEntryName(
+                    'Factures/'.$this->safeDocumentFolder($invoice->invoice_number).'/'.$document['filename'],
+                    $invoice->id,
+                    $usedNames,
+                );
 
                 $pdfPath = $workingDir.DIRECTORY_SEPARATOR.Str::random(24).'.pdf';
                 file_put_contents($pdfPath, $document['bytes']);
@@ -110,18 +118,61 @@ class FinanceCaEncaisseInvoiceZipExport
                 unset($document);
             }
 
+            foreach ($creditNotes as $creditNote) {
+                $document = $this->documents->creditNote($creditNote);
+                $invoiceNumber = $creditNote->invoice?->invoice_number ?: 'Facture';
+                $entryName = $this->uniqueEntryName(
+                    'Factures/'.$this->safeDocumentFolder($invoiceNumber).'/'.$document['filename'],
+                    $creditNote->id,
+                    $usedNames,
+                );
+                $pdfPath = $workingDir.DIRECTORY_SEPARATOR.Str::random(24).'.pdf';
+                file_put_contents($pdfPath, $document['bytes']);
+                $tempPdfPaths[] = $pdfPath;
+                $zip->addFile($pdfPath, $entryName);
+                $creditNoteManifestRows[] = [
+                    $creditNote->credit_note_number,
+                    $creditNote->credit_note_date->toDateString(),
+                    $creditNote->invoice->invoice_number,
+                    (string) $creditNote->invoice->version,
+                    (string) $creditNote->total_incl_tax,
+                    $entryName,
+                ];
+                unset($document);
+            }
+
             $zip->addFromString('manifest.csv', $this->manifest($manifestRows));
+            if ($creditNoteManifestRows !== []) {
+                $zip->addFromString('avoirs-manifest.csv', $this->creditNoteManifest($creditNoteManifestRows));
+            }
         } finally {
             $zip->close();
             foreach ($tempPdfPaths as $path) {
                 @unlink($path);
             }
+            @rmdir($workingDir);
         }
 
         return [
             'path' => $zipPath,
             'filename' => "Factures_{$period->month}.zip",
         ];
+    }
+
+    /** @return array{invoices: \Illuminate\Support\Collection<int, Invoice>, creditNotes: \Illuminate\Support\Collection<int, CreditNote>} */
+    public function documents(Organization $organization, FinancePeriod $period, ?Store $store): array
+    {
+        $eligible = $this->invoices->receivedPaymentDuringMonth($organization, $period, $store);
+
+        $creditNotes = CreditNote::query()
+            ->where('organization_id', $organization->getKey())
+            ->when($store, fn ($query) => $query->where('store_id', $store->getKey()))
+            ->where('status', 'issued')
+            ->whereIn('invoice_id', $eligible->pluck('id'))
+            ->with('invoice:id,invoice_number,version')
+            ->orderBy('credit_note_date')->orderBy('id')->get();
+
+        return ['invoices' => $eligible, 'creditNotes' => $creditNotes];
     }
 
     /**
@@ -166,6 +217,11 @@ class FinanceCaEncaisseInvoiceZipExport
         @rmdir($dir);
     }
 
+    private function safeDocumentFolder(?string $number): string
+    {
+        return trim(preg_replace('/[^A-Za-z0-9._-]+/', '-', (string) $number), '-') ?: 'document';
+    }
+
     /**
      * @param  list<int>  $salesOrderIds
      * @return array<int, string> sales_order_id => amount collected in the period
@@ -190,7 +246,7 @@ class FinanceCaEncaisseInvoiceZipExport
             ->selectRaw('payment_allocations.sales_order_id as sales_order_id, SUM(payment_allocations.amount) as total')
             ->groupBy('payment_allocations.sales_order_id')
             ->get()
-            ->mapWithKeys(fn ($row) => [(int) $row->sales_order_id => (string) $row->total])
+            ->mapWithKeys(fn ($row) => [(int) $row->sales_order_id => Decimal::normalize((string) $row->total)])
             ->all();
     }
 
@@ -205,7 +261,11 @@ class FinanceCaEncaisseInvoiceZipExport
 
         // Collision fallback only — the invisible database id never replaces
         // the visible invoice number, it only disambiguates the archive entry.
+        $dir = pathinfo($filename, PATHINFO_DIRNAME);
         $fallback = pathinfo($filename, PATHINFO_FILENAME)."-{$invoiceId}.pdf";
+        if ($dir !== '.' && $dir !== '') {
+            $fallback = $dir.'/'.$fallback;
+        }
         $used[$fallback] = true;
 
         return $fallback;
@@ -216,6 +276,7 @@ class FinanceCaEncaisseInvoiceZipExport
     {
         return [
             $invoice->invoice_number,
+            (string) $invoice->version,
             $invoice->invoice_date->toDateString(),
             trim($invoice->customer_company ?: $invoice->customer_name ?: '') ?: '—',
             (string) $invoice->total_incl_tax,
@@ -230,7 +291,23 @@ class FinanceCaEncaisseInvoiceZipExport
     {
         $handle = fopen('php://temp', 'r+');
         fwrite($handle, "\xEF\xBB\xBF");
-        fputcsv($handle, ['N° facture', 'Date facture', 'Client', 'Total TTC', 'Encaissé sur la période', 'Cachet', 'Fichier'], ';');
+        fputcsv($handle, ['N° facture', 'Version', 'Date facture', 'Client', 'Total TTC', 'Encaissé sur la période', 'Cachet', 'Fichier'], ';');
+        foreach ($rows as $row) {
+            fputcsv($handle, $row, ';');
+        }
+        rewind($handle);
+        $csv = stream_get_contents($handle);
+        fclose($handle);
+
+        return $csv === false ? '' : $csv;
+    }
+
+    /** @param  list<list<string>>  $rows */
+    private function creditNoteManifest(array $rows): string
+    {
+        $handle = fopen('php://temp', 'r+');
+        fwrite($handle, "\xEF\xBB\xBF");
+        fputcsv($handle, ['N° avoir', 'Date avoir', 'Facture d’origine', 'Version facture', 'Total TTC crédité', 'Fichier'], ';');
         foreach ($rows as $row) {
             fputcsv($handle, $row, ';');
         }

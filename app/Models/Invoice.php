@@ -20,6 +20,7 @@ class Invoice extends Model
     {
         return [
             'status' => InvoiceStatus::class,
+            'version' => 'integer',
             'invoice_date' => 'date',
             'subtotal_excl_tax' => 'decimal:4',
             'discount_total' => 'decimal:4',
@@ -36,6 +37,11 @@ class Invoice extends Model
         return $this->belongsTo(Organization::class);
     }
 
+    public function family(): BelongsTo
+    {
+        return $this->belongsTo(InvoiceFamily::class, 'invoice_family_id');
+    }
+
     public function store(): BelongsTo
     {
         return $this->belongsTo(Store::class);
@@ -46,6 +52,16 @@ class Invoice extends Model
         return $this->belongsTo(SalesOrder::class);
     }
 
+    public function salesOrderRevision(): BelongsTo
+    {
+        return $this->belongsTo(SalesOrderRevision::class);
+    }
+
+    public function salesOrderAddendum(): BelongsTo
+    {
+        return $this->belongsTo(SalesOrderAddendum::class);
+    }
+
     public function customer(): BelongsTo
     {
         return $this->belongsTo(Customer::class);
@@ -54,6 +70,11 @@ class Invoice extends Model
     public function lines(): HasMany
     {
         return $this->hasMany(InvoiceLine::class)->orderBy('position');
+    }
+
+    public function creditNotes(): HasMany
+    {
+        return $this->hasMany(CreditNote::class);
     }
 
     public function issuedBy(): BelongsTo
@@ -72,7 +93,7 @@ class Invoice extends Model
         return $this->belongsTo(self::class, 'corrected_invoice_id');
     }
 
-    /** The correction that replaces this originally issued Invoice, if any. */
+    /** The next correction that directly replaces this Invoice, if any. */
     public function correction(): HasOne
     {
         return $this->hasOne(self::class, 'corrected_invoice_id')->latestOfMany();

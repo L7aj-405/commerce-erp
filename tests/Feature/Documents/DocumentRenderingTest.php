@@ -47,7 +47,7 @@ class DocumentRenderingTest extends DocumentTestCase
         $organization->save();
 
         $html = app(InvoiceDocumentRenderer::class)->html($invoice->fresh());
-        foreach (['Original Seller', 'Original seller address', 'Original Customer SARL', 'Original customer address', 'Original Product', 'SKU-ORIGINAL', 'Original VAT', '20 %', '100,00', '120,00'] as $expected) {
+        foreach (['Original Seller', 'Original seller address', 'Original Customer SARL', 'Original customer address', 'Original Product', 'SKU-ORIGINAL', 'Original VAT (20%)', '100,00', '120,00'] as $expected) {
             $this->assertStringContainsString($expected, $html);
         }
         foreach (['Changed Seller', 'Changed customer address', 'Changed Product', 'SKU-CHANGED', 'Changed Tax', '999,00', 'purchase_price', '40,00'] as $forbidden) {

@@ -85,6 +85,7 @@ class DocumentTenantAttackTest extends DocumentTestCase
         [$ownerB, $organizationB, $storeB, $orderB] = $this->documentFixture(true);
         $payload = [
             'organization_id' => $organizationB->id, 'store_id' => $storeB->id, 'sales_order_id' => $orderB->id,
+            'invoice_family_id' => 999999, 'version' => 99,
             'invoice_number' => 'INV-FORGED', 'delivery_note_number' => 'DN-FORGED', 'status' => 'issued',
             'issued_by_user_id' => $ownerB->id, 'issued_at' => now(), 'total_incl_tax' => '0.0000',
             'seller_snapshot' => ['legal_name' => 'FORGED SELLER'], 'template_version' => 'attacker-template',
@@ -99,6 +100,8 @@ class DocumentTenantAttackTest extends DocumentTestCase
         $this->assertSame($organizationA->id, $invoice->organization_id);
         $this->assertSame($storeA->id, $invoice->store_id);
         $this->assertNull($invoice->invoice_number);
+        $this->assertSame(1, $invoice->version);
+        $this->assertSame($organizationA->id, $invoice->family->organization_id);
         $this->assertSame($orderA->total_incl_tax, $invoice->total_incl_tax);
         $this->assertNotSame('FORGED SELLER', $invoice->seller_snapshot['legal_name']);
         $this->assertSame('v1', $invoice->template_version);

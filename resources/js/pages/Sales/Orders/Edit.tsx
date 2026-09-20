@@ -26,18 +26,20 @@ type Order = {
     lines: OLine[];
 };
 type OriginatingQuotation = { id: number; number: string | null; status: string; revision_number: number };
+type Correction = { revision_number: number; reason: string; initiated_at: string | null };
 type Props = {
     order: Order;
     taxRates: TaxRate[];
     lineSearchUrl: string;
     customerSearchUrl: string;
     isEditable: boolean;
+    correction: Correction | null;
     procurementUnderCovered: number;
     originatingQuotation: OriginatingQuotation | null;
-    can: { update: boolean; overridePrice: boolean; applyDiscount: boolean };
+    can: { update: boolean; confirm: boolean; overridePrice: boolean; applyDiscount: boolean };
 };
 
-export default function EditOrder({ order, taxRates, lineSearchUrl, customerSearchUrl, isEditable, procurementUnderCovered, originatingQuotation, can }: Props) {
+export default function EditOrder({ order, taxRates, lineSearchUrl, customerSearchUrl, isEditable, correction, procurementUnderCovered, originatingQuotation, can }: Props) {
     const currency = order.currency_code;
     const header = useForm({
         customer_id: order.customer_id,
@@ -46,6 +48,8 @@ export default function EditOrder({ order, taxRates, lineSearchUrl, customerSear
         notes: order.notes ?? '',
     });
     const [customerLabel, setCustomerLabel] = useState(order.customer_company || order.customer_name || '');
+    const confirmation = useForm({});
+    const confirmationErrors = Object.values(confirmation.errors as Record<string, string>);
     const net = (Number(order.subtotal_excl_tax) - Number(order.discount_total)).toFixed(4);
     const hasDiscount = Number(order.discount_total) > 0;
 
@@ -84,6 +88,14 @@ export default function EditOrder({ order, taxRates, lineSearchUrl, customerSear
                     Voir la commande
                 </Link>
             </div>
+
+            {correction && (
+                <section className="mb-6 rounded-card border border-warning/30 bg-warning-soft/50 px-4 py-4">
+                    <p className="font-semibold text-ink">Correction de la commande en cours</p>
+                    <p className="mt-1 text-sm text-ink-muted">Motif : {correction.reason}</p>
+                    <p className="mt-1 text-xs text-ink-faint">Correction {correction.revision_number} — la facture déjà émise reste inchangée jusqu’à la validation.</p>
+                </section>
+            )}
 
             {isEditable && procurementUnderCovered > 0 && (
                 <div className="mb-6 rounded-card border border-warning/30 bg-warning-soft/50 px-4 py-3 text-sm text-warning">
@@ -182,6 +194,21 @@ export default function EditOrder({ order, taxRates, lineSearchUrl, customerSear
                     <span className="tabular-nums">{formatMoney(order.total_incl_tax, currency)}</span>
                 </div>
             </div>
+
+            {correction && isEditable && can.confirm && (
+                <div className="mt-6 flex flex-col items-stretch gap-2 rounded-card border border-line bg-surface p-4 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="text-sm text-ink-muted">Cette action recalcule les réservations et fige le nouvel état commercial.</p>
+                    <Button
+                        type="button"
+                        loading={confirmation.processing}
+                        loadingText="Validation…"
+                        onClick={() => confirmation.post(`/sales/orders/${order.id}/confirm`)}
+                    >
+                        Valider la correction
+                    </Button>
+                </div>
+            )}
+            {confirmationErrors.map((error) => error && <p key={error} className="mt-2 text-sm text-danger">{error}</p>)}
         </SalesLayout>
     );
 }

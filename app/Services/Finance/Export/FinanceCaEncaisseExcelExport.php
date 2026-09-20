@@ -6,6 +6,7 @@ use App\Models\Organization;
 use App\Models\Store;
 use App\Services\Finance\FinanceCaEncaisseService;
 use App\Services\Finance\FinancePeriod;
+use App\Support\Decimal;
 use Illuminate\Support\Carbon;
 use OpenSpout\Common\Entity\Row;
 use OpenSpout\Common\Entity\Style\Border;
@@ -18,25 +19,21 @@ use OpenSpout\Writer\XLSX\Entity\SheetView;
 use OpenSpout\Writer\XLSX\Writer;
 
 /**
- * CA encaissé workbook: one sheet, one row per SOLD LINE (never one row per
- * payment with a truncated "Article A (+3 autres)" summary — see the Finance
- * Journal/CA designation-fix audit). Columns: Numéro / Date de vente / Date
- * de paiement / N° facture-commande / Qté / Référence / Désignation / Client
- * / Mode de paiement / Montant encaissé / Statut, plus a visually separated
- * monthly total row. Same OpenSpout pipeline as FinanceSituationExcelExport
- * — streamed to a temp file, never buffering rows in a spreadsheet-library
- * object graph, so an arbitrarily large month never blows up memory.
+ * CA encaissé workbook: one sheet, one visual group per authoritative
+ * SalesOrder/Invoice. Sold items appear once; posted Payments inside the
+ * selected payment_date period appear as sub-lines with their own number,
+ * date, method and "Montant partiel". Same OpenSpout pipeline as
+ * FinanceSituationExcelExport — streamed to a temp file, never buffering rows
+ * in a spreadsheet-library object graph, so an arbitrarily large month never
+ * blows up memory.
  *
- * Visual grouping (the merge-cells fix): a payment/order's TRANSACTION-level
- * columns (Numéro, both dates, N° facture/commande, Client, Mode, Montant
- * encaissé, Statut) are written ONLY on the group's first line row and
- * merged, via OpenSpout's native `Options::mergeCells()` (0-indexed columns,
- * 1-indexed rows — never manual XLSX/XML manipulation), across every row the
- * group occupies — a traditional accounting-journal look, one physical
- * Excel row per sold ITEM but one logical block per transaction. A
- * single-item group is never merged (nothing to merge: N=1 is already a
- * normal row). ITEM-level columns (Qté, Référence, Désignation) are never
- * merged and keep one value per row.
+ * Visual grouping: shared group columns (Date de vente,
+ * N° facture/commande, Client, Montant encaissé, Statut) are written only on
+ * the group's first row and merged via OpenSpout's native
+ * `Options::mergeCells()` (0-indexed columns, 1-indexed rows — never manual
+ * XLSX/XML manipulation), across every row the group occupies. Payment
+ * columns and item columns stay unmerged so payment sub-lines and sold-line
+ * details remain individually visible.
  *
  * The MONETARY "Montant encaissé" column is the one column where merging is
  * also a financial-integrity requirement, not just cosmetics: writing it on
@@ -79,12 +76,12 @@ use OpenSpout\Writer\XLSX\Writer;
 class FinanceCaEncaisseExcelExport
 {
     private const HEADER_LABELS = [
-        'Numéro', 'Date de vente', 'Date de paiement', 'N° facture / commande', 'Qté', 'Référence', 'Désignation',
-        'Client', 'Mode de paiement', 'Montant encaissé', 'Statut',
+        'N° paiement', 'Date de vente', 'Date de paiement', 'N° facture / commande', 'Qté', 'Référence', 'Désignation',
+        'Client', 'Mode de paiement', 'Montant partiel', 'Montant encaissé', 'Statut',
     ];
 
     /** Excel column widths, in character units, matching HEADER_LABELS order. */
-    private const COLUMN_WIDTHS = [14, 13, 13, 16, 7, 14, 36, 24, 16, 16, 20];
+    private const COLUMN_WIDTHS = [14, 13, 13, 16, 7, 14, 36, 24, 16, 16, 16, 20];
 
     /** 0-indexed position of the "Qté" column. */
     private const QUANTITY_COLUMN_INDEX = 4;
@@ -95,11 +92,14 @@ class FinanceCaEncaisseExcelExport
     /** 0-indexed position of the "Désignation" column. */
     private const DESIGNATION_COLUMN_INDEX = 6;
 
-    /** 0-indexed position of the "Montant encaissé" column. */
-    private const AMOUNT_COLUMN_INDEX = 9;
+    /** 0-indexed position of the payment sub-line "Montant partiel" column. */
+    private const PARTIAL_AMOUNT_COLUMN_INDEX = 9;
+
+    /** 0-indexed position of the shared "Montant encaissé" column. */
+    private const AMOUNT_COLUMN_INDEX = 10;
 
     /** 0-indexed positions of every TRANSACTION-level column — merged across a multi-item group, item columns excluded. */
-    private const TRANSACTION_COLUMN_INDEXES = [0, 1, 2, 3, 7, 8, 9, 10];
+    private const TRANSACTION_COLUMN_INDEXES = [1, 3, 7, 10, 11];
 
     /** 1-indexed row the first data row (right after the header) lands on. */
     private const FIRST_DATA_ROW = 7;
@@ -131,52 +131,54 @@ class FinanceCaEncaisseExcelExport
         $sheet->setSheetView((new SheetView)->setFreezeRow(7));
 
         $currentRow = self::FIRST_DATA_ROW;
-        foreach ($this->caEncaisse->cursor($organization, $period, $store) as $row) {
-            // Defensive fallback only — every real order has at least one
-            // line; this just guarantees the payment row is never silently
-            // dropped if that ever weren't true.
-            $lines = $row['lines'] !== [] ? $row['lines'] : [['quantity' => null, 'designation' => '—', 'reference' => null, 'variant' => null]];
-            $lastIndex = count($lines) - 1;
+        foreach ($this->groups($organization, $period, $store) as $group) {
+            $lines = $group['lines'] !== [] ? $group['lines'] : [['quantity' => null, 'designation' => '—', 'reference' => null, 'variant' => null]];
+            $payments = $group['payments'];
+            $rowCount = max(count($lines), count($payments));
+            $lastIndex = $rowCount - 1;
             $startRow = $currentRow;
 
-            foreach ($lines as $index => $line) {
+            for ($index = 0; $index < $rowCount; $index++) {
                 $isFirst = $index === 0;
                 $isLast = $index === $lastIndex;
-                $designation = $line['designation'].($line['variant'] ? ' — '.$line['variant'] : '');
+                $line = $lines[$index] ?? null;
+                $payment = $payments[$index] ?? null;
+                $designation = $line ? $line['designation'].($line['variant'] ? ' — '.$line['variant'] : '') : '';
 
                 $values = [
-                    $isFirst ? $row['payment_number'] : '',
-                    $isFirst ? Carbon::parse($row['sale_date'])->format('d/m/Y') : '',
-                    $isFirst ? Carbon::parse($row['payment_date'])->format('d/m/Y') : '',
-                    $isFirst ? $row['reference'] : '',
-                    $line['quantity'] !== null ? $this->quantity($line['quantity']) : '',
+                    $payment['payment_number'] ?? '',
+                    $isFirst ? Carbon::parse($group['sale_date'])->format('d/m/Y') : '',
+                    $payment ? Carbon::parse($payment['payment_date'])->format('d/m/Y') : '',
+                    $isFirst ? $group['reference'] : '',
+                    $line && $line['quantity'] !== null ? $this->quantity($line['quantity']) : '',
                     $line['reference'] ?? '',
                     $designation,
-                    $isFirst ? $row['customer'] : '',
-                    $isFirst ? $row['method_label'] : '',
-                    // Written once per payment/order group — see the class doc.
-                    $isFirst ? $this->amount($row['amount']) : '',
-                    $isFirst ? $row['status_label'] : '',
+                    $isFirst ? $group['customer'] : '',
+                    $payment['method_label'] ?? '',
+                    $payment ? $this->amount($payment['amount']) : '',
+                    $isFirst ? $this->amount($group['amount']) : '',
+                    $isFirst ? $group['status_label'] : '',
                 ];
                 $styles = [
-                    0 => $this->transactionCenterStyle($isLast),
+                    0 => $this->paymentSublineStyle($isLast),
                     1 => $this->transactionCenterStyle($isLast),
-                    2 => $this->transactionCenterStyle($isLast),
+                    2 => $this->paymentSublineStyle($isLast),
                     3 => $this->transactionCenterStyle($isLast),
                     self::QUANTITY_COLUMN_INDEX => $this->quantityStyle($isLast),
                     self::REFERENCE_COLUMN_INDEX => $this->itemTextStyle($isLast),
                     self::DESIGNATION_COLUMN_INDEX => $this->itemTextStyle($isLast),
                     7 => $this->transactionLeftStyle($isLast),
-                    8 => $this->transactionCenterStyle($isLast),
+                    8 => $this->paymentSublineStyle($isLast),
+                    self::PARTIAL_AMOUNT_COLUMN_INDEX => $this->partialAmountStyle($isLast),
                     self::AMOUNT_COLUMN_INDEX => $this->transactionAmountStyle($isLast),
-                    10 => $this->transactionCenterStyle($isLast),
+                    11 => $this->transactionCenterStyle($isLast),
                 ];
                 $writer->addRow(Row::fromValuesWithStyles($values, null, $styles));
                 $currentRow++;
             }
 
             // §5 — never merge a single-item transaction; N > 1 only.
-            if (count($lines) > 1) {
+            if ($rowCount > 1) {
                 $endRow = $currentRow - 1;
                 foreach (self::TRANSACTION_COLUMN_INDEXES as $column) {
                     $writer->getOptions()->mergeCells($column, $startRow, $column, $endRow);
@@ -187,7 +189,7 @@ class FinanceCaEncaisseExcelExport
         $total = $this->caEncaisse->total($organization, $period, $store);
         $writer->addRow(Row::fromValues([]));
         $writer->addRow(Row::fromValuesWithStyles(
-            ['CA encaissé du mois', '', '', '', '', '', '', '', '', $this->amount($total), ''],
+            ['CA encaissé du mois', '', '', '', '', '', '', '', '', '', $this->amount($total), ''],
             $this->totalLabelStyle(),
             [self::AMOUNT_COLUMN_INDEX => $this->totalAmountStyle()],
         ));
@@ -244,6 +246,40 @@ class FinanceCaEncaisseExcelExport
         // used for calculation past this point — see
         // FinanceSituationExcelExport::amount() for the same convention.
         return round((float) ($value ?? '0'), 2);
+    }
+
+    /** @return list<array<string, mixed>> */
+    private function groups(Organization $organization, FinancePeriod $period, ?Store $store): array
+    {
+        $groups = [];
+
+        foreach ($this->caEncaisse->cursor($organization, $period, $store) as $row) {
+            $key = $row['reference_type'] === 'invoice' && $row['invoice_id'] ? 'invoice:'.$row['invoice_id'] : 'order:'.$row['sales_order_id'];
+            if (! isset($groups[$key])) {
+                $groups[$key] = [
+                    'sale_date' => $row['sale_date'],
+                    'reference' => $row['reference'],
+                    'lines' => $row['lines'],
+                    'customer' => $row['customer'],
+                    'amount' => '0.0000',
+                    'status_label' => $row['status_label'],
+                    'payments' => [],
+                ];
+            }
+
+            $groups[$key]['amount'] = Decimal::add($groups[$key]['amount'], $row['amount']);
+            $groups[$key]['payments'][] = [
+                'payment_number' => $row['payment_number'],
+                'payment_date' => $row['payment_date'],
+                'method_label' => $row['method_label'],
+                'amount' => $row['amount'],
+            ];
+            if (in_array($row['status_label'], ['Paiement comptant', 'Solde / Reliquat'], true)) {
+                $groups[$key]['status_label'] = 'Paiement complété';
+            }
+        }
+
+        return array_values($groups);
     }
 
     private function quantity(string $value): float
@@ -313,6 +349,21 @@ class FinanceCaEncaisseExcelExport
         $style = $this->amountStyle()->setCellVerticalAlignment(CellVerticalAlignment::CENTER);
 
         return $closing ? $style->setBorder($this->separatorBorder()) : $style;
+    }
+
+    /** Payment sub-lines keep a light separator between payments inside one invoice/order group. */
+    private function paymentSublineStyle(bool $closing): Style
+    {
+        return (new Style)
+            ->setCellAlignment(CellAlignment::CENTER)
+            ->setCellVerticalAlignment(CellVerticalAlignment::CENTER)
+            ->setShouldWrapText()
+            ->setBorder($closing ? $this->separatorBorder() : $this->lightBorder());
+    }
+
+    private function partialAmountStyle(bool $closing): Style
+    {
+        return $this->amountStyle()->setBorder($closing ? $this->separatorBorder() : $this->lightBorder());
     }
 
     /** The heavier rule that closes off one whole transaction from the next — spans every column on that row. */

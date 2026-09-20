@@ -47,7 +47,7 @@ class UnsafeOutboundDestinationException extends RuntimeException
     {
         return match ($this->category) {
             self::MALFORMED => 'Cette adresse n’est pas valide.',
-            self::UNRESOLVABLE => 'Cette adresse est introuvable.',
+            self::UNRESOLVABLE => 'Impossible de résoudre le nom de domaine de cette adresse.',
             self::PRIVATE_DESTINATION => 'Cette adresse pointe vers une destination interne ou privée, ce qui n’est pas autorisé.',
             default => 'Cette destination n’est pas autorisée.',
         };

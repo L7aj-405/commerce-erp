@@ -9,13 +9,18 @@ use App\Enums\SalesOrderLineType;
 use App\Enums\SalesOrderStatus;
 use App\Models\InventoryMovement;
 use App\Models\InventoryReservation;
+use App\Models\Organization;
+use App\Models\ProductVariant;
 use App\Models\SalesOrder;
+use App\Models\Store;
 use App\Models\User;
+use App\Models\Warehouse;
+use Illuminate\Validation\ValidationException;
 use Tests\Support\QuotationTestCase;
 
 class QuotationConversionTest extends QuotationTestCase
 {
-    /** @return array{User, \App\Models\Organization, \App\Models\Store, \App\Models\ProductVariant, \App\Models\Warehouse} */
+    /** @return array{User, Organization, Store, ProductVariant, Warehouse} */
     private function fixture(string $stock = '50.0000'): array
     {
         $owner = User::factory()->create();
@@ -93,7 +98,7 @@ class QuotationConversionTest extends QuotationTestCase
         // Confirmation uses the EXISTING company-wide reservation architecture.
         app(ConfirmSalesOrderAction::class)->execute($owner, $order->fresh());
         $this->assertSame($reservationsBefore + 1, InventoryReservation::query()->count());
-        $this->assertSame($movementsBefore + 1, InventoryMovement::query()->count());
+        $this->assertSame($movementsBefore, InventoryMovement::query()->count());
     }
 
     public function test_conversion_reports_a_stock_warning_when_quoted_quantity_exceeds_availability(): void
@@ -117,7 +122,7 @@ class QuotationConversionTest extends QuotationTestCase
         $quotation = $this->createQuotation($owner, $organization, $store);
         $this->addCatalogQuotationLine($owner, $quotation, $variant);
 
-        $this->expectException(\Illuminate\Validation\ValidationException::class);
+        $this->expectException(ValidationException::class);
         app(ConvertQuotationToSalesOrderAction::class)->execute($owner, $quotation, ['warehouse_id' => $warehouse->id]);
     }
 }

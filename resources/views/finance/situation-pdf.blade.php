@@ -39,21 +39,29 @@
 
         <table class="cards">
             <tr>
-                <td><div class="label">Ventes</div><div class="value">{{ $section['ventes'] }}</div></td>
-                <td><div class="label">Facturation</div><div class="value">{{ $section['facturation'] }}</div></td>
-                <td><div class="label">Encaissements</div><div class="value">{{ $section['encaissements'] }}</div></td>
-                <td><div class="label">Créances fin</div><div class="value">{{ $section['creances_fin'] }}</div></td>
+                <td><div class="label">Ventes brutes</div><div class="value">{{ $section['ventes'] }}</div></td>
+                <td><div class="label">Ventes nettes</div><div class="value">{{ $section['ventes_nettes'] }}</div></td>
+                <td><div class="label">Facturation brute</div><div class="value">{{ $section['facturation_brute'] }}</div></td>
+            </tr>
+            <tr>
+                <td><div class="label">Avoirs émis</div><div class="value">{{ $section['avoirs'] }}</div></td>
+                <td><div class="label">Facturation nette</div><div class="value">{{ $section['facturation'] }}</div></td>
+                <td><div class="label">Net encaissé</div><div class="value">{{ $section['net_encaisse'] }}</div></td>
+                <td><div class="label">Remboursements</div><div class="value">{{ $section['remboursements'] }}</div></td>
             </tr>
         </table>
 
         <table class="recon">
-            <tr><td>Créances début de période</td><td class="amount">{{ $section['creances_debut'] }}</td></tr>
-            <tr><td>+ Facturation</td><td class="amount">{{ $section['facturation'] }}</td></tr>
-            <tr><td>- Encaissements</td><td class="amount">{{ $section['encaissements'] }}</td></tr>
-            <tr class="total"><td>= Créances fin de période</td><td class="amount">{{ $section['creances_fin'] }}</td></tr>
+            <tr><td>Position nette début (créances - à rembourser)</td><td class="amount">{{ $section['position_nette_debut'] }}</td></tr>
+            <tr><td>+ Facturation nette</td><td class="amount">{{ $section['facturation'] }}</td></tr>
+            <tr><td>- Encaissements bruts</td><td class="amount">{{ $section['encaissements'] }}</td></tr>
+            <tr><td>+ Remboursements</td><td class="amount">{{ $section['remboursements'] }}</td></tr>
+            <tr class="total"><td>= Position nette fin</td><td class="amount">{{ $section['position_nette_fin'] }}</td></tr>
+            <tr><td>dont créances clients</td><td class="amount">{{ $section['creances_fin'] }}</td></tr>
+            <tr><td>dont obligations de remboursement</td><td class="amount">{{ $section['obligations_remboursement'] }}</td></tr>
         </table>
         @if($section['has_variance'])
-            <p class="variance">Écart de réconciliation : {{ $section['variance'] }} — paiement(s) reçu(s) sur des commandes pas encore facturées ce mois-ci.</p>
+            <p class="variance">Écart de réconciliation de la position client : {{ $section['variance'] }}. Vérifier notamment les paiements de commandes non encore facturées.</p>
         @endif
 
         <table class="lines">

@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Organization;
 use App\Models\OrganizationMembership;
+use App\Models\OrganizationSecuritySetting;
 use App\Models\Role;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
@@ -47,10 +48,11 @@ class OrganizationCreator
             // exact path for almost every fixture — mirrors the same
             // environment-gated-default pattern already used by
             // NullChallengeVerifier.
-            $organization->securitySetting()->create([
-                'require_2fa' => false,
-                'require_2fa_for_privileged_roles' => ! app()->environment(['local', 'testing']),
-            ]);
+            $securitySetting = new OrganizationSecuritySetting;
+            $securitySetting->organization_id = $organization->getKey();
+            $securitySetting->require_2fa = false;
+            $securitySetting->require_2fa_for_privileged_roles = ! app()->environment(['local', 'testing']);
+            $securitySetting->save();
 
             $membership = new OrganizationMembership;
             $membership->organization_id = $organization->getKey();

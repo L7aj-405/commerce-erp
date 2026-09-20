@@ -8,9 +8,9 @@ use App\Actions\Sales\ConfirmSalesOrderAction;
 use App\Actions\Sales\FulfillSalesOrderAction;
 use App\Models\User;
 use Illuminate\Testing\Fluent\AssertableJson;
-use Tests\Support\SalesTestCase;
+use Tests\Support\PaymentTestCase;
 
-class SalesOrderListTest extends SalesTestCase
+class SalesOrderListTest extends PaymentTestCase
 {
     public function test_index_exposes_summary_counts_filters_and_linked_invoice_state(): void
     {

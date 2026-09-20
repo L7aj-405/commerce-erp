@@ -4,6 +4,9 @@ namespace Tests\Feature\Finance;
 
 use App\Actions\Sales\ConfirmSalesOrderAction;
 use App\Contracts\PdfGenerator;
+use App\Models\Organization;
+use App\Models\SalesOrder;
+use App\Models\Store;
 use App\Models\User;
 use App\Services\Finance\Export\FinanceCaEncaisseExcelExport;
 use App\Services\Finance\Export\FinanceCaEncaissePdfExport;
@@ -43,7 +46,7 @@ class FinanceLineDetailTest extends DocumentTestCase
         return $box;
     }
 
-    /** @return array{User, \App\Models\Organization, \App\Models\Store, \App\Models\SalesOrder} six-line order fixture */
+    /** @return array{User, Organization, Store, SalesOrder} six-line order fixture */
     private function sixLineOrderFixture(): array
     {
         $owner = User::factory()->create();
@@ -56,32 +59,44 @@ class FinanceLineDetailTest extends DocumentTestCase
         $boseSpeaker = $this->createProduct($organization, 'BOSE DESIGNMAX DM5SE ENCEINTE MURALE', 'BOSE-DM5SE', [
             'default_sale_price' => '1000.0000', 'tax_rate_id' => $taxRate->getKey(), 'reference' => 'REF-DM5SE', 'label' => 'Blanc',
         ]);
-        $this->addCatalogLine($owner, $order, $boseSpeaker->variants->first(), $warehouse, ['quantity' => '3.0000']);
+        $boseSpeakerVariant = $boseSpeaker->variants->firstOrFail();
+        $this->openStock($owner, $organization, $warehouse, $boseSpeakerVariant, '3.0000');
+        $this->addCatalogLine($owner, $order, $boseSpeakerVariant, $warehouse, ['quantity' => '3.0000']);
 
         $boseCeiling = $this->createProduct($organization, 'BOSE DESIGNMAX DM2 CLP ENCEINTE PLAFONNIER', 'BOSE-DM2', [
             'default_sale_price' => '800.0000', 'tax_rate_id' => $taxRate->getKey(), 'reference' => 'REF-DM2',
         ]);
-        $this->addCatalogLine($owner, $order, $boseCeiling->variants->first(), $warehouse, ['quantity' => '1.0000']);
+        $boseCeilingVariant = $boseCeiling->variants->firstOrFail();
+        $this->openStock($owner, $organization, $warehouse, $boseCeilingVariant, '1.0000');
+        $this->addCatalogLine($owner, $order, $boseCeilingVariant, $warehouse, ['quantity' => '1.0000']);
 
         $amplifier = $this->createProduct($organization, 'BOSE AMPLIFICATEUR P2600A', 'BOSE-P2600A', [
             'default_sale_price' => '5000.0000', 'tax_rate_id' => $taxRate->getKey(), 'reference' => null,
         ]);
-        $this->addCatalogLine($owner, $order, $amplifier->variants->first(), $warehouse, ['quantity' => '1.0000']);
+        $amplifierVariant = $amplifier->variants->firstOrFail();
+        $this->openStock($owner, $organization, $warehouse, $amplifierVariant, '1.0000');
+        $this->addCatalogLine($owner, $order, $amplifierVariant, $warehouse, ['quantity' => '1.0000']);
 
         $wiim = $this->createProduct($organization, 'WIIM PRO+', 'WIIM-PRO', [
             'default_sale_price' => '900.0000', 'tax_rate_id' => $taxRate->getKey(), 'reference' => 'REF-WIIM',
         ]);
-        $this->addCatalogLine($owner, $order, $wiim->variants->first(), $warehouse, ['quantity' => '2.0000']);
+        $wiimVariant = $wiim->variants->firstOrFail();
+        $this->openStock($owner, $organization, $warehouse, $wiimVariant, '2.0000');
+        $this->addCatalogLine($owner, $order, $wiimVariant, $warehouse, ['quantity' => '2.0000']);
 
         $mackie = $this->createProduct($organization, 'TABLE DE MIXAGE MACKIE PRO FX16V3', 'MACKIE-FX16', [
             'default_sale_price' => '3500.0000', 'tax_rate_id' => $taxRate->getKey(), 'reference' => 'REF-MACKIE',
         ]);
-        $this->addCatalogLine($owner, $order, $mackie->variants->first(), $warehouse, ['quantity' => '1.0000']);
+        $mackieVariant = $mackie->variants->firstOrFail();
+        $this->openStock($owner, $organization, $warehouse, $mackieVariant, '1.0000');
+        $this->addCatalogLine($owner, $order, $mackieVariant, $warehouse, ['quantity' => '1.0000']);
 
         $ddj = $this->createProduct($organization, 'DDJ RX3 PIONEER', 'PIONEER-RX3', [
             'default_sale_price' => '6000.0000', 'tax_rate_id' => $taxRate->getKey(), 'reference' => 'REF-DDJ',
         ]);
-        $this->addCatalogLine($owner, $order, $ddj->variants->first(), $warehouse, ['quantity' => '1.0000']);
+        $ddjVariant = $ddj->variants->firstOrFail();
+        $this->openStock($owner, $organization, $warehouse, $ddjVariant, '1.0000');
+        $this->addCatalogLine($owner, $order, $ddjVariant, $warehouse, ['quantity' => '1.0000']);
 
         $order = app(ConfirmSalesOrderAction::class)->execute($owner, $order)->fresh();
 

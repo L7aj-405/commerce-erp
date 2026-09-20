@@ -22,13 +22,17 @@ class InventoryPermissionProvisioningTest extends InventoryTestCase
         $this->assertEqualsCanonicalizing($expected, $organization->roles()->where('slug', 'admin')->firstOrFail()->permissions()->whereIn('key', $expected)->pluck('key')->all());
     }
 
-    public function test_sales_employee_default_role_receives_view_only(): void
+    public function test_sales_employee_default_role_receives_operational_inventory_permissions(): void
     {
         $organization = $this->createOrganization(User::factory()->create());
         $inventoryKeys = $organization->roles()->where('slug', 'sales-employee')->firstOrFail()
             ->permissions()->where(fn ($query) => $query->where('key', 'like', 'inventory.%')->orWhere('key', 'like', 'warehouses.%'))
             ->pluck('key')->all();
 
-        $this->assertSame(['inventory.view'], $inventoryKeys);
+        $this->assertEqualsCanonicalizing([
+            'inventory.view',
+            'inventory.transfer_requests.view',
+            'inventory.transfer_requests.receive',
+        ], $inventoryKeys);
     }
 }

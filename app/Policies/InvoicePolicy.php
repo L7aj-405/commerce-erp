@@ -41,21 +41,13 @@ class InvoicePolicy
 
     public function correct(User $user, Invoice $invoice): bool
     {
-        return $invoice->status === InvoiceStatus::Issued
-            && $this->allowed($user, $invoice->organization_id, $invoice->store_id, 'invoices.issue');
+        return false;
     }
 
-    /**
-     * Financial-line editing (add / change Product-Qty-PU-Remise / remove) is
-     * available ONLY on a still-draft post-issue correction. A normal
-     * Order-sourced draft, an issued Invoice and a superseded original are all
-     * read-only for lines.
-     */
+    /** Invoice lines are snapshots of the authoritative SalesOrder revision. */
     public function editLines(User $user, Invoice $invoice): bool
     {
-        return $invoice->status === InvoiceStatus::Draft
-            && $invoice->corrected_invoice_id !== null
-            && $this->allowed($user, $invoice->organization_id, $invoice->store_id, 'invoices.update_draft');
+        return false;
     }
 
     public function email(User $user, Invoice $invoice): bool

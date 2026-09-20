@@ -29,12 +29,14 @@ class DocumentEmailTest extends DocumentTestCase
         $this->actingAs($owner)->post(route('invoices.email', $invoice), ['email' => 'accounts@example.test'])->assertRedirect();
         $this->actingAs($owner)->post(route('delivery-notes.email', $note), ['email' => 'warehouse@example.test'])->assertRedirect();
 
+        $invoiceFilename = 'Facture-'.preg_replace('/[^A-Za-z0-9._-]+/', '-', $invoice->invoice_number).'.pdf';
+        $deliveryNoteFilename = 'Bon-de-Livraison-'.preg_replace('/[^A-Za-z0-9._-]+/', '-', $note->delivery_note_number).'.pdf';
         Mail::assertSent(InvoiceDocumentMail::class, fn ($mail) => $mail->hasTo('accounts@example.test')
-            && $mail->attachments()[0]->as === 'Facture-'.$invoice->invoice_number.'.pdf'
+            && $mail->attachments()[0]->as === $invoiceFilename
             && $mail->attachments()[0]->mime === 'application/pdf');
         Mail::assertSent(InvoiceDocumentMail::class, 2);
         Mail::assertSent(DeliveryNoteDocumentMail::class, fn ($mail) => $mail->hasTo('warehouse@example.test')
-            && $mail->attachments()[0]->as === 'Bon-de-Livraison-'.$note->delivery_note_number.'.pdf'
+            && $mail->attachments()[0]->as === $deliveryNoteFilename
             && $mail->attachments()[0]->mime === 'application/pdf');
         $this->assertDatabaseHas('audit_logs', ['event' => 'invoice.email_sent', 'auditable_id' => $invoice->id]);
         $this->assertDatabaseHas('audit_logs', ['event' => 'delivery_note.email_sent', 'auditable_id' => $note->id]);

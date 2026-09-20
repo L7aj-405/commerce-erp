@@ -32,8 +32,9 @@
         };
         $rotation = $stamp['rotation_deg'] ?? 0;
     @endphp
-    <div style="position: absolute; {{ $edge }} z-index: 4;">
+    <div class="document-stamp-apposition" style="position: absolute; {{ $edge }} z-index: 4;">
         <img
+            class="document-stamp-image"
             src="{{ $stamp['image'] }}"
             alt=""
             style="width: {{ $stamp['display_width_mm'] }}mm; height: auto; display: block; transform: rotate({{ $rotation }}deg); transform-origin: center;"

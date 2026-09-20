@@ -75,6 +75,8 @@ class PaymentController extends Controller
                 'allocations.salesOrder:id,order_number,customer_name,customer_company,total_incl_tax,currency_code',
                 'receivedBy:id,name',
                 'reversedBy:id,name',
+                'refunds:id,organization_id,store_id,payment_id,sales_order_id,financial_account_id,refund_number,method,status,amount,currency_code,refund_date,reason,refunded_by_user_id',
+                'refunds.refundedBy:id,name',
             ]),
             'can' => ['reverse' => request()->user()->can('reverse', $payment)],
         ]);

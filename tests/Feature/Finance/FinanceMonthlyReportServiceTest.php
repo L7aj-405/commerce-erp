@@ -2,12 +2,13 @@
 
 namespace Tests\Feature\Finance;
 
-use App\Actions\Documents\AddInvoiceCorrectionLineAction;
 use App\Actions\Documents\CancelInvoiceDraftAction;
-use App\Actions\Documents\StartInvoiceCorrectionAction;
+use App\Actions\Documents\CreateFullInvoiceFromSalesOrderAction;
 use App\Actions\Payments\ReversePaymentAction;
 use App\Actions\Sales\CancelSalesOrderAction;
 use App\Actions\Sales\ConfirmSalesOrderAction;
+use App\Actions\Sales\SaveSalesOrderLineAction;
+use App\Actions\Sales\StartSalesOrderCorrectionAction;
 use App\Enums\InvoiceStatus;
 use App\Models\Invoice;
 use App\Models\User;
@@ -16,6 +17,7 @@ use App\Services\Finance\FinanceMonthlyReportService;
 use App\Services\Finance\FinancePeriod;
 use App\Services\Finance\FinanceReceivablesService;
 use App\Support\Decimal;
+use Illuminate\Support\Carbon;
 use Tests\Support\DocumentTestCase;
 
 /**
@@ -136,7 +138,12 @@ class FinanceMonthlyReportServiceTest extends DocumentTestCase
         $this->recordPayment($owner, $order, $account, '400.0000', ['payment_date' => '2026-09-20']);
 
         [, , $invoices] = $this->services();
-        $row = $invoices->withPaymentSummaries(collect([$invoice]))->first();
+        $beforeFinalPayment = $invoices->withPaymentSummaries(collect([$invoice]), Carbon::parse('2026-09-15'))->first();
+        $this->assertSame('partial', $beforeFinalPayment['status']);
+        $this->assertSame(0, Decimal::compare($beforeFinalPayment['outstanding'], '400.0000'));
+        $this->assertNull($beforeFinalPayment['fully_paid_at']);
+
+        $row = $invoices->withPaymentSummaries(collect([$invoice]), Carbon::parse('2026-09-30'))->first();
 
         $this->assertSame('paid', $row['status']);
         $this->assertSame(0, Decimal::compare($row['outstanding'], '0.0000'));
@@ -218,21 +225,22 @@ class FinanceMonthlyReportServiceTest extends DocumentTestCase
         [$owner, $organization, , $order] = $this->documentFixture(total: '1000.0000');
         $original = $this->issueInvoice($owner, $this->createInvoice($owner, $order, ['invoice_date' => '2026-09-01']));
 
-        $correction = app(StartInvoiceCorrectionAction::class)->execute($owner, $original, 'Erreur de quantité');
-        $taxRate = $this->createTaxRate($organization, 'TVA 20', '20.0000');
-        $variant = $this->createProduct($organization, 'Extra', 'EX-1', [
-            'default_sale_price' => '100.0000',
-            'tax_rate_id' => $taxRate->getKey(),
-        ])->variants->first();
-        app(AddInvoiceCorrectionLineAction::class)->execute($owner, $correction, [
-            'product_variant_id' => $variant->getKey(), 'quantity' => '1.0000', 'discount_type' => 'none',
-        ]);
-        $correction->refresh();
-        $issuedCorrection = $this->issueInvoice($owner, $correction);
+        app(StartSalesOrderCorrectionAction::class)->execute($owner, $order, 'Erreur de quantité');
+        $line = $order->fresh()->lines()->firstOrFail();
+        app(SaveSalesOrderLineAction::class)->execute($owner, $order->fresh(), [
+            'line_type' => 'custom', 'description' => 'Consulting', 'reference' => null, 'unit_label' => 'hour',
+            'quantity' => '2.0000', 'unit_price_excl_tax' => '1000.0000', 'tax_rate_id' => null,
+            'discount_type' => 'none', 'discount_value' => '0.0000',
+        ], $line);
+        $order = app(ConfirmSalesOrderAction::class)->execute($owner, $order->fresh())->fresh();
+        $issuedCorrection = $this->issueInvoice($owner, app(CreateFullInvoiceFromSalesOrderAction::class)->execute($owner, $order));
 
         $original->refresh();
         $this->assertSame(InvoiceStatus::Superseded, $original->status);
         $this->assertSame(InvoiceStatus::Issued, $issuedCorrection->status);
+        $this->assertSame($original->invoice_number, $issuedCorrection->invoice_number);
+        $this->assertSame(1, $original->version);
+        $this->assertSame(2, $issuedCorrection->version);
 
         [$report] = $this->services();
         $period = FinancePeriod::fromMonth('2026-09');

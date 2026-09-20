@@ -4,6 +4,10 @@ namespace Tests\Feature\Auth;
 
 use App\Http\Controllers\Settings\ActiveSessionController;
 use App\Models\User;
+use App\Services\AuditLogger;
+use Illuminate\Http\Request;
+use Illuminate\Session\ArraySessionHandler;
+use Illuminate\Session\Store;
 use Illuminate\Support\Facades\DB;
 use Tests\Support\PlatformTestCase;
 
@@ -54,15 +58,25 @@ class ActiveSessionTest extends PlatformTestCase
     public function test_the_current_session_is_flagged_and_cannot_be_revoked_via_this_endpoint(): void
     {
         $user = User::factory()->create();
-
-        // A real request through the `database` session driver persists this
-        // exact session's row — read it back to get the genuine current id.
-        $this->actingAs($user)->get(route('security.edit'))->assertOk();
-        $currentSessionId = DB::table('sessions')->where('user_id', $user->getKey())->value('id');
-        $this->assertNotNull($currentSessionId);
+        $currentSessionId = str_repeat('c', 40);
+        $this->insertSession($currentSessionId, $user, now()->timestamp);
 
         $token = ActiveSessionController::opaqueToken($currentSessionId);
-        $this->actingAs($user)->delete("/security/sessions/{$token}")->assertRedirect();
+
+        // Laravel's test browser can assign a fresh database-session ID to
+        // each synthetic request. Give the controller an explicit, known
+        // request session so this test isolates its self-revocation guard;
+        // the neighboring tests retain end-to-end HTTP coverage for deleting
+        // other sessions and enforcing user ownership.
+        $request = Request::create("/security/sessions/{$token}", 'DELETE');
+        $request->setUserResolver(fn () => $user);
+        $request->setLaravelSession(new Store(
+            'test-session',
+            new ArraySessionHandler((int) config('session.lifetime')),
+            $currentSessionId,
+        ));
+
+        (new ActiveSessionController)->destroy($request, $token, new AuditLogger($request));
 
         // The controller explicitly excludes the requester's own current
         // session from the candidates it will ever delete.

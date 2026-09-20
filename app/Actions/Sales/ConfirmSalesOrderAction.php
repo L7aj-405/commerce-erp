@@ -13,6 +13,8 @@ use App\Models\User;
 use App\Services\AuditLogger;
 use App\Services\InventoryReservationManager;
 use App\Services\PosStockAllocator;
+use App\Services\SalesOrderPaymentCalculator;
+use App\Services\SalesOrderRevisionSnapshot;
 use App\Services\SalesOrderTotalsCalculator;
 use App\Support\Decimal;
 use Illuminate\Support\Facades\DB;
@@ -27,6 +29,8 @@ class ConfirmSalesOrderAction
         private readonly InventoryReservationManager $inventory,
         private readonly PosStockAllocator $stock,
         private readonly CreateOrderTransferRequestsAction $transferRequests,
+        private readonly SalesOrderPaymentCalculator $payments,
+        private readonly SalesOrderRevisionSnapshot $revisionSnapshots,
         private readonly AuditLogger $audit,
     ) {}
 
@@ -43,6 +47,16 @@ class ConfirmSalesOrderAction
             $lines = $order->lines()->with(['allocations.warehouse', 'productVariant', 'procurements'])->get();
             if ($lines->isEmpty()) {
                 throw ValidationException::withMessages(['lines' => 'At least one line is required before confirmation.']);
+            }
+
+            $revision = $order->currentRevision;
+            if ($revision && $revision->status === 'in_progress') {
+                $paid = $this->payments->paidAmount($order);
+                if (Decimal::compare($paid, $order->total_incl_tax) > 0) {
+                    throw ValidationException::withMessages([
+                        'order' => 'Le nouveau total est inférieur aux paiements déjà encaissés. Cette différence nécessite un avoir ou un remboursement.',
+                    ]);
+                }
             }
             $isManual = $order->source !== SalesOrderSource::Pos;
             $allocations = collect();
@@ -162,6 +176,22 @@ class ConfirmSalesOrderAction
             $order->confirmed_at = now();
             $order->confirmed_by_user_id = $actor->getKey();
             $order->save();
+
+            if ($revision && $revision->status === 'in_progress') {
+                $this->payments->recalculate($order);
+                $revision->after_snapshot = $this->revisionSnapshots->make($order->fresh(['lines.allocations.warehouse', 'customer']));
+                $revision->status = 'completed';
+                $revision->completed_by_user_id = $actor->getKey();
+                $revision->completed_at = now();
+                $revision->save();
+                $this->audit->record('sales_order.correction_completed', $actor, $order->organization, $order->store, $order, newValues: [
+                    'order_number' => $order->order_number,
+                    'revision_id' => $revision->getKey(),
+                    'revision_number' => $revision->revision_number,
+                    'before_total' => data_get($revision->before_snapshot, 'totals.total_incl_tax'),
+                    'after_total' => $order->total_incl_tax,
+                ]);
+            }
             $this->audit->record('sales_order.confirmed', $actor, $order->organization, $order->store, $order, oldValues: ['status' => SalesOrderStatus::Draft->value], newValues: [
                 'order_number' => $order->order_number, 'status' => SalesOrderStatus::Confirmed->value,
                 'subtotal_excl_tax' => $order->subtotal_excl_tax, 'discount_total' => $order->discount_total,

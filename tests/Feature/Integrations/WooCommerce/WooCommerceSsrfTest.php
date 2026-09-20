@@ -5,6 +5,7 @@ namespace Tests\Feature\Integrations\WooCommerce;
 use App\Models\User;
 use App\Models\WooCommerceIntegration;
 use App\Models\WooCommerceSyncRun;
+use App\Services\WooCommerce\WooCommerceClient;
 use Illuminate\Support\Facades\Http;
 use Tests\Support\WooCommerceTestCase;
 
@@ -66,6 +67,29 @@ class WooCommerceSsrfTest extends WooCommerceTestCase
         $this->assertSame(1, WooCommerceIntegration::query()->count());
     }
 
+    public function test_the_public_woocommerce_store_with_a_dns64_answer_saves_normally(): void
+    {
+        $owner = User::factory()->create();
+        $organization = $this->createOrganization($owner);
+        $this->activate($owner, $organization);
+        $this->fakeDns()->map('avprofessional-store.ma', [
+            '198.177.120.96',
+            '64:ff9b::c6b1:7860',
+        ]);
+
+        $this->actingAs($owner)->post(route('integrations.woocommerce.store'), [
+            'name' => 'AV Professional',
+            'store_url' => 'https://avprofessional-store.ma',
+            'consumer_key' => 'ck_x',
+            'consumer_secret' => 'cs_x',
+        ])->assertRedirect();
+
+        $this->assertDatabaseHas('woocommerce_integrations', [
+            'organization_id' => $organization->getKey(),
+            'store_url' => 'https://avprofessional-store.ma',
+        ]);
+    }
+
     public function test_a_sync_request_is_rejected_at_request_time_if_dns_now_resolves_privately(): void
     {
         // Saved when the host was still public (DNS-rebinding scenario) —
@@ -95,7 +119,7 @@ class WooCommerceSsrfTest extends WooCommerceTestCase
         Http::assertNotSent(fn ($request) => str_contains($request->url(), '127.0.0.1'));
     }
 
-    public function test_a_redirect_to_another_public_host_is_followed_and_validated(): void
+    public function test_a_redirect_to_another_public_host_is_rejected_without_forwarding_credentials(): void
     {
         [$owner, , , , $integration] = $this->wooContext();
         $this->fakeDns()->map('new-shop.example.com', ['93.184.216.34']);
@@ -108,7 +132,21 @@ class WooCommerceSsrfTest extends WooCommerceTestCase
 
         $run = $this->runSync($integration, $owner);
 
-        $this->assertSame(WooCommerceSyncRun::STATUS_COMPLETED, $run->status);
-        Http::assertSent(fn ($request) => str_contains($request->url(), 'new-shop.example.com'));
+        $this->assertSame(WooCommerceSyncRun::STATUS_FAILED, $run->status);
+        Http::assertNotSent(fn ($request) => str_contains($request->url(), 'new-shop.example.com'));
+    }
+
+    public function test_a_same_origin_redirect_is_revalidated_and_followed(): void
+    {
+        [, , , , $integration] = $this->wooContext();
+
+        Http::fake([
+            'https://shop.test/redirected-products*' => Http::response([], 200, ['X-WP-Total' => 0, 'X-WP-TotalPages' => 1]),
+            'https://shop.test/wp-json/wc/v3/products*' => Http::response('', 302, ['Location' => 'https://shop.test/redirected-products']),
+        ]);
+
+        WooCommerceClient::for($integration)->ping();
+
+        Http::assertSent(fn ($request) => str_contains($request->url(), '/redirected-products'));
     }
 }

@@ -22,7 +22,9 @@ use Illuminate\Support\Facades\Log;
  * {@see OutboundDestinationGuard} immediately before it is issued. Automatic
  * redirect-following is disabled — a redirect Location is only followed after
  * it independently passes the same guard, so a validated public store URL
- * cannot be used to reach a private address via a 3xx response.
+ * cannot be used to reach a private address via a 3xx response. Redirects must
+ * also remain on the configured origin: consumer credentials are never forwarded
+ * to an unrelated public host or alternate port.
  *
  * DNS-rebinding closure (Sprint 1.1 §1): validation alone still trusts Guzzle
  * to re-resolve the hostname itself when it opens the socket, which can
@@ -175,7 +177,14 @@ class WooCommerceClient
             // Every hop is independently resolved, validated AND re-pinned —
             // a validated public store URL redirecting to a private address
             // (or to one that now resolves privately) is never followed.
-            $url = $this->resolveAgainst($url, $location);
+            $redirectUrl = $this->resolveAgainst($url, $location);
+            if (! $this->hasSameOrigin($url, $redirectUrl)) {
+                throw new WooCommerceApiException(
+                    WooCommerceApiException::INVALID_RESPONSE,
+                    'Une redirection WooCommerce vers un autre hôte a été refusée.',
+                );
+            }
+            $url = $redirectUrl;
             $pin = $this->guardUrl($url);
             $query = [];
         }
@@ -210,6 +219,25 @@ class WooCommerceClient
         // A bare relative (non-absolute-path) redirect is not something a
         // legitimate wc/v3 endpoint issues — reject rather than guess.
         throw new WooCommerceApiException(WooCommerceApiException::INVALID_RESPONSE, 'Réponse WooCommerce inattendue.');
+    }
+
+    private function hasSameOrigin(string $currentUrl, string $redirectUrl): bool
+    {
+        $current = parse_url($currentUrl);
+        $redirect = parse_url($redirectUrl);
+
+        if ($current === false || $redirect === false) {
+            return false;
+        }
+
+        $currentScheme = strtolower((string) ($current['scheme'] ?? ''));
+        $redirectScheme = strtolower((string) ($redirect['scheme'] ?? ''));
+        $currentPort = (int) ($current['port'] ?? ($currentScheme === 'https' ? 443 : 80));
+        $redirectPort = (int) ($redirect['port'] ?? ($redirectScheme === 'https' ? 443 : 80));
+
+        return $currentScheme === $redirectScheme
+            && strcasecmp((string) ($current['host'] ?? ''), (string) ($redirect['host'] ?? '')) === 0
+            && $currentPort === $redirectPort;
     }
 
     /** @return array{host: string, port: int, address: string} */

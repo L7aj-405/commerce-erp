@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Models\Warehouse;
 use App\Models\WooCommerceIntegration;
 use App\Models\WooCommerceSyncRun;
+use Illuminate\Http\Client\Factory as HttpFactory;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
@@ -102,6 +103,11 @@ abstract class WooCommerceTestCase extends InventoryTestCase
         array $categories = [],
         ?bool $pricesIncludeTax = true,
     ): void {
+        // Factory::fake() appends URL stubs. A resync test must replace the
+        // previous Woo snapshot, otherwise the first matching response keeps
+        // winning and makes changed stock/images look stale.
+        Http::swap(new HttpFactory);
+        Http::preventStrayRequests();
         Http::fake([
             '*/wp-json/wc/v3/products/categories*' => Http::response($categories, 200, $this->wpHeaders(count($categories))),
 

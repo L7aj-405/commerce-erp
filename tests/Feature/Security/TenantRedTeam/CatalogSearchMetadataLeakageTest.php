@@ -29,16 +29,16 @@ class CatalogSearchMetadataLeakageTest extends TenantRedTeamTestCase
                 ->assertJsonCount(0, 'props.products.data')
                 ->assertJsonCount(1, 'props.brands')
                 ->assertJsonPath('props.brands.0.id', $this->brandA->id)
-                ->assertJsonMissing(['id' => $this->productB->id, 'name' => 'RedTeam Product B'])
-                ->assertJsonMissing(['id' => $this->productC->id, 'name' => 'RedTeam Product C'])
+                ->assertJsonMissing(['name' => 'RedTeam Product B'])
+                ->assertJsonMissing(['name' => 'RedTeam Product C'])
                 ->assertJsonMissing(['sku' => 'RED-SKU-B'])
                 ->assertJsonMissing(['reference' => 'RED-REF-B'])
                 ->assertJsonMissing(['barcode' => '2000000000002'])
                 ->assertJsonMissing(['sku' => 'RED-SKU-C'])
                 ->assertJsonMissing(['reference' => 'RED-REF-C'])
                 ->assertJsonMissing(['barcode' => '3000000000003'])
-                ->assertJsonMissing(['id' => $this->brandB->id, 'name' => 'RedTeam Brand B'])
-                ->assertJsonMissing(['id' => $this->brandC->id, 'name' => 'RedTeam Brand C']);
+                ->assertJsonMissing(['name' => 'RedTeam Brand B'])
+                ->assertJsonMissing(['name' => 'RedTeam Brand C']);
         }
     }
 
