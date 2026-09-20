@@ -63,6 +63,8 @@ class OrganizationMailSettingController extends Controller
             'is_enabled' => ['boolean'],
         ]);
 
+        $data['smtp_host'] = $this->normalizeSmtpHost($data['smtp_host']);
+
         try {
             $guard->assertPublicHost($data['smtp_host'], 'SMTP');
         } catch (UnsafeOutboundDestinationException $exception) {
@@ -76,6 +78,47 @@ class OrganizationMailSettingController extends Controller
         $action->execute($request->user(), $organization, $data);
 
         return back()->with('success', 'Configuration e-mail enregistrée.');
+    }
+
+    private function normalizeSmtpHost(string $host): string
+    {
+        $host = trim($host);
+
+        if (str_contains($host, '://')) {
+            $parts = parse_url($host);
+
+            $path = $parts['path'] ?? null;
+
+            if (
+                $parts === false
+                || empty($parts['host'])
+                || isset($parts['user'])
+                || isset($parts['pass'])
+                || ($path !== null && $path !== '' && $path !== '/')
+                || isset($parts['query'])
+                || isset($parts['fragment'])
+            ) {
+                return $host;
+            }
+
+            $scheme = strtolower((string) ($parts['scheme'] ?? ''));
+
+            if (! in_array($scheme, ['smtp', 'smtps', 'ssl', 'tls'], true)) {
+                return $host;
+            }
+
+            return trim($parts['host']);
+        }
+
+        if (preg_match('/^\[([^\]]+)\](?::\d+)?$/', $host, $matches) === 1) {
+            return $matches[1];
+        }
+
+        if (preg_match('/^([^:]+):\d+$/', $host, $matches) === 1) {
+            return trim($matches[1]);
+        }
+
+        return $host;
     }
 
     public function test(Request $request, ActiveTenantContext $context, SendOrganizationMailTestAction $action): JsonResponse
