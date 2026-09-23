@@ -171,11 +171,7 @@
 </table>
 
 <h1 class="title">{{ $title }}</h1>
-@if (! empty($document['revision']))
-    <div style="text-align: center; margin: -6px 0 12px; font-size: 11px; font-weight: bold; color: {{ $accent }};">
-        {{ $document['revision'] }}@if (! empty($document['root_number'])) — {{ $title }} {{ $document['root_number'] }}@endif
-    </div>
-@endif
+
 
 <table class="meta">
     <thead>
