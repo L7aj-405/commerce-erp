@@ -5,6 +5,8 @@
     $ink = '#1f211d';
     $numberLabel = $document['number'] ?: ($watermark ?: '—');
     $recipientLabel = $buyer['company'] ?: ($buyer['name'] ?: '—');
+    $displayWebsite = preg_replace('#^https?://#i', '', trim((string) ($seller['website'] ?? '')));
+    $displayWebsite = rtrim($displayWebsite, '/');
 
     $legalBits = collect([
         ($seller['registration_number'] ?? null) ? 'RC N° : '.$seller['registration_number'] : null,
@@ -25,20 +27,20 @@
     <meta charset="utf-8">
     <title>{{ $title }} {{ $document['number'] }}</title>
     <style>
-        @page { margin: 20mm 13mm 26mm; }
+        @page { margin: 20mm 13mm 22mm; }
         * { box-sizing: border-box; }
         body { color: {{ $ink }}; font-family: "DejaVu Sans", sans-serif; font-size: 9px; line-height: 1.42; }
 
         .runfoot {
             position: fixed;
-            bottom: -18mm; left: 0; right: 0;
+            bottom: -14mm; left: 0; right: 0;
             border-top: 1px solid #d7d7cf;
-            padding-top: 4px;
-            font-size: 7px;
+            padding-top: 3px;
+            font-size: 6.8px;
             font-style: italic;
             color: #666;
             text-align: center;
-            line-height: 1.45;
+            line-height: 1.30;
         }
         .watermark-text {
             position: fixed;
@@ -55,6 +57,7 @@
         .dest { font-size: 8.5px; }
         .dest .lbl { font-weight: bold; letter-spacing: .08em; }
         .dest .name { font-weight: bold; color: {{ $accent }}; font-size: 10px; }
+        .dest-details { margin-top: 6px; }
 
         h1.title {
             margin: 18px 0 12px;
@@ -87,20 +90,43 @@
 
         .notes { margin-top: 14px; white-space: pre-line; page-break-inside: avoid; }
 
-        table.signatures { width: 100%; border-collapse: collapse; margin-top: 26px; page-break-inside: avoid; }
+        table.signatures { width: 100%; border-collapse: collapse; margin-top: 18px; page-break-inside: avoid; }
         table.signatures td { width: 50%; padding: 0 10px; vertical-align: top; }
-        .sig-box { border: 1px solid #c9c9c2; border-radius: 3px; padding: 8px; min-height: 46mm; }
+        .sig-box { border: 1px solid #c9c9c2; border-radius: 3px; padding: 8px; min-height: 40mm; }
         .sig-label { font-size: 8px; font-weight: bold; text-transform: uppercase; letter-spacing: .05em; color: #555; }
-        .sig-line { margin-top: 30mm; border-top: 1px solid #c9c9c2; padding-top: 3px; font-size: 7.5px; color: #888; }
+        .sig-line { margin-top: 25mm; border-top: 1px solid #c9c9c2; padding-top: 3px; font-size: 7.5px; color: #888; }
 
         .issued-meta { margin-top: 14px; color: #888; font-size: 8px; }
+
+        /* Keep fixed running elements inside the reserved @page margins.
+           Negative offsets that reach beyond the page box can make Chromium
+           create a footer-only second page in print preview. */
+        .runhead, .runfoot { page-break-inside: avoid; }
+        @media print {
+            html, body { margin: 0; padding: 0; }
+        }
+        @include('documents.partials.commercial-style', ['accent' => $accent, 'ink' => $ink])
     </style>
 </head>
 <body>
 
 @if ($watermark)
     <div class="watermark-text">{{ $watermark }}</div>
+@elseif (($seller['show_invoice_watermark'] ?? false) && ($seller['logo'] ?? null))
+    <div class="watermark-logo"><img src="{{ $seller['logo'] }}" alt=""></div>
 @endif
+
+<div class="runhead">
+    <span class="r1">
+        <span class="who">{{ $seller['legal_name'] }}</span>
+        <span class="doc">{{ $title }} {{ $numberLabel }}</span>
+    </span>
+    <span class="r2">
+        {{ $t('recipient') }} : {{ $recipientLabel }}
+        <span class="sep">·</span>
+        {{ $t('delivery_date') }} : {{ $document['date'] }}
+    </span>
+</div>
 
 {{-- Legal footer (every page, sitting in the bottom margin) --}}
 <div class="runfoot">
@@ -113,26 +139,35 @@
 
 <table class="masthead">
     <tr>
-        <td style="width: 60%; padding-right: 16px;">
+        <td style="width: 55%; padding-right: 28px;">
             @if ($seller['logo'] ?? null)
                 <img class="logo" src="{{ $seller['logo'] }}" alt="">
             @else
-                <div style="font-size: 15px; font-weight: bold; text-transform: uppercase; margin-bottom: 8px;">{{ $seller['legal_name'] }}</div>
+                <div class="company-name">{{ ($seller['trade_name'] ?? null) ?: $seller['legal_name'] }}</div>
             @endif
             <div class="seller">
-                @if ($seller['address'] ?? null){{ $seller['address'] }}<br>@endif
-                @if ($seller['tax_identifier'] ?? null)ICE : {{ $seller['tax_identifier'] }}<br>@endif
-                @if ($seller['phone'] ?? null)Tél : {{ $seller['phone'] }}<br>@endif
-                @if ($seller['email'] ?? null)Mail : {{ $seller['email'] }}@endif
+                @if (($seller['trade_name'] ?? null) && ($seller['legal_name'] ?? null))<div class="seller-row"><span class="info-value">{{ $seller['legal_name'] }}</span></div>@endif
+                @if ($seller['address'] ?? null)<div class="seller-row"><span class="info-label">Adresse :</span> <span class="info-value">{{ $seller['address'] }}</span></div>@endif
+                @if ($seller['tax_identifier'] ?? null)<div class="seller-row"><span class="info-label">ICE :</span> <span class="info-value">{{ $seller['tax_identifier'] }}</span></div>@endif
+                @if ($seller['registration_number'] ?? null)<div class="seller-row"><span class="info-label">RC :</span> <span class="info-value">{{ $seller['registration_number'] }}</span></div>@endif
+                @if ($seller['patente_number'] ?? null)<div class="seller-row"><span class="info-label">TP :</span> <span class="info-value">{{ $seller['patente_number'] }}</span></div>@endif
+                @foreach (($seller['additional_identifiers'] ?? []) as $identifier)
+                    <div class="seller-row"><span class="info-label">{{ $identifier['label'] }} :</span> <span class="info-value">{{ $identifier['value'] }}</span></div>
+                @endforeach
+                @if ($seller['phone'] ?? null)<div class="seller-row"><span class="info-label">Tél :</span> <span class="info-value">{{ $seller['phone'] }}</span></div>@endif
+                @if ($seller['email'] ?? null)<div class="seller-row"><span class="info-label">Email :</span> <span class="info-value">{{ $seller['email'] }}</span></div>@endif
+                @if ($displayWebsite !== '')<div class="seller-row"><span class="info-label">Web :</span> <span class="info-value">{{ $displayWebsite }}</span></div>@endif
             </div>
         </td>
-        <td style="width: 40%;">
+        <td style="width: 45%; padding-left: 12px; padding-top: 68px;">
             <div class="dest">
                 <div class="lbl">{{ $t('recipient') }}</div>
                 <div class="name">{{ $recipientLabel }}</div>
-                @if ($buyer['company'] && $buyer['name'])<div>{{ $buyer['name'] }}</div>@endif
-                @if ($buyer['address'])<div>{{ $buyer['address'] }}</div>@endif
-                @if ($buyer['phone'])<div>Tél : {{ $buyer['phone'] }}</div>@endif
+                <div class="dest-details">
+                @if ($buyer['company'] && $buyer['name'])<div class="dest-row"><span class="info-value">{{ $buyer['name'] }}</span></div>@endif
+                @if ($buyer['address'])<div class="dest-row"><span class="info-label">Adresse :</span> <span class="info-value">{{ $buyer['address'] }}</span></div>@endif
+                @if ($buyer['phone'])<div class="dest-row"><span class="info-label">Tél :</span> <span class="info-value">{{ $buyer['phone'] }}</span></div>@endif
+                </div>
             </div>
         </td>
     </tr>
@@ -201,10 +236,6 @@
         </td>
     </tr>
 </table>
-
-@if ($metadata['issued_at'])
-    <p class="issued-meta">{{ $t('issued_by') }} {{ $metadata['issued_by'] ?: '—' }} · {{ $metadata['issued_at'] }}</p>
-@endif
 
 </body>
 </html>

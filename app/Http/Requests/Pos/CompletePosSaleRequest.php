@@ -39,7 +39,7 @@ class CompletePosSaleRequest extends FormRequest
             'lines.*.description' => ['nullable', 'required_if:lines.*.line_type,custom', 'string', 'max:255'],
             'lines.*.reference' => ['nullable', 'string', 'max:255'],
             'lines.*.unit_label' => ['nullable', 'string', 'max:255'],
-            'lines.*.quantity' => ['required', 'decimal:0,4', 'gt:0'],
+            'lines.*.quantity' => ['required', 'regex:/^[1-9]\d*(?:\.0{1,4})?$/'],
             'lines.*.unit_price_excl_tax' => ['nullable', 'required_if:lines.*.line_type,custom', 'decimal:0,4', 'gte:0'],
             'lines.*.tax_rate_id' => ['nullable', 'integer'],
             'lines.*.discount_type' => ['required', Rule::enum(SalesOrderDiscountType::class)],

@@ -19,6 +19,7 @@ use App\Services\DocumentSellerProfile;
 use App\Services\DocumentValueFormatter;
 use App\Services\OrganizationOutboundMailService;
 use App\Services\SalesOrderPaymentCalculator;
+use App\Support\CommercialDiscountDisplay;
 use App\Support\Decimal;
 use App\Support\PhoneNumber;
 use Illuminate\Http\RedirectResponse;
@@ -123,8 +124,14 @@ class InvoiceController extends Controller
         unset($seller['logo']);
         $invoice->setAttribute('seller_snapshot', $seller);
 
-        $hasDiscount = Decimal::compare($invoice->discount_total, '0') !== 0
-            || $invoice->lines->contains(fn ($line) => Decimal::compare($line->discount_amount, '0') !== 0);
+        $discountTotalInclTax = '0.0000';
+        foreach ($invoice->lines as $line) {
+            $discountInclTax = CommercialDiscountDisplay::lineAmountInclTax($line);
+            $line->setAttribute('discount_amount_ttc', $discountInclTax);
+            $discountTotalInclTax = Decimal::add($discountTotalInclTax, $discountInclTax);
+        }
+        $invoice->setAttribute('discount_total_ttc', $discountTotalInclTax);
+        $hasDiscount = Decimal::compare($discountTotalInclTax, '0') !== 0;
 
         $isIssued = $invoice->status === InvoiceStatus::Issued;
         $isReplacement = $invoice->corrected_invoice_id !== null;

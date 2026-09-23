@@ -252,7 +252,7 @@ export default function CompletePosOrder({ order, paymentSummary, searchUrl, sub
                                 <div key={line.id} className="grid items-end gap-3 rounded-field border border-line p-3 sm:grid-cols-[1fr_140px_auto]">
                                     <div><p className="font-medium text-ink">{line.product_name}</p><p className="text-xs text-ink-muted">{formatMoney(line.unit_price_incl_tax ?? '0', order.currency_code)} · stock local {formatQuantity(line.local_stock_available)}</p></div>
                                     <label className="text-xs text-ink-muted">Quantité
-                                        <input inputMode="decimal" value={line.quantity} onChange={(event) => setQuantity(line.id, event.target.value)} className="mt-1 w-full rounded-field border border-line-strong px-3 py-2 text-sm" />
+                                        <input type="number" inputMode="numeric" min={1} step={1} value={line.quantity} onChange={(event) => setQuantity(line.id, event.target.value)} className="mt-1 w-full rounded-field border border-line-strong px-3 py-2 text-sm" />
                                     </label>
                                     <button type="button" onClick={() => setCart(cart.filter((item) => item.id !== line.id))} className="min-h-10 text-sm text-danger">Retirer</button>
                                 </div>

@@ -34,6 +34,7 @@ use App\Services\CustomerManager;
 use App\Services\PosDraftCheckoutCalculator;
 use App\Services\ProductPriceResolver;
 use App\Services\SalesOrderPaymentCalculator;
+use App\Support\CommercialDiscountDisplay;
 use App\Support\Decimal;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -847,7 +848,7 @@ class PosController extends Controller
                 'discount_type' => $line->discount_type->value,
                 'discount_value' => $line->discount_value,
                 'line_subtotal' => $line->subtotal_excl_tax,
-                'line_discount' => $line->discount_amount,
+                'line_discount' => CommercialDiscountDisplay::lineAmountInclTax($line),
                 'line_taxable' => $line->taxable_amount,
                 'line_tax_amount' => $line->tax_amount,
                 'line_total' => $line->total_incl_tax,
@@ -968,6 +969,7 @@ class PosController extends Controller
 
         return [
             ...$order->only(['id', 'order_number', 'customer_name', 'ordered_at', 'subtotal_excl_tax', 'discount_total', 'tax_total', 'total_incl_tax', 'currency_code', 'status', 'fulfillment_status', 'payment_status']),
+            'discount_total_ttc' => CommercialDiscountDisplay::linesTotalInclTax($order->lines),
             'paid' => $summary['paid'],
             'remaining' => $summary['remaining'],
             'requires_replenishment' => Decimal::compare($remoteRequired, '0.0000') > 0,

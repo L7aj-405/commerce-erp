@@ -28,8 +28,8 @@ use OpenSpout\Writer\XLSX\Writer;
  * blows up memory.
  *
  * Visual grouping: shared group columns (Date de vente,
- * N° facture/commande, Client, Montant encaissé, Statut) are written only on
- * the group's first row and merged via OpenSpout's native
+ * N° facture/commande, Nature, Client, Montant encaissé, Statut) are written
+ * only on the group's first row and merged via OpenSpout's native
  * `Options::mergeCells()` (0-indexed columns, 1-indexed rows — never manual
  * XLSX/XML manipulation), across every row the group occupies. Payment
  * columns and item columns stay unmerged so payment sub-lines and sold-line
@@ -76,30 +76,30 @@ use OpenSpout\Writer\XLSX\Writer;
 class FinanceCaEncaisseExcelExport
 {
     private const HEADER_LABELS = [
-        'N° paiement', 'Date de vente', 'Date de paiement', 'N° facture / commande', 'Qté', 'Référence', 'Désignation',
-        'Client', 'Mode de paiement', 'Montant partiel', 'Montant encaissé', 'Statut',
+        'N° paiement', 'Date de vente', 'Date de paiement', 'N° facture / commande', 'Nature', 'Qté', 'Référence', 'Désignation',
+        'Client', 'Mode de paiement', 'Montant partiel', 'Montant encaissé', 'Statut paiement',
     ];
 
     /** Excel column widths, in character units, matching HEADER_LABELS order. */
-    private const COLUMN_WIDTHS = [14, 13, 13, 16, 7, 14, 36, 24, 16, 16, 16, 20];
+    private const COLUMN_WIDTHS = [14, 13, 13, 20, 17, 7, 14, 36, 24, 16, 16, 16, 20];
 
     /** 0-indexed position of the "Qté" column. */
-    private const QUANTITY_COLUMN_INDEX = 4;
+    private const QUANTITY_COLUMN_INDEX = 5;
 
     /** 0-indexed position of the "Référence" column. */
-    private const REFERENCE_COLUMN_INDEX = 5;
+    private const REFERENCE_COLUMN_INDEX = 6;
 
     /** 0-indexed position of the "Désignation" column. */
-    private const DESIGNATION_COLUMN_INDEX = 6;
+    private const DESIGNATION_COLUMN_INDEX = 7;
 
     /** 0-indexed position of the payment sub-line "Montant partiel" column. */
-    private const PARTIAL_AMOUNT_COLUMN_INDEX = 9;
+    private const PARTIAL_AMOUNT_COLUMN_INDEX = 10;
 
     /** 0-indexed position of the shared "Montant encaissé" column. */
-    private const AMOUNT_COLUMN_INDEX = 10;
+    private const AMOUNT_COLUMN_INDEX = 11;
 
     /** 0-indexed positions of every TRANSACTION-level column — merged across a multi-item group, item columns excluded. */
-    private const TRANSACTION_COLUMN_INDEXES = [1, 3, 7, 10, 11];
+    private const TRANSACTION_COLUMN_INDEXES = [1, 3, 4, 8, 11, 12];
 
     /** 1-indexed row the first data row (right after the header) lands on. */
     private const FIRST_DATA_ROW = 7;
@@ -150,6 +150,7 @@ class FinanceCaEncaisseExcelExport
                     $isFirst ? Carbon::parse($group['sale_date'])->format('d/m/Y') : '',
                     $payment ? Carbon::parse($payment['payment_date'])->format('d/m/Y') : '',
                     $isFirst ? $group['reference'] : '',
+                    $isFirst ? $group['nature_label'] : '',
                     $line && $line['quantity'] !== null ? $this->quantity($line['quantity']) : '',
                     $line['reference'] ?? '',
                     $designation,
@@ -164,14 +165,15 @@ class FinanceCaEncaisseExcelExport
                     1 => $this->transactionCenterStyle($isLast),
                     2 => $this->paymentSublineStyle($isLast),
                     3 => $this->transactionCenterStyle($isLast),
+                    4 => $this->transactionCenterStyle($isLast),
                     self::QUANTITY_COLUMN_INDEX => $this->quantityStyle($isLast),
                     self::REFERENCE_COLUMN_INDEX => $this->itemTextStyle($isLast),
                     self::DESIGNATION_COLUMN_INDEX => $this->itemTextStyle($isLast),
-                    7 => $this->transactionLeftStyle($isLast),
-                    8 => $this->paymentSublineStyle($isLast),
+                    8 => $this->transactionLeftStyle($isLast),
+                    9 => $this->paymentSublineStyle($isLast),
                     self::PARTIAL_AMOUNT_COLUMN_INDEX => $this->partialAmountStyle($isLast),
                     self::AMOUNT_COLUMN_INDEX => $this->transactionAmountStyle($isLast),
-                    11 => $this->transactionCenterStyle($isLast),
+                    12 => $this->transactionCenterStyle($isLast),
                 ];
                 $writer->addRow(Row::fromValuesWithStyles($values, null, $styles));
                 $currentRow++;
@@ -189,7 +191,7 @@ class FinanceCaEncaisseExcelExport
         $total = $this->caEncaisse->total($organization, $period, $store);
         $writer->addRow(Row::fromValues([]));
         $writer->addRow(Row::fromValuesWithStyles(
-            ['CA encaissé du mois', '', '', '', '', '', '', '', '', '', $this->amount($total), ''],
+            ['CA encaissé du mois', '', '', '', '', '', '', '', '', '', '', $this->amount($total), ''],
             $this->totalLabelStyle(),
             [self::AMOUNT_COLUMN_INDEX => $this->totalAmountStyle()],
         ));
@@ -259,6 +261,7 @@ class FinanceCaEncaisseExcelExport
                 $groups[$key] = [
                     'sale_date' => $row['sale_date'],
                     'reference' => $row['reference'],
+                    'nature_label' => $row['nature_label'],
                     'lines' => $row['lines'],
                     'customer' => $row['customer'],
                     'amount' => '0.0000',

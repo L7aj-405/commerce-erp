@@ -7,6 +7,9 @@ use App\Enums\InvoiceStatus;
 use App\Enums\SalesOrderStatus;
 use App\Models\Invoice;
 use App\Models\InvoiceFamily;
+use App\Models\Payment;
+use App\Models\PaymentAllocation;
+use App\Models\PaymentRefund;
 use App\Models\SalesOrder;
 use App\Models\User;
 use App\Services\AuditLogger;
@@ -14,6 +17,8 @@ use App\Services\DocumentSellerProfile;
 use App\Services\DocumentSnapshotVerifier;
 use App\Services\DocumentTemplateRegistry;
 use App\Services\InvoiceNumberGenerator;
+use App\Services\SalesOrderPaymentCalculator;
+use App\Support\Decimal;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -27,6 +32,7 @@ class IssueInvoiceAction
         private readonly DocumentSellerProfile $sellerProfile,
         private readonly DocumentTemplateRegistry $templates,
         private readonly AuditLogger $audit,
+        private readonly SalesOrderPaymentCalculator $payments,
     ) {}
 
     public function execute(User $actor, Invoice $invoice): Invoice
@@ -59,6 +65,13 @@ class IssueInvoiceAction
                 ->when($invoice->corrected_invoice_id, fn ($query, $id) => $query->where('id', '!=', $id))
                 ->exists()) {
                 throw ValidationException::withMessages(['order' => 'This Sales Order already has an issued full Invoice.']);
+            }
+            $this->lockPaymentState($order);
+            $remaining = $this->payments->remainingAmount($order);
+            if (Decimal::compare($remaining, '0.0000') !== 0) {
+                throw ValidationException::withMessages([
+                    'payment' => 'La facture ne peut être émise qu’après le règlement intégral de la commande.',
+                ]);
             }
             $this->verifier->verifyInvoice($invoice);
             $this->sellerProfile->validate($invoice->seller_snapshot);
@@ -109,5 +122,33 @@ class IssueInvoiceAction
 
             return $invoice;
         });
+    }
+
+    private function lockPaymentState(SalesOrder $order): void
+    {
+        $paymentIds = PaymentAllocation::query()
+            ->where('organization_id', $order->organization_id)
+            ->where('sales_order_id', $order->getKey())
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->pluck('payment_id')
+            ->unique()
+            ->values();
+
+        if ($paymentIds->isNotEmpty()) {
+            Payment::query()
+                ->where('organization_id', $order->organization_id)
+                ->whereIn('id', $paymentIds)
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get(['id']);
+        }
+
+        PaymentRefund::query()
+            ->where('organization_id', $order->organization_id)
+            ->where('sales_order_id', $order->getKey())
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->get(['id']);
     }
 }

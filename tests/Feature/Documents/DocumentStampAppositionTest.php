@@ -48,7 +48,8 @@ class DocumentStampAppositionTest extends QuotationTestCase
 
         $html = app(InvoiceDocumentRenderer::class)->html($invoice->fresh());
         $this->assertStringContainsString('data:image/png;base64,', $html);
-        $this->assertStringContainsString('position: absolute', $html);
+        $this->assertStringContainsString('class="document-stamp-apposition document-stamp-repeat"', $html);
+        $this->assertStringContainsString('position: fixed', $html);
     }
 
     public function test_stamped_pdf_contains_the_frozen_rotation(): void

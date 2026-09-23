@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Enums\SalesOrderDiscountType;
 use App\Models\SalesOrder;
 use App\Models\SalesOrderLine;
+use App\Support\CommercialDiscountDisplay;
 use App\Support\Decimal;
 use Illuminate\Validation\ValidationException;
 
@@ -29,10 +30,10 @@ class PosDraftCheckoutCalculator
         return [
             'merchandise_total' => $order->total_incl_tax,
             'subtotal_excl_tax' => $breakdown['gross_excl_tax'],
-            'line_discount_total' => $breakdown['item_discount_total'],
+            'line_discount_total' => CommercialDiscountDisplay::linesTotalInclTax($order->lines),
             'global_discount_type' => (string) ($order->pos_global_discount_type ?? 'none'),
             'global_discount_value' => Decimal::normalize((string) ($order->pos_global_discount_value ?? '0')),
-            'global_discount_amount' => $breakdown['global_discount_amount'],
+            'global_discount_amount' => $this->globalDiscountAmountInclTax($order, $breakdown),
             'net_excl_tax' => $breakdown['net_excl_tax'],
             'tax_total' => $breakdown['tax_total'],
             'shipping_fee' => $breakdown['shipping_fee'],
@@ -194,6 +195,16 @@ class PosDraftCheckoutCalculator
             fn (string $carry, SalesOrderLine $line) => Decimal::add($carry, $line->taxable_amount),
             '0.0000',
         );
+    }
+
+    /** @param array{net_excl_tax:string, tax_total:string} $breakdown */
+    private function globalDiscountAmountInclTax(SalesOrder $order, array $breakdown): string
+    {
+        $beforeGlobalInclTax = (string) $order->total_incl_tax;
+        $afterGlobalInclTax = Decimal::add($breakdown['net_excl_tax'], $breakdown['tax_total']);
+        $discountInclTax = Decimal::subtract($beforeGlobalInclTax, $afterGlobalInclTax);
+
+        return Decimal::compare($discountInclTax, '0.0000') > 0 ? $discountInclTax : '0.0000';
     }
 
     private function bounded(string $value, string $max): string

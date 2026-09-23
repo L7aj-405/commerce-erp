@@ -86,8 +86,9 @@ class FinanceCaEncaisseExcelMergeTest extends DocumentTestCase
         // First data row is row 7 (5 metadata rows + 1 blank + the header) —
         // see FinanceCaEncaisseExcelExport::FIRST_DATA_ROW. Three items occupy
         // rows 7-9. Shared group columns: B=Date de vente,
-        // D=N° facture/commande, H=Client, K=Montant encaissé, L=Statut.
-        foreach (['B', 'D', 'H', 'K', 'L'] as $column) {
+        // D=N° facture/commande, E=Nature, I=Client,
+        // L=Montant encaissé, M=Statut paiement.
+        foreach (['B', 'D', 'E', 'I', 'L', 'M'] as $column) {
             $this->assertStringContainsString(
                 "<mergeCell ref=\"{$column}7:{$column}9\"/>",
                 $xml,
@@ -97,7 +98,7 @@ class FinanceCaEncaisseExcelMergeTest extends DocumentTestCase
 
         // Payment sub-line columns stay unmerged so payment number/date/method
         // and Montant partiel can vary independently inside the same group.
-        foreach (['A', 'C', 'I', 'J'] as $column) {
+        foreach (['A', 'C', 'J', 'K'] as $column) {
             $this->assertStringNotContainsString("<mergeCell ref=\"{$column}7:{$column}9\"/>", $xml);
         }
     }
@@ -113,8 +114,8 @@ class FinanceCaEncaisseExcelMergeTest extends DocumentTestCase
         $bytes = app(FinanceCaEncaisseExcelExport::class)->build($organization, FinancePeriod::fromMonth('2026-09'), null);
         $xml = $this->sheetXmlOf($bytes);
 
-        // E=Qté, F=Référence, G=Désignation — item-level, never merged.
-        foreach (['E', 'F', 'G'] as $column) {
+        // F=Qté, G=Référence, H=Désignation — item-level, never merged.
+        foreach (['F', 'G', 'H'] as $column) {
             $this->assertStringNotContainsString("<mergeCell ref=\"{$column}", $xml, "item column {$column} must never be merged");
         }
         for ($i = 1; $i <= 6; $i++) {
@@ -156,13 +157,29 @@ class FinanceCaEncaisseExcelMergeTest extends DocumentTestCase
 
         // The order/invoice appears once across rows 7-9; each payment remains
         // a visible sub-line in the unmerged payment columns.
-        foreach (['B', 'D', 'H', 'K', 'L'] as $column) {
+        foreach (['B', 'D', 'E', 'I', 'L', 'M'] as $column) {
             $this->assertStringContainsString("<mergeCell ref=\"{$column}7:{$column}9\"/>", $xml);
         }
-        foreach (['A', 'C', 'I', 'J'] as $column) {
+        foreach (['A', 'C', 'J', 'K'] as $column) {
             $this->assertStringNotContainsString("<mergeCell ref=\"{$column}7:{$column}9\"/>", $xml);
         }
         $this->assertStringNotContainsString('<mergeCell ref="A7:A12"/>', $xml);
+    }
+
+    public function test_excel_export_labels_uninvoiced_payment_as_advance_without_fake_invoice_number(): void
+    {
+        [$owner, $organization, , $order] = $this->multiLineOrder(1, '10000.0000');
+        $account = $this->createFinancialAccount($organization);
+        $this->recordPayment($owner, $order, $account, '3000.0000', ['payment_date' => '2026-09-05']);
+
+        $bytes = app(FinanceCaEncaisseExcelExport::class)->build($organization, FinancePeriod::fromMonth('2026-09'), null);
+        $xml = $this->sheetXmlOf($bytes);
+
+        $this->assertStringContainsString('Nature', $xml);
+        $this->assertStringContainsString('Statut paiement', $xml);
+        $this->assertStringContainsString('Avance', $xml);
+        $this->assertStringContainsString('Avance · '.$order->order_number, $xml);
+        $this->assertStringContainsString('Paiement partiel', $xml);
     }
 
     public function test_excel_build_never_mutates_the_underlying_ca_encaisse_total(): void

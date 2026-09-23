@@ -25,6 +25,7 @@ export type QLine = {
     discount_type: 'none' | 'fixed' | 'percentage';
     discount_value: string;
     discount_amount: string;
+    discount_amount_ttc?: string;
     taxable_amount: string;
     tax_amount: string;
     total_incl_tax: string;
@@ -60,12 +61,18 @@ const RELOAD_ONLY = ['quotation', 'hasDiscount', 'errors', 'flash'];
 
 function draftFromLine(l: QLine): Draft {
     return {
-        quantity: l.quantity,
+        quantity: integerQuantity(l.quantity),
         price_input_mode: l.price_input_mode,
         unit_price: l.price_input_mode === 'ttc' ? l.unit_price_incl_tax : l.unit_price_excl_tax,
         discount_value: l.discount_type === 'none' ? '' : l.discount_value,
         discount_unit: l.discount_type === 'fixed' ? 'DH' : '%',
     };
+}
+
+function integerQuantity(value: string): string {
+    const parsed = Number(value);
+
+    return Number.isFinite(parsed) ? String(Math.trunc(parsed)) : value;
 }
 
 export default function LineGrid({ quotationId, currency, lines, searchUrl, taxRates }: Props) {
@@ -198,7 +205,10 @@ export default function LineGrid({ quotationId, currency, lines, searchUrl, taxR
                                     </td>
                                     <td className="text-right">
                                         <input
-                                            inputMode="decimal"
+                                            type="number"
+                                            inputMode="numeric"
+                                            min={1}
+                                            step={1}
                                             disabled={busy}
                                             value={d.quantity}
                                             onChange={(e) => {
@@ -335,7 +345,10 @@ export default function LineGrid({ quotationId, currency, lines, searchUrl, taxR
                                 <label className="block">
                                     Qté
                                     <input
-                                        inputMode="decimal"
+                                        type="number"
+                                        inputMode="numeric"
+                                        min={1}
+                                        step={1}
                                         disabled={busy}
                                         value={d.quantity}
                                         onChange={(e) => {

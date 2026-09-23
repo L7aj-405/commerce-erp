@@ -18,11 +18,13 @@
     $lineCount = max(1, count($lines));
     $notesMm = (! empty($document['notes']) ? 20 : 0) + (! empty($document['terms']) ? 20 : 0);
 
-    // FINAL APPROVED RHYTHM:
-    // Keep the closing cluster low on short documents. As real item rows grow,
-    // spend this whitespace first so it can never be the reason for an
-    // artificial second page. 1 line ~= 102mm, 12 lines ~= 8.5mm.
-    $itemsSpacerMm = max(0, 102 - (($lineCount - 1) * 8.5) - $notesMm);
+    // Devis pagination guard:
+    // keep a modest visual gap on short quotes, but never reserve enough fake
+    // whitespace to force the kept-together totals block onto a new page.
+    // Real rows consume this gap quickly; long quotes paginate naturally.
+    $itemsSpacerMm = max(0, min(42, 52 - (($lineCount - 1) * 6) - $notesMm));
+    $displayWebsite = preg_replace('#^https?://#i', '', trim((string) ($seller['website'] ?? '')));
+    $displayWebsite = rtrim($displayWebsite, '/');
 
     $cols = $showRemise
         ? ['ref' => 10, 'des' => 33, 'pres' => 9, 'qty' => 6, 'pu' => 11, 'pt' => 11, 'rem' => 9, 'ttc' => 11]
@@ -64,9 +66,10 @@
         .masthead td { vertical-align: top; }
         .logo { max-height: 60px; max-width: 220px; margin-bottom: 8px; }
         .seller { color: #444; font-size: 8.5px; }
-        .dest { font-size: 8.5px; }
+        .dest { font-size: 8.5px; padding-top: 0; }
         .dest .lbl { font-weight: bold; letter-spacing: .08em; }
-        .dest .name { font-weight: bold; color: {{ $accent }}; font-size: 10px; }
+        .dest .name { font-weight: bold; color: {{ $accent }}; font-size: 10px; margin: 2px 0 7px; }
+        .dest-details { margin-top: 6px; }
         h1.title { margin: 18px 0 12px; text-align: center; font-size: 26px; font-weight: bold; letter-spacing: .06em; color: {{ $ink }}; }
         table.meta { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
         table.meta th { border: 1px solid #c9c9c2; padding: 5px 6px; font-size: 8px; font-weight: normal; text-align: center; color: #555; }
@@ -99,13 +102,14 @@
         .words-intro { font-weight: bold; font-size: 9px; }
         .words-value { margin-top: 6px; font-style: italic; font-weight: bold; font-size: 12px; text-transform: uppercase; }
         .issued-meta { margin: 12px 0 0; color: #888; font-size: 8px; text-align: left; }
+        @include('documents.partials.commercial-style', ['accent' => $accent, 'ink' => $ink])
     </style>
 </head>
 <body>
 
 @if ($watermark)
     <div class="watermark-text">{{ $watermark }}</div>
-@elseif ($seller['logo'] ?? null)
+@elseif (($seller['show_invoice_watermark'] ?? false) && ($seller['logo'] ?? null))
     <div class="watermark-logo"><img src="{{ $seller['logo'] }}" alt=""></div>
 @endif
 
@@ -134,33 +138,33 @@
         <td style="width: 60%; padding-right: 16px;">
             @if ($seller['logo'] ?? null)
                 <img class="logo" src="{{ $seller['logo'] }}" alt="">
+            @else
+                <div class="company-name">{{ ($seller['trade_name'] ?? null) ?: $seller['legal_name'] }}</div>
             @endif
-            <div style="font-size: 15px; font-weight: bold; text-transform: uppercase; margin-bottom: 8px;">
-                {{ ($seller['trade_name'] ?? null) ?: $seller['legal_name'] }}
-            </div>
             <div class="seller">
-                @if (($seller['trade_name'] ?? null) && ($seller['legal_name'] ?? null)){{ $seller['legal_name'] }}<br>@endif
-                @if ($seller['address'] ?? null){{ $seller['address'] }}<br>@endif
-                @if ($seller['tax_identifier'] ?? null)ICE : {{ $seller['tax_identifier'] }}<br>@endif
-                @if ($seller['registration_number'] ?? null)RC N° : {{ $seller['registration_number'] }}<br>@endif
-                @if ($seller['patente_number'] ?? null)TP : {{ $seller['patente_number'] }}<br>@endif
+                @if (($seller['trade_name'] ?? null) && ($seller['legal_name'] ?? null))<div class="seller-row"><span class="info-value">{{ $seller['legal_name'] }}</span></div>@endif
+                @if ($seller['address'] ?? null)<div class="seller-row"><span class="info-label">Adresse :</span> <span class="info-value">{{ $seller['address'] }}</span></div>@endif
+                @if ($seller['tax_identifier'] ?? null)<div class="seller-row"><span class="info-label">ICE :</span> <span class="info-value">{{ $seller['tax_identifier'] }}</span></div>@endif
+                @if ($seller['registration_number'] ?? null)<div class="seller-row"><span class="info-label">RC :</span> <span class="info-value">{{ $seller['registration_number'] }}</span></div>@endif
+                @if ($seller['patente_number'] ?? null)<div class="seller-row"><span class="info-label">TP :</span> <span class="info-value">{{ $seller['patente_number'] }}</span></div>@endif
                 @foreach (($seller['additional_identifiers'] ?? []) as $identifier)
-                    {{ $identifier['label'] }} : {{ $identifier['value'] }}<br>
+                    <div class="seller-row"><span class="info-label">{{ $identifier['label'] }} :</span> <span class="info-value">{{ $identifier['value'] }}</span></div>
                 @endforeach
-                @if ($seller['phone'] ?? null)Tél : {{ $seller['phone'] }}<br>@endif
-                @if ($seller['fax'] ?? null)FAX : {{ $seller['fax'] }}<br>@endif
-                @if ($seller['email'] ?? null)Mail : {{ $seller['email'] }}<br>@endif
-                @if ($seller['website'] ?? null){{ $seller['website'] }}@endif
+                @if ($seller['phone'] ?? null)<div class="seller-row"><span class="info-label">Tél :</span> <span class="info-value">{{ $seller['phone'] }}</span></div>@endif
+                @if ($seller['email'] ?? null)<div class="seller-row"><span class="info-label">Email :</span> <span class="info-value">{{ $seller['email'] }}</span></div>@endif
+                @if ($displayWebsite !== '')<div class="seller-row"><span class="info-label">Web :</span> <span class="info-value">{{ $displayWebsite }}</span></div>@endif
             </div>
         </td>
-        <td style="width: 40%;">
+        <td style="width: 40%; padding-top: 68px;">
             <div class="dest">
                 <div class="lbl">{{ $t('recipient') }}</div>
                 <div class="name">{{ $buyerLabel }}</div>
-                @if ($buyer['company'] && $buyer['name'])<div>{{ $buyer['name'] }}</div>@endif
-                <div>Adresse : {{ $buyer['address'] ?? '' }}</div>
-                <div>Tél : {{ $buyer['phone'] ?? '' }}</div>
-                <div>ICE : {{ $buyer['tax_identifier'] ?? '' }}</div>
+                <div class="dest-details">
+                    @if ($buyer['company'] && $buyer['name'])<div class="dest-row"><span class="info-value">{{ $buyer['name'] }}</span></div>@endif
+                    <div class="dest-row"><span class="info-label">Adresse :</span> <span class="info-value">{{ $buyer['address'] ?? '' }}</span></div>
+                    <div class="dest-row"><span class="info-label">Tél :</span> <span class="info-value">{{ $buyer['phone'] ?? '' }}</span></div>
+                    <div class="dest-row"><span class="info-label">ICE :</span> <span class="info-value">{{ $buyer['tax_identifier'] ?? '' }}</span></div>
+                </div>
             </div>
         </td>
     </tr>
@@ -247,7 +251,6 @@
                 <table class="totals">
                     @if ($has_discount)
                         <tr><td class="lbl">{{ $t('subtotal') }}</td><td class="val">{{ $totals['subtotal'] }} {{ $currency }}</td></tr>
-                        <tr><td class="lbl">{{ $t('discount') }}</td><td class="val">- {{ $totals['discount'] }} {{ $currency }}</td></tr>
                         <tr class="strong"><td class="lbl">{{ $t('total_ht') }}</td><td class="val">{{ $totals['net'] }} {{ $currency }}</td></tr>
                     @else
                         <tr><td class="lbl">{{ $t('total_ht') }}</td><td class="val">{{ $totals['subtotal'] }} {{ $currency }}</td></tr>
@@ -255,6 +258,9 @@
                     @foreach ($tax_lines as $taxLine)
                         <tr><td class="lbl">{{ $taxLine['label'] }} ({{ $taxLine['rate'] }})</td><td class="val">{{ $taxLine['amount'] }} {{ $currency }}</td></tr>
                     @endforeach
+                    @if ($has_discount)
+                        <tr><td class="lbl">{{ $t('discount') }}</td><td class="val">- {{ $totals['discount'] }} {{ $currency }}</td></tr>
+                    @endif
                     <tr class="grand"><td class="lbl">{{ $t('total_ttc') }}</td><td class="val">{{ $totals['total'] }} {{ $currency }}</td></tr>
                 </table>
             </td>
@@ -267,9 +273,6 @@
         <div class="words-value">{{ $amount_in_words }}</div>
     </div>
 
-    @if ($metadata['issued_at'])
-        <p class="issued-meta">{{ $t('issued_by') }} {{ $metadata['issued_by'] ?: '—' }} {{ $metadata['issued_at'] }}</p>
-    @endif
 </div>
 
 @include('documents.partials.stamp', ['stamp' => $stamp ?? null])

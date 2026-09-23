@@ -27,9 +27,10 @@ use Illuminate\Support\LazyCollection;
  * an invoice is never required.
  *
  * This is a read-only, presentation-only view: it never touches
- * SalesOrder/Invoice/Payment accounting, and the "Paiement comptant /
- * partiel / Avance sur commande / Solde" label is a display classification
- * derived from the order's payment history, never a Payment.method value.
+ * SalesOrder/Invoice/Payment accounting. "Nature" says whether the cash is
+ * an advance or an invoiced settlement; "Statut paiement" is a separate
+ * display classification derived from the order's payment history, never a
+ * Payment.method value.
  */
 class FinanceCaEncaisseService
 {
@@ -116,6 +117,7 @@ class FinanceCaEncaisseService
             'payments.method',
             'sales_orders.order_number',
             'sales_orders.sale_date',
+            'sales_orders.total_incl_tax as sales_order_total',
             'sales_orders.customer_name',
             'sales_orders.customer_company',
         ];
@@ -181,7 +183,7 @@ class FinanceCaEncaisseService
      * order that was never invoiced) simply has no entry here.
      *
      * @param  list<int>  $salesOrderIds
-     * @return array<int, array{id: int, invoice_number: string, total_incl_tax: string}>
+     * @return array<int, array{id: int, invoice_number: string, invoice_date: string, total_incl_tax: string}>
      */
     private function issuedInvoicesBySalesOrder(Organization $organization, array $salesOrderIds): array
     {
@@ -193,11 +195,12 @@ class FinanceCaEncaisseService
             ->where('organization_id', $organization->getKey())
             ->where('status', InvoiceStatus::Issued->value)
             ->whereIn('sales_order_id', $salesOrderIds)
-            ->get(['sales_order_id', 'id', 'invoice_number', 'total_incl_tax'])
+            ->get(['sales_order_id', 'id', 'invoice_number', 'invoice_date', 'total_incl_tax'])
             ->keyBy('sales_order_id')
             ->map(fn ($row) => [
                 'id' => (int) $row->id,
                 'invoice_number' => $row->invoice_number,
+                'invoice_date' => (string) $row->invoice_date,
                 'total_incl_tax' => Decimal::normalize((string) $row->total_incl_tax),
             ])
             ->all();
@@ -205,7 +208,7 @@ class FinanceCaEncaisseService
 
     /**
      * @param  array<int, list<array{quantity: string, designation: string, reference: ?string, variant: ?string}>>  $lines
-     * @param  array<int, array{id: int, invoice_number: string, total_incl_tax: string}>  $invoices
+     * @param  array<int, array{id: int, invoice_number: string, invoice_date: string, total_incl_tax: string}>  $invoices
      * @param  array<int, list<array{payment_id: int, payment_date: string, amount: string}>>  $orderedAllocations
      * @return array<string, mixed>
      */
@@ -213,6 +216,7 @@ class FinanceCaEncaisseService
     {
         $salesOrderId = (int) $row->sales_order_id;
         $invoice = $invoices[$salesOrderId] ?? null;
+        $invoiceForPayment = $invoice && $invoice['invoice_date'] <= (string) $row->payment_date ? $invoice : null;
 
         return [
             'id' => (int) $row->allocation_id,
@@ -220,9 +224,10 @@ class FinanceCaEncaisseService
             'payment_number' => $row->payment_number,
             'sale_date' => (string) $row->sale_date,
             'payment_date' => (string) $row->payment_date,
-            'reference' => $invoice['invoice_number'] ?? $row->order_number,
-            'reference_type' => $invoice ? 'invoice' : 'order',
-            'invoice_id' => $invoice['id'] ?? null,
+            'reference' => $invoiceForPayment['invoice_number'] ?? 'Avance · '.$row->order_number,
+            'reference_type' => $invoiceForPayment ? 'invoice' : 'order',
+            'invoice_id' => $invoiceForPayment['id'] ?? null,
+            'nature_label' => $invoiceForPayment ? 'Règlement facture' : 'Avance',
             'sales_order_id' => $salesOrderId,
             'order_number' => $row->order_number,
             // Full sold-line detail (§ Finance Journal/CA designation fix) —
@@ -235,7 +240,7 @@ class FinanceCaEncaisseService
             'method' => $row->method,
             'method_label' => PaymentMethod::from($row->method)->operationalLabel(),
             'amount' => Decimal::normalize((string) $row->encaisse_amount),
-            'status_label' => $this->classify((int) $row->payment_id, $invoice, $orderedAllocations[$salesOrderId] ?? []),
+            'status_label' => $this->classify((int) $row->payment_id, $invoiceForPayment, Decimal::normalize((string) $row->sales_order_total), $orderedAllocations[$salesOrderId] ?? []),
         ];
     }
 
@@ -243,8 +248,8 @@ class FinanceCaEncaisseService
      * Presentation-only classification of how this payment sits in its
      * order's payment history — never a Payment.method, never persisted.
      *
-     * - No Issued invoice at all yet: "Avance sur commande" (real money in,
-     *   ahead of invoicing — the AVANCE SUR COMMANDE case).
+     * - No Issued invoice valid for this payment date yet: classify against
+     *   the SalesOrder total, while the separate Nature column says "Avance".
      * - The order's very first posted payment, and it alone covers the
      *   invoice total: "Paiement comptant".
      * - The first payment, but it does not cover the total: "Paiement
@@ -253,15 +258,11 @@ class FinanceCaEncaisseService
      *   invoice total: "Solde / Reliquat" (the closing installment).
      * - Any other later, still-insufficient payment: "Paiement partiel".
      *
-     * @param  ?array{id: int, invoice_number: string, total_incl_tax: string}  $invoice
+     * @param  ?array{id: int, invoice_number: string, invoice_date: string, total_incl_tax: string}  $invoice
      * @param  list<array{payment_id: int, payment_date: string, amount: string}>  $orderedAllocations
      */
-    private function classify(int $paymentId, ?array $invoice, array $orderedAllocations): string
+    private function classify(int $paymentId, ?array $invoice, string $salesOrderTotal, array $orderedAllocations): string
     {
-        if ($invoice === null) {
-            return 'Avance sur commande';
-        }
-
         $cumulative = '0.0000';
         $index = null;
         foreach ($orderedAllocations as $position => $allocation) {
@@ -273,7 +274,16 @@ class FinanceCaEncaisseService
         }
 
         $isFirst = $index === 0;
-        $coversTotal = Decimal::compare($cumulative, $invoice['total_incl_tax']) >= 0;
+        $total = $invoice['total_incl_tax'] ?? $salesOrderTotal;
+        $coversTotal = Decimal::compare($cumulative, $total) >= 0;
+
+        if ($invoice === null) {
+            return match (true) {
+                $coversTotal && $isFirst => 'Paiement complété',
+                $coversTotal => 'Solde / Reliquat',
+                default => 'Paiement partiel',
+            };
+        }
 
         return match (true) {
             $isFirst && $coversTotal => 'Paiement comptant',

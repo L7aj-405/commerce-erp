@@ -31,6 +31,7 @@ use App\Services\Pos\PosOrderCompletionEligibility;
 use App\Services\ProductPriceResolver;
 use App\Services\SalesOrderPaymentCalculator;
 use App\Services\ReturnPolicyService;
+use App\Support\CommercialDiscountDisplay;
 use App\Support\Decimal;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -119,7 +120,7 @@ class SalesOrderController extends Controller
     public function show(SalesOrder $order, SalesOrderPaymentCalculator $payments, PosStockAllocator $stock, ReturnPolicyService $returnPolicies, PosOrderCompletionEligibility $completionEligibility): Response
     {
         $this->authorize('view', $order);
-        $order = $this->loadOrder($order);
+        $order = $this->withCommercialDiscountDisplay($this->loadOrder($order));
 
         $canRecordPayment = request()->user()->can('create', [Payment::class, $order]);
         $invoices = $order->invoices()->latest('id')->get([
@@ -302,7 +303,7 @@ class SalesOrderController extends Controller
     {
         $this->authorize('update', $order);
 
-        $order = $this->loadOrder($order);
+        $order = $this->withCommercialDiscountDisplay($this->loadOrder($order));
         $underCovered = 0;
         if ($order->status === SalesOrderStatus::Draft && $request->user()->hasPermission($order->organization_id, 'procurement.manage')
             && $order->source !== SalesOrderSource::Pos) {
@@ -553,6 +554,19 @@ class SalesOrderController extends Controller
             'currentRevision:id,organization_id,store_id,sales_order_id,revision_number,status,reason,initiated_at',
             'addenda',
         ]);
+    }
+
+    private function withCommercialDiscountDisplay(SalesOrder $order): SalesOrder
+    {
+        $discountTotalInclTax = '0.0000';
+        foreach ($order->lines as $line) {
+            $discountInclTax = CommercialDiscountDisplay::lineAmountInclTax($line);
+            $line->setAttribute('discount_amount_ttc', $discountInclTax);
+            $discountTotalInclTax = Decimal::add($discountTotalInclTax, $discountInclTax);
+        }
+        $order->setAttribute('discount_total_ttc', $discountTotalInclTax);
+
+        return $order;
     }
 
     /** @return array<string, bool> */

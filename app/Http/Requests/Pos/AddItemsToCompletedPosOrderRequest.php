@@ -22,7 +22,7 @@ class AddItemsToCompletedPosOrderRequest extends FormRequest
             'client_operation_id' => ['required', 'uuid'],
             'lines' => ['required', 'array', 'min:1', 'max:50'],
             'lines.*.product_variant_id' => ['required', 'integer', 'distinct'],
-            'lines.*.quantity' => ['required', 'decimal:0,4', 'gt:0', 'max:999999999999999.9999'],
+            'lines.*.quantity' => ['required', 'regex:/^[1-9]\d*(?:\.0{1,4})?$/', 'max:999999999999999'],
         ];
     }
 }

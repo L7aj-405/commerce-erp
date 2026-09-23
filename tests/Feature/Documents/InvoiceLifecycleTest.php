@@ -53,6 +53,56 @@ class InvoiceLifecycleTest extends DocumentTestCase
         }
     }
 
+    public function test_draft_invoice_can_exist_but_cannot_be_issued_until_order_is_fully_paid(): void
+    {
+        [$owner, , , $order] = $this->documentFixture(total: '10000.0000');
+        $draft = $this->createInvoice($owner, $order);
+
+        $this->assertNull($draft->invoice_number);
+        $this->assertSame('draft', $draft->status->value);
+
+        try {
+            app(IssueInvoiceAction::class)->execute($owner, $draft);
+            $this->fail('Expected unpaid Sales Order to block Invoice issuance.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('payment', $exception->errors());
+            $this->assertNull($draft->fresh()->invoice_number);
+            $this->assertSame('draft', $draft->fresh()->status->value);
+            $this->assertDatabaseCount('invoice_sequences', 0);
+        }
+    }
+
+    public function test_partially_paid_order_cannot_issue_invoice_until_remaining_balance_is_zero(): void
+    {
+        [$owner, $organization, , $order] = $this->documentFixture(total: '10000.0000');
+        $draft = $this->createInvoice($owner, $order);
+        $account = $this->createFinancialAccount($organization);
+        $this->recordPayment($owner, $order, $account, '3000.0000');
+
+        try {
+            app(IssueInvoiceAction::class)->execute($owner, $draft);
+            $this->fail('Expected partially paid Sales Order to block Invoice issuance.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('payment', $exception->errors());
+            $this->assertNull($draft->fresh()->invoice_number);
+            $this->assertSame('draft', $draft->fresh()->status->value);
+            $this->assertDatabaseCount('invoice_sequences', 0);
+        }
+    }
+
+    public function test_fully_paid_order_can_issue_invoice(): void
+    {
+        [$owner, $organization, , $order] = $this->documentFixture(total: '10000.0000');
+        $draft = $this->createInvoice($owner, $order);
+        $account = $this->createFinancialAccount($organization);
+        $this->recordPayment($owner, $order, $account, '10000.0000');
+
+        $issued = app(IssueInvoiceAction::class)->execute($owner, $draft)->fresh();
+
+        $this->assertSame('issued', $issued->status->value);
+        $this->assertNotNull($issued->invoice_number);
+    }
+
     public function test_issued_invoice_is_immutable_through_normal_update_and_cancel_actions(): void
     {
         [$owner, , , $order] = $this->documentFixture();

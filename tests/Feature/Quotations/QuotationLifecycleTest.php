@@ -110,6 +110,112 @@ class QuotationLifecycleTest extends QuotationTestCase
         $this->assertSame('DEV-2/2026', $b);
     }
 
+    public function test_settings_can_start_devis_numbering_at_a_configured_annual_number_without_draft_consumption(): void
+    {
+        [$owner, $organization, $store, $variant] = $this->base();
+
+        $this->actingAs($owner)->put(route('quotation-settings.update'), [
+            'default_validity_days' => 30,
+            'quotation_numbering_year' => 2026,
+            'quotation_next_number' => 21,
+        ])->assertRedirect();
+
+        $quotation = $this->createQuotation($owner, $organization, $store, ['quotation_date' => '2026-09-21']);
+        $this->addCatalogQuotationLine($owner, $quotation, $variant);
+
+        $this->assertNull($quotation->quotation_number);
+        $this->assertSame(21, (int) DB::table('quotation_sequences')
+            ->where('organization_id', $organization->id)
+            ->where('year', 2026)
+            ->value('next_number'));
+
+        $issued = $this->issueQuotation($owner, $quotation);
+
+        $this->assertSame('DEV-21/2026', $issued->quotation_number);
+        $this->assertSame(22, (int) DB::table('quotation_sequences')
+            ->where('organization_id', $organization->id)
+            ->where('year', 2026)
+            ->value('next_number'));
+    }
+
+    public function test_devis_next_number_setting_cannot_move_behind_already_allocated_numbers(): void
+    {
+        [$owner, $organization, $store, $variant] = $this->base();
+        app(QuotationNumberGenerator::class)->configureNextNumber($organization, 2026, 21);
+        $quotation = $this->createQuotation($owner, $organization, $store, ['quotation_date' => '2026-09-21']);
+        $this->addCatalogQuotationLine($owner, $quotation, $variant);
+        $this->issueQuotation($owner, $quotation);
+
+        $this->actingAs($owner)->put(route('quotation-settings.update'), [
+            'default_validity_days' => 30,
+            'quotation_numbering_year' => 2026,
+            'quotation_next_number' => 21,
+        ])->assertSessionHasErrors('quotation_next_number');
+
+        $this->actingAs($owner)->put(route('quotation-settings.update'), [
+            'default_validity_days' => 30,
+            'quotation_numbering_year' => 2026,
+            'quotation_next_number' => 20,
+        ])->assertSessionHasErrors('quotation_next_number');
+
+        $this->assertSame(22, (int) DB::table('quotation_sequences')
+            ->where('organization_id', $organization->id)
+            ->where('year', 2026)
+            ->value('next_number'));
+    }
+
+    public function test_devis_configured_start_is_isolated_by_organization_and_calendar_year(): void
+    {
+        [$firstOwner, $firstOrganization, $firstStore, $firstVariant] = $this->base();
+        [$secondOwner, $secondOrganization, $secondStore, $secondVariant] = $this->base();
+
+        $generator = app(QuotationNumberGenerator::class);
+        $generator->configureNextNumber($firstOrganization, 2026, 21);
+        $generator->configureNextNumber($firstOrganization, 2027, 145);
+        $generator->configureNextNumber($secondOrganization, 2026, 300);
+
+        $first2026 = $this->createQuotation($firstOwner, $firstOrganization, $firstStore, ['quotation_date' => '2026-09-21']);
+        $this->addCatalogQuotationLine($firstOwner, $first2026, $firstVariant);
+        $first2027 = $this->createQuotation($firstOwner, $firstOrganization, $firstStore, ['quotation_date' => '2027-01-10']);
+        $this->addCatalogQuotationLine($firstOwner, $first2027, $firstVariant);
+        $second2026 = $this->createQuotation($secondOwner, $secondOrganization, $secondStore, ['quotation_date' => '2026-09-21']);
+        $this->addCatalogQuotationLine($secondOwner, $second2026, $secondVariant);
+
+        $this->assertSame('DEV-21/2026', $this->issueQuotation($firstOwner, $first2026)->quotation_number);
+        $this->assertSame('DEV-145/2027', $this->issueQuotation($firstOwner, $first2027)->quotation_number);
+        $this->assertSame('DEV-300/2026', $this->issueQuotation($secondOwner, $second2026)->quotation_number);
+    }
+
+    public function test_devis_revisions_reuse_root_number_without_consuming_the_next_sequence(): void
+    {
+        [$owner, $organization, $store, $variant] = $this->base();
+        app(QuotationNumberGenerator::class)->configureNextNumber($organization, 2026, 21);
+
+        $quotation = $this->createQuotation($owner, $organization, $store, ['quotation_date' => '2026-09-21']);
+        $this->addCatalogQuotationLine($owner, $quotation, $variant);
+        $original = $this->issueQuotation($owner, $quotation);
+
+        $this->assertSame('DEV-21/2026', $original->quotation_number);
+        $this->assertSame(22, (int) DB::table('quotation_sequences')
+            ->where('organization_id', $organization->id)
+            ->where('year', 2026)
+            ->value('next_number'));
+
+        $revision = $this->reviseQuotation($owner, $original->fresh());
+        $issuedRevision = $this->issueQuotation($owner, $revision);
+
+        $this->assertSame('DEV-21/2026-R1', $issuedRevision->quotation_number);
+        $this->assertSame(22, (int) DB::table('quotation_sequences')
+            ->where('organization_id', $organization->id)
+            ->where('year', 2026)
+            ->value('next_number'));
+
+        $nextQuotation = $this->createQuotation($owner, $organization, $store, ['quotation_date' => '2026-09-23']);
+        $this->addCatalogQuotationLine($owner, $nextQuotation, $variant);
+
+        $this->assertSame('DEV-22/2026', $this->issueQuotation($owner, $nextQuotation)->quotation_number);
+    }
+
     public function test_an_empty_draft_cannot_be_issued(): void
     {
         [$owner, $organization, $store] = $this->base();

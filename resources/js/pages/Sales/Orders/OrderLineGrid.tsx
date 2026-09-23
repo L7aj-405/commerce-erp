@@ -24,6 +24,7 @@ export type OLine = {
     discount_type: 'none' | 'fixed' | 'percentage';
     discount_value: string;
     discount_amount: string;
+    discount_amount_ttc?: string;
     taxable_amount: string;
     tax_amount: string;
     total_incl_tax: string;
@@ -66,13 +67,19 @@ function matchTaxId(taxRates: TaxRate[], rate: string): string {
 
 function draftFromLine(l: OLine, taxRates: TaxRate[]): Draft {
     return {
-        quantity: l.quantity,
+        quantity: integerQuantity(l.quantity),
         price_mode: 'ht',
         unit_price: l.unit_price_excl_tax,
         discount_value: l.discount_type === 'none' ? '' : l.discount_value,
         discount_unit: l.discount_type === 'fixed' ? 'DH' : '%',
         tax_rate_id: matchTaxId(taxRates, l.tax_rate),
     };
+}
+
+function integerQuantity(value: string): string {
+    const parsed = Number(value);
+
+    return Number.isFinite(parsed) ? String(Math.trunc(parsed)) : value;
 }
 
 export default function OrderLineGrid({ orderId, currency, lines, searchUrl, taxRates, canOverridePrice, canApplyDiscount }: Props) {
@@ -189,7 +196,7 @@ export default function OrderLineGrid({ orderId, currency, lines, searchUrl, tax
                             <th>Article</th>
                             <th className="w-16 text-right">Qté</th>
                             <th className="w-44">PU HT</th>
-                            <th className="w-32">Remise</th>
+                            <th className="w-32">Remise TTC</th>
                             <th className="w-20 text-right">TVA</th>
                             <th className="w-32 text-right">Total TTC</th>
                             <th className="w-8" />
@@ -220,7 +227,10 @@ export default function OrderLineGrid({ orderId, currency, lines, searchUrl, tax
                                     </td>
                                     <td className="text-right">
                                         <input
-                                            inputMode="decimal"
+                                            type="number"
+                                            inputMode="numeric"
+                                            min={1}
+                                            step={1}
                                             disabled={busy}
                                             value={d.quantity}
                                             onChange={(e) => {
@@ -306,7 +316,7 @@ export default function OrderLineGrid({ orderId, currency, lines, searchUrl, tax
                                             </div>
                                         ) : (
                                             <span className="block text-right tabular-nums text-ink-muted">
-                                                {Number(line.discount_amount) > 0 ? `- ${formatMoney(line.discount_amount, currency)}` : '—'}
+                                                {Number(line.discount_amount_ttc ?? line.discount_amount) > 0 ? `- ${formatMoney(line.discount_amount_ttc ?? line.discount_amount, currency)}` : '—'}
                                             </span>
                                         )}
                                     </td>
@@ -400,7 +410,10 @@ export default function OrderLineGrid({ orderId, currency, lines, searchUrl, tax
                                 <label className="block">
                                     Qté
                                     <input
-                                        inputMode="decimal"
+                                        type="number"
+                                        inputMode="numeric"
+                                        min={1}
+                                        step={1}
                                         disabled={busy}
                                         value={d.quantity}
                                         onChange={(e) => {
@@ -488,7 +501,7 @@ export default function OrderLineGrid({ orderId, currency, lines, searchUrl, tax
                                 </label>
 
                                 <label className="col-span-2 block">
-                                    Remise
+                                    Remise TTC
                                     {canApplyDiscount ? (
                                         <div className="mt-0.5 flex items-center gap-1.5">
                                             <input
@@ -518,7 +531,7 @@ export default function OrderLineGrid({ orderId, currency, lines, searchUrl, tax
                                         </div>
                                     ) : (
                                         <p className="mt-1.5 text-right text-sm tabular-nums text-ink-muted">
-                                            {Number(line.discount_amount) > 0 ? `- ${formatMoney(line.discount_amount, currency)}` : '—'}
+                                            {Number(line.discount_amount_ttc ?? line.discount_amount) > 0 ? `- ${formatMoney(line.discount_amount_ttc ?? line.discount_amount, currency)}` : '—'}
                                         </p>
                                     )}
                                 </label>
@@ -753,7 +766,7 @@ function ArticleAdder({
                         <input placeholder="Unité" value={mForm.unit_label} onChange={(e) => setMForm((f) => ({ ...f, unit_label: e.target.value }))} className="rounded-field border border-line-strong px-2 py-1" />
                         <label className="text-xs text-ink-muted">
                             Quantité
-                            <input inputMode="decimal" value={mForm.quantity} onChange={(e) => setMForm((f) => ({ ...f, quantity: e.target.value }))} className="mt-0.5 w-full rounded-field border border-line-strong px-2 py-1 text-right" />
+                            <input type="number" inputMode="numeric" min={1} step={1} value={mForm.quantity} onChange={(e) => setMForm((f) => ({ ...f, quantity: e.target.value }))} className="mt-0.5 w-full rounded-field border border-line-strong px-2 py-1 text-right" />
                         </label>
                         <label className="text-xs text-ink-muted">
                             TVA

@@ -27,48 +27,41 @@ class InvoicePdfPaginationTest extends DocumentTestCase
         $this->assertGreaterThanOrEqual(2, $this->pageCount($longInvoice));
 
         // Source markup: a single <thead> that Dompdf repeats via table-header-group,
-        // and the closing section (totals + amount in words + issuer line)
-        // rendered exactly once, as one compact block.
+        // and the closing section (totals + amount in words) rendered
+        // exactly once, as one compact block.
         $html = app(InvoiceDocumentRenderer::class)->html($longInvoice);
         $this->assertStringContainsString('display: table-header-group', $html);
         $this->assertSame(1, substr_count($html, 'class="items"'));
         $this->assertSame(1, substr_count($html, 'class="closing"'));
         $this->assertSame(1, substr_count($html, 'Arrêtée la présente facture'));
-        // The closing section is the last flowed block — nothing renders
-        // after it except the (independently positioned) stamp partial.
+        // The closing section follows the article table; any decorative
+        // ruled rows live inside that same table, never as invoice data.
         $this->assertTrue(strpos($html, 'class="closing"') > strpos($html, 'class="items"'));
     }
 
     /**
-     * Regression pin for TWO opposite bugs seen during development:
-     *  - a flat, small spacer left the closing block stranded far above the
-     *    footer on a short invoice;
-     *  - a flat, large spacer pushed a 5-12 line invoice to an unnecessary
-     *    second page even though page 1 had room.
-     * The spacer must therefore be ADAPTIVE: large for a 1-line invoice
-     * (there is a lot of real page left to fill), and small for a 12-line
-     * invoice (the items table itself already uses most of the page).
+     * Regression pin for the professional register-style layout: short
+     * invoices should fill the item area with empty ruled rows, while real
+     * item content must consume that presentation-only fill as the line count
+     * grows.
      */
-    public function test_the_flexible_gap_above_totals_shrinks_as_line_count_grows(): void
+    public function test_empty_ruled_rows_fill_short_invoices_and_shrink_as_line_count_grows(): void
     {
         [$owner, , , $shortOrder] = $this->documentFixture(); // 1 line
         $shortInvoice = $this->issueInvoice($owner, $this->createInvoice($owner, $shortOrder));
-        $shortSpacerMm = $this->itemsSpacerMm(app(InvoiceDocumentRenderer::class)->html($shortInvoice));
-        $this->assertGreaterThanOrEqual(60.0, $shortSpacerMm);
+        $shortEmptyRows = $this->emptyRuledRowCount(app(InvoiceDocumentRenderer::class)->html($shortInvoice));
+        $this->assertGreaterThanOrEqual(8, $shortEmptyRows);
 
         $twelveLineInvoice = $this->issueInvoice($owner, $this->createInvoice($owner, $this->orderWithLines($owner, 12)));
         $this->assertSame(1, $this->pageCount($twelveLineInvoice), '12 real item rows must still fit on one page.');
-        $longerSpacerMm = $this->itemsSpacerMm(app(InvoiceDocumentRenderer::class)->html($twelveLineInvoice));
-        $this->assertLessThan($shortSpacerMm, $longerSpacerMm);
-        $this->assertLessThanOrEqual(20.0, $longerSpacerMm);
+        $longerEmptyRows = $this->emptyRuledRowCount(app(InvoiceDocumentRenderer::class)->html($twelveLineInvoice));
+        $this->assertLessThan($shortEmptyRows, $longerEmptyRows);
+        $this->assertLessThanOrEqual(2, $longerEmptyRows);
     }
 
-    private function itemsSpacerMm(string $html): float
+    private function emptyRuledRowCount(string $html): int
     {
-        preg_match('/\.items-spacer \{ min-height: ([\d.]+)mm; \}/', $html, $matches);
-        $this->assertNotEmpty($matches, 'Expected an .items-spacer min-height rule in the rendered HTML.');
-
-        return (float) $matches[1];
+        return substr_count($html, 'class="empty-ruled-row"');
     }
 
     public function test_issued_invoice_uses_the_snapshot_logo_as_a_faint_watermark(): void
@@ -146,12 +139,11 @@ class InvoicePdfPaginationTest extends DocumentTestCase
     }
 
     /**
-     * The stamp partial uses `position: absolute`, not `fixed`, specifically
-     * so it renders once — on the page the lower cluster actually lands on —
-     * rather than repeating on every page the way the running header/footer
-     * do. This is the multi-page regression test for that.
+     * Invoice stamps use `position: fixed`, the same Dompdf mechanism as the
+     * running header/footer, so the immutable apposition repeats on every
+     * rendered page without creating extra apposition rows.
      */
-    public function test_stamp_appears_exactly_once_on_a_multipage_invoice_not_on_every_page(): void
+    public function test_stamp_is_configured_to_repeat_on_every_page_of_a_multipage_invoice(): void
     {
         [$owner, $organization, $store] = $this->documentFixture();
         Storage::fake('local');
@@ -173,8 +165,9 @@ class InvoicePdfPaginationTest extends DocumentTestCase
 
         $html = app(InvoiceDocumentRenderer::class)->html($invoice);
         $this->assertSame(1, substr_count($html, 'data:image/png;base64,'));
-        $this->assertSame(1, substr_count($html, 'class="document-stamp-apposition"'));
+        $this->assertSame(1, substr_count($html, 'class="document-stamp-apposition document-stamp-repeat"'));
         $this->assertSame(1, substr_count($html, 'class="document-stamp-image"'));
+        $this->assertStringContainsString('position: fixed', $html);
     }
 
     private function orderWithLines(User $owner, int $count)

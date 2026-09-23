@@ -21,17 +21,19 @@ type Profile = {
     bank_rib?: string;
     footer_text?: string;
     accent_color?: string;
+    show_invoice_watermark?: boolean;
     additional_identifiers?: Identifier[];
 };
 type Props = {
     organization: { id: number; name: string };
     profile: Profile;
+    invoiceNumbering: { year: number; next_number: number; max_allocated_number: number };
     logoUrl: string | null;
     defaultAccentColor: string;
     canUpdate: boolean;
 };
 
-export default function DocumentProfile({ organization, profile, logoUrl, defaultAccentColor, canUpdate }: Props) {
+export default function DocumentProfile({ organization, profile, invoiceNumbering, logoUrl, defaultAccentColor, canUpdate }: Props) {
     const [removeLogo, setRemoveLogo] = useState(false);
     const form = useForm<{
         legal_name: string;
@@ -48,6 +50,9 @@ export default function DocumentProfile({ organization, profile, logoUrl, defaul
         bank_rib: string;
         footer_text: string;
         accent_color: string;
+        show_invoice_watermark: boolean;
+        invoice_numbering_year: number;
+        invoice_next_number: number;
         additional_identifiers: Identifier[];
         logo: File | null;
         remove_logo: boolean;
@@ -67,6 +72,9 @@ export default function DocumentProfile({ organization, profile, logoUrl, defaul
         bank_rib: profile.bank_rib ?? '',
         footer_text: profile.footer_text ?? '',
         accent_color: profile.accent_color ?? defaultAccentColor,
+        show_invoice_watermark: profile.show_invoice_watermark ?? false,
+        invoice_numbering_year: invoiceNumbering.year,
+        invoice_next_number: invoiceNumbering.next_number,
         additional_identifiers: profile.additional_identifiers ?? [],
         logo: null,
         remove_logo: false,
@@ -127,7 +135,7 @@ export default function DocumentProfile({ organization, profile, logoUrl, defaul
                             <TextField form={form} name="phone" label="Téléphone" />
                             <TextField form={form} name="fax" label="Fax" />
                             <TextField form={form} name="email" label="Email" type="email" />
-                            <TextField form={form} name="website" label="Site web" type="url" />
+                            <TextField form={form} name="website" label="Site web" />
                         </Grid>
                     </Section>
 
@@ -242,6 +250,18 @@ export default function DocumentProfile({ organization, profile, logoUrl, defaul
                                 <p className="mt-1 text-xs text-danger">{form.errors.accent_color}</p>
                             )}
                         </label>
+                        <label className="flex items-start gap-3 rounded-field border border-line bg-raised px-3 py-2 text-sm text-ink">
+                            <input
+                                type="checkbox"
+                                checked={form.data.show_invoice_watermark}
+                                onChange={(e) => form.setData('show_invoice_watermark', e.target.checked)}
+                                className="mt-1"
+                            />
+                            <span>
+                                <span className="block font-medium">Afficher le filigrane sur les factures</span>
+                                <span className="block text-xs text-ink-muted">Ajoute le logo décoratif très pâle au centre des factures. Désactivé par défaut.</span>
+                            </span>
+                        </label>
                         <label className="mt-3 block">
                             <span className="mb-1 block text-xs font-medium text-ink-muted">Mentions de pied de page</span>
                             <textarea
@@ -250,6 +270,21 @@ export default function DocumentProfile({ organization, profile, logoUrl, defaul
                                 className="w-full rounded-field border border-line-strong bg-surface px-3 py-2 text-sm"
                             />
                         </label>
+                    </Section>
+
+                    <Section title="Numérotation des factures" description="Configure le prochain numéro officiel à allouer lors de l’émission d’une facture.">
+                        <Grid>
+                            <TextField form={form} name="invoice_numbering_year" label="Année" type="number" required />
+                            <TextField form={form} name="invoice_next_number" label="Prochain numéro" type="number" required />
+                        </Grid>
+                        <p className="text-xs text-ink-muted">
+                            Indiquez le prochain numéro de facture à utiliser pour cette année. Exemple : si la dernière facture existante est 20/2026, saisissez 21.
+                        </p>
+                        {invoiceNumbering.max_allocated_number > 0 && (
+                            <p className="text-xs text-ink-faint">
+                                Dernier numéro déjà attribué par l’ERP pour {invoiceNumbering.year} : {invoiceNumbering.max_allocated_number}/{invoiceNumbering.year}.
+                            </p>
+                        )}
                     </Section>
 
                     <div className="sticky bottom-4 z-10 flex justify-end rounded-card border border-line bg-surface/95 p-3 shadow-pop backdrop-blur">

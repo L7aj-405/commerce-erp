@@ -23,6 +23,7 @@ use App\Services\ActiveTenantContext;
 use App\Services\OrganizationOutboundMailService;
 use App\Services\ProductPriceResolver;
 use App\Services\QuotationDocumentSettings;
+use App\Support\CommercialDiscountDisplay;
 use App\Support\Decimal;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -163,8 +164,14 @@ class QuotationController extends Controller
         $quotation->setAttribute('seller_snapshot', $seller);
 
         $isOfficial = $quotation->status->isOfficial();
-        $hasDiscount = Decimal::compare($quotation->discount_total, '0') !== 0
-            || $quotation->lines->contains(fn ($l) => Decimal::compare($l->discount_amount, '0') !== 0);
+        $discountTotalInclTax = '0.0000';
+        foreach ($quotation->lines as $line) {
+            $discountInclTax = CommercialDiscountDisplay::lineAmountInclTax($line);
+            $line->setAttribute('discount_amount_ttc', $discountInclTax);
+            $discountTotalInclTax = Decimal::add($discountTotalInclTax, $discountInclTax);
+        }
+        $quotation->setAttribute('discount_total_ttc', $discountTotalInclTax);
+        $hasDiscount = Decimal::compare($discountTotalInclTax, '0') !== 0;
 
         $history = $this->revisionHistory($quotation);
         $currentEntry = collect($history)->firstWhere('is_current', true);

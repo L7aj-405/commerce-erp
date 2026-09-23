@@ -7,39 +7,43 @@
     $showRemise = $has_discount;
     $numberLabel = $document['number'] ?: ($watermark ?: '—');
     $buyerLabel = $buyer['company'] ?: ($buyer['name'] ?: '—');
+    $displayWebsite = preg_replace('#^https?://#i', '', trim((string) ($seller['website'] ?? '')));
+    $displayWebsite = rtrim($displayWebsite, '/');
 
-    // Vertical rhythm: ALL flexible whitespace lives BETWEEN the last item row
-    // and the totals. This must be ADAPTIVE, not a flat constant — a flat
-    // min-height adds the same padding regardless of how many item rows
-    // there are, which either strands the closing block too high (too small
-    // a constant) or forces an unnecessary page break for content that would
-    // have fit (too large a constant, the previous bug: a fixed ~110mm was
-    // added on top of 5 real item rows and pushed the whole closing block to
-    // page 2 even though page 1 had room left).
-    //
-    // Instead we estimate the items table's own height as a function of the
-    // actual line count and only spend what's left of a fixed body budget as
-    // the spacer — i.e. spacer = budget − masthead/meta − estimated items
-    // height − closing height − notes. All of the per-element estimates
-    // below are deliberately biased slightly HIGH (rows/blocks assumed a bit
-    // taller than typical), so the *spacer* comes out a bit small rather
-    // than a bit large: underestimating the gap only costs a little of the
-    // "settle near the footer" polish, whereas overestimating it is exactly
-    // what caused the artificial-second-page bug. `max(0, …)` means a
-    // genuinely long items table (or long notes) can drive the spacer to
-    // zero — totals then follow the last row immediately, and once even
-    // that doesn't fit, `page-break-inside: avoid` on `.closing` (not this
-    // spacer) is what sends the closing block to the next page.
-    $lineCount = max(1, count($lines));
-    $notesMm = ! empty($document['notes']) ? 20 : 0;
+    // Professional ruled-register rhythm: the Articles table visually fills
+    // the remaining item area with empty, data-free rows instead of a blank
+    // white spacer. The estimate is based on "visual row units", not raw item
+    // count, so long wrapped descriptions consume more of the page budget and
+    // automatically reduce decorative rows. These rows are template-only and
+    // never exist in invoice data, snapshots, exports, totals, tax, or finance.
+    $visualRowUnits = collect($lines)->reduce(function (int $carry, array $line): int {
+        $text = trim(($line['description'] ?? '').' '.($line['variant'] ?? ''));
+        $wrappedUnits = max(1, (int) ceil(mb_strlen($text) / 58));
 
-    // FINAL APPROVED RHYTHM:
-    // Keep the closing cluster low on short documents. As real item rows grow,
-    // spend this whitespace first so it can never be the reason for an
-    // artificial second page. The version is rendered inline with the title,
-    // so it adds no extra vertical block to this established page geometry.
-    // 1 line ~= 102mm of flexible space; 12 lines ~= 8.5mm.
-    $itemsSpacerMm = max(0, 102 - (($lineCount - 1) * 8.5) - $notesMm);
+        return $carry + min(3, $wrappedUnits);
+    }, 0);
+    $notesUnits = ! empty($document['notes']) ? 2 : 0;
+    $usedUnits = max(1, $visualRowUnits + $notesUnits);
+    // Keep a real reserve for the closing block (totals + amount in words).
+    // Decorative rows must never consume that reserve and push a short
+    // invoice's closing block onto a second page.
+    $firstPageTargetUnits = 7;
+    $continuationPageTargetUnits = 18;
+
+    if ($usedUnits <= $firstPageTargetUnits) {
+        $emptyRows = $firstPageTargetUnits - $usedUnits;
+    } else {
+        $finalPageUnits = ($usedUnits - $firstPageTargetUnits) % $continuationPageTargetUnits;
+        $emptyRows = $finalPageUnits === 0 ? 0 : ($continuationPageTargetUnits - $finalPageUnits);
+    }
+
+    // Cap the purely decorative fill so an awkward edge case cannot create a
+    // new mostly-empty trailing page. Real item rows and the kept-together
+    // totals block always take priority over these presentation rows.
+    // Six ruled rows (at 6mm each) give the register-style visual fill while
+    // preserving enough room for the complete closing block on ordinary
+    // one-page invoices. Real content always wins over decorative fill.
+    $emptyRows = min(6, max(0, $emptyRows));
 
     // Item-table column widths (percentages, each variant sums to 100).
     $cols = $showRemise
@@ -69,7 +73,7 @@
         /* --- A4 geometry: top band = running identity, bottom band = legal footer + page number --- */
         @page { margin: 20mm 13mm 30mm; }
         * { box-sizing: border-box; }
-        body { color: {{ $ink }}; font-family: "DejaVu Sans", sans-serif; font-size: 9px; line-height: 1.42; }
+        body { color: {{ $ink }}; font-family: "DejaVu Sans", sans-serif; font-size: 9.5px; line-height: 1.43; }
 
         /* Running compact identity strip — sits in the top page margin on EVERY page. */
         .runhead {
@@ -77,8 +81,8 @@
             top: -15mm; left: 0; right: 0;
             height: 12mm;
             border-bottom: 1px solid #d7d7cf;
-            font-size: 8px;
-            color: #555;
+            font-size: 8.5px;
+            color: #3f423b;
         }
         .runhead .r1 { display: block; }
         .runhead .r1 .who { font-weight: bold; color: {{ $ink }}; text-transform: uppercase; }
@@ -92,9 +96,9 @@
             bottom: -21mm; left: 0; right: 0;
             border-top: 1px solid #d7d7cf;
             padding-top: 4px;
-            font-size: 7px;
+            font-size: 7.8px;
             font-style: italic;
-            color: #666;
+            color: #4f524a;
             text-align: center;
             line-height: 1.45;
         }
@@ -124,11 +128,16 @@
         /* --- Page 1 masthead (normal flow, page 1 only by nature) --- */
         .masthead { width: 100%; border-collapse: collapse; }
         .masthead td { vertical-align: top; }
-        .logo { max-height: 60px; max-width: 220px; margin-bottom: 8px; }
-        .seller { color: #444; font-size: 8.5px; }
-        .dest { font-size: 8.5px; }
-        .dest .lbl { font-weight: bold; letter-spacing: .08em; }
-        .dest .name { font-weight: bold; color: {{ $accent }}; font-size: 10px; }
+        .logo { max-height: 68px; max-width: 238px; margin-bottom: 7px; }
+        .company-name { font-size: 17px; font-weight: bold; text-transform: uppercase; color: {{ $ink }}; margin-bottom: 7px; }
+        .seller { color: #343730; font-size: 9.2px; line-height: 1.42; }
+        .seller-row, .dest-row { margin-bottom: 2px; }
+        .info-label { font-weight: 600; color: #4c4f47; }
+        .info-value { font-weight: 700; color: {{ $ink }}; }
+        .dest { font-size: 9.2px; line-height: 1.42; color: #343730; }
+        .dest .lbl { font-weight: bold; letter-spacing: .08em; font-size: 8.8px; color: #3d4039; }
+        .dest .name { font-weight: bold; color: {{ $accent }}; font-size: 10.8px; margin: 3px 0 2px; }
+        .dest-details { margin-top: 6px; }
 
         h1.title {
             margin: 18px 0 12px;
@@ -140,9 +149,9 @@
         table.meta { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
         table.meta th {
             border: 1px solid #c9c9c2; padding: 5px 6px;
-            font-size: 8px; font-weight: normal; text-align: center; color: #555;
+            font-size: 8.6px; font-weight: bold; text-align: center; color: #2f322d;
         }
-        table.meta td { border: 1px solid #c9c9c2; padding: 6px; text-align: center; }
+        table.meta td { border: 1px solid #c9c9c2; padding: 6px; text-align: center; font-size: 9.4px; font-weight: 600; color: {{ $ink }}; }
 
         /* --- Items: grows naturally, header repeats, rows never split. --- */
         table.items { width: 100%; border-collapse: collapse; table-layout: fixed; page-break-inside: auto; }
@@ -150,7 +159,7 @@
         table.items tr { page-break-inside: avoid; }
         table.items th {
             background: {{ $accent }}; color: #fff;
-            font-size: 7.5px; font-weight: bold; text-transform: uppercase; letter-spacing: .03em;
+            font-size: 7.9px; font-weight: bold; text-transform: uppercase; letter-spacing: .03em;
             padding: 6px 5px;
         }
         table.items td {
@@ -160,19 +169,20 @@
                rather than the adaptive spacer, force ordinary invoices onto
                a second page. This applies uniformly at every line count. */
             border-bottom: 1px solid #e2e2da; padding: 3px 5px;
-            font-size: 8.5px; line-height: 1.3;
+            font-size: 8.8px; line-height: 1.3;
             vertical-align: top; word-wrap: break-word; overflow-wrap: break-word;
         }
         .num { text-align: right; white-space: nowrap; }
         .ctr { text-align: center; }
-        .des-sub { color: #777; font-size: 8px; }
+        .des-sub { color: #555950; font-size: 8.2px; }
+        table.items tr.empty-ruled-row td {
+            height: 6mm;
+            padding-top: 0;
+            padding-bottom: 0;
+            color: transparent;
+        }
 
         .notes { margin-top: 12px; white-space: pre-line; page-break-inside: avoid; }
-
-        /* --- All flexible whitespace lives here, between the items table and
-               the closing section. A floor (min-height), not a fixed margin —
-               see the $itemsSpacerMm comment above. --- */
-        .items-spacer { min-height: {{ $itemsSpacerMm }}mm; }
 
         /* --- Closing section: totals + amount in words + issuer line, one
                compact block that never drifts apart (kept together even
@@ -193,15 +203,18 @@
         .words-intro { font-weight: bold; font-size: 9px; }
         .words-value { margin-top: 6px; font-style: italic; font-weight: bold; font-size: 12px; text-transform: uppercase; }
         .issued-meta { margin: 12px 0 0; color: #888; font-size: 8px; text-align: left; }
+        @include('documents.partials.commercial-style', ['accent' => $accent, 'ink' => $ink])
     </style>
 </head>
 <body>
 
 @if ($watermark)
     <div class="watermark-text">{{ $watermark }}</div>
-@elseif ($seller['logo'] ?? null)
+@elseif (($seller['show_invoice_watermark'] ?? false) && ($seller['logo'] ?? null))
     <div class="watermark-logo"><img src="{{ $seller['logo'] }}" alt=""></div>
 @endif
+
+@include('documents.partials.stamp', ['stamp' => $stamp ?? null, 'repeatEveryPage' => true])
 
 {{-- Running identity strip (every page, incl. page 1, sitting in the top margin) --}}
 <div class="runhead">
@@ -228,28 +241,36 @@
 {{-- ===== Page 1 masthead ===== --}}
 <table class="masthead">
     <tr>
-        <td style="width: 60%; padding-right: 16px;">
+        <td style="width: 55%; padding-right: 28px;">
             @if ($seller['logo'] ?? null)
                 <img class="logo" src="{{ $seller['logo'] }}" alt="">
             @else
-                <div style="font-size: 15px; font-weight: bold; text-transform: uppercase; margin-bottom: 8px;">{{ $seller['legal_name'] }}</div>
+                <div class="company-name">{{ $seller['legal_name'] }}</div>
             @endif
             <div class="seller">
-                @if ($seller['address'] ?? null){{ $seller['address'] }}<br>@endif
-                @if ($seller['tax_identifier'] ?? null)ICE : {{ $seller['tax_identifier'] }}<br>@endif
-                @if ($seller['phone'] ?? null)Tél : {{ $seller['phone'] }}<br>@endif
-                FAX : {{ $seller['fax'] ?? '' }}<br>
-                @if ($seller['email'] ?? null)Mail : {{ $seller['email'] }}@endif
+                @if (($seller['trade_name'] ?? null) && ($seller['legal_name'] ?? null))<div class="seller-row"><span class="info-value">{{ $seller['legal_name'] }}</span></div>@endif
+                @if ($seller['address'] ?? null)<div class="seller-row"><span class="info-label">Adresse :</span> <span class="info-value">{{ $seller['address'] }}</span></div>@endif
+                @if ($seller['tax_identifier'] ?? null)<div class="seller-row"><span class="info-label">ICE :</span> <span class="info-value">{{ $seller['tax_identifier'] }}</span></div>@endif
+                @if ($seller['phone'] ?? null)<div class="seller-row"><span class="info-label">Tél :</span> <span class="info-value">{{ $seller['phone'] }}</span></div>@endif
+                @if ($seller['email'] ?? null)<div class="seller-row"><span class="info-label">Email :</span> <span class="info-value">{{ $seller['email'] }}</span></div>@endif
+                @if ($seller['registration_number'] ?? null)<div class="seller-row"><span class="info-label">RC :</span> <span class="info-value">{{ $seller['registration_number'] }}</span></div>@endif
+                @if ($seller['patente_number'] ?? null)<div class="seller-row"><span class="info-label">TP :</span> <span class="info-value">{{ $seller['patente_number'] }}</span></div>@endif
+                @if ($displayWebsite !== '')<div class="seller-row"><span class="info-label">Web :</span> <span class="info-value">{{ $displayWebsite }}</span></div>@endif
+                @foreach (($seller['additional_identifiers'] ?? []) as $identifier)
+                    <div class="seller-row"><span class="info-label">{{ $identifier['label'] }} :</span> <span class="info-value">{{ $identifier['value'] }}</span></div>
+                @endforeach
             </div>
         </td>
-        <td style="width: 40%;">
+        <td style="width: 45%; padding-left: 12px; padding-top: 68px;">
             <div class="dest">
                 <div class="lbl">{{ $t('recipient') }}</div>
                 <div class="name">{{ $buyerLabel }}</div>
-                @if ($buyer['company'] && $buyer['name'])<div>{{ $buyer['name'] }}</div>@endif
-                <div>Adresse : {{ $buyer['address'] ?? '' }}</div>
-                <div>Tél : {{ $buyer['phone'] ?? '' }}</div>
-                <div>ICE : {{ $buyer['tax_identifier'] ?? '' }}</div>
+                <div class="dest-details">
+                @if ($buyer['company'] && $buyer['name'])<div class="dest-row"><span class="info-value">{{ $buyer['name'] }}</span></div>@endif
+                <div class="dest-row"><span class="info-label">Adresse :</span> <span class="info-value">{{ $buyer['address'] ?? '' }}</span></div>
+                <div class="dest-row"><span class="info-label">Tél :</span> <span class="info-value">{{ $buyer['phone'] ?? '' }}</span></div>
+                <div class="dest-row"><span class="info-label">ICE :</span> <span class="info-value">{{ $buyer['tax_identifier'] ?? '' }}</span></div>
+                </div>
             </div>
         </td>
     </tr>
@@ -312,15 +333,26 @@
                 <td class="num">{{ $line['total'] }}</td>
             </tr>
         @endforeach
+        @for ($i = 0; $i < $emptyRows; $i++)
+            <tr class="empty-ruled-row" aria-hidden="true">
+                <td>&nbsp;</td>
+                <td>&nbsp;</td>
+                <td class="ctr">&nbsp;</td>
+                <td class="ctr">&nbsp;</td>
+                <td class="num">&nbsp;</td>
+                <td class="num">&nbsp;</td>
+                @if ($showRemise)
+                    <td class="num">&nbsp;</td>
+                @endif
+                <td class="num">&nbsp;</td>
+            </tr>
+        @endfor
     </tbody>
 </table>
 
 @if ($document['notes'])
     <div class="notes"><strong>{{ $t('notes') }}</strong><br>{{ $document['notes'] }}</div>
 @endif
-
-{{-- ===== All flexible whitespace lives here — see $itemsSpacerMm above ===== --}}
-<div class="items-spacer"></div>
 
 {{-- ===== Closing section: totals + amount in words + issuer line, kept together ===== --}}
 <div class="closing">
@@ -331,7 +363,6 @@
                 <table class="totals">
                     @if ($has_discount)
                         <tr><td class="lbl">{{ $t('subtotal') }}</td><td class="val">{{ $totals['subtotal'] }} {{ $currency }}</td></tr>
-                        <tr><td class="lbl">{{ $t('discount') }}</td><td class="val">- {{ $totals['discount'] }} {{ $currency }}</td></tr>
                         <tr class="strong"><td class="lbl">{{ $t('total_ht') }}</td><td class="val">{{ $totals['net'] }} {{ $currency }}</td></tr>
                     @else
                         <tr><td class="lbl">{{ $t('total_ht') }}</td><td class="val">{{ $totals['subtotal'] }} {{ $currency }}</td></tr>
@@ -339,6 +370,9 @@
                     @foreach ($tax_lines as $taxLine)
                         <tr><td class="lbl">{{ $taxLine['label'] }} ({{ $taxLine['rate'] }})</td><td class="val">{{ $taxLine['amount'] }} {{ $currency }}</td></tr>
                     @endforeach
+                    @if ($has_discount)
+                        <tr><td class="lbl">{{ $t('discount') }}</td><td class="val">- {{ $totals['discount'] }} {{ $currency }}</td></tr>
+                    @endif
                     <tr class="grand"><td class="lbl">{{ $t('total_ttc') }}</td><td class="val">{{ $totals['total'] }} {{ $currency }}</td></tr>
                 </table>
             </td>
@@ -351,12 +385,7 @@
         <div class="words-value">{{ $amount_in_words }}</div>
     </div>
 
-    @if ($metadata['issued_at'])
-        <p class="issued-meta">{{ $t('issued_by') }} {{ $metadata['issued_by'] ?: '—' }} {{ $metadata['issued_at'] }}</p>
-    @endif
 </div>
-
-@include('documents.partials.stamp', ['stamp' => $stamp ?? null])
 
 </body>
 </html>

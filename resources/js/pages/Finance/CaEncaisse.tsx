@@ -17,6 +17,7 @@ type CaEncaisseRow = {
     reference: string;
     reference_type: 'invoice' | 'order';
     invoice_id: number | null;
+    nature_label: 'Avance' | 'Règlement facture';
     sales_order_id: number;
     order_number: string;
     lines: SoldLine[];
@@ -45,7 +46,6 @@ type Props = {
 };
 
 const STATUS_STYLES: Record<string, string> = {
-    'Avance sur commande': 'bg-sage text-ink',
     'Paiement comptant': 'bg-success-soft text-success',
     'Paiement complété': 'bg-success-soft text-success',
     'Paiement partiel': 'bg-warning-soft text-warning',
@@ -92,6 +92,7 @@ function groupRows(rows: CaEncaisseRow[]): CaEncaisseGroup[] {
                 reference: row.reference,
                 reference_type: row.reference_type,
                 invoice_id: row.invoice_id,
+                nature_label: row.nature_label,
                 sales_order_id: row.sales_order_id,
                 order_number: row.order_number,
                 lines: row.lines,
@@ -161,11 +162,12 @@ export default function FinanceCaEncaisse({ organization, period, periodLabel, s
                                     <th className="px-4 py-2.5">Date de vente</th>
                                     <th className="px-4 py-2.5">Date de paiement</th>
                                     <th className="px-4 py-2.5">N° facture / commande</th>
+                                    <th className="px-4 py-2.5">Nature</th>
                                     <th className="px-4 py-2.5">Désignation</th>
                                     <th className="px-4 py-2.5">Client</th>
                                     <th className="px-4 py-2.5">Mode d’encaissement</th>
                                     <th className="px-4 py-2.5 text-right">Montant encaissé</th>
-                                    <th className="px-4 py-2.5">Statut</th>
+                                    <th className="px-4 py-2.5">Statut paiement</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -195,6 +197,11 @@ export default function FinanceCaEncaisse({ organization, period, periodLabel, s
                                             ) : (
                                                 <Link href={`/sales/orders/${group.sales_order_id}`}>{group.reference}</Link>
                                             )}
+                                        </td>
+                                        <td className="px-4 py-2.5">
+                                            <span className="inline-flex rounded-full bg-raised px-2.5 py-1 text-[11px] font-semibold text-ink-muted">
+                                                {group.nature_label}
+                                            </span>
                                         </td>
                                         <td className="px-4 py-2.5">
                                             <SoldLines lines={group.lines} />
@@ -266,6 +273,10 @@ export default function FinanceCaEncaisse({ organization, period, periodLabel, s
                                                 <Link href={`/sales/orders/${group.sales_order_id}`}>{group.reference}</Link>
                                             )}
                                         </dd>
+                                    </div>
+                                    <div className="min-w-0">
+                                        <dt className="text-ink-faint">Nature</dt>
+                                        <dd className="truncate text-ink-muted">{group.nature_label}</dd>
                                     </div>
                                     <div className="min-w-0">
                                         <dt className="text-ink-faint">Date de vente</dt>

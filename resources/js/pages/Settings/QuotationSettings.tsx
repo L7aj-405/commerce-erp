@@ -14,17 +14,20 @@ type Props = {
         accent_color?: string | null;
     };
     resolved: { default_validity_days: number };
+    quotationNumbering: { year: number; next_number: number; max_allocated_number: number };
     defaultAccentColor: string;
     canUpdate: boolean;
 };
 
-export default function QuotationSettings({ settings, resolved, defaultAccentColor, canUpdate }: Props) {
+export default function QuotationSettings({ settings, resolved, quotationNumbering, defaultAccentColor, canUpdate }: Props) {
     const form = useForm({
         default_validity_days: settings.default_validity_days ?? resolved.default_validity_days,
         default_terms: settings.default_terms ?? '',
         default_notes: settings.default_notes ?? '',
         footer_text: settings.footer_text ?? '',
         accent_color: settings.accent_color ?? '',
+        quotation_numbering_year: quotationNumbering.year,
+        quotation_next_number: quotationNumbering.next_number,
     });
 
     const submit = (e: FormEvent) => {
@@ -77,6 +80,41 @@ export default function QuotationSettings({ settings, resolved, defaultAccentCol
                             <span className="h-8 w-8 shrink-0 rounded-field border border-line" style={{ background: form.data.accent_color || defaultAccentColor }} />
                         </div>
                     </Field>
+                    <section className="rounded-card border border-line bg-raised p-4">
+                        <h2 className="text-sm font-semibold text-ink">Numérotation des devis</h2>
+                        <p className="mt-1 text-xs text-ink-muted">Configure le prochain numéro officiel à allouer lors de l’émission d’un devis.</p>
+                        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                            <Field label="Année">
+                                <input
+                                    type="number"
+                                    min={2000}
+                                    max={2100}
+                                    value={form.data.quotation_numbering_year}
+                                    onChange={(e) => form.setData('quotation_numbering_year', Number(e.target.value))}
+                                    className={input}
+                                    required
+                                />
+                            </Field>
+                            <Field label="Prochain numéro">
+                                <input
+                                    type="number"
+                                    min={1}
+                                    value={form.data.quotation_next_number}
+                                    onChange={(e) => form.setData('quotation_next_number', Number(e.target.value))}
+                                    className={input}
+                                    required
+                                />
+                            </Field>
+                        </div>
+                        <p className="mt-2 text-xs text-ink-muted">
+                            Indiquez le prochain numéro de devis à utiliser pour cette année. Exemple : si le dernier devis existant est DEV-20/2026, saisissez 21.
+                        </p>
+                        {quotationNumbering.max_allocated_number > 0 && (
+                            <p className="mt-1 text-xs text-ink-faint">
+                                Dernier numéro déjà attribué par l’ERP pour {quotationNumbering.year} : DEV-{quotationNumbering.max_allocated_number}/{quotationNumbering.year}.
+                            </p>
+                        )}
+                    </section>
                     {Object.values(form.errors).map((err) => err && <p key={err} className="text-sm text-danger">{err}</p>)}
                     <Button type="submit" loading={form.processing} loadingText="Enregistrement…">
                         Enregistrer

@@ -42,4 +42,17 @@ class DocumentProfileTest extends DocumentTestCase
         $this->actingAs($viewer)->put(route('document-profile.update'), ['legal_name' => 'Forged Seller'])->assertForbidden();
         $this->assertNotSame('Forged Seller', data_get($organization->fresh()->settings, 'document_profile.legal_name'));
     }
+
+    public function test_document_profile_website_accepts_a_bare_domain_and_stores_a_canonical_url(): void
+    {
+        [$owner, $organization] = $this->documentFixture();
+
+        $this->actingAs($owner)->put(route('document-profile.update'), [
+            'legal_name' => 'AV Professional',
+            'website' => 'avprofessional-store.ma',
+            'additional_identifiers' => [],
+        ])->assertRedirect();
+
+        $this->assertSame('https://avprofessional-store.ma', data_get($organization->fresh()->settings, 'document_profile.website'));
+    }
 }

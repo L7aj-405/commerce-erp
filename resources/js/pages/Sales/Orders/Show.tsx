@@ -35,6 +35,7 @@ type Line = {
     quantity: string;
     unit_price_excl_tax: string;
     discount_amount: string;
+    discount_amount_ttc?: string;
     tax_rate: string;
     tax_amount: string;
     total_incl_tax: string;
@@ -67,6 +68,7 @@ type Order = {
     payment_status: string;
     subtotal_excl_tax: string;
     discount_total: string;
+    discount_total_ttc?: string;
     tax_total: string;
     total_incl_tax: string;
     pos_shipping_fee: string;
@@ -246,7 +248,7 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
     const canCreateDeliveryNoteForOrder = order.status === 'confirmed' && order.fulfillment_status === 'unfulfilled' && !activeDeliveryNote && can.createDeliveryNote;
     const isCompany = (order.customer?.type ?? 'individual') === 'company' || !!order.customer_company;
     const net = (Number(order.subtotal_excl_tax) - Number(order.discount_total)).toFixed(4);
-    const hasDiscount = Number(order.discount_total) > 0;
+    const hasDiscount = Number(order.discount_total_ttc ?? order.discount_total) > 0;
     const hasShipping = Number(order.pos_shipping_fee) > 0;
 
     const cancel = (event: FormEvent) => {
@@ -506,11 +508,11 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
                     <h2 className="text-sm font-semibold text-ink">Récapitulatif</h2>
                     <dl className="mt-3 space-y-1.5 text-sm">
                         <Row term="Sous-total HT" value={formatMoney(order.subtotal_excl_tax, order.currency_code)} />
-                        {hasDiscount && (
-                            <Row term="Remise" value={`- ${formatMoney(order.discount_total, order.currency_code)}`} />
-                        )}
                         {hasDiscount && <Row term="Total HT" value={formatMoney(net, order.currency_code)} />}
                         <Row term="TVA" value={formatMoney(order.tax_total, order.currency_code)} />
+                        {hasDiscount && (
+                            <Row term="Remise TTC" value={`- ${formatMoney(order.discount_total_ttc ?? order.discount_total, order.currency_code)}`} />
+                        )}
                         {hasShipping && (
                             <Row term="Livraison" value={formatMoney(order.pos_shipping_fee, order.currency_code)} />
                         )}
@@ -542,7 +544,7 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
                             <th className="px-4 py-3 font-medium">Produit</th>
                             <th className="px-4 py-3 text-right font-medium">Qté</th>
                             <th className="px-4 py-3 text-right font-medium">PU HT</th>
-                            <th className="px-4 py-3 text-right font-medium">Remise</th>
+                            <th className="px-4 py-3 text-right font-medium">Remise TTC</th>
                             <th className="px-4 py-3 text-right font-medium">TVA</th>
                             <th className="px-4 py-3 text-right font-medium">Total TTC</th>
                         </tr>
@@ -573,8 +575,8 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
                                     {formatMoney(line.unit_price_excl_tax, order.currency_code)}
                                 </td>
                                 <td className="px-4 py-3 text-right tabular-nums">
-                                    {Number(line.discount_amount) > 0
-                                        ? `- ${formatMoney(line.discount_amount, order.currency_code)}`
+                                    {Number(line.discount_amount_ttc ?? line.discount_amount) > 0
+                                        ? `- ${formatMoney(line.discount_amount_ttc ?? line.discount_amount, order.currency_code)}`
                                         : '—'}
                                 </td>
                                 <td className="px-4 py-3 text-right tabular-nums">{formatQuantity(line.tax_rate)}%</td>

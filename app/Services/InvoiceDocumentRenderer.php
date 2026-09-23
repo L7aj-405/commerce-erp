@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Enums\InvoiceStatus;
 use App\Models\Invoice;
+use App\Support\CommercialDiscountDisplay;
 use App\Support\Decimal;
 use App\Support\FrenchNumberToWords;
 
@@ -21,8 +22,8 @@ class InvoiceDocumentRenderer
     {
         $invoice->loadMissing(['lines', 'salesOrder:id,order_number', 'issuedBy:id,name']);
 
-        $hasDiscount = Decimal::compare($invoice->discount_total, '0') !== 0
-            || $invoice->lines->contains(fn ($line) => Decimal::compare($line->discount_amount, '0') !== 0);
+        $discountTotalInclTax = CommercialDiscountDisplay::linesTotalInclTax($invoice->lines);
+        $hasDiscount = Decimal::compare($discountTotalInclTax, '0') !== 0;
 
         return [
             'kind' => 'invoice',
@@ -62,15 +63,15 @@ class InvoiceDocumentRenderer
                 'quantity' => $this->format->decimal($line->quantity),
                 'unit_price_ht' => $this->format->money($line->unit_price_excl_tax),
                 'line_total_ht' => $this->format->money($line->taxable_amount),
-                'discount' => $this->format->money($line->discount_amount),
-                'has_discount' => Decimal::compare($line->discount_amount, '0') !== 0,
+                'discount' => $this->format->money(CommercialDiscountDisplay::lineAmountInclTax($line)),
+                'has_discount' => Decimal::compare(CommercialDiscountDisplay::lineAmountInclTax($line), '0') !== 0,
                 'tax_rate' => $this->format->decimal($line->tax_rate).'%',
                 'total' => $this->format->money($line->total_incl_tax),
             ])->all(),
             'tax_lines' => $this->taxLines($invoice),
             'totals' => [
                 'subtotal' => $this->format->money($invoice->subtotal_excl_tax),
-                'discount' => $this->format->money($invoice->discount_total),
+                'discount' => $this->format->money($discountTotalInclTax),
                 'net' => $this->format->money(Decimal::subtract($invoice->subtotal_excl_tax, $invoice->discount_total)),
                 'tax' => $this->format->money($invoice->tax_total),
                 'total' => $this->format->money($invoice->total_incl_tax),

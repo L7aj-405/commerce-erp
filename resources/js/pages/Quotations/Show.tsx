@@ -33,6 +33,7 @@ type Quotation = {
     root_quotation: { id: number; quotation_number: string | null } | null;
     subtotal_excl_tax: string;
     discount_total: string;
+    discount_total_ttc?: string;
     tax_total: string;
     total_incl_tax: string;
     currency_code: string;
@@ -278,7 +279,7 @@ export default function QuotationShow({
                                             <th className="text-right">Qté</th>
                                             <th className="text-right">PU HT</th>
                                             <th className="text-right">PT HT</th>
-                                            {hasDiscount && <th className="text-right">Remise</th>}
+                                            {hasDiscount && <th className="text-right">Remise TTC</th>}
                                             <th className="text-right">Total TTC</th>
                                         </tr>
                                     </thead>
@@ -296,7 +297,7 @@ export default function QuotationShow({
                                                 <td className="text-right tabular-nums">{formatMoney(line.taxable_amount, currency)}</td>
                                                 {hasDiscount && (
                                                     <td className="text-right tabular-nums">
-                                                        {Number(line.discount_amount) > 0 ? formatMoney(line.discount_amount, currency) : '—'}
+                                                        {Number(line.discount_amount_ttc ?? line.discount_amount) > 0 ? formatMoney(line.discount_amount_ttc ?? line.discount_amount, currency) : '—'}
                                                     </td>
                                                 )}
                                                 <td className="text-right font-medium tabular-nums text-ink">{formatMoney(line.total_incl_tax, currency)}</td>
@@ -311,13 +312,13 @@ export default function QuotationShow({
                             {hasDiscount ? (
                                 <>
                                     <SummaryRow term="Sous-total HT" value={formatMoney(quotation.subtotal_excl_tax, currency)} />
-                                    <SummaryRow term="Remise" value={`- ${formatMoney(quotation.discount_total, currency)}`} />
                                     <SummaryRow term="Total HT" value={formatMoney(net, currency)} />
                                 </>
                             ) : (
                                 <SummaryRow term="Total HT" value={formatMoney(quotation.subtotal_excl_tax, currency)} />
                             )}
                             <SummaryRow term="TVA" value={formatMoney(quotation.tax_total, currency)} />
+                            {hasDiscount && <SummaryRow term="Remise TTC" value={`- ${formatMoney(quotation.discount_total_ttc ?? quotation.discount_total, currency)}`} />}
                             <div className="flex justify-between border-t-2 pt-1 text-base font-bold" style={{ borderColor: accentColor, color: accentColor }}>
                                 <span>TOTAL TTC</span>
                                 <span className="tabular-nums">{formatMoney(quotation.total_incl_tax, currency)}</span>

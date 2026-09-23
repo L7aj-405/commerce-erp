@@ -21,6 +21,7 @@ type Order = {
     status: string;
     subtotal_excl_tax: string;
     discount_total: string;
+    discount_total_ttc?: string;
     tax_total: string;
     total_incl_tax: string;
     lines: OLine[];
@@ -51,7 +52,7 @@ export default function EditOrder({ order, taxRates, lineSearchUrl, customerSear
     const confirmation = useForm({});
     const confirmationErrors = Object.values(confirmation.errors as Record<string, string>);
     const net = (Number(order.subtotal_excl_tax) - Number(order.discount_total)).toFixed(4);
-    const hasDiscount = Number(order.discount_total) > 0;
+    const hasDiscount = Number(order.discount_total_ttc ?? order.discount_total) > 0;
 
     const saveHeader = (e: FormEvent) => {
         e.preventDefault();
@@ -187,8 +188,8 @@ export default function EditOrder({ order, taxRates, lineSearchUrl, customerSear
             {/* TOTALS */}
             <div className="ml-auto max-w-xs space-y-1 text-sm">
                 <Row term="Total HT" value={formatMoney(hasDiscount ? net : order.subtotal_excl_tax, currency)} />
-                {hasDiscount && <Row term="Remise" value={`- ${formatMoney(order.discount_total, currency)}`} />}
                 <Row term="TVA" value={formatMoney(order.tax_total, currency)} />
+                {hasDiscount && <Row term="Remise TTC" value={`- ${formatMoney(order.discount_total_ttc ?? order.discount_total, currency)}`} />}
                 <div className="flex justify-between border-t-2 border-line pt-1 text-base font-bold text-ink">
                     <span>TOTAL TTC</span>
                     <span className="tabular-nums">{formatMoney(order.total_incl_tax, currency)}</span>
@@ -232,7 +233,7 @@ function ReadOnlyLines({ lines, currency }: { lines: OLine[]; currency: string }
                         <th>Article</th>
                         <th className="text-right">Qté</th>
                         <th className="text-right">PU HT</th>
-                        <th className="text-right">Remise</th>
+                        <th className="text-right">Remise TTC</th>
                         <th className="text-right">TVA</th>
                         <th className="text-right">Total TTC</th>
                     </tr>
@@ -246,7 +247,7 @@ function ReadOnlyLines({ lines, currency }: { lines: OLine[]; currency: string }
                             </td>
                             <td className="text-right tabular-nums">{line.quantity.replace(/\.?0+$/, '')}</td>
                             <td className="text-right tabular-nums">{formatMoney(line.unit_price_excl_tax, currency)}</td>
-                            <td className="text-right tabular-nums">{Number(line.discount_amount) > 0 ? `- ${formatMoney(line.discount_amount, currency)}` : '—'}</td>
+                            <td className="text-right tabular-nums">{Number(line.discount_amount_ttc ?? line.discount_amount) > 0 ? `- ${formatMoney(line.discount_amount_ttc ?? line.discount_amount, currency)}` : '—'}</td>
                             <td className="text-right tabular-nums text-ink-muted">
                                 {line.tax_unresolved ? 'À définir' : `${Number(line.tax_rate)} %`}
                             </td>

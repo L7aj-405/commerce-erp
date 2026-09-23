@@ -17,9 +17,7 @@ class StoreInvoiceCorrectionLineRequest extends FormRequest
     {
         return [
             'product_variant_id' => ['required', 'integer'],
-            // A positive decimal string, up to 4 fractional digits — DB precision
-            // is preserved; the calculator rejects zero / negative.
-            'quantity' => ['required', 'string', 'regex:/^\d+(\.\d{1,4})?$/'],
+            'quantity' => ['required', 'string', 'regex:/^[1-9]\d*(?:\.0{1,4})?$/'],
             'unit_price_excl_tax' => ['nullable', 'string', 'regex:/^\d+(\.\d{1,4})?$/'],
             'discount_type' => ['required', Rule::enum(SalesOrderDiscountType::class)],
             'discount_value' => ['nullable', 'string', 'regex:/^\d+(\.\d{1,4})?$/', 'required_unless:discount_type,none'],

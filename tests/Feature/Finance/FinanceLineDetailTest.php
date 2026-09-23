@@ -197,9 +197,11 @@ class FinanceLineDetailTest extends DocumentTestCase
 
         $row = app(FinanceCaEncaisseService::class)->rows($organization, FinancePeriod::fromMonth('2026-09'), null)->items()[0];
 
-        $this->assertSame('Avance sur commande', $row['status_label']);
+        $this->assertSame('Avance', $row['nature_label']);
+        $this->assertSame('Paiement complété', $row['status_label']);
         $this->assertNull($row['invoice_id']);
         $this->assertSame('order', $row['reference_type']);
+        $this->assertSame('Avance · '.$order->order_number, $row['reference']);
         $this->assertCount(6, $row['lines'], 'order lines must be shown even with no invoice yet');
     }
 

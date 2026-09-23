@@ -48,6 +48,7 @@ class FinanceCaEncaisseServiceTest extends DocumentTestCase
 
         $row = $caEncaisse->rows($organization, $august, null)->items()[0];
         $this->assertSame('Paiement comptant', $row['status_label']);
+        $this->assertSame('Règlement facture', $row['nature_label']);
         $this->assertSame($invoice->invoice_number, $row['reference']);
         $this->assertSame('invoice', $row['reference_type']);
     }
@@ -83,21 +84,48 @@ class FinanceCaEncaisseServiceTest extends DocumentTestCase
         $organization = $this->createOrganization($owner);
         $store = $this->createStore($organization, $owner);
         $order = $this->createDraftOrder($owner, $organization, $store, null, ['sale_date' => '2026-09-01']);
-        $this->addCustomLine($owner, $order, ['unit_price_excl_tax' => '2000.0000']);
+        $this->addCustomLine($owner, $order, ['unit_price_excl_tax' => '10000.0000']);
         $order = app(ConfirmSalesOrderAction::class)->execute($owner, $order)->fresh();
         $account = $this->createFinancialAccount($organization);
-        $this->recordPayment($owner, $order, $account, '2000.0000', ['payment_date' => '2026-09-03']);
+        $this->recordPayment($owner, $order, $account, '3000.0000', ['payment_date' => '2026-09-03']);
         // Deliberately: no invoice at all.
 
         $caEncaisse = app(FinanceCaEncaisseService::class);
         $period = FinancePeriod::fromMonth('2026-09');
 
-        $this->assertSame(0, Decimal::compare($caEncaisse->total($organization, $period, null), '2000.0000'));
+        $this->assertSame(0, Decimal::compare($caEncaisse->total($organization, $period, null), '3000.0000'));
         $row = $caEncaisse->rows($organization, $period, null)->items()[0];
-        $this->assertSame('Avance sur commande', $row['status_label']);
+        $this->assertSame('Avance', $row['nature_label']);
+        $this->assertSame('Paiement partiel', $row['status_label']);
         $this->assertSame('order', $row['reference_type']);
-        $this->assertSame($order->order_number, $row['reference']);
+        $this->assertSame('Avance · '.$order->order_number, $row['reference']);
         $this->assertNull($row['invoice_id']);
+    }
+
+    public function test_later_invoice_does_not_rewrite_prior_month_advance_reference(): void
+    {
+        [$owner, $organization, , $order] = $this->documentFixture(total: '10000.0000');
+        $account = $this->createFinancialAccount($organization);
+        $this->recordPayment($owner, $order, $account, '3000.0000', ['payment_date' => '2026-09-15']);
+        $invoice = $this->issueInvoice($owner, $this->createInvoice($owner, $order, ['invoice_date' => '2026-10-01']));
+        $this->recordPayment($owner, $order, $account, '7000.0000', ['payment_date' => '2026-10-05']);
+
+        $caEncaisse = app(FinanceCaEncaisseService::class);
+
+        $septemberRow = $caEncaisse->rows($organization, FinancePeriod::fromMonth('2026-09'), null)->items()[0];
+        $octoberRow = $caEncaisse->rows($organization, FinancePeriod::fromMonth('2026-10'), null)->items()[0];
+
+        $this->assertSame('Avance', $septemberRow['nature_label']);
+        $this->assertSame('Avance · '.$order->order_number, $septemberRow['reference']);
+        $this->assertSame('order', $septemberRow['reference_type']);
+        $this->assertNull($septemberRow['invoice_id']);
+        $this->assertSame('Paiement partiel', $septemberRow['status_label']);
+
+        $this->assertSame('Règlement facture', $octoberRow['nature_label']);
+        $this->assertSame($invoice->invoice_number, $octoberRow['reference']);
+        $this->assertSame('invoice', $octoberRow['reference_type']);
+        $this->assertSame($invoice->id, $octoberRow['invoice_id']);
+        $this->assertSame('Solde / Reliquat', $octoberRow['status_label']);
     }
 
     public function test_reversed_payment_excluded_from_ca_encaisse(): void

@@ -46,6 +46,7 @@ class DocumentSellerProfile
             'footer_text' => $this->value($organizationProfile, 'footer_text'),
             'accent_color' => $this->accentColor($organizationProfile),
             'logo' => $this->embedLogo($organizationProfile),
+            'show_invoice_watermark' => (bool) ($organizationProfile['show_invoice_watermark'] ?? false),
             'additional_identifiers' => collect($organizationProfile['additional_identifiers'] ?? [])->map(fn ($item) => [
                 'label' => trim((string) ($item['label'] ?? '')),
                 'value' => trim((string) ($item['value'] ?? '')),

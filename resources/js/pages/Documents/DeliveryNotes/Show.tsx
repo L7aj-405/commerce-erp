@@ -83,7 +83,7 @@ export default function DeliveryNoteShow({ deliveryNote: note, can }: Props) {
             </section>
 
             <section className="mb-6 flex flex-wrap items-end gap-3 rounded-card border border-line bg-surface p-5">
-                <a href={`/delivery-notes/${note.id}/print`} target="_blank" rel="noreferrer" className="inline-flex min-h-10 items-center justify-center rounded-field border border-line-strong bg-surface px-4 text-sm text-ink transition-soft hover:bg-raised">
+                <a href={note.status === 'draft' ? `/delivery-notes/${note.id}/print` : `/delivery-notes/${note.id}/pdf`} target="_blank" rel="noreferrer" className="inline-flex min-h-10 items-center justify-center rounded-field border border-line-strong bg-surface px-4 text-sm text-ink transition-soft hover:bg-raised">
                     {note.status === 'draft' ? 'Aperçu' : 'Voir PDF'}
                 </a>
                 {note.status === 'issued' && (

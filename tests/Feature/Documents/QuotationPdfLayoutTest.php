@@ -46,20 +46,18 @@ class QuotationPdfLayoutTest extends QuotationTestCase
     }
 
     /**
-     * Same regression pin as InvoicePdfPaginationTest — the flexible gap
-     * above the totals must be ADAPTIVE: large for a 1-line Devis (settles
-     * the closing block near the footer), small for a 12-line one (which
-     * must still fit on one page rather than being pushed to a second page
-     * by an oversized flat spacer).
+     * The flexible gap above the totals must be ADAPTIVE, but modest. A
+     * too-large fake spacer strands the totals on page 2 for very short Devis.
      */
-    public function test_the_flexible_gap_above_totals_shrinks_as_line_count_grows(): void
+    public function test_the_flexible_gap_above_totals_is_modest_and_shrinks_as_line_count_grows(): void
     {
         [$owner, $organization, $store, $variant] = $this->base();
         $quotation = $this->createQuotation($owner, $organization, $store);
         $this->addCatalogQuotationLine($owner, $quotation, $variant);
         $issued = $this->issueQuotation($owner, $quotation);
         $shortSpacerMm = $this->itemsSpacerMm(app(QuotationDocumentRenderer::class)->html($issued));
-        $this->assertGreaterThanOrEqual(60.0, $shortSpacerMm);
+        $this->assertGreaterThan(20.0, $shortSpacerMm);
+        $this->assertLessThanOrEqual(42.0, $shortSpacerMm);
 
         $longerQuotation = $this->createQuotation($owner, $organization, $store);
         for ($i = 1; $i <= 12; $i++) {
@@ -69,7 +67,7 @@ class QuotationPdfLayoutTest extends QuotationTestCase
         $this->assertSame(1, $this->pageCount($longerIssued), '12 real item rows must still fit on one page.');
         $longerSpacerMm = $this->itemsSpacerMm(app(QuotationDocumentRenderer::class)->html($longerIssued));
         $this->assertLessThan($shortSpacerMm, $longerSpacerMm);
-        $this->assertLessThanOrEqual(20.0, $longerSpacerMm);
+        $this->assertLessThanOrEqual(5.0, $longerSpacerMm);
     }
 
     private function itemsSpacerMm(string $html): float
@@ -92,6 +90,57 @@ class QuotationPdfLayoutTest extends QuotationTestCase
         $this->assertTrue(strpos($html, 'class="closing"') > strpos($html, 'class="items"'));
         $this->assertStringContainsString('Émise par', $html);
         $this->assertMatchesRegularExpression('/Émise par .+ le \d{2}\/\d{2}\/\d{4} à \d{2}:\d{2}/', $html);
+    }
+
+    public function test_two_or_three_line_quotation_keeps_totals_on_the_first_page_when_they_fit(): void
+    {
+        [$owner, $organization, $store] = $this->base();
+        $quotation = $this->createQuotation($owner, $organization, $store);
+
+        for ($i = 1; $i <= 3; $i++) {
+            $this->addNonStockQuotationLine($owner, $quotation, ['name' => "Article court {$i}"]);
+        }
+
+        $issued = $this->issueQuotation($owner, $quotation);
+
+        $this->assertSame(1, $this->pageCount($issued));
+    }
+
+    public function test_wrapped_descriptions_paginate_naturally_and_keep_a_single_closing_block(): void
+    {
+        [$owner, $organization, $store] = $this->base();
+        $quotation = $this->createQuotation($owner, $organization, $store);
+
+        for ($i = 1; $i <= 24; $i++) {
+            $this->addNonStockQuotationLine($owner, $quotation, [
+                'name' => "Article {$i} — description longue pour vérifier que Dompdf laisse les lignes enveloppées pousser naturellement les pages sans isoler les totaux.",
+            ]);
+        }
+
+        $issued = $this->issueQuotation($owner, $quotation);
+        $html = app(QuotationDocumentRenderer::class)->html($issued);
+
+        $this->assertGreaterThanOrEqual(2, $this->pageCount($issued));
+        $this->assertSame(1, substr_count($html, 'class="closing"'));
+        $this->assertTrue(strpos($html, 'class="closing"') > strpos($html, 'class="items"'));
+    }
+
+    public function test_clean_website_display_removes_protocol_and_trailing_slash(): void
+    {
+        [$owner, $organization, $store, $variant] = $this->base();
+        $organization->settings = array_replace_recursive($organization->settings ?? [], [
+            'document_profile' => ['website' => 'https://www.avprofessional-store.ma/'],
+        ]);
+        $organization->save();
+
+        $quotation = $this->createQuotation($owner, $organization, $store);
+        $this->addCatalogQuotationLine($owner, $quotation, $variant);
+        $issued = $this->issueQuotation($owner, $quotation);
+
+        $html = app(QuotationDocumentRenderer::class)->html($issued);
+
+        $this->assertStringContainsString('Web :</span> <span class="info-value">www.avprofessional-store.ma</span>', $html);
+        $this->assertStringNotContainsString('https://www.avprofessional-store.ma/', $html);
     }
 
     public function test_unstamped_quotation_renders_with_no_stamp_markup(): void

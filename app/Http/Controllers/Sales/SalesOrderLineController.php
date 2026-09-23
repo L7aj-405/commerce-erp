@@ -57,7 +57,7 @@ class SalesOrderLineController extends Controller
             'warehouse_id' => ['nullable', 'integer'],
             'description' => ['nullable', 'required_if:line_type,custom', 'string', 'max:255'],
             'reference' => ['nullable', 'string', 'max:255'], 'unit_label' => ['nullable', 'string', 'max:255'],
-            'quantity' => ['required', 'decimal:0,4', 'gt:0'],
+            'quantity' => ['required', 'regex:/^[1-9]\d*(?:\.0{1,4})?$/'],
             'price_input_mode' => ['nullable', 'in:ht,ttc'],
             'unit_price' => ['nullable', 'decimal:0,4', 'gte:0'],
             'unit_price_excl_tax' => ['nullable', 'decimal:0,4', 'gte:0'],

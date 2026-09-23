@@ -15,6 +15,8 @@ use App\Models\Organization;
 use App\Models\SalesOrder;
 use App\Models\Store;
 use App\Models\User;
+use App\Services\SalesOrderPaymentCalculator;
+use App\Support\Decimal;
 
 abstract class DocumentTestCase extends PaymentTestCase
 {
@@ -45,6 +47,12 @@ abstract class DocumentTestCase extends PaymentTestCase
 
     protected function issueInvoice(User $actor, Invoice $invoice): Invoice
     {
+        $remaining = app(SalesOrderPaymentCalculator::class)->remainingAmount($invoice->salesOrder);
+        if (Decimal::compare($remaining, '0.0000') > 0) {
+            $account = $this->createFinancialAccount($invoice->organization);
+            $this->recordPayment($actor, $invoice->salesOrder, $account, $remaining);
+        }
+
         return app(IssueInvoiceAction::class)->execute($actor, $invoice)->fresh();
     }
 
