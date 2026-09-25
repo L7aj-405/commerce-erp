@@ -58,13 +58,13 @@
         .runhead .r1 .doc { float: right; font-weight: bold; color: {{ $accent }}; }
         .runhead .r2 { display: block; margin-top: 2px; }
         .runhead .r2 .sep { color: #bbb; }
-        .runfoot { position: fixed; bottom: -21mm; left: 0; right: 0; border-top: 1px solid #d7d7cf; padding-top: 4px; font-size: 7px; font-style: italic; color: #666; text-align: center; line-height: 1.45; }
+        .runfoot { position: fixed; bottom: -21mm; left: 0; right: 0; border-top: 1px solid #d7d7cf; padding-top: 4px; font-size: 10px; font-style: italic; color: #666; text-align: center; line-height: 1.45; }
         .watermark-text { position: fixed; top: 40%; left: 12%; font-size: 90px; font-weight: bold; color: rgba(176, 69, 59, .12); transform: rotate(-26deg); }
         .watermark-logo { position: fixed; top: 0; left: 0; right: 0; text-align: center; z-index: -1; }
         .watermark-logo img { width: 95mm; margin-top: 118mm; opacity: 0.05; }
         .masthead { width: 100%; border-collapse: collapse; }
         .masthead td { vertical-align: top; }
-        .logo { max-height: 60px; max-width: 220px; margin-bottom: 8px; }
+        .logo { max-height: 100px; max-width: 300px; margin-bottom: 16px; min-width: 300px; }
         .seller { color: #444; font-size: 8.5px; }
         .dest { font-size: 8.5px; padding-top: 0; }
         .dest .lbl { font-weight: bold; letter-spacing: .08em; }
@@ -155,7 +155,7 @@
                 @if ($displayWebsite !== '')<div class="seller-row"><span class="info-label">Web :</span> <span class="info-value">{{ $displayWebsite }}</span></div>@endif
             </div>
         </td>
-        <td style="width: 40%; padding-top: 68px;">
+        <td style="width: 40%; padding-top: 50px;">
             <div class="dest">
                 <div class="lbl">{{ $t('recipient') }}</div>
                 <div class="name">{{ $buyerLabel }}</div>

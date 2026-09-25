@@ -96,7 +96,7 @@
             bottom: -21mm; left: 0; right: 0;
             border-top: 1px solid #d7d7cf;
             padding-top: 4px;
-            font-size: 7.8px;
+            font-size: 10px;
             font-style: italic;
             color: #4f524a;
             text-align: center;
@@ -128,7 +128,7 @@
         /* --- Page 1 masthead (normal flow, page 1 only by nature) --- */
         .masthead { width: 100%; border-collapse: collapse; }
         .masthead td { vertical-align: top; }
-        .logo { max-height: 68px; max-width: 238px; margin-bottom: 7px; }
+        .logo { max-height: 100px; max-width: 300px; margin-bottom: 16px; min-width: 300px; }
         .company-name { font-size: 17px; font-weight: bold; text-transform: uppercase; color: {{ $ink }}; margin-bottom: 7px; }
         .seller { color: #343730; font-size: 9.2px; line-height: 1.42; }
         .seller-row, .dest-row { margin-bottom: 2px; }

@@ -36,7 +36,7 @@
             bottom: -14mm; left: 0; right: 0;
             border-top: 1px solid #d7d7cf;
             padding-top: 3px;
-            font-size: 6.8px;
+            font-size: 10px;
             font-style: italic;
             color: #666;
             text-align: center;
@@ -52,7 +52,7 @@
 
         table.masthead { width: 100%; border-collapse: collapse; }
         table.masthead td { vertical-align: top; }
-        .logo { max-height: 60px; max-width: 220px; margin-bottom: 8px; }
+        .logo { max-height: 100px; max-width: 300px; margin-bottom: 16px; min-width: 300px; }
         .seller { color: #444; font-size: 8.5px; }
         .dest { font-size: 8.5px; }
         .dest .lbl { font-weight: bold; letter-spacing: .08em; }
