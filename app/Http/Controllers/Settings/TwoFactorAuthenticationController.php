@@ -80,7 +80,7 @@ class TwoFactorAuthenticationController extends Controller
 
         return response()->json([
             'secret' => $secret,
-            'otpauth_uri' => $totp->provisioningUri($secret, $user->email, config('app.name', 'Commerce ERP')),
+            'otpauth_uri' => $totp->provisioningUri($secret, $user->email, config('app.name', '10xScale ERP')),
         ]);
     }
 

@@ -293,7 +293,7 @@ class OrganizationBackupController extends Controller
             'connected' => $connection->is_enabled && filled($connection->refresh_token),
             'enabled' => $connection->is_enabled,
             'account' => $connection->provider_account_identifier,
-            'folder' => filled($connection->provider_folder_id) ? 'Commerce ERP / Sauvegardes' : null,
+            'folder' => filled($connection->provider_folder_id) ? '10xScale ERP / Sauvegardes' : null,
             'last_sync_at' => $connection->last_sync_status === 'completed' ? $connection->last_sync_at?->toIso8601String() : null,
             'last_sync_status' => $connection->last_sync_status,
             'last_sync_error' => $connection->last_sync_error,

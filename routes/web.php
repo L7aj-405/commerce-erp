@@ -77,6 +77,7 @@ use App\Http\Controllers\StoreController;
 use App\Http\Controllers\StoreMembershipController;
 use App\Http\Controllers\TenantContextController;
 use App\Http\Controllers\UsersAccessController;
+use App\Support\LegalMetadata;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -85,7 +86,9 @@ Route::get('/', function () {
         return redirect()->route('platform.index');
     }
 
-    return Inertia::render('Home');
+    return Inertia::render('Home', [
+        'productName' => LegalMetadata::props()['productName'],
+    ]);
 })->name('home');
 
 Route::get('/privacy', [PublicLegalController::class, 'privacy'])->name('privacy');

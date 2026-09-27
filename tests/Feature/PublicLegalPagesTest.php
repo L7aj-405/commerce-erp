@@ -12,6 +12,16 @@ class PublicLegalPagesTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_public_homepage_is_accessible_logged_out_and_uses_canonical_branding(): void
+    {
+        $this->get('/')
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Home')
+                ->where('productName', '10xScale ERP')
+            );
+    }
+
     public function test_privacy_page_is_public_and_renders_expected_title(): void
     {
         config([
@@ -25,7 +35,7 @@ class PublicLegalPagesTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page
                 ->component('Legal/Privacy')
                 ->where('pageTitle', 'Politique de confidentialité')
-                ->where('legal.productName', 'Commerce ERP')
+                ->where('legal.productName', '10xScale ERP')
                 ->where('legalLinks.privacy', route('privacy'))
                 ->where('legalLinks.terms', route('terms'))
             );
@@ -41,7 +51,7 @@ class PublicLegalPagesTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page
                 ->component('Legal/Terms')
                 ->where('pageTitle', 'Conditions d’utilisation')
-                ->where('legal.productName', 'Commerce ERP')
+                ->where('legal.productName', '10xScale ERP')
                 ->where('legalLinks.privacy', route('privacy'))
                 ->where('legalLinks.terms', route('terms'))
             );

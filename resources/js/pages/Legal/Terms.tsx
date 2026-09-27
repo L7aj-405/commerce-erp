@@ -9,7 +9,7 @@ export default function Terms({ legal, legalLinks }: Props) {
     return (
         <LegalLayout
             title="Conditions d'utilisation"
-            description="Ces conditions encadrent l’utilisation de Commerce ERP par les organisations et leurs utilisateurs autorisés."
+            description="Ces conditions encadrent l’utilisation de 10xScale ERP par les organisations et leurs utilisateurs autorisés."
             legal={legal}
             legalLinks={legalLinks}
         >

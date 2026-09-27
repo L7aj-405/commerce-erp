@@ -4,9 +4,10 @@ import { createInertiaApp } from '@inertiajs/react';
 import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers';
 import { createRoot } from 'react-dom/client';
 import { ToastProvider } from '@/components/ui/toast';
+import { PRODUCT_NAME } from '@/components/ui/brand';
 
 createInertiaApp({
-    title: (title) => title || 'Commerce ERP',
+    title: (title) => title && title !== PRODUCT_NAME ? `${title} — ${PRODUCT_NAME}` : PRODUCT_NAME,
     resolve: (name) =>
         resolvePageComponent(
             `./pages/${name}.tsx`,

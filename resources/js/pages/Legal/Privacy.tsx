@@ -9,7 +9,7 @@ export default function Privacy({ legal, legalLinks }: Props) {
     return (
         <LegalLayout
             title="Politique de confidentialité"
-            description="Cette politique explique quelles informations Commerce ERP traite pour fournir le service ERP SaaS, sécuriser les comptes et permettre les intégrations choisies par les organisations."
+            description="Cette politique explique quelles informations 10xScale ERP traite pour fournir le service ERP SaaS, sécuriser les comptes et permettre les intégrations choisies par les organisations."
             legal={legal}
             legalLinks={legalLinks}
         >
@@ -64,7 +64,7 @@ export default function Privacy({ legal, legalLinks }: Props) {
                     <span className="font-mono text-xs text-ink"> https://www.googleapis.com/auth/drive.file</span>, destinée aux fichiers et dossiers créés ou utilisés par l’application dans le cadre de l’autorisation accordée.
                 </p>
                 <BulletList>
-                    <li>Le service peut créer ou réutiliser un dossier d’application « Commerce ERP / Sauvegardes ».</li>
+                    <li>Le service peut créer ou réutiliser un dossier d’application « 10xScale ERP / Sauvegardes ».</li>
                     <li>Il peut envoyer des archives de sauvegarde, vérifier une copie, télécharger une copie pour validation/restauration et tester l’accès au dossier.</li>
                     <li>Les jetons OAuth Google Drive sont stockés chiffrés au repos dans l’application.</li>
                     <li>La déconnexion locale efface les jetons stockés et désactive la synchronisation. Les fichiers déjà présents dans le Google Drive de l’utilisateur ne sont pas supprimés automatiquement.</li>

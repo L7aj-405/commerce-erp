@@ -99,7 +99,7 @@ class GoogleDriveBackupProvider implements PersonalBackupStorageProvider
             return $connection->provider_folder_id;
         }
 
-        $rootId = $this->findOrCreateFolder($connection, 'Commerce ERP', null);
+        $rootId = $this->findOrCreateFolder($connection, '10xScale ERP', null);
         $backupId = $this->findOrCreateFolder($connection, 'Sauvegardes', $rootId);
 
         $connection->provider_folder_id = $backupId;
@@ -115,7 +115,7 @@ class GoogleDriveBackupProvider implements PersonalBackupStorageProvider
         $metadata = [
             'name' => $filename,
             'parents' => [$folderId],
-            'description' => 'Commerce ERP organization backup '.$copy->organizationBackup?->uuid,
+            'description' => '10xScale ERP organization backup '.$copy->organizationBackup?->uuid,
             'appProperties' => [
                 'commerce_erp_backup_uuid' => $copy->organizationBackup?->uuid,
                 'organization_id' => (string) $copy->organization_id,

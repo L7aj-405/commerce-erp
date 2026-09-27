@@ -4,7 +4,7 @@
 @source '../../storage/framework/views/*.php';
 
 /*
- * Commerce ERP — visual foundation tokens.
+ * 10xScale ERP — visual foundation tokens.
  * Warm, light, calm SaaS palette. Business modules still use Tailwind's `slate`
  * scale; these semantic tokens are the shared language for the app shell,
  * welcome page, auth and onboarding, and are where new module work should draw from.

@@ -8,7 +8,7 @@ class LegalMetadata
     public static function props(): array
     {
         return [
-            'productName' => (string) config('legal.product_name', 'Commerce ERP'),
+            'productName' => (string) config('legal.product_name', '10xScale ERP'),
             'operatorName' => config('legal.operator_name') ?: null,
             'contactEmail' => config('legal.contact_email') ?: null,
             'lastUpdated' => (string) config('legal.last_updated', '2026-09-27'),

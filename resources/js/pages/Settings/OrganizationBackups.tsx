@@ -306,7 +306,7 @@ export default function OrganizationBackups({ organization, validatedBackup, set
                         <div className="mt-5 space-y-4">
                             <dl className="grid gap-3 text-sm md:grid-cols-2 lg:grid-cols-4">
                                 <Info label="Compte" value={googleDrive.account ?? 'Compte Google connecté'} />
-                                <Info label="Dossier" value={googleDrive.folder ?? 'Commerce ERP / Sauvegardes'} />
+                                <Info label="Dossier" value={googleDrive.folder ?? '10xScale ERP / Sauvegardes'} />
                                 <Info label="Synchronisation automatique" value={googleDrive.enabled ? 'Activée' : 'Désactivée'} />
                                 <Info label="Dernière synchronisation" value={googleDrive.last_sync_at ? formatDateTime(googleDrive.last_sync_at) : '—'} />
                             </dl>

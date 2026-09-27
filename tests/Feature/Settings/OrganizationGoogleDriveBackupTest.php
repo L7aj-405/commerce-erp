@@ -251,7 +251,7 @@ class OrganizationGoogleDriveBackupTest extends PlatformTestCase
         $this->assertSame('backup-folder', $connection->fresh()->provider_folder_id);
         Http::assertSent(fn ($request) => $request->method() === 'POST'
             && str_contains($request->url(), '/drive/v3/files')
-            && $request['name'] === 'Commerce ERP'
+            && $request['name'] === '10xScale ERP'
             && $request['mimeType'] === 'application/vnd.google-apps.folder');
         Http::assertSent(fn ($request) => $request->method() === 'POST'
             && str_contains($request->url(), '/drive/v3/files')

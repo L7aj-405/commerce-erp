@@ -1,8 +1,7 @@
 /*
- * Temporary brand lockup. The product has no permanent identity yet — swap the
- * mark and `PRODUCT_NAME` here when one exists. Nothing else should hardcode the name.
+ * Canonical public product name. Nothing else should hardcode the name.
  */
-export const PRODUCT_NAME = 'Commerce ERP';
+export const PRODUCT_NAME = '10xScale ERP';
 
 export function BrandMark({ size = 28, className = '' }: { size?: number; className?: string }) {
     return (

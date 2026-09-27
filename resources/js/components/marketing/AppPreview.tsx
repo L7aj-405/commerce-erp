@@ -11,7 +11,7 @@ export default function AppPreview({ className = '' }: { className?: string }) {
         <div
             className={`overflow-hidden rounded-panel border border-line bg-surface shadow-card ${className}`}
             role="img"
-            aria-label="Aperçu de l’interface Commerce ERP"
+            aria-label="Aperçu de l’interface 10xScale ERP"
         >
             <div className="flex items-center gap-2 border-b border-line bg-raised px-4 py-2.5">
                 <span className="size-2.5 rounded-full bg-line-strong" />

@@ -27,10 +27,14 @@ const capabilities: Array<{ title: string; description: string; icon: ReactNode 
     },
 ];
 
-export default function Home() {
+type Props = {
+    productName?: string;
+};
+
+export default function Home({ productName = PRODUCT_NAME }: Props) {
     return (
         <>
-            <Head title={PRODUCT_NAME} />
+            <Head title={productName} />
 
             <div className="min-h-screen bg-canvas text-ink">
                 <header className="mx-auto flex max-w-6xl items-center justify-between px-5 py-5 sm:px-8">
@@ -45,14 +49,15 @@ export default function Home() {
                     {/* Hero */}
                     <section className="grid items-center gap-10 py-12 lg:grid-cols-[1fr_1.05fr] lg:py-20">
                         <div>
-                            <p className="text-[13px] font-medium uppercase tracking-[0.14em] text-ink-muted">Commerce ERP</p>
+                            <p className="text-[13px] font-medium uppercase tracking-[0.14em] text-ink-muted">{productName}</p>
                             <h1 className="mt-3 text-[34px] font-semibold leading-[1.12] tracking-tight sm:text-[42px]">
-                                Gérez vos ventes, votre stock et vos opérations depuis un seul espace.
+                                La plateforme tout-en-un pour gérer votre entreprise.
                             </h1>
                             <p className="mt-4 max-w-xl text-[15px] leading-7 text-ink-muted">
-                                {PRODUCT_NAME} réunit le point de vente, le catalogue, le stock multi-emplacements,
+                                {productName} réunit le point de vente, le catalogue, le stock multi-emplacements,
                                 les clients, les paiements et les documents de vente dans une interface calme et rapide.
                             </p>
+                            <p className="mt-3 text-sm font-medium text-ink">Ventes • Stocks • Facturation • Finance</p>
                             <div className="mt-7 flex flex-wrap items-center gap-3">
                                 <ButtonLink href="/register" size="lg">Créer un compte</ButtonLink>
                                 <ButtonLink href="/login" variant="secondary" size="lg">Se connecter</ButtonLink>
@@ -94,7 +99,7 @@ export default function Home() {
 
                 <footer className="border-t border-line">
                     <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-5 py-6 text-[13px] text-ink-muted sm:px-8">
-                        <span>© {new Date().getFullYear()} {PRODUCT_NAME}</span>
+                        <span>© {new Date().getFullYear()} {productName}</span>
                         <div className="flex gap-4">
                             <Link href="/login" className="rounded transition-soft hover:text-ink">Se connecter</Link>
                             <Link href="/register" className="rounded transition-soft hover:text-ink">Créer un compte</Link>
