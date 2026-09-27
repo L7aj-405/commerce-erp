@@ -6,6 +6,7 @@ use App\Contracts\ChallengeVerifier;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Services\Security\LoginThrottle;
+use App\Support\LegalMetadata;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -19,7 +20,10 @@ class AuthenticatedSessionController extends Controller
 {
     public function create(): Response
     {
-        return Inertia::render('Auth/Login', ['status' => session('status')]);
+        return Inertia::render('Auth/Login', [
+            'status' => session('status'),
+            'legalLinks' => LegalMetadata::links(),
+        ]);
     }
 
     public function store(Request $request, LoginThrottle $throttle, ChallengeVerifier $challenge): RedirectResponse

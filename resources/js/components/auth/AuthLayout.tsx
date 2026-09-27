@@ -66,7 +66,14 @@ export default function AuthLayout({ title, subtitle, children, footer, aside }:
 
                         {children}
 
-                        {footer && <div className="mt-6 text-center text-[13px] text-ink-muted">{footer}</div>}
+                        <div className="mt-6 space-y-3 text-center text-[13px] text-ink-muted">
+                            {footer && <div>{footer}</div>}
+                            <p className="flex justify-center gap-3 text-xs">
+                                <Link href="/privacy" className="underline-offset-4 hover:underline">Confidentialité</Link>
+                                <span aria-hidden>·</span>
+                                <Link href="/terms" className="underline-offset-4 hover:underline">Conditions d’utilisation</Link>
+                            </p>
+                        </div>
                     </div>
                 </div>
             </main>

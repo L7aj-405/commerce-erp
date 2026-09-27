@@ -16,6 +16,8 @@ type SessionRow = {
 type Props = {
     status?: string | null;
     twoFactorEnabled: boolean;
+    hasPassword: boolean;
+    googleAuthConnected: boolean;
     recoveryCodesRemaining: number;
     sessions: SessionRow[];
 };
@@ -23,14 +25,16 @@ type Props = {
 /** "Mot de passe" — current/new/confirm, same fetch-based pattern as the 2FA
  * actions on this page. On success the server rotates this session and
  * signs out every other one, so we surface that explicitly. */
-function PasswordSection() {
+function PasswordSection({ initialHasPassword, googleAuthConnected }: { initialHasPassword: boolean; googleAuthConnected: boolean }) {
     const [open, setOpen] = useState(false);
+    const [hasPassword, setHasPassword] = useState(initialHasPassword);
     const [currentPassword, setCurrentPassword] = useState('');
     const [newPassword, setNewPassword] = useState('');
     const [confirmation, setConfirmation] = useState('');
     const [errors, setErrors] = useState<{ current_password?: string; password?: string }>({});
     const [busy, setBusy] = useState(false);
     const [done, setDone] = useState(false);
+    const [doneMessage, setDoneMessage] = useState<string | null>(null);
 
     const reset = () => {
         setOpen(false);
@@ -45,16 +49,24 @@ function PasswordSection() {
         setBusy(true);
         setErrors({});
         setDone(false);
+        setDoneMessage(null);
+        const isInitialSetup = !hasPassword;
         const { status, data } = await apiCall<{ message?: string; errors?: { current_password?: string[]; password?: string[] } }>(
-            '/account/password',
-            'PATCH',
-            { current_password: currentPassword, password: newPassword, password_confirmation: confirmation },
+            isInitialSetup ? '/account/password/initial' : '/account/password',
+            isInitialSetup ? 'POST' : 'PATCH',
+            isInitialSetup
+                ? { password: newPassword, password_confirmation: confirmation }
+                : { current_password: currentPassword, password: newPassword, password_confirmation: confirmation },
         );
         setBusy(false);
         if (status !== 200) {
             setErrors({ current_password: data.errors?.current_password?.[0], password: data.errors?.password?.[0] });
             return;
         }
+        setHasPassword(true);
+        setDoneMessage(data.message ?? (isInitialSetup
+            ? 'Votre mot de passe a été défini. Vous pouvez maintenant vous connecter avec Google ou avec votre adresse e-mail.'
+            : 'Mot de passe modifié. Vos autres sessions ont été déconnectées.'));
         reset();
         setDone(true);
     };
@@ -64,40 +76,55 @@ function PasswordSection() {
             <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="min-w-0">
                     <p className="font-medium text-ink">Mot de passe</p>
-                    <p className="mt-1 text-sm text-ink-muted">Votre mot de passe protège l’accès à votre compte.</p>
+                    <p className="mt-1 text-sm text-ink-muted">
+                        {hasPassword
+                            ? 'Votre mot de passe protège l’accès à votre compte.'
+                            : 'Vous utilisez actuellement Google pour vous connecter. Définissez un mot de passe ERP pour pouvoir également vous connecter avec votre adresse e-mail.'}
+                    </p>
+                    <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                        <span className="rounded-full bg-muted px-2.5 py-1 font-medium text-ink-muted">
+                            Google {googleAuthConnected ? 'Connecté' : 'Non connecté'}
+                        </span>
+                        <span className="rounded-full bg-muted px-2.5 py-1 font-medium text-ink-muted">
+                            Mot de passe {hasPassword ? 'Configuré' : 'Non configuré'}
+                        </span>
+                    </div>
                 </div>
                 {!open && (
                     <Button variant="secondary" onClick={() => { setOpen(true); setDone(false); }} className="w-full sm:w-auto">
-                        Modifier le mot de passe
+                        {hasPassword ? 'Modifier le mot de passe' : 'Définir un mot de passe'}
                     </Button>
                 )}
             </div>
 
             {done && !open && (
                 <p className="mt-3 rounded-lg bg-success-soft px-3 py-2 text-sm text-success">
-                    Mot de passe modifié. Vos autres sessions ont été déconnectées.
+                    {doneMessage}
                 </p>
             )}
 
             {open && (
                 <form onSubmit={submit} className="mt-4 space-y-3">
-                    <label className="block text-sm">
-                        Mot de passe actuel
-                        <input
-                            type="password"
-                            autoComplete="current-password"
-                            autoFocus
-                            value={currentPassword}
-                            onChange={(e) => setCurrentPassword(e.target.value)}
-                            className="mt-1 block h-11 w-full rounded-lg border border-slate-300 px-3 text-sm"
-                        />
-                        {errors.current_password && <span className="mt-1 block text-xs text-danger">{errors.current_password}</span>}
-                    </label>
+                    {hasPassword && (
+                        <label className="block text-sm">
+                            Mot de passe actuel
+                            <input
+                                type="password"
+                                autoComplete="current-password"
+                                autoFocus
+                                value={currentPassword}
+                                onChange={(e) => setCurrentPassword(e.target.value)}
+                                className="mt-1 block h-11 w-full rounded-lg border border-slate-300 px-3 text-sm"
+                            />
+                            {errors.current_password && <span className="mt-1 block text-xs text-danger">{errors.current_password}</span>}
+                        </label>
+                    )}
                     <label className="block text-sm">
                         Nouveau mot de passe
                         <input
                             type="password"
                             autoComplete="new-password"
+                            autoFocus={!hasPassword}
                             value={newPassword}
                             onChange={(e) => setNewPassword(e.target.value)}
                             className="mt-1 block h-11 w-full rounded-lg border border-slate-300 px-3 text-sm"
@@ -115,8 +142,8 @@ function PasswordSection() {
                         />
                     </label>
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                        <Button type="submit" disabled={busy || !currentPassword || !newPassword || !confirmation} className="w-full sm:w-auto">
-                            {busy ? 'Enregistrement…' : 'Enregistrer'}
+                        <Button type="submit" disabled={busy || (hasPassword && !currentPassword) || !newPassword || !confirmation} className="w-full sm:w-auto">
+                            {busy ? 'Enregistrement…' : hasPassword ? 'Enregistrer' : 'Définir mon mot de passe'}
                         </Button>
                         <button type="button" onClick={reset} className="py-2 text-sm text-ink-muted underline-offset-4 hover:underline">
                             Annuler
@@ -162,7 +189,7 @@ async function apiCall<T>(url: string, method: string, body?: Record<string, unk
     return { status: response.status, data: (await response.json().catch(() => ({}))) as T };
 }
 
-export default function Security({ status, twoFactorEnabled, recoveryCodesRemaining, sessions }: Props) {
+export default function Security({ status, twoFactorEnabled, hasPassword, googleAuthConnected, recoveryCodesRemaining, sessions }: Props) {
     const [enabled, setEnabled] = useState(twoFactorEnabled);
     const [codesRemaining, setCodesRemaining] = useState(recoveryCodesRemaining);
     const [step, setStep] = useState<'idle' | 'enrolling' | 'recovery'>('idle');
@@ -262,7 +289,7 @@ export default function Security({ status, twoFactorEnabled, recoveryCodesRemain
             )}
 
             <div className="mt-6 space-y-6">
-                <PasswordSection />
+                <PasswordSection initialHasPassword={hasPassword} googleAuthConnected={googleAuthConnected} />
 
                 {error && <p className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
 

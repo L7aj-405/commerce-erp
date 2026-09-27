@@ -113,6 +113,9 @@ return [
         'finance.export' => 'Export Finance reports (Excel/PDF/accounting)',
         'finance.receivables.view' => 'View receivables and outstanding balances',
         'settings.view' => 'View organization and document settings (read-only)',
+        'organization_backups.view' => 'View organization backups and restore page',
+        'organization_backups.create' => 'Create and download organization backups',
+        'organization_backups.restore' => 'Validate and restore organization backups',
     ],
 
     'default_roles' => [
@@ -316,6 +319,9 @@ return [
                 'organizations.update',
                 'settings.update',
                 'settings.view',
+                'organization_backups.view',
+                'organization_backups.create',
+                'organization_backups.restore',
                 'stores.view',
                 'stores.create',
                 'stores.update',

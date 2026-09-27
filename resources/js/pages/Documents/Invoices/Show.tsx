@@ -25,7 +25,6 @@ type Line = {
     discount_value: string;
     subtotal_excl_tax: string;
     discount_amount: string;
-    discount_amount_ttc?: string;
     taxable_amount: string;
     tax_name: string | null;
     tax_rate: string;
@@ -69,7 +68,6 @@ type Invoice = {
     notes: string | null;
     subtotal_excl_tax: string;
     discount_total: string;
-    discount_total_ttc?: string;
     tax_total: string;
     total_incl_tax: string;
     currency_code: string;
@@ -307,7 +305,7 @@ export default function InvoiceShow({
                                         <th className="text-right">Qté</th>
                                         <th className="text-right">PU HT</th>
                                         <th className="text-right">PT HT</th>
-                                        {hasDiscount && <th className="text-right">Remise TTC</th>}
+                                        {hasDiscount && <th className="text-right">Remise HT</th>}
                                         <th className="text-right">Total TTC</th>
                                     </tr>
                                 </thead>
@@ -333,8 +331,8 @@ export default function InvoiceShow({
                                             </td>
                                             {hasDiscount && (
                                                 <td className="text-right tabular-nums">
-                                                    {Number(line.discount_amount_ttc ?? line.discount_amount) > 0
-                                                        ? formatMoney(line.discount_amount_ttc ?? line.discount_amount, currency)
+                                                    {Number(line.discount_amount) > 0
+                                                        ? formatMoney(line.discount_amount, currency)
                                                         : '—'}
                                                 </td>
                                             )}
@@ -362,14 +360,14 @@ export default function InvoiceShow({
                         <div className="mt-4 ml-auto max-w-xs space-y-1 text-sm">
                             {hasDiscount ? (
                                 <>
-                                    <SummaryRow term="Sous-total HT" value={formatMoney(invoice.subtotal_excl_tax, currency)} />
+                                    <SummaryRow term="Total brut HT" value={formatMoney(invoice.subtotal_excl_tax, currency)} />
+                                    <SummaryRow term="Remise HT" value={`- ${formatMoney(invoice.discount_total, currency)}`} />
                                     <SummaryRow term="Total HT" value={formatMoney(net, currency)} />
                                 </>
                             ) : (
                                 <SummaryRow term="Total HT" value={formatMoney(invoice.subtotal_excl_tax, currency)} />
                             )}
                             <SummaryRow term="TVA" value={formatMoney(invoice.tax_total, currency)} />
-                            {hasDiscount && <SummaryRow term="Remise TTC" value={`- ${formatMoney(invoice.discount_total_ttc ?? invoice.discount_total, currency)}`} />}
                             <div
                                 className="flex justify-between border-t-2 pt-1 text-base font-bold"
                                 style={{ borderColor: accentColor, color: accentColor }}

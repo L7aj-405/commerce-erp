@@ -35,4 +35,18 @@ return [
         ],
     ],
 
+    'google_drive' => [
+        'client_id' => env('GOOGLE_DRIVE_CLIENT_ID'),
+        'client_secret' => env('GOOGLE_DRIVE_CLIENT_SECRET'),
+        'redirect_uri' => env('GOOGLE_DRIVE_REDIRECT_URI'),
+        'scope' => env('GOOGLE_DRIVE_SCOPE', 'https://www.googleapis.com/auth/drive.file'),
+    ],
+
+    'google_auth' => [
+        'client_id' => env('GOOGLE_AUTH_CLIENT_ID'),
+        'client_secret' => env('GOOGLE_AUTH_CLIENT_SECRET'),
+        'redirect_uri' => env('GOOGLE_AUTH_REDIRECT_URI'),
+        'scope' => env('GOOGLE_AUTH_SCOPE', 'openid email profile'),
+    ],
+
 ];

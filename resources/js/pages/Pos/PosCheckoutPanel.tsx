@@ -384,9 +384,9 @@ export default function PosCheckoutPanel({
                 {/* Totals */}
                 <Section title="Récapitulatif">
                     <dl className="space-y-1 text-[13px]">
-                        <div className="flex justify-between"><dt className="text-ink-muted">Sous-total HT</dt><dd><Money value={sale.summary.subtotal_excl_tax} currency={currencyCode} /></dd></div>
+                        <div className="flex justify-between"><dt className="text-ink-muted">Total brut HT</dt><dd><Money value={sale.summary.subtotal_excl_tax} currency={currencyCode} /></dd></div>
                         {discountTotal > 0 && (
-                            <div className="flex justify-between"><dt className="text-ink-muted">Remise</dt><dd className="text-success">- <Money value={discountTotal.toFixed(4)} currency={currencyCode} /></dd></div>
+                            <div className="flex justify-between"><dt className="text-ink-muted">Remise HT</dt><dd className="text-success">- <Money value={discountTotal.toFixed(4)} currency={currencyCode} /></dd></div>
                         )}
                         {discountTotal > 0 && (
                             <div className="flex justify-between"><dt className="text-ink-muted">Net HT</dt><dd><Money value={sale.summary.net_excl_tax} currency={currencyCode} /></dd></div>

@@ -15,3 +15,4 @@ Artisan::command('catalog:cleanup-product-imports', function () {
 })->purpose('Delete expired product import staging and history');
 
 Schedule::command('catalog:cleanup-product-imports')->daily();
+Schedule::command('organization-backups:dispatch-due')->everyMinute()->withoutOverlapping();

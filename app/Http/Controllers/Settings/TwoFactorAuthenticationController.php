@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Settings;
 
 use App\Http\Controllers\Controller;
+use App\Models\UserSocialIdentity;
 use App\Services\AuditLogger;
 use App\Services\Security\RecoveryCodeService;
 use App\Services\Security\TotpService;
@@ -39,6 +40,10 @@ class TwoFactorAuthenticationController extends Controller
             // EmailVerificationPromptController's own `status`.
             'status' => session('status'),
             'twoFactorEnabled' => $user->hasEnabledTwoFactorAuthentication(),
+            'hasPassword' => $user->password !== null,
+            'googleAuthConnected' => $user->socialIdentities()
+                ->where('provider', UserSocialIdentity::PROVIDER_GOOGLE)
+                ->exists(),
             'recoveryCodesRemaining' => $user->hasEnabledTwoFactorAuthentication()
                 ? count($user->two_factor_recovery_codes ?? [])
                 : 0,

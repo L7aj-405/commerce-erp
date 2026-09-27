@@ -24,7 +24,6 @@ export type OLine = {
     discount_type: 'none' | 'fixed' | 'percentage';
     discount_value: string;
     discount_amount: string;
-    discount_amount_ttc?: string;
     taxable_amount: string;
     tax_amount: string;
     total_incl_tax: string;
@@ -196,7 +195,7 @@ export default function OrderLineGrid({ orderId, currency, lines, searchUrl, tax
                             <th>Article</th>
                             <th className="w-16 text-right">Qté</th>
                             <th className="w-44">PU HT</th>
-                            <th className="w-32">Remise TTC</th>
+                            <th className="w-32">Remise HT</th>
                             <th className="w-20 text-right">TVA</th>
                             <th className="w-32 text-right">Total TTC</th>
                             <th className="w-8" />
@@ -316,7 +315,7 @@ export default function OrderLineGrid({ orderId, currency, lines, searchUrl, tax
                                             </div>
                                         ) : (
                                             <span className="block text-right tabular-nums text-ink-muted">
-                                                {Number(line.discount_amount_ttc ?? line.discount_amount) > 0 ? `- ${formatMoney(line.discount_amount_ttc ?? line.discount_amount, currency)}` : '—'}
+                                                {Number(line.discount_amount) > 0 ? `- ${formatMoney(line.discount_amount, currency)}` : '—'}
                                             </span>
                                         )}
                                     </td>
@@ -501,7 +500,7 @@ export default function OrderLineGrid({ orderId, currency, lines, searchUrl, tax
                                 </label>
 
                                 <label className="col-span-2 block">
-                                    Remise TTC
+                                    Remise HT
                                     {canApplyDiscount ? (
                                         <div className="mt-0.5 flex items-center gap-1.5">
                                             <input
@@ -531,7 +530,7 @@ export default function OrderLineGrid({ orderId, currency, lines, searchUrl, tax
                                         </div>
                                     ) : (
                                         <p className="mt-1.5 text-right text-sm tabular-nums text-ink-muted">
-                                            {Number(line.discount_amount_ttc ?? line.discount_amount) > 0 ? `- ${formatMoney(line.discount_amount_ttc ?? line.discount_amount, currency)}` : '—'}
+                                            {Number(line.discount_amount) > 0 ? `- ${formatMoney(line.discount_amount, currency)}` : '—'}
                                         </p>
                                     )}
                                 </label>

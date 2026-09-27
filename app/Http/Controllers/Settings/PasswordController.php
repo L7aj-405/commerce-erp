@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Settings;
 
+use App\Actions\Auth\SetInitialUserPasswordAction;
 use App\Http\Controllers\Controller;
 use App\Services\AuditLogger;
 use Illuminate\Http\JsonResponse;
@@ -23,6 +24,29 @@ use Illuminate\Validation\ValidationException;
  */
 class PasswordController extends Controller
 {
+    public function storeInitial(Request $request, SetInitialUserPasswordAction $action): JsonResponse
+    {
+        $data = $request->validate([
+            'password' => ['required', 'confirmed', Password::defaults()],
+        ], [
+            'password.required' => 'Choisissez un mot de passe.',
+            'password.confirmed' => 'La confirmation ne correspond pas au mot de passe.',
+            'password.min' => 'Le mot de passe doit contenir au moins :min caractères.',
+        ]);
+
+        $action->execute($request->user(), $data['password']);
+
+        $request->session()->regenerate();
+        DB::table('sessions')
+            ->where('user_id', $request->user()->getKey())
+            ->where('id', '!=', $request->session()->getId())
+            ->delete();
+
+        return response()->json([
+            'message' => 'Votre mot de passe a été défini. Vous pouvez maintenant vous connecter avec Google ou avec votre adresse e-mail.',
+        ]);
+    }
+
     public function update(Request $request, AuditLogger $audit): JsonResponse
     {
         $user = $request->user();

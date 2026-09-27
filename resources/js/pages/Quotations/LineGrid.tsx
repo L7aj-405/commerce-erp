@@ -25,7 +25,6 @@ export type QLine = {
     discount_type: 'none' | 'fixed' | 'percentage';
     discount_value: string;
     discount_amount: string;
-    discount_amount_ttc?: string;
     taxable_amount: string;
     tax_amount: string;
     total_incl_tax: string;

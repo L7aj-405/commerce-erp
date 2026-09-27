@@ -20,22 +20,20 @@ class SalesLineCalculator
         $subtotal = Decimal::multiply($quantity, $unitPrice);
         $unitTax = Decimal::compare($taxRate, '0.0000') === 0 ? '0.0000' : Decimal::percentage($unitPrice, $taxRate);
         $unitPriceInclTax = Decimal::add($unitPrice, $unitTax);
-        $grossInclTax = Decimal::multiply($quantity, $unitPriceInclTax);
         $discountValue = $discountType === SalesOrderDiscountType::None
             ? Decimal::normalize('0')
             : Decimal::nonNegative($discountValue, 'discount_value');
-        $discountInclTax = match ($discountType) {
+        $discountExclTax = match ($discountType) {
             SalesOrderDiscountType::None => Decimal::normalize('0'),
             SalesOrderDiscountType::Fixed => $discountValue,
-            SalesOrderDiscountType::Percentage => $this->percentageDiscount($grossInclTax, $discountValue),
+            SalesOrderDiscountType::Percentage => $this->percentageDiscount($subtotal, $discountValue),
         };
-        if (Decimal::compare($discountInclTax, $grossInclTax) > 0) {
+        if (Decimal::compare($discountExclTax, $subtotal) > 0) {
             throw ValidationException::withMessages(['discount_value' => 'The discount may not exceed the line subtotal.']);
         }
-        $totalInclTax = Decimal::subtract($grossInclTax, $discountInclTax);
-        $taxable = $this->exclusive($totalInclTax, $taxRate);
-        $tax = Decimal::subtract($totalInclTax, $taxable);
-        $discountExclTax = Decimal::subtract($subtotal, $taxable);
+        $taxable = Decimal::subtract($subtotal, $discountExclTax);
+        $tax = Decimal::compare($taxRate, '0.0000') === 0 ? '0.0000' : Decimal::percentage($taxable, $taxRate);
+        $totalInclTax = Decimal::add($taxable, $tax);
 
         return [
             'quantity' => $quantity,
@@ -70,16 +68,4 @@ class SalesLineCalculator
         return Decimal::percentage($subtotal, $percentage);
     }
 
-    private function exclusive(string $inclTax, string $rate): string
-    {
-        if (Decimal::compare($rate, '0.0000') === 0) {
-            return Decimal::normalize($inclTax);
-        }
-
-        return Decimal::divide(
-            Decimal::multiply($inclTax, '100.0000'),
-            Decimal::add('100.0000', $rate),
-            4,
-        );
-    }
 }

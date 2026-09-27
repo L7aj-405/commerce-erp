@@ -98,6 +98,8 @@ export default function Home() {
                         <div className="flex gap-4">
                             <Link href="/login" className="rounded transition-soft hover:text-ink">Se connecter</Link>
                             <Link href="/register" className="rounded transition-soft hover:text-ink">Créer un compte</Link>
+                            <Link href="/privacy" className="rounded transition-soft hover:text-ink">Confidentialité</Link>
+                            <Link href="/terms" className="rounded transition-soft hover:text-ink">Conditions</Link>
                         </div>
                     </div>
                 </footer>

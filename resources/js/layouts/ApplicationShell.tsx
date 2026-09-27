@@ -184,6 +184,7 @@ export default function ApplicationShell({ children, wide = false, flush = false
                 { href: '/document-stamp', label: 'Cachet de l’entreprise', permission: ['settings.view', 'settings.update'], icon: <IconStamp /> },
                 { href: '/return-policy', label: 'Politique de retour', permission: ['settings.view', 'settings.update'], icon: <IconRotateBack /> },
                 { href: '/email-settings', label: 'Email / SMTP', permission: ['settings.view', 'settings.update'], icon: <IconMail /> },
+                { href: '/organization-backups', label: 'Sauvegardes & restauration', permission: 'organization_backups.view', icon: <IconShield /> },
                 { href: '/catalog/tax-rates', label: 'Taxes (TVA)', permission: 'tax_rates.view', icon: <IconPercent /> },
             ],
         },

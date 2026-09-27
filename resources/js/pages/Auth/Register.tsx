@@ -1,10 +1,18 @@
 import AuthLayout from '@/components/auth/AuthLayout';
-import { Button } from '@/components/ui/Button';
+import { Button, DownloadLink } from '@/components/ui/Button';
 import { PasswordField, TextField } from '@/components/ui/form';
-import { Head, Link, useForm } from '@inertiajs/react';
+import { Head, Link, useForm, usePage } from '@inertiajs/react';
 import type { FormEvent } from 'react';
 
-export default function Register() {
+type Props = {
+    legalLinks: {
+        privacy: string;
+        terms: string;
+    };
+};
+
+export default function Register({}: Props) {
+    const { props } = usePage<{ errors?: Record<string, string> }>();
     const form = useForm({
         name: '',
         email: '',
@@ -35,6 +43,10 @@ export default function Register() {
                 }
             >
                 <form onSubmit={submit} className="space-y-4" noValidate>
+                    {props.errors?.google && (
+                        <p className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">{props.errors.google}</p>
+                    )}
+
                     <TextField
                         label="Nom"
                         name="name"
@@ -85,6 +97,17 @@ export default function Register() {
                     <Button type="submit" block size="lg" disabled={form.processing}>
                         {form.processing ? 'Création…' : 'Créer mon compte'}
                     </Button>
+
+                    <div className="flex items-center gap-3 py-1 text-xs uppercase tracking-wide text-ink-muted">
+                        <span className="h-px flex-1 bg-line" />
+                        ou
+                        <span className="h-px flex-1 bg-line" />
+                    </div>
+
+                    <DownloadLink href="/auth/google/redirect" variant="secondary" block size="lg">
+                        <span className="font-semibold">G</span>
+                        Continuer avec Google
+                    </DownloadLink>
                 </form>
             </AuthLayout>
         </>

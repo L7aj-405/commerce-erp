@@ -60,6 +60,21 @@ class Organization extends Model
         return $this->hasMany(AuditLog::class);
     }
 
+    public function backupSetting(): HasOne
+    {
+        return $this->hasOne(OrganizationBackupSetting::class);
+    }
+
+    public function backups(): HasMany
+    {
+        return $this->hasMany(OrganizationBackup::class);
+    }
+
+    public function cloudBackupConnections(): HasMany
+    {
+        return $this->hasMany(OrganizationCloudBackupConnection::class);
+    }
+
     public function products(): HasMany
     {
         return $this->hasMany(Product::class);

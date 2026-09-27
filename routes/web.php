@@ -4,6 +4,7 @@ use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\Auth\ConfirmablePasswordController;
 use App\Http\Controllers\Auth\EmailVerificationNotificationController;
 use App\Http\Controllers\Auth\EmailVerificationPromptController;
+use App\Http\Controllers\Auth\GoogleAuthenticationController;
 use App\Http\Controllers\Auth\InvitationAcceptController;
 use App\Http\Controllers\Auth\NewPasswordController;
 use App\Http\Controllers\Auth\PasswordResetLinkController;
@@ -48,6 +49,7 @@ use App\Http\Controllers\PosController;
 use App\Http\Controllers\Procurement\OutOfStockArticleController;
 use App\Http\Controllers\Procurement\ProcurementController;
 use App\Http\Controllers\Procurement\SupplierController;
+use App\Http\Controllers\PublicLegalController;
 use App\Http\Controllers\Quotations\QuotationController;
 use App\Http\Controllers\Quotations\QuotationConversionController;
 use App\Http\Controllers\Quotations\QuotationEmailController;
@@ -65,6 +67,8 @@ use App\Http\Controllers\Sales\CustomerExchangeController;
 use App\Http\Controllers\Settings\ActiveSessionController;
 use App\Http\Controllers\Settings\OrganizationDocumentStampController;
 use App\Http\Controllers\Settings\OrganizationMailSettingController;
+use App\Http\Controllers\Settings\OrganizationBackupController;
+use App\Http\Controllers\Settings\OrganizationBackupCloudController;
 use App\Http\Controllers\Settings\PasswordController;
 use App\Http\Controllers\Settings\ProfileController;
 use App\Http\Controllers\Settings\TwoFactorAuthenticationController;
@@ -84,6 +88,9 @@ Route::get('/', function () {
     return Inertia::render('Home');
 })->name('home');
 
+Route::get('/privacy', [PublicLegalController::class, 'privacy'])->name('privacy');
+Route::get('/terms', [PublicLegalController::class, 'terms'])->name('terms');
+
 Route::middleware('guest')->group(function () {
     Route::get('/login', [AuthenticatedSessionController::class, 'create'])->name('login');
     Route::post('/login', [AuthenticatedSessionController::class, 'store'])
@@ -94,6 +101,13 @@ Route::middleware('guest')->group(function () {
     Route::post('/register', [RegisteredUserController::class, 'store'])
         ->middleware('throttle:6,1')
         ->name('register.store');
+
+    Route::get('/auth/google/redirect', [GoogleAuthenticationController::class, 'redirect'])
+        ->middleware('throttle:10,1')
+        ->name('auth.google.redirect');
+    Route::get('/auth/google/callback', [GoogleAuthenticationController::class, 'callback'])
+        ->middleware('throttle:20,1')
+        ->name('auth.google.callback');
 
     // §3 — forgot/reset password. Both endpoints are throttled independently
     // of the Password broker's own per-email throttle (config('auth.passwords
@@ -163,6 +177,20 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
     Route::put('/email-settings', [OrganizationMailSettingController::class, 'update'])->name('email-settings.update');
     Route::get('/return-policy', [ReturnPolicyController::class, 'edit'])->name('return-policy.edit');
     Route::put('/return-policy', [ReturnPolicyController::class, 'update'])->name('return-policy.update');
+    Route::get('/organization-backups', [OrganizationBackupController::class, 'index'])->name('organization-backups.index');
+    Route::put('/organization-backups/settings', [OrganizationBackupController::class, 'updateSettings'])->name('organization-backups.settings.update');
+    Route::post('/organization-backups', [OrganizationBackupController::class, 'store'])->name('organization-backups.store');
+    Route::post('/organization-backups/validate', [OrganizationBackupController::class, 'validateUpload'])->name('organization-backups.validate');
+    Route::get('/organization-backups/google-drive/connect', [OrganizationBackupCloudController::class, 'connect'])->name('organization-backups.google-drive.connect');
+    Route::get('/organization-backups/google-drive/callback', [OrganizationBackupCloudController::class, 'callback'])->name('organization-backups.google-drive.callback');
+    Route::post('/organization-backups/google-drive/test', [OrganizationBackupCloudController::class, 'test'])->name('organization-backups.google-drive.test');
+    Route::delete('/organization-backups/google-drive', [OrganizationBackupCloudController::class, 'disconnect'])->name('organization-backups.google-drive.disconnect');
+    Route::post('/organization-backups/cloud-copies/{cloudCopy}/retry', [OrganizationBackupCloudController::class, 'retry'])->name('organization-backups.cloud-copies.retry');
+    Route::post('/organization-backups/cloud-copies/{cloudCopy}/validate', [OrganizationBackupCloudController::class, 'validateCloudBackup'])->name('organization-backups.cloud-copies.validate');
+    Route::post('/organization-backups/{organizationBackup}/copy/google-drive', [OrganizationBackupCloudController::class, 'copy'])->name('organization-backups.google-drive.copy');
+    Route::post('/organization-backups/{organizationBackup}/validate', [OrganizationBackupController::class, 'validateHistory'])->name('organization-backups.history.validate');
+    Route::get('/organization-backups/{organizationBackup}/download', [OrganizationBackupController::class, 'downloadHistory'])->name('organization-backups.history.download');
+    Route::post('/organization-backups/restore', [OrganizationBackupController::class, 'restore'])->name('organization-backups.restore');
     Route::post('/email-settings/test', [OrganizationMailSettingController::class, 'test'])->name('email-settings.test');
 
     // Account Settings (V1) — the authenticated user's OWN profile, never
@@ -173,6 +201,7 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
     // gate rather than inventing a carve-out for one and not the other.
     Route::get('/account/profile', [ProfileController::class, 'edit'])->name('account.profile.edit');
     Route::patch('/account/profile', [ProfileController::class, 'update'])->name('account.profile.update');
+    Route::post('/account/password/initial', [PasswordController::class, 'storeInitial'])->name('account.password.initial');
     Route::patch('/account/password', [PasswordController::class, 'update'])->name('account.password.update');
 
     // Account security (§E) — TOTP two-factor authentication. Enrollment

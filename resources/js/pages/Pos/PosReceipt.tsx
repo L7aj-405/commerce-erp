@@ -63,12 +63,12 @@ export default function PosReceipt({ storeName, order, lines }: Props) {
                 ))}
                 <div style={{ borderTop: '1px dashed #000', margin: '6px 0' }} />
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span>Sous-total HT</span>
+                    <span>Total brut HT</span>
                     <span>{formatMoney(order.subtotal_excl_tax, currency)}</span>
                 </div>
                 {Number(order.discount_total) > 0.00005 && (
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <span>Remise</span>
+                        <span>Remise HT</span>
                         <span>- {formatMoney(order.discount_total, currency)}</span>
                     </div>
                 )}

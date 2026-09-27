@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Quotations;
 
+use App\Actions\Documents\CreateFullInvoiceFromSalesOrderAction;
 use App\Actions\Quotations\ConvertQuotationToSalesOrderAction;
 use App\Enums\SalesOrderPaymentStatus;
 use App\Enums\SalesOrderStatus;
@@ -65,5 +66,43 @@ class QuotationFinanceBoundaryTest extends QuotationTestCase
 
         // Finance only ever follows an authoritative business event (a confirmed
         // sale / invoice / payment) — never the Devis or its conversion draft.
+    }
+
+    public function test_devis_to_sales_order_to_new_invoice_keeps_ht_discount_taxable_values_consistent(): void
+    {
+        $owner = User::factory()->create();
+        $organization = $this->createOrganization($owner);
+        $store = $this->createStore($organization, $owner);
+        $warehouse = $this->createWarehouse($organization);
+        $tax = $this->createTaxRate($organization, 'TVA 20', '20.0000');
+        $variant = $this->createProduct($organization, 'Console', 'CON-HT-DISC', [
+            'public_price_ttc' => '4050.0000',
+            'tax_rate_id' => $tax->id,
+        ])->variants->first();
+        $this->activate($owner, $organization, $store);
+        $this->openStock($owner, $organization, $warehouse, $variant, '20.0000');
+
+        $quotation = $this->createQuotation($owner, $organization, $store);
+        $this->addCatalogQuotationLine($owner, $quotation, $variant, [
+            'quantity' => '2',
+            'discount_type' => 'fixed',
+            'discount_value' => '100.0000',
+        ]);
+        $issued = $this->issueQuotation($owner, $quotation);
+
+        $this->assertSame('6750.0000', $issued->subtotal_excl_tax);
+        $this->assertSame('100.0000', $issued->discount_total);
+        $this->assertSame('1330.0000', $issued->tax_total);
+        $this->assertSame('7980.0000', $issued->total_incl_tax);
+
+        $order = app(ConvertQuotationToSalesOrderAction::class)->execute($owner, $issued, ['warehouse_id' => $warehouse->id])['order']->fresh();
+        $invoice = app(CreateFullInvoiceFromSalesOrderAction::class)->execute($owner, $order)->fresh();
+
+        foreach ([$order, $invoice] as $document) {
+            $this->assertSame('6750.0000', $document->subtotal_excl_tax);
+            $this->assertSame('100.0000', $document->discount_total);
+            $this->assertSame('1330.0000', $document->tax_total);
+            $this->assertSame('7980.0000', $document->total_incl_tax);
+        }
     }
 }

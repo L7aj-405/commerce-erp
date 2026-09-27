@@ -26,6 +26,11 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->hasMany(OrganizationMembership::class);
     }
 
+    public function socialIdentities(): HasMany
+    {
+        return $this->hasMany(UserSocialIdentity::class);
+    }
+
     public function organizations(): BelongsToMany
     {
         return $this->belongsToMany(Organization::class, 'organization_memberships')

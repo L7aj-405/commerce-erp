@@ -4,7 +4,6 @@ namespace App\Services;
 
 use App\Enums\QuotationStatus;
 use App\Models\Quotation;
-use App\Support\CommercialDiscountDisplay;
 use App\Support\Decimal;
 use App\Support\FrenchNumberToWords;
 
@@ -22,8 +21,8 @@ class QuotationDocumentRenderer
     {
         $quotation->loadMissing(['lines', 'issuedBy:id,name', 'rootQuotation:id,quotation_number']);
 
-        $discountTotalInclTax = CommercialDiscountDisplay::linesTotalInclTax($quotation->lines);
-        $hasDiscount = Decimal::compare($discountTotalInclTax, '0') !== 0;
+        $hasDiscount = Decimal::compare($quotation->discount_total, '0') !== 0
+            || $quotation->lines->contains(fn ($line) => Decimal::compare($line->discount_amount, '0') !== 0);
 
         $locale = config('documents.locale');
         $isRevision = $quotation->isRevision();
@@ -74,15 +73,15 @@ class QuotationDocumentRenderer
                 'quantity' => $this->format->decimal($line->quantity),
                 'unit_price_ht' => $this->format->money($line->unit_price_excl_tax),
                 'line_total_ht' => $this->format->money($line->taxable_amount),
-                'discount' => $this->format->money(CommercialDiscountDisplay::lineAmountInclTax($line)),
-                'has_discount' => Decimal::compare(CommercialDiscountDisplay::lineAmountInclTax($line), '0') !== 0,
+                'discount' => $this->format->money($line->discount_amount),
+                'has_discount' => Decimal::compare($line->discount_amount, '0') !== 0,
                 'tax_rate' => $this->format->decimal($line->tax_rate).'%',
                 'total' => $this->format->money($line->total_incl_tax),
             ])->all(),
             'tax_lines' => $this->taxLines($quotation),
             'totals' => [
                 'subtotal' => $this->format->money($quotation->subtotal_excl_tax),
-                'discount' => $this->format->money($discountTotalInclTax),
+                'discount' => $this->format->money($quotation->discount_total),
                 'net' => $this->format->money(Decimal::subtract($quotation->subtotal_excl_tax, $quotation->discount_total)),
                 'tax' => $this->format->money($quotation->tax_total),
                 'total' => $this->format->money($quotation->total_incl_tax),

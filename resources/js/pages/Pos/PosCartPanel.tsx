@@ -356,12 +356,12 @@ export default function PosCartPanel({
                 {canApplyDiscount && sale && lines.length > 0 && <GlobalDiscount sale={sale} pending={pending.globalDiscount} onChange={onGlobalDiscountChange} />}
 
                 <dl className={`space-y-1 text-[13px] transition-opacity ${pending.recalculating ? 'opacity-70' : ''}`}>
-                    <div className="flex justify-between"><dt className="text-ink-muted">Sous-total HT</dt><dd><Money value={summary?.subtotal_excl_tax ?? '0'} currency={currencyCode} /></dd></div>
+                    <div className="flex justify-between"><dt className="text-ink-muted">Total brut HT</dt><dd><Money value={summary?.subtotal_excl_tax ?? '0'} currency={currencyCode} /></dd></div>
                     {Number(summary?.line_discount_total ?? 0) > 0 && (
-                        <div className="flex justify-between"><dt className="text-ink-muted">Remises articles</dt><dd className="text-success">- <Money value={summary?.line_discount_total ?? '0'} currency={currencyCode} /></dd></div>
+                        <div className="flex justify-between"><dt className="text-ink-muted">Remises HT articles</dt><dd className="text-success">- <Money value={summary?.line_discount_total ?? '0'} currency={currencyCode} /></dd></div>
                     )}
                     {Number(summary?.global_discount_amount ?? 0) > 0 && (
-                        <div className="flex justify-between"><dt className="text-ink-muted">Remise globale</dt><dd className="text-success">- <Money value={summary?.global_discount_amount ?? '0'} currency={currencyCode} /></dd></div>
+                        <div className="flex justify-between"><dt className="text-ink-muted">Remise globale HT</dt><dd className="text-success">- <Money value={summary?.global_discount_amount ?? '0'} currency={currencyCode} /></dd></div>
                     )}
                     <div className="flex justify-between"><dt className="text-ink-muted">TVA</dt><dd><Money value={summary?.tax_total ?? '0'} currency={currencyCode} /></dd></div>
                     {Number(summary?.shipping_fee ?? 0) > 0 && (

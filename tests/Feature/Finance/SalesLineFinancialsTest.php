@@ -33,10 +33,10 @@ class SalesLineFinancialsTest extends SalesTestCase
         $this->assertSame('360.0000', $order->total_incl_tax);
     }
 
-    public function test_per_line_percentage_discount_reduces_taxable_base_before_tax(): void
+    public function test_percentage_discount_reduces_ht_taxable_base_before_tax(): void
     {
-        // Qty 2 · PU HT 500 · TVA 20% · remise 10%
-        [$owner, $organization, $store, $warehouse, $variant] = $this->financeContext('500.0000', '20.0000');
+        // Qty 2 · PU HT 5000 · Brut HT 10 000 · remise 10%
+        [$owner, $organization, $store, $warehouse, $variant] = $this->financeContext('5000.0000', '20.0000');
         $order = $this->createDraftOrder($owner, $organization, $store);
 
         $line = $this->addCatalogLine($owner, $order, $variant, $warehouse, [
@@ -45,14 +45,14 @@ class SalesLineFinancialsTest extends SalesTestCase
             'discount_value' => '10.0000',
         ]);
 
-        $this->assertSame('1000.0000', $line->subtotal_excl_tax);   // gross HT
-        $this->assertSame('100.0000', $line->discount_amount);      // discount HT
-        $this->assertSame('900.0000', $line->taxable_amount);       // net HT
-        $this->assertSame('180.0000', $line->tax_amount);           // TVA
-        $this->assertSame('1080.0000', $line->total_incl_tax);      // TTC
+        $this->assertSame('10000.0000', $line->subtotal_excl_tax);  // gross HT
+        $this->assertSame('1000.0000', $line->discount_amount);     // discount HT
+        $this->assertSame('9000.0000', $line->taxable_amount);      // net HT
+        $this->assertSame('1800.0000', $line->tax_amount);          // TVA
+        $this->assertSame('10800.0000', $line->total_incl_tax);     // TTC
     }
 
-    public function test_fixed_discount_is_deducted_from_ttc_before_deriving_ht_and_tax(): void
+    public function test_fixed_discount_reduces_ht_taxable_base_before_tax(): void
     {
         [$owner, $organization, $store, $warehouse, $variant] = $this->financeContext('4050.0000', '20.0000', publicTtc: true);
         $order = $this->createDraftOrder($owner, $organization, $store);
@@ -66,13 +66,13 @@ class SalesLineFinancialsTest extends SalesTestCase
         $this->assertSame('3375.0000', $line->unit_price_excl_tax);
         $this->assertSame('4050.0000', $line->unit_price_incl_tax);
         $this->assertSame('3375.0000', $line->subtotal_excl_tax);
-        $this->assertSame('83.3333', $line->discount_amount);
-        $this->assertSame('3291.6667', $line->taxable_amount);
-        $this->assertSame('658.3333', $line->tax_amount);
-        $this->assertSame('3950.0000', $line->total_incl_tax);
+        $this->assertSame('100.0000', $line->discount_amount);
+        $this->assertSame('3275.0000', $line->taxable_amount);
+        $this->assertSame('655.0000', $line->tax_amount);
+        $this->assertSame('3930.0000', $line->total_incl_tax);
     }
 
-    public function test_percentage_discount_is_calculated_from_ttc_before_deriving_ht_and_tax(): void
+    public function test_percentage_discount_is_calculated_from_ht_before_tax(): void
     {
         [$owner, $organization, $store, $warehouse, $variant] = $this->financeContext('4050.0000', '20.0000', publicTtc: true);
         $order = $this->createDraftOrder($owner, $organization, $store);
@@ -91,7 +91,7 @@ class SalesLineFinancialsTest extends SalesTestCase
         $this->assertSame('3645.0000', $line->total_incl_tax);
     }
 
-    public function test_quantity_two_applies_one_fixed_ttc_discount_to_the_line_total(): void
+    public function test_quantity_two_applies_one_fixed_ht_discount_to_the_line_total(): void
     {
         [$owner, $organization, $store, $warehouse, $variant] = $this->financeContext('4050.0000', '20.0000', publicTtc: true);
         $order = $this->createDraftOrder($owner, $organization, $store);
@@ -103,10 +103,46 @@ class SalesLineFinancialsTest extends SalesTestCase
         ]);
 
         $this->assertSame('6750.0000', $line->subtotal_excl_tax);
-        $this->assertSame('83.3333', $line->discount_amount);
-        $this->assertSame('6666.6667', $line->taxable_amount);
-        $this->assertSame('1333.3333', $line->tax_amount);
-        $this->assertSame('8000.0000', $line->total_incl_tax);
+        $this->assertSame('100.0000', $line->discount_amount);
+        $this->assertSame('6650.0000', $line->taxable_amount);
+        $this->assertSame('1330.0000', $line->tax_amount);
+        $this->assertSame('7980.0000', $line->total_incl_tax);
+    }
+
+    public function test_discounts_with_multiple_tax_rates_reduce_each_line_taxable_base_before_tax(): void
+    {
+        [$owner, $organization, $store, $warehouse, $variantA] = $this->financeContext('1000.0000', '20.0000');
+        $taxB = $this->createTaxRate($organization, 'TVA 10', '10.0000');
+        $variantB = $this->createProduct($organization, 'Finance Product B', 'FIN-2', [
+            'default_sale_price' => '1000.0000',
+            'tax_rate_id' => $taxB->getKey(),
+        ])->variants->first();
+        $this->openStock($owner, $organization, $warehouse, $variantB, '50.0000');
+        $order = $this->createDraftOrder($owner, $organization, $store);
+
+        $lineA = $this->addCatalogLine($owner, $order, $variantA, $warehouse, [
+            'quantity' => '1',
+            'discount_type' => 'fixed',
+            'discount_value' => '100.0000',
+        ]);
+        $lineB = $this->addCatalogLine($owner, $order, $variantB, $warehouse, [
+            'quantity' => '1',
+            'discount_type' => 'fixed',
+            'discount_value' => '100.0000',
+        ]);
+
+        $this->assertSame('900.0000', $lineA->taxable_amount);
+        $this->assertSame('180.0000', $lineA->tax_amount);
+        $this->assertSame('1080.0000', $lineA->total_incl_tax);
+        $this->assertSame('900.0000', $lineB->taxable_amount);
+        $this->assertSame('90.0000', $lineB->tax_amount);
+        $this->assertSame('990.0000', $lineB->total_incl_tax);
+
+        $order->refresh();
+        $this->assertSame('2000.0000', $order->subtotal_excl_tax);
+        $this->assertSame('200.0000', $order->discount_total);
+        $this->assertSame('270.0000', $order->tax_total);
+        $this->assertSame('2070.0000', $order->total_incl_tax);
     }
 
     public function test_commercial_quantities_must_be_positive_whole_numbers(): void

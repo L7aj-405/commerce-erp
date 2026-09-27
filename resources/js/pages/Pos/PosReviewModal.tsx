@@ -81,10 +81,10 @@ export default function PosReviewModal({ open, data, sale, currencyCode, busy, e
                     </div>
 
                     <dl className="space-y-1 border-t border-line pt-3">
-                        <div className="flex justify-between"><dt className="text-ink-muted">Sous-total HT</dt><dd><Money value={data.totals.subtotal_excl_tax} currency={currencyCode} /></dd></div>
+                        <div className="flex justify-between"><dt className="text-ink-muted">Total brut HT</dt><dd><Money value={data.totals.subtotal_excl_tax} currency={currencyCode} /></dd></div>
                         {Number(data.totals.discount) > 0 && (
                             <>
-                                <div className="flex justify-between"><dt className="text-ink-muted">Remise</dt><dd className="text-success">- <Money value={data.totals.discount} currency={currencyCode} /></dd></div>
+                                <div className="flex justify-between"><dt className="text-ink-muted">Remise HT</dt><dd className="text-success">- <Money value={data.totals.discount} currency={currencyCode} /></dd></div>
                                 <div className="flex justify-between"><dt className="text-ink-muted">Net HT</dt><dd><Money value={data.totals.net_excl_tax} currency={currencyCode} /></dd></div>
                             </>
                         )}

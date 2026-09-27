@@ -363,6 +363,7 @@
                 <table class="totals">
                     @if ($has_discount)
                         <tr><td class="lbl">{{ $t('subtotal') }}</td><td class="val">{{ $totals['subtotal'] }} {{ $currency }}</td></tr>
+                        <tr><td class="lbl">{{ $t('discount') }}</td><td class="val">- {{ $totals['discount'] }} {{ $currency }}</td></tr>
                         <tr class="strong"><td class="lbl">{{ $t('total_ht') }}</td><td class="val">{{ $totals['net'] }} {{ $currency }}</td></tr>
                     @else
                         <tr><td class="lbl">{{ $t('total_ht') }}</td><td class="val">{{ $totals['subtotal'] }} {{ $currency }}</td></tr>
@@ -370,9 +371,6 @@
                     @foreach ($tax_lines as $taxLine)
                         <tr><td class="lbl">{{ $taxLine['label'] }} ({{ $taxLine['rate'] }})</td><td class="val">{{ $taxLine['amount'] }} {{ $currency }}</td></tr>
                     @endforeach
-                    @if ($has_discount)
-                        <tr><td class="lbl">{{ $t('discount') }}</td><td class="val">- {{ $totals['discount'] }} {{ $currency }}</td></tr>
-                    @endif
                     <tr class="grand"><td class="lbl">{{ $t('total_ttc') }}</td><td class="val">{{ $totals['total'] }} {{ $currency }}</td></tr>
                 </table>
             </td>

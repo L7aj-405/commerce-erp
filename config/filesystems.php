@@ -60,6 +60,30 @@ return [
             'report' => false,
         ],
 
+        'organization_backups' => env('ORG_BACKUP_STORAGE_DRIVER', 'local') === 's3'
+    ? [
+        'driver' => 's3',
+        'key' => env('ORG_BACKUP_S3_ACCESS_KEY_ID'),
+        'secret' => env('ORG_BACKUP_S3_SECRET_ACCESS_KEY'),
+        'region' => env('ORG_BACKUP_S3_REGION', 'auto'),
+        'bucket' => env('ORG_BACKUP_S3_BUCKET'),
+        'endpoint' => env('ORG_BACKUP_S3_ENDPOINT'),
+        'use_path_style_endpoint' => env('ORG_BACKUP_S3_USE_PATH_STYLE_ENDPOINT', false),
+        'visibility' => 'private',
+        'options' => array_filter([
+            'ServerSideEncryption' => env('ORG_BACKUP_S3_SERVER_SIDE_ENCRYPTION'),
+        ]),
+        'throw' => true,
+        'report' => false,
+    ]
+    : [
+        'driver' => 'local',
+        'root' => storage_path('app/private/organization-backups'),
+        'visibility' => 'private',
+        'throw' => true,
+        'report' => false,
+    ],
+
     ],
 
     /*
