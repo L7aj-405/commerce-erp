@@ -12,6 +12,16 @@ class PublicLegalController extends Controller
     {
         return Inertia::render('Legal/Privacy', [
             'pageTitle' => 'Politique de confidentialité',
+            'reviewDisclosures' => [
+                'product' => '10xScale ERP',
+                'googleAuth' => 'Connexion avec Google',
+                'googleAuthScopes' => 'openid email profile',
+                'googleDrive' => 'Sauvegardes Google Drive',
+                'googleDriveScope' => 'https://www.googleapis.com/auth/drive.file',
+                'googleDataUse' => 'Utilisation des données Google',
+                'retention' => 'Conservation des données',
+                'revocation' => 'Révocation de l’accès Google',
+            ],
             'legal' => LegalMetadata::props(),
             'legalLinks' => LegalMetadata::links(),
         ]);

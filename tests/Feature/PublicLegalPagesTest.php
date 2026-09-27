@@ -19,6 +19,8 @@ class PublicLegalPagesTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page
                 ->component('Home')
                 ->where('productName', '10xScale ERP')
+                ->where('legalLinks.privacy', route('privacy'))
+                ->where('legalLinks.terms', route('terms'))
             );
     }
 
@@ -36,6 +38,14 @@ class PublicLegalPagesTest extends TestCase
                 ->component('Legal/Privacy')
                 ->where('pageTitle', 'Politique de confidentialité')
                 ->where('legal.productName', '10xScale ERP')
+                ->where('reviewDisclosures.product', '10xScale ERP')
+                ->where('reviewDisclosures.googleAuth', 'Connexion avec Google')
+                ->where('reviewDisclosures.googleAuthScopes', 'openid email profile')
+                ->where('reviewDisclosures.googleDrive', 'Sauvegardes Google Drive')
+                ->where('reviewDisclosures.googleDriveScope', 'https://www.googleapis.com/auth/drive.file')
+                ->where('reviewDisclosures.googleDataUse', 'Utilisation des données Google')
+                ->where('reviewDisclosures.retention', 'Conservation des données')
+                ->where('reviewDisclosures.revocation', 'Révocation de l’accès Google')
                 ->where('legalLinks.privacy', route('privacy'))
                 ->where('legalLinks.terms', route('terms'))
             );
@@ -97,6 +107,16 @@ class PublicLegalPagesTest extends TestCase
                 ->component('Auth/Register')
                 ->where('legalLinks.privacy', route('privacy'))
                 ->where('legalLinks.terms', route('terms'))
+            );
+    }
+
+    public function test_homepage_exposes_same_privacy_url_submitted_to_google(): void
+    {
+        $this->get('/')
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('Home')
+                ->where('legalLinks.privacy', route('privacy'))
             );
     }
 }

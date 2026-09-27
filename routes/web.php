@@ -88,6 +88,7 @@ Route::get('/', function () {
 
     return Inertia::render('Home', [
         'productName' => LegalMetadata::props()['productName'],
+        'legalLinks' => LegalMetadata::links(),
     ]);
 })->name('home');
 

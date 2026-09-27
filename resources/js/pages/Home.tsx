@@ -29,9 +29,13 @@ const capabilities: Array<{ title: string; description: string; icon: ReactNode 
 
 type Props = {
     productName?: string;
+    legalLinks?: {
+        privacy: string;
+        terms: string;
+    };
 };
 
-export default function Home({ productName = PRODUCT_NAME }: Props) {
+export default function Home({ productName = PRODUCT_NAME, legalLinks = { privacy: '/privacy', terms: '/terms' } }: Props) {
     return (
         <>
             <Head title={productName} />
@@ -103,8 +107,8 @@ export default function Home({ productName = PRODUCT_NAME }: Props) {
                         <div className="flex gap-4">
                             <Link href="/login" className="rounded transition-soft hover:text-ink">Se connecter</Link>
                             <Link href="/register" className="rounded transition-soft hover:text-ink">Créer un compte</Link>
-                            <Link href="/privacy" className="rounded transition-soft hover:text-ink">Confidentialité</Link>
-                            <Link href="/terms" className="rounded transition-soft hover:text-ink">Conditions</Link>
+                            <Link href={legalLinks.privacy} className="rounded transition-soft hover:text-ink">Confidentialité</Link>
+                            <Link href={legalLinks.terms} className="rounded transition-soft hover:text-ink">Conditions</Link>
                         </div>
                     </div>
                 </footer>
