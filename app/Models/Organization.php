@@ -165,6 +165,16 @@ class Organization extends Model
         return $this->hasMany(DeliveryNote::class);
     }
 
+    public function contacts(): HasMany
+    {
+        return $this->hasMany(OrganizationContact::class);
+    }
+
+    public function documentEmailDeliveries(): HasMany
+    {
+        return $this->hasMany(DocumentEmailDelivery::class);
+    }
+
     public function mailSetting(): HasOne
     {
         return $this->hasOne(OrganizationMailSetting::class);

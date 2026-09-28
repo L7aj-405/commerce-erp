@@ -19,6 +19,7 @@ use App\Http\Controllers\Catalog\ProductImportController;
 use App\Http\Controllers\Catalog\ProductVariantController;
 use App\Http\Controllers\Catalog\TaxRateController;
 use App\Http\Controllers\Catalog\UnitOfMeasureController;
+use App\Http\Controllers\Contacts\OrganizationContactController;
 use App\Http\Controllers\Documents\DeliveryNoteController;
 use App\Http\Controllers\Documents\DocumentEmailController;
 use App\Http\Controllers\Documents\DocumentProfileController;
@@ -173,6 +174,9 @@ Route::middleware('auth')->group(function () {
 // registered, still-unverified accounts are actually gated by it).
 Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () {
     Route::get('/platform', PlatformController::class)->name('platform.index');
+    Route::get('/contacts/lookup', [OrganizationContactController::class, 'lookup'])->name('contacts.lookup');
+    Route::resource('contacts', OrganizationContactController::class)->except(['destroy']);
+    Route::delete('/contacts/{contact}', [OrganizationContactController::class, 'destroy'])->name('contacts.destroy');
     Route::get('/document-profile', [DocumentProfileController::class, 'edit'])->name('document-profile.edit');
     Route::put('/document-profile', [DocumentProfileController::class, 'update'])->name('document-profile.update');
     Route::get('/quotation-settings', [QuotationSettingsController::class, 'edit'])->name('quotation-settings.edit');

@@ -5,6 +5,7 @@ return [
     'invoice_template_version' => 'v1',
     'delivery_note_template_version' => 'v1',
     'quotation_template_version' => 'v1',
+    'email_recipient_limit' => 25,
 
     /*
      * Fallback Devis options, used only until an organisation configures its own

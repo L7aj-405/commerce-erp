@@ -11,6 +11,7 @@ use App\Models\DeliveryNote;
 use App\Models\Invoice;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 use Throwable;
 
 class DocumentEmailController extends Controller
@@ -19,17 +20,22 @@ class DocumentEmailController extends Controller
     {
         $this->authorize('email', $invoice);
         $data = $request->validate([
-            'email' => ['required', 'email:rfc', 'max:254'],
+            'email' => ['nullable', 'email:rfc', 'max:254'],
+            'to' => ['nullable', 'array'],
+            'cc' => ['nullable', 'array'],
+            'bcc' => ['nullable', 'array'],
             'subject' => ['nullable', 'string', 'max:255'],
             'message' => ['nullable', 'string', 'max:5000'],
         ]);
 
         try {
-            $action->execute($request->user(), $invoice, $data['email'], $data['subject'] ?? null, $data['message'] ?? null);
+            $action->execute($request->user(), $invoice, $data, $data['subject'] ?? null, $data['message'] ?? null);
         } catch (OrganizationMailNotConfiguredException $exception) {
             return back()->withErrors(['email' => $exception->getMessage()])->with('mailNotConfigured', true);
         } catch (OrganizationMailDeliveryException $exception) {
             return back()->withErrors(['email' => $exception->getMessage()]);
+        } catch (ValidationException $exception) {
+            throw $exception;
         } catch (Throwable) {
             return back()->withErrors(['email' => 'La facture n\'a pas pu être envoyée. Réessayez.']);
         }
@@ -40,14 +46,23 @@ class DocumentEmailController extends Controller
     public function deliveryNote(Request $request, DeliveryNote $deliveryNote, SendDeliveryNoteEmailAction $action): RedirectResponse
     {
         $this->authorize('email', $deliveryNote);
-        $data = $request->validate(['email' => ['required', 'email:rfc', 'max:254']]);
+        $data = $request->validate([
+            'email' => ['nullable', 'email:rfc', 'max:254'],
+            'to' => ['nullable', 'array'],
+            'cc' => ['nullable', 'array'],
+            'bcc' => ['nullable', 'array'],
+            'subject' => ['nullable', 'string', 'max:255'],
+            'message' => ['nullable', 'string', 'max:5000'],
+        ]);
 
         try {
-            $action->execute($request->user(), $deliveryNote, $data['email']);
+            $action->execute($request->user(), $deliveryNote, $data, $data['subject'] ?? null, $data['message'] ?? null);
         } catch (OrganizationMailNotConfiguredException $exception) {
             return back()->withErrors(['email' => $exception->getMessage()])->with('mailNotConfigured', true);
         } catch (OrganizationMailDeliveryException $exception) {
             return back()->withErrors(['email' => $exception->getMessage()]);
+        } catch (ValidationException $exception) {
+            throw $exception;
         } catch (Throwable) {
             return back()->withErrors(['email' => 'Le bon de livraison n\'a pas pu être envoyé. Réessayez.']);
         }

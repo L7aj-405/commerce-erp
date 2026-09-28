@@ -42,11 +42,13 @@ class OrganizationOutboundMailService
 
     /**
      * @param  string|array<int, string>  $to
+     * @param  array<int, string>  $cc
+     * @param  array<int, string>  $bcc
      *
      * @throws OrganizationMailNotConfiguredException
      * @throws OrganizationMailDeliveryException
      */
-    public function send(Organization $organization, Mailable $mailable, string|array $to): void
+    public function send(Organization $organization, Mailable $mailable, string|array $to, array $cc = [], array $bcc = []): void
     {
         $setting = $organization->mailSetting()->first();
 
@@ -54,13 +56,13 @@ class OrganizationOutboundMailService
             throw new OrganizationMailNotConfiguredException;
         }
 
-        $this->deliver($setting, $mailable, $to);
+        $this->deliver($setting, $mailable, $to, $cc, $bcc);
     }
 
     /**
      * @throws OrganizationMailDeliveryException
      */
-    private function deliver(OrganizationMailSetting $setting, Mailable $mailable, string|array $to): void
+    private function deliver(OrganizationMailSetting $setting, Mailable $mailable, string|array $to, array $cc = [], array $bcc = []): void
     {
         // Defense in depth: the host is also validated at save time
         // (OrganizationMailSettingController::update), but DNS can change
@@ -99,7 +101,7 @@ class OrganizationOutboundMailService
         }
 
         try {
-            Mail::mailer($mailerName)->to($to)->send($mailable);
+            Mail::mailer($mailerName)->to($to)->cc($cc)->bcc($bcc)->send($mailable);
         } catch (Throwable $exception) {
             throw new OrganizationMailDeliveryException($exception);
         } finally {

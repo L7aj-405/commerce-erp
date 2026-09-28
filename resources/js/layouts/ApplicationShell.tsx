@@ -132,7 +132,10 @@ export default function ApplicationShell({ children, wide = false, flush = false
             key: 'customers',
             label: 'Clients',
             icon: <IconUsers />,
-            items: [{ href: '/sales/customers', label: 'Clients', permission: 'customers.view', icon: <IconUsers /> }],
+            items: [
+                { href: '/sales/customers', label: 'Clients', permission: 'customers.view', icon: <IconUsers /> },
+                { href: '/contacts', label: 'Contacts', permission: 'contacts.view', icon: <IconUsers /> },
+            ],
         },
         {
             key: 'integrations',

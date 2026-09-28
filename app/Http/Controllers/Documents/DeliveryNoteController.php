@@ -65,7 +65,9 @@ class DeliveryNoteController extends Controller
                 'issue' => $request->user()->can('issue', $deliveryNote),
                 'backdate' => $request->user()->hasPermission($deliveryNote->organization_id, 'delivery_notes.backdate'),
                 'email' => $request->user()->can('email', $deliveryNote),
+                'configureMail' => $request->user()->hasPermission($deliveryNote->organization_id, 'settings.update'),
             ],
+            'mailConfigured' => $deliveryNote->organization->mailSetting()->first()?->isUsable() ?? false,
         ]);
     }
 

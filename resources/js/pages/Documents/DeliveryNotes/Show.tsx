@@ -1,10 +1,12 @@
 import { Button } from '@/components/ui/Button';
+import SendDocumentEmailModal from '@/components/documents/SendDocumentEmailModal';
 import DocBadge from '@/components/ui/DocBadge';
 import { formatDate, formatDateTime } from '@/utils/format';
 import { deliveryNoteStatusLabel, deliveryNoteStatusTone, label } from '@/utils/labels';
 import SalesLayout from '@/layouts/SalesLayout';
 import { Head, Link, router, useForm } from '@inertiajs/react';
 import type { FormEvent, ReactNode } from 'react';
+import { useState } from 'react';
 
 type Line = { id: number; description: string; product_name: string | null; variant_name: string | null; sku: string | null; reference: string | null; unit_label: string | null; quantity: string };
 type Note = {
@@ -24,7 +26,7 @@ type Note = {
     lines: Line[];
     issued_by: { name: string } | null;
 };
-type Props = { deliveryNote: Note; can: { updateDraft: boolean; issue: boolean; backdate: boolean; email: boolean } };
+type Props = { deliveryNote: Note; can: { updateDraft: boolean; issue: boolean; backdate: boolean; email: boolean; configureMail: boolean }; mailConfigured: boolean };
 
 const fieldClass = 'mt-1.5 h-10 w-full rounded-field border border-line-strong bg-surface px-3 text-sm text-ink outline-none transition-soft focus:border-primary';
 const labelClass = 'block text-[13px] font-medium text-ink';
@@ -38,7 +40,7 @@ function Card({ label: title, children }: { label: string; children: ReactNode }
     );
 }
 
-export default function DeliveryNoteShow({ deliveryNote: note, can }: Props) {
+export default function DeliveryNoteShow({ deliveryNote: note, can, mailConfigured }: Props) {
     const form = useForm({
         delivery_date: note.delivery_date.slice(0, 10),
         recipient_name: note.recipient_name ?? '',
@@ -48,10 +50,9 @@ export default function DeliveryNoteShow({ deliveryNote: note, can }: Props) {
         notes: note.notes ?? '',
     });
     const cancellation = useForm({ reason: '' });
-    const email = useForm({ email: '' });
+    const [emailModalOpen, setEmailModalOpen] = useState(false);
     const update = (event: FormEvent) => { event.preventDefault(); form.patch(`/delivery-notes/${note.id}`, { preserveScroll: true }); };
     const cancel = (event: FormEvent) => { event.preventDefault(); cancellation.post(`/delivery-notes/${note.id}/cancel`, { preserveScroll: true }); };
-    const sendEmail = (event: FormEvent) => { event.preventDefault(); email.post(`/delivery-notes/${note.id}/email`, { preserveScroll: true, onSuccess: () => email.reset() }); };
     const title = note.delivery_note_number ?? `Brouillon #${note.id}`;
 
     return (
@@ -92,16 +93,9 @@ export default function DeliveryNoteShow({ deliveryNote: note, can }: Props) {
                     </a>
                 )}
                 {note.status === 'issued' && can.email && (
-                    <form onSubmit={sendEmail} className="flex flex-wrap items-end gap-2">
-                        <label className="text-[13px] text-ink">
-                            Email du destinataire
-                            <input type="email" required value={email.data.email} onChange={(e) => email.setData('email', e.target.value)} className={`${fieldClass} w-64`} />
-                        </label>
-                        <Button type="submit" variant="secondary" loading={email.processing} loadingText="Envoi…">
-                            Envoyer par email
-                        </Button>
-                        {email.errors.email && <span className="text-[13px] text-danger">{email.errors.email}</span>}
-                    </form>
+                    <Button type="button" variant="secondary" onClick={() => setEmailModalOpen(true)}>
+                        Envoyer par email
+                    </Button>
                 )}
             </section>
 
@@ -198,6 +192,19 @@ export default function DeliveryNoteShow({ deliveryNote: note, can }: Props) {
                     Brouillon annulé : {note.cancellation_reason ?? 'aucun motif renseigné'}
                 </p>
             )}
+            <SendDocumentEmailModal
+                open={emailModalOpen}
+                onClose={() => setEmailModalOpen(false)}
+                postUrl={`/delivery-notes/${note.id}/email`}
+                title="Envoyer le bon de livraison"
+                defaultTo=""
+                defaultSubject={`Bon de livraison ${title}`}
+                defaultMessage="Bonjour,\n\nVeuillez trouver votre bon de livraison en pièce jointe.\n\nCordialement,"
+                attachmentName={`Bon-de-Livraison-${title}.pdf`}
+                canSend={can.email}
+                mailConfigured={mailConfigured}
+                canConfigureMail={can.configureMail}
+            />
         </SalesLayout>
     );
 }
