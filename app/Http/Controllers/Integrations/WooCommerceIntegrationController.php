@@ -65,8 +65,7 @@ class WooCommerceIntegrationController extends Controller
             'can' => [
                 'manage' => $request->user()->hasPermission($organization, 'integrations.manage'),
                 'sync' => $request->user()->hasPermission($organization, 'integrations.sync'),
-                'syncStock' => $request->user()->hasPermission($organization, 'inventory.adjust')
-                    || $request->user()->hasPermission($organization, 'inventory.opening'),
+                'syncStock' => $request->user()->hasPermission($organization, 'inventory.adjust'),
             ],
         ]);
     }
@@ -134,8 +133,7 @@ class WooCommerceIntegrationController extends Controller
 
         if ($integration->sync_stock) {
             abort_unless(
-                $request->user()->hasPermission($integration->organization_id, 'inventory.adjust')
-                || $request->user()->hasPermission($integration->organization_id, 'inventory.opening'),
+                $request->user()->hasPermission($integration->organization_id, 'inventory.adjust'),
                 403,
             );
             if (! $integration->default_warehouse_id) {

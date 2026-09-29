@@ -5,11 +5,9 @@ namespace App\Actions\WooCommerce;
 use App\Actions\Catalog\CreateProductAction;
 use App\Actions\Catalog\CreateVariantAction;
 use App\Actions\Inventory\AdjustInventoryAction;
-use App\Actions\Inventory\OpeningStockAction;
 use App\Enums\InventoryMovementType;
 use App\Models\Brand;
 use App\Models\InventoryBalance;
-use App\Models\InventoryMovement;
 use App\Models\Organization;
 use App\Models\Product;
 use App\Models\ProductChannelIdentifier;
@@ -53,7 +51,6 @@ class SyncWooCommerceProductsAction
         private readonly CreateProductAction $createProduct,
         private readonly CreateVariantAction $createVariant,
         private readonly AdjustInventoryAction $adjustInventory,
-        private readonly OpeningStockAction $openingStock,
         private readonly AuditLogger $audit,
     ) {}
 
@@ -500,14 +497,44 @@ class SyncWooCommerceProductsAction
         }
 
         $target = InventoryQuantity::normalize((string) max(0, $wooVariant->stockQuantity));
-        $current = InventoryBalance::query()
+
+        /*
+         * WooCommerce's stock quantity represents the sellable quantity for the
+         * whole ERP organization, not the quantity physically present in the
+         * integration warehouse. We therefore reconcile Woo's total against the
+         * aggregate ERP physical stock and apply only the delta to the configured
+         * sync warehouse through the normal inventory ledger.
+         */
+        $balances = InventoryBalance::query()
             ->where('organization_id', $organization->getKey())
-            ->where('warehouse_id', $warehouse->getKey())
             ->where('product_variant_id', $variant->getKey())
-            ->value('on_hand') ?? '0.0000';
+            ->orderBy('warehouse_id')
+            ->lockForUpdate()
+            ->get(['warehouse_id', 'on_hand']);
+
+        $current = $balances->reduce(
+            fn (string $carry, InventoryBalance $balance) => InventoryQuantity::add($carry, $balance->on_hand),
+            '0.0000',
+        );
+
+        $syncWarehouseOnHand = $balances
+            ->firstWhere('warehouse_id', $warehouse->getKey())
+            ?->on_hand ?? '0.0000';
 
         $delta = InventoryQuantity::subtract($target, $current);
         if (InventoryQuantity::compare($delta, '0.0000') === 0) {
+            return;
+        }
+
+        if (InventoryQuantity::compare($delta, '0.0000') < 0
+            && InventoryQuantity::compare($syncWarehouseOnHand, ltrim($delta, '-')) < 0) {
+            $this->recordIssue(
+                $run,
+                null,
+                'Stock WooCommerce non réconcilié pour '.($variant->sku ?? "variante #{$variant->getKey()}").' : '
+                .'l’écart négatif dépasse le stock physique disponible dans l’entrepôt de synchronisation.',
+            );
+
             return;
         }
 
@@ -515,23 +542,13 @@ class SyncWooCommerceProductsAction
         $reason = 'Synchronisation WooCommerce';
 
         try {
-            $hasMovements = InventoryMovement::query()
-                ->where('organization_id', $organization->getKey())
-                ->where('warehouse_id', $warehouse->getKey())
-                ->where('product_variant_id', $variant->getKey())
-                ->exists();
-
-            if (! $hasMovements && InventoryQuantity::compare($target, '0.0000') > 0) {
-                $this->openingStock->execute($actor, $organization, $warehouse, $variant, $target, $reason, $reference);
-            } else {
-                $isIncrease = InventoryQuantity::compare($delta, '0.0000') > 0;
-                $this->adjustInventory->execute(
-                    $actor, $organization, $warehouse, $variant,
-                    $isIncrease ? InventoryMovementType::AdjustmentIn : InventoryMovementType::AdjustmentOut,
-                    $isIncrease ? $delta : ltrim($delta, '-'),
-                    $reason, $reference,
-                );
-            }
+            $isIncrease = InventoryQuantity::compare($delta, '0.0000') > 0;
+            $this->adjustInventory->execute(
+                $actor, $organization, $warehouse, $variant,
+                $isIncrease ? InventoryMovementType::AdjustmentIn : InventoryMovementType::AdjustmentOut,
+                $isIncrease ? $delta : ltrim($delta, '-'),
+                $reason, $reference,
+            );
             $run->increment('stock_adjustments');
         } catch (ValidationException $exception) {
             $this->recordIssue($run, null, 'Stock non réconcilié pour '.($variant->sku ?? "variante #{$variant->getKey()}").' : '.$this->firstMessage($exception));
@@ -542,8 +559,7 @@ class SyncWooCommerceProductsAction
     {
         return $integration->sync_stock
             && $integration->default_warehouse_id
-            && ($actor->hasPermission($integration->organization_id, 'inventory.adjust')
-                || $actor->hasPermission($integration->organization_id, 'inventory.opening'));
+            && $actor->hasPermission($integration->organization_id, 'inventory.adjust');
     }
 
     /* -------------------------------------------------------------------------
