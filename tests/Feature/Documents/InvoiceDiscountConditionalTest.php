@@ -40,11 +40,13 @@ class InvoiceDiscountConditionalTest extends DocumentTestCase
         $invoice = $this->createInvoice($owner, $order);
         $payload = app(InvoiceDocumentRenderer::class)->payload($invoice);
         $this->assertTrue($payload['has_discount']);
+        $this->assertSame('Remise (10 %)', $payload['totals']['discount_label']);
         $this->assertNotSame('0.0000', $invoice->discount_total);
 
         $html = app(InvoiceDocumentRenderer::class)->html($invoice);
         $this->assertStringContainsString('Remise', $this->itemsThead($html));
         $this->assertStringContainsString('Sous-total HT', $html);
+        $this->assertStringContainsString('Remise (10 %)', $html);
     }
 
     private function itemsThead(string $html): string

@@ -64,15 +64,18 @@ class OrganizationDocumentStampController extends Controller
                     ',max_width='.(int) config('documents.stamp.max_image_dimension').
                     ',max_height='.(int) config('documents.stamp.max_image_dimension'),
             ],
-            'position_anchor' => ['required', Rule::in(DocumentStampBoundary::ANCHORS)],
-            'offset_x_mm' => ['required', 'numeric', 'between:0,'.(float) config('documents.stamp.max_offset_x_mm')],
-            'offset_y_mm' => ['required', 'numeric', 'between:0,'.(float) config('documents.stamp.max_offset_y_mm')],
+            // Presentation now belongs to PDF Studio. These remain accepted
+            // only for backward-compatible clients and are never required by
+            // the asset-management screen.
+            'position_anchor' => ['nullable', Rule::in(DocumentStampBoundary::ANCHORS)],
+            'offset_x_mm' => ['nullable', 'numeric', 'between:0,'.(float) config('documents.stamp.max_offset_x_mm')],
+            'offset_y_mm' => ['nullable', 'numeric', 'between:0,'.(float) config('documents.stamp.max_offset_y_mm')],
             'display_width_mm' => [
-                'required', 'numeric',
+                'nullable', 'numeric',
                 'between:'.(float) config('documents.stamp.min_display_width_mm').','.(float) config('documents.stamp.max_display_width_mm'),
             ],
             'rotation_deg' => [
-                'required', 'numeric',
+                'nullable', 'numeric',
                 'between:'.(float) config('documents.stamp.min_rotation_deg').','.(float) config('documents.stamp.max_rotation_deg'),
             ],
         ]);

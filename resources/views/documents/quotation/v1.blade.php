@@ -25,6 +25,8 @@
     $itemsSpacerMm = max(0, min(42, 52 - (($lineCount - 1) * 6) - $notesMm));
     $displayWebsite = preg_replace('#^https?://#i', '', trim((string) ($seller['website'] ?? '')));
     $displayWebsite = rtrim($displayWebsite, '/');
+    $showDocumentHeader = filter_var($seller['show_document_header'] ?? true, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) ?? true;
+    $pageTopMargin = $showDocumentHeader ? '20mm' : '13mm';
 
     $cols = $showRemise
         ? ['ref' => 10, 'des' => 33, 'pres' => 9, 'qty' => 6, 'pu' => 11, 'pt' => 11, 'rem' => 9, 'ttc' => 11]
@@ -49,7 +51,7 @@
     <meta charset="utf-8">
     <title>{{ $title }} {{ $document['number'] }}</title>
     <style>
-        @page { margin: 20mm 13mm 30mm; }
+        @page { margin: {{ $pageTopMargin }} 13mm 30mm; }
         * { box-sizing: border-box; }
         body { color: {{ $ink }}; font-family: "DejaVu Sans", sans-serif; font-size: 9px; line-height: 1.42; }
         .runhead { position: fixed; top: -15mm; left: 0; right: 0; height: 12mm; border-bottom: 1px solid #d7d7cf; font-size: 8px; color: #555; }
@@ -113,21 +115,24 @@
     <div class="watermark-logo"><img src="{{ $seller['logo'] }}" alt=""></div>
 @endif
 
-<div class="runhead">
-    <span class="r1">
-        <span class="who">{{ $seller['legal_name'] }}</span>
-        <span class="doc">{{ $title }} {{ $numberLabel }}</span>
-    </span>
-    <span class="r2">
-        {{ $t('customer') }} : {{ $buyerLabel }}
-        <span class="sep">·</span>
-        {{ $t('quotation_date') }} : {{ $document['date'] }}
-    </span>
-</div>
+@if ($showDocumentHeader)
+    <div class="runhead">
+        <span class="r1">
+            <span class="who">{{ $seller['legal_name'] }}</span>
+            <span class="doc">{{ $title }} {{ $numberLabel }}</span>
+        </span>
+        <span class="r2">
+            {{ $t('customer') }} : {{ $buyerLabel }}
+            <span class="sep">·</span>
+            {{ $t('quotation_date') }} : {{ $document['date'] }}
+        </span>
+    </div>
+@endif
 
 <div class="runfoot">
     @if ($footerLine1){{ $footerLine1 }}<br>@endif
     @if ($seller['email'] ?? null)Email : {{ $seller['email'] }}<br>@endif
+    @if ($displayWebsite !== '')Web : {{ $displayWebsite }}<br>@endif
     @if ($legalBits->isNotEmpty()){{ $legalBits->implode(' ; ') }}<br>@endif
     @if (data_get($seller, 'bank.rib'))RIB {{ data_get($seller, 'bank.name') ? data_get($seller, 'bank.name').' : ' : '' }}{{ data_get($seller, 'bank.rib') }}@endif
     @if ($seller['footer_text'] ?? null)<br>{{ $seller['footer_text'] }}@endif
@@ -136,23 +141,28 @@
 <table class="masthead">
     <tr>
         <td style="width: 60%; padding-right: 16px;">
+            @if (data_get($seller, 'pdf_style.company_name.position') === 'above_logo')
+                <div class="company-name">{{ ($seller['trade_name'] ?? null) ?: $seller['legal_name'] }}</div>
+            @endif
             @if ($seller['logo'] ?? null)
                 <img class="logo" src="{{ $seller['logo'] }}" alt="">
-            @else
+            @endif
+            @if (data_get($seller, 'pdf_style.company_name.position', 'below_logo') !== 'above_logo')
                 <div class="company-name">{{ ($seller['trade_name'] ?? null) ?: $seller['legal_name'] }}</div>
             @endif
             <div class="seller">
-                @if (($seller['trade_name'] ?? null) && ($seller['legal_name'] ?? null))<div class="seller-row"><span class="info-value">{{ $seller['legal_name'] }}</span></div>@endif
-                @if ($seller['address'] ?? null)<div class="seller-row"><span class="info-label">Adresse :</span> <span class="info-value">{{ $seller['address'] }}</span></div>@endif
-                @if ($seller['tax_identifier'] ?? null)<div class="seller-row"><span class="info-label">ICE :</span> <span class="info-value">{{ $seller['tax_identifier'] }}</span></div>@endif
-                @if ($seller['registration_number'] ?? null)<div class="seller-row"><span class="info-label">RC :</span> <span class="info-value">{{ $seller['registration_number'] }}</span></div>@endif
-                @if ($seller['patente_number'] ?? null)<div class="seller-row"><span class="info-label">TP :</span> <span class="info-value">{{ $seller['patente_number'] }}</span></div>@endif
-                @foreach (($seller['additional_identifiers'] ?? []) as $identifier)
-                    <div class="seller-row"><span class="info-label">{{ $identifier['label'] }} :</span> <span class="info-value">{{ $identifier['value'] }}</span></div>
-                @endforeach
-                @if ($seller['phone'] ?? null)<div class="seller-row"><span class="info-label">Tél :</span> <span class="info-value">{{ $seller['phone'] }}</span></div>@endif
-                @if ($seller['email'] ?? null)<div class="seller-row"><span class="info-label">Email :</span> <span class="info-value">{{ $seller['email'] }}</span></div>@endif
-                @if ($displayWebsite !== '')<div class="seller-row"><span class="info-label">Web :</span> <span class="info-value">{{ $displayWebsite }}</span></div>@endif
+                @if (($seller['trade_name'] ?? null) && ($seller['legal_name'] ?? null))<div class="seller-identity info-value">{{ $seller['legal_name'] }}</div>@endif
+                <table class="info-kv company-info-table"><tbody>
+                    @if ($seller['address'] ?? null) @include('documents.partials.information-row', ['rowClass' => 'seller-address', 'label' => 'Adresse :', 'value' => $seller['address']]) @endif
+                    @if ($seller['tax_identifier'] ?? null) @include('documents.partials.information-row', ['rowClass' => 'seller-tax', 'label' => 'ICE :', 'value' => $seller['tax_identifier']]) @endif
+                    @if ($seller['registration_number'] ?? null) @include('documents.partials.information-row', ['rowClass' => 'seller-registration', 'label' => 'RC :', 'value' => $seller['registration_number']]) @endif
+                    @if ($seller['patente_number'] ?? null) @include('documents.partials.information-row', ['rowClass' => 'seller-patente', 'label' => 'TP :', 'value' => $seller['patente_number']]) @endif
+                    @foreach (($seller['additional_identifiers'] ?? []) as $identifier)
+                        @include('documents.partials.information-row', ['rowClass' => 'seller-additional', 'label' => $identifier['label'].' :', 'value' => $identifier['value']])
+                    @endforeach
+                    @if ($seller['phone'] ?? null) @include('documents.partials.information-row', ['rowClass' => 'seller-phone', 'label' => 'Tél :', 'value' => $seller['phone']]) @endif
+                    @if ($seller['email'] ?? null) @include('documents.partials.information-row', ['rowClass' => 'seller-email', 'label' => 'Email :', 'value' => $seller['email']]) @endif
+                </tbody></table>
             </div>
         </td>
         <td style="width: 40%; padding-top: 50px;">
@@ -160,10 +170,13 @@
                 <div class="lbl">{{ $t('recipient') }}</div>
                 <div class="name">{{ $buyerLabel }}</div>
                 <div class="dest-details">
-                    @if ($buyer['company'] && $buyer['name'])<div class="dest-row"><span class="info-value">{{ $buyer['name'] }}</span></div>@endif
-                    <div class="dest-row"><span class="info-label">Adresse :</span> <span class="info-value">{{ $buyer['address'] ?? '' }}</span></div>
-                    <div class="dest-row"><span class="info-label">Tél :</span> <span class="info-value">{{ $buyer['phone'] ?? '' }}</span></div>
-                    <div class="dest-row"><span class="info-label">ICE :</span> <span class="info-value">{{ $buyer['tax_identifier'] ?? '' }}</span></div>
+                    @if ($buyer['company'] && $buyer['name'])<div class="recipient-contact info-value">{{ $buyer['name'] }}</div>@endif
+                    <table class="info-kv recipient-info-table"><tbody>
+                        @if ($buyer['address'] ?? null) @include('documents.partials.information-row', ['rowClass' => 'recipient-address', 'label' => 'Adresse :', 'value' => $buyer['address']]) @endif
+                        @if ($buyer['phone'] ?? null) @include('documents.partials.information-row', ['rowClass' => 'recipient-phone', 'label' => 'Tél :', 'value' => $buyer['phone']]) @endif
+                        @if ($buyer['email'] ?? null) @include('documents.partials.information-row', ['rowClass' => 'recipient-email', 'label' => 'Email :', 'value' => $buyer['email']]) @endif
+                        @if ($buyer['tax_identifier'] ?? null) @include('documents.partials.information-row', ['rowClass' => 'recipient-tax', 'label' => 'ICE :', 'value' => $buyer['tax_identifier']]) @endif
+                    </tbody></table>
                 </div>
             </div>
         </td>
@@ -247,7 +260,7 @@
                 <table class="totals">
                     @if ($has_discount)
                         <tr><td class="lbl">{{ $t('subtotal') }}</td><td class="val">{{ $totals['subtotal'] }} {{ $currency }}</td></tr>
-                        <tr><td class="lbl">{{ $t('discount') }}</td><td class="val">- {{ $totals['discount'] }} {{ $currency }}</td></tr>
+                        <tr><td class="lbl">{{ $totals['discount_label'] ?? $t('discount') }}</td><td class="val">- {{ $totals['discount'] }} {{ $currency }}</td></tr>
                         <tr class="strong"><td class="lbl">{{ $t('total_ht') }}</td><td class="val">{{ $totals['net'] }} {{ $currency }}</td></tr>
                     @else
                         <tr><td class="lbl">{{ $t('total_ht') }}</td><td class="val">{{ $totals['subtotal'] }} {{ $currency }}</td></tr>
@@ -261,8 +274,7 @@
         </tr>
     </table>
 
-    <div class="words">
-        <div class="words-rule"></div>
+    <div class="words words-box">
         <div class="words-intro">{{ $t('amount_in_words_intro_quotation') }}</div>
         <div class="words-value">{{ $amount_in_words }}</div>
     </div>

@@ -28,6 +28,10 @@ class DocumentStampApposition extends Model
             'offset_y_mm' => 'decimal:2',
             'display_width_mm' => 'decimal:2',
             'rotation_deg' => 'decimal:2',
+            'visible' => 'boolean',
+            'display_height_mm' => 'decimal:2',
+            'opacity' => 'integer',
+            'preserve_aspect_ratio' => 'boolean',
             'applied_at' => 'datetime',
         ];
     }

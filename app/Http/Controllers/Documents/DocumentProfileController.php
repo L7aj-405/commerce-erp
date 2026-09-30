@@ -5,7 +5,6 @@ namespace App\Http\Controllers\Documents;
 use App\Http\Controllers\Controller;
 use App\Services\ActiveTenantContext;
 use App\Services\AuditLogger;
-use App\Services\DocumentSellerProfile;
 use App\Services\InvoiceNumberGenerator;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -32,7 +31,6 @@ class DocumentProfileController extends Controller
             'logoUrl' => $logoPath !== '' && Storage::disk('public')->exists($logoPath)
                 ? Storage::disk('public')->url($logoPath)
                 : null,
-            'defaultAccentColor' => DocumentSellerProfile::DEFAULT_ACCENT_COLOR,
             'canUpdate' => $request->user()->hasPermission($organization, 'settings.update'),
         ]);
     }
@@ -58,8 +56,6 @@ class DocumentProfileController extends Controller
             'bank_name' => ['nullable', 'string', 'max:128'],
             'bank_rib' => ['nullable', 'string', 'max:64'],
             'footer_text' => ['nullable', 'string', 'max:2000'],
-            'accent_color' => ['nullable', 'regex:/^#[0-9A-Fa-f]{6}$/'],
-            'show_invoice_watermark' => ['nullable', 'boolean'],
             'invoice_numbering_year' => ['nullable', 'required_with:invoice_next_number', 'integer', 'min:2000', 'max:2100'],
             'invoice_next_number' => ['nullable', 'required_with:invoice_numbering_year', 'integer', 'min:1'],
             'additional_identifiers' => ['array', 'max:10'],
@@ -87,8 +83,6 @@ class DocumentProfileController extends Controller
             'bank_name' => $data['bank_name'] ?? null,
             'bank_rib' => $data['bank_rib'] ?? null,
             'footer_text' => $data['footer_text'] ?? null,
-            'accent_color' => strtolower($data['accent_color'] ?? DocumentSellerProfile::DEFAULT_ACCENT_COLOR),
-            'show_invoice_watermark' => $request->boolean('show_invoice_watermark'),
             'additional_identifiers' => array_values($data['additional_identifiers'] ?? []),
         ]);
 

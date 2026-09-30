@@ -14,6 +14,7 @@ class InvoiceDocumentRenderer
         private readonly DocumentValueFormatter $format,
         private readonly FrenchNumberToWords $numberToWords,
         private readonly DocumentStampRenderer $stamps,
+        private readonly DocumentSellerProfile $sellerProfile,
     ) {}
 
     /** @return array<string, mixed> */
@@ -44,7 +45,7 @@ class InvoiceDocumentRenderer
                 'payment_method' => $invoice->payment_method_summary,
                 'notes' => $invoice->notes,
             ],
-            'seller' => $invoice->seller_snapshot,
+            'seller' => $this->sellerProfile->withCurrentPresentationSettings($invoice->seller_snapshot, $invoice->organization),
             'buyer' => [
                 'name' => $invoice->customer_name,
                 'company' => $invoice->customer_company,
@@ -71,6 +72,7 @@ class InvoiceDocumentRenderer
             'totals' => [
                 'subtotal' => $this->format->money($invoice->subtotal_excl_tax),
                 'discount' => $this->format->money($invoice->discount_total),
+                'discount_label' => $this->discountLabel($invoice->lines),
                 'net' => $this->format->money(Decimal::subtract($invoice->subtotal_excl_tax, $invoice->discount_total)),
                 'tax' => $this->format->money($invoice->tax_total),
                 'total' => $this->format->money($invoice->total_incl_tax),
@@ -124,5 +126,20 @@ class InvoiceDocumentRenderer
             ])
             ->values()
             ->all();
+    }
+
+    /** Percentage is shown only when every discounted immutable line snapshot proves the same rate. */
+    private function discountLabel($lines): string
+    {
+        $discounted = $lines->filter(fn ($line) => Decimal::compare($line->discount_amount, '0') !== 0);
+        if ($discounted->isEmpty() || $discounted->contains(fn ($line) => $line->discount_type->value !== 'percentage')) {
+            return __('documents.discount', locale: config('documents.locale'));
+        }
+
+        $rates = $discounted->pluck('discount_value')->map(fn ($value) => (string) $value)->unique()->values();
+
+        return $rates->count() === 1
+            ? __('documents.discount', locale: config('documents.locale')).' ('.$this->format->decimal($rates->first()).' %)'
+            : __('documents.discount', locale: config('documents.locale'));
     }
 }

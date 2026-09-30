@@ -29,7 +29,7 @@ class DocumentPdfService
         if ($note->status !== 'issued') {
             throw ValidationException::withMessages(['credit_note' => 'Only an issued Credit Note has an official PDF.']);
         }
-        return ['bytes' => $this->pdf->generate($this->creditNotes->html($note), ['pageNumbers' => true]), 'filename' => $this->filename('Avoir', $note->credit_note_number), 'mime' => 'application/pdf'];
+        return ['bytes' => $this->pdf->generate($this->creditNotes->html($note), $this->paginationOptions($note->organization, true)), 'filename' => $this->filename('Avoir', $note->credit_note_number), 'mime' => 'application/pdf'];
     }
 
     /**
@@ -63,7 +63,7 @@ class DocumentPdfService
     public function quotation(Quotation $quotation): array
     {
         return [
-            'bytes' => $this->pdf->generate($this->quotations->html($quotation), ['pageNumbers' => true]),
+            'bytes' => $this->pdf->generate($this->quotations->html($quotation), $this->paginationOptions($quotation->organization, true)),
             'filename' => $this->filename('Devis', $quotation->quotation_number ?? 'brouillon'),
             'mime' => 'application/pdf',
         ];
@@ -83,7 +83,7 @@ class DocumentPdfService
             $number .= '-V'.$invoice->version;
         }
 
-        return ['bytes' => $this->pdf->generate($this->invoices->html($invoice), ['pageNumbers' => true]), 'filename' => $this->filename('Facture', $number), 'mime' => 'application/pdf'];
+        return ['bytes' => $this->pdf->generate($this->invoices->html($invoice), $this->paginationOptions($invoice->organization, true)), 'filename' => $this->filename('Facture', $number), 'mime' => 'application/pdf'];
     }
 
     /** @return array{bytes:string, filename:string, mime:string} */
@@ -93,7 +93,34 @@ class DocumentPdfService
             throw ValidationException::withMessages(['delivery_note' => 'Only an issued Delivery Note has an official PDF.']);
         }
 
-        return ['bytes' => $this->pdf->generate($this->deliveryNotes->html($note)), 'filename' => $this->filename('Bon-de-Livraison', $note->delivery_note_number), 'mime' => 'application/pdf'];
+        return ['bytes' => $this->pdf->generate($this->deliveryNotes->html($note), $this->paginationOptions($note->organization, false)), 'filename' => $this->filename('Bon-de-Livraison', $note->delivery_note_number), 'mime' => 'application/pdf'];
+    }
+
+    private function pageNumbersEnabled(\App\Models\Organization $organization, bool $default): bool
+    {
+        $profile = data_get($organization->settings, 'document_profile', []);
+        $templateValue = data_get($profile, 'pdf_template.published.pagination.visible');
+        if ($templateValue !== null) {
+            return filter_var($templateValue, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) ?? $default;
+        }
+
+        if (! is_array($profile) || ! array_key_exists('show_pdf_pagination', $profile)) {
+            return $default;
+        }
+
+        return filter_var($profile['show_pdf_pagination'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) ?? $default;
+    }
+
+    /** @return array{pageNumbers:bool,pagination:array<string,mixed>} */
+    private function paginationOptions(\App\Models\Organization $organization, bool $default): array
+    {
+        $profile = data_get($organization->settings, 'document_profile', []);
+        $pagination = data_get($profile, 'pdf_template.published.pagination', []);
+
+        return [
+            'pageNumbers' => $this->pageNumbersEnabled($organization, $default),
+            'pagination' => is_array($pagination) ? $pagination : [],
+        ];
     }
 
     private function filename(string $prefix, ?string $number): string

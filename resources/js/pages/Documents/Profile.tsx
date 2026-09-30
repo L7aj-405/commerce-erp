@@ -1,4 +1,4 @@
-import { Button } from '@/components/ui/Button';
+import { Button, ButtonLink } from '@/components/ui/Button';
 import PageHeader from '@/components/ui/PageHeader';
 import ApplicationShell from '@/layouts/ApplicationShell';
 import { Head, useForm } from '@inertiajs/react';
@@ -20,8 +20,6 @@ type Profile = {
     bank_name?: string;
     bank_rib?: string;
     footer_text?: string;
-    accent_color?: string;
-    show_invoice_watermark?: boolean;
     additional_identifiers?: Identifier[];
 };
 type Props = {
@@ -29,11 +27,10 @@ type Props = {
     profile: Profile;
     invoiceNumbering: { year: number; next_number: number; max_allocated_number: number };
     logoUrl: string | null;
-    defaultAccentColor: string;
     canUpdate: boolean;
 };
 
-export default function DocumentProfile({ organization, profile, invoiceNumbering, logoUrl, defaultAccentColor, canUpdate }: Props) {
+export default function DocumentProfile({ organization, profile, invoiceNumbering, logoUrl, canUpdate }: Props) {
     const [removeLogo, setRemoveLogo] = useState(false);
     const form = useForm<{
         legal_name: string;
@@ -49,8 +46,6 @@ export default function DocumentProfile({ organization, profile, invoiceNumberin
         bank_name: string;
         bank_rib: string;
         footer_text: string;
-        accent_color: string;
-        show_invoice_watermark: boolean;
         invoice_numbering_year: number;
         invoice_next_number: number;
         additional_identifiers: Identifier[];
@@ -71,8 +66,6 @@ export default function DocumentProfile({ organization, profile, invoiceNumberin
         bank_name: profile.bank_name ?? '',
         bank_rib: profile.bank_rib ?? '',
         footer_text: profile.footer_text ?? '',
-        accent_color: profile.accent_color ?? defaultAccentColor,
-        show_invoice_watermark: profile.show_invoice_watermark ?? false,
         invoice_numbering_year: invoiceNumbering.year,
         invoice_next_number: invoiceNumbering.next_number,
         additional_identifiers: profile.additional_identifiers ?? [],
@@ -112,6 +105,7 @@ export default function DocumentProfile({ organization, profile, invoiceNumberin
                 <PageHeader
                     title="Organisation / Société"
                     description="Informations légales et coordonnées de votre entreprise."
+                    actions={<ButtonLink href="/document-profile/studio" variant="secondary">Ouvrir le Studio PDF</ButtonLink>}
                 />
 
                 {!canUpdate && (
@@ -194,7 +188,7 @@ export default function DocumentProfile({ organization, profile, invoiceNumberin
                         </fieldset>
                     </Section>
 
-                    <Section title="Identité des documents" description="Logo, couleur, banque/RIB et pied de page des factures, devis et avoirs.">
+                    <Section title="Identité des documents" description="Logo, banque/RIB et mentions légales utilisées par les documents. La présentation se règle dans le Studio PDF.">
                         <div className="flex items-start gap-4">
                             <div className="flex size-24 shrink-0 items-center justify-center overflow-hidden rounded-card border border-line bg-raised">
                                 {previewLogo ? (
@@ -231,37 +225,10 @@ export default function DocumentProfile({ organization, profile, invoiceNumberin
                             <TextField form={form} name="bank_name" label="Banque" />
                             <TextField form={form} name="bank_rib" label="RIB" />
                         </Grid>
-                        <label className="block">
-                            <span className="mb-1 block text-xs font-medium text-ink-muted">Couleur principale</span>
-                            <div className="flex items-center gap-2">
-                                <input
-                                    type="color"
-                                    value={form.data.accent_color}
-                                    onChange={(e) => form.setData('accent_color', e.target.value)}
-                                    className="h-10 w-14 rounded-field border border-line-strong"
-                                />
-                                <input
-                                    value={form.data.accent_color}
-                                    onChange={(e) => form.setData('accent_color', e.target.value)}
-                                    className="w-32 rounded-field border border-line-strong px-3 py-2 text-sm"
-                                />
-                            </div>
-                            {form.errors.accent_color && (
-                                <p className="mt-1 text-xs text-danger">{form.errors.accent_color}</p>
-                            )}
-                        </label>
-                        <label className="flex items-start gap-3 rounded-field border border-line bg-raised px-3 py-2 text-sm text-ink">
-                            <input
-                                type="checkbox"
-                                checked={form.data.show_invoice_watermark}
-                                onChange={(e) => form.setData('show_invoice_watermark', e.target.checked)}
-                                className="mt-1"
-                            />
-                            <span>
-                                <span className="block font-medium">Afficher le filigrane sur les factures</span>
-                                <span className="block text-xs text-ink-muted">Ajoute le logo décoratif très pâle au centre des factures. Désactivé par défaut.</span>
-                            </span>
-                        </label>
+                        <div className="rounded-field border border-line bg-raised px-3 py-3 text-sm text-ink-muted">
+                            La couleur, le logo affiché, l’en-tête, la pagination et les tableaux sont configurés dans le{' '}
+                            <ButtonLink href="/document-profile/studio" variant="ghost" size="sm">Studio PDF</ButtonLink>.
+                        </div>
                         <label className="mt-3 block">
                             <span className="mb-1 block text-xs font-medium text-ink-muted">Mentions de pied de page</span>
                             <textarea

@@ -23,6 +23,7 @@ use App\Http\Controllers\Contacts\OrganizationContactController;
 use App\Http\Controllers\Documents\DeliveryNoteController;
 use App\Http\Controllers\Documents\DocumentEmailController;
 use App\Http\Controllers\Documents\DocumentProfileController;
+use App\Http\Controllers\Documents\DocumentTemplateStudioController;
 use App\Http\Controllers\Documents\DocumentRenderingController;
 use App\Http\Controllers\Documents\DocumentStampController;
 use App\Http\Controllers\Documents\InvoiceController;
@@ -179,6 +180,10 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
     Route::delete('/contacts/{contact}', [OrganizationContactController::class, 'destroy'])->name('contacts.destroy');
     Route::get('/document-profile', [DocumentProfileController::class, 'edit'])->name('document-profile.edit');
     Route::put('/document-profile', [DocumentProfileController::class, 'update'])->name('document-profile.update');
+    Route::get('/document-profile/studio', [DocumentTemplateStudioController::class, 'edit'])->name('document-profile.studio.edit');
+    Route::post('/document-profile/studio/preview', [DocumentTemplateStudioController::class, 'preview'])->name('document-profile.studio.preview');
+    Route::put('/document-profile/studio', [DocumentTemplateStudioController::class, 'update'])->name('document-profile.studio.update');
+    Route::delete('/document-profile/studio', [DocumentTemplateStudioController::class, 'reset'])->name('document-profile.studio.reset');
     Route::get('/quotation-settings', [QuotationSettingsController::class, 'edit'])->name('quotation-settings.edit');
     Route::put('/quotation-settings', [QuotationSettingsController::class, 'update'])->name('quotation-settings.update');
     Route::get('/email-settings', [OrganizationMailSettingController::class, 'edit'])->name('email-settings.edit');

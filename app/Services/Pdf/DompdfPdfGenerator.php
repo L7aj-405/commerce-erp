@@ -31,20 +31,51 @@ class DompdfPdfGenerator implements PdfGenerator
         // layout pass — CSS `counter(pages)` renders as 0 here.
         if ($options['pageNumbers'] ?? false) {
             $canvas = $pdf->getCanvas();
+            $pagination = is_array($options['pagination'] ?? null) ? $options['pagination'] : [];
+            $fontFamily = in_array($pagination['font_family'] ?? null, ['DejaVu Sans', 'Helvetica'], true)
+                ? $pagination['font_family']
+                : (string) config('documents.pdf.default_font', 'DejaVu Sans');
             $font = $pdf->getFontMetrics()->getFont(
-                (string) config('documents.pdf.default_font', 'DejaVu Sans'),
+                $fontFamily,
                 'normal',
             );
+            $size = max(6.0, min(11.0, (float) ($pagination['font_size'] ?? 7)));
+            $marginX = max(5.0, min(30.0, (float) ($pagination['margin_x_mm'] ?? 13))) * 2.83465;
+            $marginY = max(4.0, min(20.0, (float) ($pagination['margin_y_mm'] ?? 8))) * 2.83465;
+            $textWidth = 76.0;
+            $x = match ($pagination['alignment'] ?? 'right') {
+                'left' => $marginX,
+                'center' => ($canvas->get_width() - $textWidth) / 2,
+                default => $canvas->get_width() - $marginX - $textWidth,
+            };
+            $y = ($pagination['position'] ?? 'bottom') === 'top'
+                ? $marginY
+                : $canvas->get_height() - $marginY - $size;
+            $color = $this->rgb((string) ($pagination['color'] ?? '#999999'));
             $canvas->page_text(
-                $canvas->get_width() - 96,
-                $canvas->get_height() - 26,
+                $x,
+                $y,
                 'Page {PAGE_NUM} / {PAGE_COUNT}',
                 $font,
-                7,
-                [0.6, 0.6, 0.6],
+                $size,
+                $color,
             );
         }
 
         return $pdf->output();
+    }
+
+    /** @return array{0:float,1:float,2:float} */
+    private function rgb(string $hex): array
+    {
+        if (preg_match('/^#([0-9a-f]{6})$/i', $hex, $matches) !== 1) {
+            return [0.6, 0.6, 0.6];
+        }
+
+        return [
+            hexdec(substr($matches[1], 0, 2)) / 255,
+            hexdec(substr($matches[1], 2, 2)) / 255,
+            hexdec(substr($matches[1], 4, 2)) / 255,
+        ];
     }
 }

@@ -73,7 +73,7 @@ class DocumentStampRenderer
     /** @return array{image:string,anchor:string,offset_x_mm:float,offset_y_mm:float,display_width_mm:float,rotation_deg:float}|null */
     private function fromApposition(?DocumentStampApposition $apposition): ?array
     {
-        if (! $apposition) {
+        if (! $apposition || (isset($apposition->visible) && ! $apposition->visible)) {
             return null;
         }
 
@@ -89,6 +89,9 @@ class DocumentStampRenderer
             'offset_y_mm' => DocumentStampBoundary::clampOffsetY((float) $apposition->offset_y_mm),
             'display_width_mm' => DocumentStampBoundary::clampDisplayWidth((float) $apposition->display_width_mm),
             'rotation_deg' => DocumentStampBoundary::clampRotation((float) $apposition->rotation_deg),
+            'display_height_mm' => $apposition->display_height_mm !== null ? (float) $apposition->display_height_mm : null,
+            'opacity' => max(10, min(100, (int) ($apposition->opacity ?? 100))),
+            'preserve_aspect_ratio' => (bool) ($apposition->preserve_aspect_ratio ?? true),
         ];
     }
 

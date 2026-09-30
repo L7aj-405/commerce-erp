@@ -68,6 +68,40 @@ class DocumentStampAppositionTest extends QuotationTestCase
         $this->assertStringContainsString('transform-origin: center', $html);
     }
 
+    public function test_published_studio_stamp_style_is_frozen_on_new_apposition(): void
+    {
+        [$owner, $organization, , $order] = $this->documentFixture();
+        Storage::fake('local');
+        $this->configureOrganizationStamp($organization, ['display_width_mm' => 35, 'rotation_deg' => 0]);
+        $this->actingAs($owner)->put(route('document-profile.studio.update'), [
+            'mode' => 'publish',
+            'template' => [
+                'stamp' => [
+                    'visible' => true, 'position_anchor' => 'bottom_right',
+                    'offset_x_mm' => 8, 'offset_y_mm' => 12,
+                    'display_width_mm' => 48, 'display_height_mm' => 24,
+                    'rotation_deg' => 6, 'opacity' => 70,
+                    'preserve_aspect_ratio' => false,
+                ],
+            ],
+        ])->assertRedirect();
+
+        $invoice = $this->issueInvoice($owner, $this->createInvoice($owner, $order));
+        $this->actingAs($owner)->post(route('invoices.stamp', $invoice))->assertRedirect();
+
+        $apposition = $invoice->fresh()->stampApposition;
+        $this->assertSame('bottom_right', $apposition->position_anchor);
+        $this->assertSame('48.00', (string) $apposition->display_width_mm);
+        $this->assertSame('24.00', (string) $apposition->display_height_mm);
+        $this->assertSame('6.00', (string) $apposition->rotation_deg);
+        $this->assertSame(70, $apposition->opacity);
+        $this->assertFalse($apposition->preserve_aspect_ratio);
+
+        $html = app(InvoiceDocumentRenderer::class)->html($invoice->fresh());
+        $this->assertStringContainsString('height: 24mm', $html);
+        $this->assertStringContainsString('opacity: 0.7', $html);
+    }
+
     /**
      * Explicit regression scenario: Stamp V1 (45mm / -4°) stamps Invoice A.
      * The organization then replaces its configuration with Stamp V2

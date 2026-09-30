@@ -36,13 +36,17 @@
             default => 'bottom: '.$stamp['offset_y_mm'].'mm; left: '.$stamp['offset_x_mm'].'mm;', // bottom_left
         };
         $rotation = $stamp['rotation_deg'] ?? 0;
+        $height = ! ($stamp['preserve_aspect_ratio'] ?? true) && ($stamp['display_height_mm'] ?? null)
+            ? $stamp['display_height_mm'].'mm'
+            : 'auto';
+        $opacity = max(10, min(100, (int) ($stamp['opacity'] ?? 100))) / 100;
     @endphp
     <div class="{{ $class }}" style="position: {{ $position }}; {{ $edge }} z-index: 0;">
         <img
             class="document-stamp-image"
             src="{{ $stamp['image'] }}"
             alt=""
-            style="width: {{ $stamp['display_width_mm'] }}mm; height: auto; display: block; transform: rotate({{ $rotation }}deg); transform-origin: center;"
+            style="width: {{ $stamp['display_width_mm'] }}mm; height: {{ $height }}; opacity: {{ $opacity }}; display: block; transform: rotate({{ $rotation }}deg); transform-origin: center;"
         >
     </div>
 @endif

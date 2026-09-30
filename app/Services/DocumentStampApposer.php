@@ -7,6 +7,7 @@ use App\Models\Organization;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
+use App\Support\DocumentStampBoundary;
 
 /**
  * The one place that turns "apply the company stamp to this document" into a
@@ -18,6 +19,8 @@ use Illuminate\Validation\ValidationException;
  */
 class DocumentStampApposer
 {
+    public function __construct(private readonly DocumentSellerProfile $sellerProfiles) {}
+
     /** @throws ValidationException */
     public function apply(Organization $organization, Model $stampable, int $actorUserId): DocumentStampApposition
     {
@@ -28,7 +31,15 @@ class DocumentStampApposer
             ]);
         }
 
-        return DB::transaction(function () use ($organization, $stampable, $activeStamp, $actorUserId) {
+        $presentation = $this->sellerProfiles->presentationSettings($organization);
+        // Until the organization explicitly publishes Studio stamp settings,
+        // preserve the existing active stamp version's dimensions/position.
+        // This is the backward-compatible bridge for organizations configured
+        // before PDF Studio became the presentation source of truth.
+        $publishedStamp = data_get($organization->settings, 'document_profile.pdf_template.published.stamp');
+        $style = is_array($publishedStamp) ? data_get($presentation, 'pdf_style.stamp', []) : [];
+
+        return DB::transaction(function () use ($organization, $stampable, $activeStamp, $actorUserId, $style) {
             $alreadyStamped = DocumentStampApposition::query()
                 ->where('stampable_type', $stampable->getMorphClass())
                 ->where('stampable_id', $stampable->getKey())
@@ -45,11 +56,29 @@ class DocumentStampApposer
             $apposition->organization_document_stamp_id = $activeStamp->getKey();
             $apposition->image_path = $activeStamp->image_path;
             $apposition->mime_type = $activeStamp->mime_type;
-            $apposition->position_anchor = $activeStamp->position_anchor;
-            $apposition->offset_x_mm = $activeStamp->offset_x_mm;
-            $apposition->offset_y_mm = $activeStamp->offset_y_mm;
-            $apposition->display_width_mm = $activeStamp->display_width_mm;
-            $apposition->rotation_deg = $activeStamp->rotation_deg;
+            $apposition->position_anchor = $style['position_anchor'] ?? $activeStamp->position_anchor;
+            $apposition->offset_x_mm = $style['offset_x_mm'] ?? $activeStamp->offset_x_mm;
+            $apposition->offset_y_mm = $style['offset_y_mm'] ?? $activeStamp->offset_y_mm;
+            $apposition->display_width_mm = $style['display_width_mm'] ?? $activeStamp->display_width_mm;
+            $apposition->rotation_deg = $style['rotation_deg'] ?? $activeStamp->rotation_deg;
+            $apposition->visible = (bool) ($style['visible'] ?? true);
+            $apposition->display_height_mm = $style['display_height_mm'] ?? null;
+            $apposition->opacity = (int) ($style['opacity'] ?? 100);
+            $apposition->preserve_aspect_ratio = (bool) ($style['preserve_aspect_ratio'] ?? true);
+
+            $naturalHeight = ($activeStamp->image_width && $activeStamp->image_height)
+                ? (float) $apposition->display_width_mm * ($activeStamp->image_height / $activeStamp->image_width)
+                : (float) $apposition->display_width_mm;
+            $renderedHeight = $apposition->preserve_aspect_ratio || $apposition->display_height_mm === null
+                ? $naturalHeight
+                : (float) $apposition->display_height_mm;
+            DocumentStampBoundary::assertFitsSafeArea(
+                (float) $apposition->offset_x_mm,
+                (float) $apposition->offset_y_mm,
+                (float) $apposition->display_width_mm,
+                $renderedHeight,
+                (float) $apposition->rotation_deg,
+            );
             $apposition->applied_by_user_id = $actorUserId;
             $apposition->applied_at = now();
             $apposition->save();

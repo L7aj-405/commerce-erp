@@ -181,6 +181,12 @@ export default function ApplicationShell({ children, wide = false, flush = false
                               permission: ['settings.view', 'settings.update'],
                               icon: <IconBuilding />,
                           },
+                          {
+                              href: '/document-profile/studio',
+                              label: 'Studio PDF',
+                              permission: ['settings.view', 'settings.update'],
+                              icon: <IconFileText />,
+                          },
                       ]
                     : []),
                 { href: '/quotation-settings', label: 'Documents · Devis', permission: ['settings.view', 'settings.update'], icon: <IconFileText /> },

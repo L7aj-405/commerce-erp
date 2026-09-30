@@ -4,10 +4,15 @@ namespace App\Services;
 
 use App\Models\CreditNote;
 use App\Support\Decimal;
+use App\Support\FrenchNumberToWords;
 
 class CreditNoteDocumentRenderer
 {
-    public function __construct(private readonly DocumentValueFormatter $format) {}
+    public function __construct(
+        private readonly DocumentValueFormatter $format,
+        private readonly FrenchNumberToWords $numberToWords,
+        private readonly DocumentSellerProfile $sellerProfile,
+    ) {}
 
     /** @return array<string, mixed> */
     public function payload(CreditNote $note): array
@@ -21,7 +26,7 @@ class CreditNoteDocumentRenderer
 
         return [
             'note' => $note,
-            'seller' => $note->seller_snapshot ?? [],
+            'seller' => $this->sellerProfile->withCurrentPresentationSettings($note->seller_snapshot ?? [], $note->organization),
             'customer' => $note->customer_snapshot ?? [],
             'document' => [
                 'number' => $note->credit_note_number,
@@ -56,6 +61,7 @@ class CreditNoteDocumentRenderer
                 'tax' => $this->format->money($note->tax_total),
                 'total' => $this->format->money($note->total_incl_tax),
             ],
+            'amount_in_words' => $this->numberToWords->mad($note->total_incl_tax),
             'has_discount' => Decimal::compare($note->discount_total, '0.0000') !== 0,
             'metadata' => [
                 'issued_at' => $note->issued_at?->timezone(config('app.timezone'))->format('d/m/Y H:i'),

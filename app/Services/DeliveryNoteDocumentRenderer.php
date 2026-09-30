@@ -10,6 +10,7 @@ class DeliveryNoteDocumentRenderer
     public function __construct(
         private readonly DocumentTemplateRegistry $templates,
         private readonly DocumentValueFormatter $format,
+        private readonly DocumentSellerProfile $sellerProfile,
     ) {}
 
     /** @return array<string, mixed> */
@@ -31,7 +32,7 @@ class DeliveryNoteDocumentRenderer
                 'order_number' => $note->salesOrder?->order_number,
                 'notes' => $note->notes,
             ],
-            'seller' => $note->seller_snapshot,
+            'seller' => $this->sellerProfile->withCurrentPresentationSettings($note->seller_snapshot, $note->organization),
             'buyer' => [
                 'name' => $note->recipient_name,
                 'company' => $note->recipient_company,

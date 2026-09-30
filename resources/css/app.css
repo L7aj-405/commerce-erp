@@ -85,3 +85,16 @@
     transition-timing-function: var(--ease-out-soft);
     transition-duration: 170ms;
 }
+
+@utility tool {
+    display: inline-flex;
+    min-height: 2rem;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--color-line-strong);
+    border-radius: var(--radius-field);
+    background: var(--color-surface);
+    padding-inline: 0.625rem;
+    font-size: 0.75rem;
+    color: var(--color-ink-muted);
+}
