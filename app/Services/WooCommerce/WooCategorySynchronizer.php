@@ -23,6 +23,9 @@ class WooCategorySynchronizer
     /** @var array<int, int> remote category id => ERP category id, resolved this run */
     private array $resolved = [];
 
+    /** @var array<int, Category> remote category id => resolved model */
+    private array $resolvedCategories = [];
+
     public function __construct(private readonly WooCommerceIntegration $integration) {}
 
     /** @param array<int, array<string, mixed>> $remoteCategories the store's full products/categories list */
@@ -52,6 +55,10 @@ class WooCategorySynchronizer
 
     private function resolveRemote(int $remoteId, string $fallbackName, int $depth): Category
     {
+        if (isset($this->resolvedCategories[$remoteId])) {
+            return $this->resolvedCategories[$remoteId];
+        }
+
         $mapping = WooCommerceCategoryMapping::query()
             ->where('organization_id', $this->integration->organization_id)
             ->where('woocommerce_integration_id', $this->integration->getKey())
@@ -60,8 +67,9 @@ class WooCategorySynchronizer
 
         if ($mapping) {
             $this->resolved[$remoteId] = (int) $mapping->category_id;
+            $this->resolvedCategories[$remoteId] = $mapping->category;
 
-            return $mapping->category;
+            return $this->resolvedCategories[$remoteId];
         }
 
         $node = $this->remoteTree[$remoteId] ?? ['name' => $fallbackName, 'parent' => 0];
@@ -83,6 +91,7 @@ class WooCategorySynchronizer
         $mapping->save();
 
         $this->resolved[$remoteId] = $category->getKey();
+        $this->resolvedCategories[$remoteId] = $category;
 
         return $category;
     }

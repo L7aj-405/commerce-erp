@@ -10,7 +10,10 @@ use ZipArchive;
 
 class OrganizationBackupExporter
 {
-    public function __construct(private readonly OrganizationBackupSchema $schema) {}
+    public function __construct(
+        private readonly OrganizationBackupSchema $schema,
+        private readonly OrganizationBackupCryptography $cryptography,
+    ) {}
 
     public function create(Organization $organization, ?User $actor, ?string $targetPath = null): OrganizationBackupArchive
     {
@@ -31,6 +34,7 @@ class OrganizationBackupExporter
         $tables = $this->schema->tenantTables();
         $sensitive = [];
         $temporaryFiles = [];
+        $completed = false;
 
         try {
             foreach ($tables as $table) {
@@ -74,15 +78,30 @@ class OrganizationBackupExporter
                 'counts' => $counts,
                 'sensitive_columns' => $sensitive,
                 'checksum' => hash_final($hash),
+                'security' => [
+                    'signature_algorithm' => 'hmac-sha256',
+                    'encryption' => 'zip-aes-256',
+                    'key_id' => (string) config('organization-backups.key_id', 'primary'),
+                ],
             ];
 
+            $manifest['signature'] = $this->cryptography->sign($manifest);
+
             $zip->addFromString('manifest.json', json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+            $this->encryptEntries($zip, ['manifest.json', ...array_map(fn (string $table) => "data/{$table}.jsonl", $tables)]);
+            $completed = true;
         } finally {
-            $zip->close();
+            $closed = $zip->close();
             foreach ($temporaryFiles as $temporaryFile) {
                 if (is_file($temporaryFile)) {
                     @unlink($temporaryFile);
                 }
+            }
+            if ((! $completed || ! $closed) && is_file($path)) {
+                @unlink($path);
+            }
+            if ($completed && ! $closed) {
+                throw new OrganizationBackupException('Impossible de finaliser l’archive de sauvegarde.');
             }
         }
 
@@ -93,6 +112,21 @@ class OrganizationBackupExporter
             counts: $counts,
             size: filesize($path) ?: 0,
         );
+    }
+
+    /** @param list<string> $entries */
+    private function encryptEntries(ZipArchive $zip, array $entries): void
+    {
+        if (! defined(ZipArchive::class.'::EM_AES_256')) {
+            throw new OrganizationBackupException('Le serveur ne prend pas en charge le chiffrement AES-256 des sauvegardes.');
+        }
+
+        $zip->setPassword($this->cryptography->encryptionPassword());
+        foreach ($entries as $entry) {
+            if (! $zip->setEncryptionName($entry, ZipArchive::EM_AES_256)) {
+                throw new OrganizationBackupException("Impossible de chiffrer l’entrée {$entry}.");
+            }
+        }
     }
 
     /** @return iterable<object> */

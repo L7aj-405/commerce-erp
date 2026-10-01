@@ -27,6 +27,7 @@ use App\Services\WooCommerce\WooCommerceProductNormalizer;
 use App\Services\WooCommerce\WooTaxClassResolver;
 use App\Support\Decimal;
 use App\Support\InventoryQuantity;
+use App\Support\SensitiveDataRedactor;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -64,7 +65,7 @@ class SyncWooCommerceProductsAction
 
     public function execute(WooCommerceIntegration $integration, User $actor, string $mode = 'full'): WooCommerceSyncRun
     {
-        $lock = Cache::lock('woocommerce-sync:'.$integration->getKey(), 3600);
+        $lock = Cache::lock('woocommerce-sync:'.$integration->getKey(), 3900);
         if (! $lock->get()) {
             throw ValidationException::withMessages(['sync' => 'Une synchronisation est déjà en cours pour cette intégration.']);
         }
@@ -274,10 +275,12 @@ class SyncWooCommerceProductsAction
         }
 
         if ($this->stockSyncEnabled($integration, $actor)) {
-            $product->loadMissing('variants.channelIdentifiers');
+            // Reload once after all variant mutations. The previous loop did
+            // two fresh() queries per Woo variant before every stock update.
+            $stockProduct = $product->fresh('variants.channelIdentifiers');
             foreach ($woo->variants as $index => $wooVariant) {
-                $erpVariant = $this->resolveVariant($integration, $product->fresh('variants'), $woo, $wooVariant)
-                    ?? $product->fresh('variants')->variants[$index] ?? null;
+                $erpVariant = $this->resolveVariant($integration, $stockProduct, $woo, $wooVariant)
+                    ?? $stockProduct->variants[$index] ?? null;
                 if ($erpVariant) {
                     $this->reconcileStock($integration, $organization, $actor, $erpVariant, $wooVariant, $run);
                 }
@@ -321,6 +324,32 @@ class SyncWooCommerceProductsAction
     private function resolveVariant(WooCommerceIntegration $integration, Product $product, NormalizedWooProduct $woo, NormalizedWooVariant $wooVariant): ?ProductVariant
     {
         $remoteEntityId = $wooVariant->remoteVariationId ?? $woo->remoteId;
+
+        if ($product->relationLoaded('variants')) {
+            $variants = $product->variants;
+            $mapped = $variants->first(function (ProductVariant $variant) use ($integration, $remoteEntityId) {
+                if (! $variant->relationLoaded('channelIdentifiers')) {
+                    return false;
+                }
+
+                return $variant->channelIdentifiers->contains(fn (ProductChannelIdentifier $identifier) =>
+                    $identifier->source === WooCommerceIntegration::CHANNEL
+                    && (string) $identifier->external_product_id === (string) $remoteEntityId
+                    && ($identifier->woocommerce_integration_id === null
+                        || (int) $identifier->woocommerce_integration_id === (int) $integration->getKey()));
+            });
+            if ($mapped) {
+                return $mapped;
+            }
+            if ($wooVariant->sku !== null && ($bySku = $variants->firstWhere('sku', $wooVariant->sku))) {
+                return $bySku;
+            }
+            if (! $woo->isVariable() && $variants->count() === 1) {
+                return $variants->first();
+            }
+
+            return null;
+        }
 
         $mapping = ProductChannelIdentifier::query()
             ->where('organization_id', $product->organization_id)
@@ -661,9 +690,8 @@ class SyncWooCommerceProductsAction
     private function safeMessage(Throwable $exception): string
     {
         $message = preg_replace('/\s+/', ' ', $exception->getMessage()) ?: 'Erreur de synchronisation.';
-        $message = preg_replace('/(consumer_secret|secret|api[_-]?key|password)\s*[=:]\s*\S+/i', '$1=[masqué]', $message) ?? $message;
 
-        return Str::limit($message, 400, '');
+        return SensitiveDataRedactor::text($message, 400);
     }
 
     private function firstMessage(ValidationException $exception): string

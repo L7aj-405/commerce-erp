@@ -132,7 +132,8 @@ class OrganizationBackupController extends Controller
     {
         $organization = $context->organizationOrFail();
         abort_unless($request->user()->hasPermission($organization, 'organization_backups.restore'), 403);
-        $data = $request->validate(['backup' => ['required', 'file', 'max:204800']]);
+        $maxKilobytes = max(1, (int) ceil(((int) config('organization-backups.limits.archive_bytes')) / 1024));
+        $data = $request->validate(['backup' => ['required', 'file', 'max:'.$maxKilobytes]]);
 
         try {
             $validated = $validator->validateUpload($data['backup'], $organization);

@@ -50,7 +50,7 @@ class AuthenticatedSessionController extends Controller
         // §D2 — after repeated failures, a bot/abuse challenge is required in
         // addition to the correct password. Never distinguishes "unknown
         // email" from "known email, needs challenge" in its error (§D3).
-        if ($throttle->requiresChallenge($email, $ip) && ! $challenge->verify($request)) {
+        if ($throttle->requiresChallenge($email, $ip) && $challenge->isConfigured() && ! $challenge->verify($request)) {
             throw ValidationException::withMessages([
                 'challenge' => 'Vérification supplémentaire requise avant de réessayer.',
             ]);

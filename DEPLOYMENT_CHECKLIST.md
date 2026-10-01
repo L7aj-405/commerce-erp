@@ -6,7 +6,7 @@ record of anything already deployed.
 
 ## 1. Runtime requirements
 
-- **PHP**: 8.3+ (composer.json requires `^8.3`; verified locally on PHP 8.4.12;
+- **PHP**: 8.4.1+ (composer.json requires `^8.4.1`; verified locally on PHP 8.4.12;
   compatible with the PHP 8.5 target).
 - **Required PHP extensions** (from `laravel/framework`, `dompdf/dompdf`,
   `openspout/openspout`, and the app's own `Decimal`/tax-calculation code):
@@ -65,7 +65,7 @@ as a Closure with captured variables from an outer scope, re-verify.
 - **Database**: `DB_CONNECTION=mysql`, `DB_HOST`, `DB_PORT`, `DB_DATABASE`,
   `DB_USERNAME`, `DB_PASSWORD` — from the Coolify MySQL service.
 - **Session/Cache/Queue**: `SESSION_DRIVER=database`, `CACHE_STORE=database`,
-  `QUEUE_CONNECTION=database` (all V1-acceptable, see §9). Set
+  `QUEUE_CONNECTION=database`, `DB_QUEUE_RETRY_AFTER=3900` (see §9). Set
   `SESSION_SECURE_COOKIE=true` once served over HTTPS.
 - **Mail**: `MAIL_MAILER=smtp` (or provider driver), `MAIL_HOST`, `MAIL_PORT`,
   `MAIL_USERNAME`, `MAIL_PASSWORD`, `MAIL_FROM_ADDRESS`, `MAIL_FROM_NAME` —
@@ -79,6 +79,10 @@ as a Closure with captured variables from an outer scope, re-verify.
 - **Shopify**: not used by this application.
 - **PDF/documents**: no environment variables — controlled by
   `config/documents.php` (locale, paper size, `remote_enabled` — keep `false`).
+- **Organization backups**: set independent `ORG_BACKUP_SIGNING_KEY` and
+  `ORG_BACKUP_ENCRYPTION_KEY` secrets (at least 32 random bytes each), plus a
+  non-secret `ORG_BACKUP_KEY_ID`. Never reuse `APP_KEY`; archive v2 requires
+  both keys for authenticated AES-256 export and restore.
 
 ## 5. MySQL / migration audit result
 
@@ -142,17 +146,12 @@ build step must run `npm ci && npm run build` before serving.
 
 ## 9. Queue
 
-- `QUEUE_CONNECTION=database` today. The **only** `ShouldQueue` job in the
-  codebase is `App\Jobs\SyncWooCommerceProductsJob` (dispatched from
-  `WooCommerceIntegrationController` when an organization runs a WooCommerce
-  sync). All transactional emails (`InvoiceDocumentMail`,
-  `QuotationDocumentMail`, `DeliveryNoteDocumentMail`) are sent
-  synchronously (`Mail::send()`, not queued).
-- **A queue worker is required in production only if the WooCommerce
-  integration is actually used.** Without one, dispatched sync jobs sit in
-  the `jobs` table forever and the sync UI will look stuck. Running one
-  worker (`php artisan queue:work --tries=3`, supervised) is still
-  recommended so this doesn't surprise anyone later.
+- `QUEUE_CONNECTION=database` processes WooCommerce synchronization, scheduled
+  organization backups and personal-cloud backup copies. A supervised worker
+  is mandatory in production. Run it with
+  `php artisan queue:work --tries=3 --timeout=3600`; the configured
+  `retry_after=3900` must remain strictly greater than the longest job timeout
+  to prevent concurrent duplicate processing.
 - `sync` driver was **not** recommended as a substitute — it would make the
   WooCommerce sync run inline on the HTTP request that dispatches it, which
   contradicts why the job exists (a potentially long-running product sync).
@@ -167,7 +166,8 @@ build step must run `npm ci && npm run build` before serving.
 Schedule::command('catalog:cleanup-product-imports')->daily();
 ```
 
-This deletes expired `ProductImport` staging rows. Coolify needs a cron
+It also dispatches due organization backups every minute and removes expired
+private backup staging files hourly. Coolify needs a cron
 entry (or scheduled command/container) running `php artisan schedule:run`
 every minute, standard Laravel setup. No other scheduled task exists.
 
@@ -255,3 +255,32 @@ point Coolify's health check at `/up`.
   untrusted client's `X-Forwarded-For` were honoured, an attacker could
   rotate the header value on every request to defeat per-IP throttling
   entirely.
+
+## 17. Production hardening gate
+
+- Keep `APP_ENV=production`, `APP_DEBUG=false`, `LOG_CHANNEL=daily`,
+  `LOG_LEVEL=warning`, `LOG_DAILY_DAYS=14`, HTTPS-only
+  ingress and `SESSION_SECURE_COOKIE=true`. Do not publish the application
+  container directly or mount `.env`/secret-manager files into a web-served
+  directory.
+- Back up the database and private persistent storage before deploy. Verify a
+  v2 `.erpbackup` can be validated and restored in an isolated staging tenant;
+  unsigned v1 restore must stay disabled except during a supervised migration
+  window.
+- Back up `ORG_BACKUP_SIGNING_KEY` and `ORG_BACKUP_ENCRYPTION_KEY` in the
+  platform secret manager. Changing either key makes existing archives
+  unverifiable/unreadable. Rotate by retaining the old key material until all
+  retention-window archives have been re-exported or expired.
+- Run `composer update laravel/framework --with-all-dependencies` before the
+  production build and confirm `composer.lock` resolves Laravel 13.30.0 or
+  newer. Run `composer audit` and `npm audit --omit=dev`; unresolved high or
+  critical advisories block deployment.
+- Use `scripts/export-source.ps1 -OutputPath <outside-repository>.zip` after
+  committing reviewed source. The script uses `git archive` and refuses the
+  export if runtime secrets/backups are tracked. Never package the workspace
+  recursively because that can include `.env`, logs, uploads, private backups,
+  `vendor`, `node_modules`, or local database dumps.
+- Ensure the scheduler and queue worker are supervised and alert on failed
+  jobs, queue depth, backup failures, disk usage, HTTP 5xx rate and repeated
+  authentication throttling. Application logs and audit payloads must never
+  include OAuth/SMTP/WooCommerce credentials or Authorization headers.

@@ -477,12 +477,19 @@ class CustomerReturnWorkflowTest extends PosTestCase
         $source->save();
         $html = app(CreditNoteDocumentRenderer::class)->html($note->fresh());
 
+        $organization = $order->organization;
+        $settings = $organization->settings ?? [];
+        data_set($settings, 'document_profile.pdf_template.published.document_header.visible', false);
+        $organization->settings = $settings;
+        $organization->save();
+
         $this->assertStringContainsString($originalName, $html);
         $this->assertStringContainsString($originalSku, $html);
         $this->assertStringNotContainsString('SKU-MODIFIE', $html);
         $this->assertStringContainsString('Total HT net', $html);
         $this->assertStringContainsString('Base HT', $html);
         $this->assertStringContainsString('ne constitue pas une preuve de remboursement', $html);
+        $this->assertSame($html, app(CreditNoteDocumentRenderer::class)->html($note->fresh()));
     }
 
     public function test_draft_credit_note_is_excluded_and_issued_credit_note_is_counted_once(): void

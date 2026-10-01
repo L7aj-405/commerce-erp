@@ -45,7 +45,7 @@ class InvoiceDocumentRenderer
                 'payment_method' => $invoice->payment_method_summary,
                 'notes' => $invoice->notes,
             ],
-            'seller' => $this->sellerProfile->withCurrentPresentationSettings($invoice->seller_snapshot, $invoice->organization),
+            'seller' => $invoice->seller_snapshot,
             'buyer' => [
                 'name' => $invoice->customer_name,
                 'company' => $invoice->customer_company,

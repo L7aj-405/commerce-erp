@@ -74,6 +74,10 @@ class IssueInvoiceAction
                 ]);
             }
             $this->verifier->verifyInvoice($invoice);
+            $invoice->seller_snapshot = $this->sellerProfile->freezeCurrentPresentationSettings(
+                $invoice->seller_snapshot,
+                $invoice->organization,
+            );
             $this->sellerProfile->validate($invoice->seller_snapshot);
             $this->templates->invoiceView($invoice->template_version);
             $family = InvoiceFamily::query()

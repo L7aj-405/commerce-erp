@@ -32,7 +32,9 @@ class DeliveryNoteDocumentRenderer
                 'order_number' => $note->salesOrder?->order_number,
                 'notes' => $note->notes,
             ],
-            'seller' => $this->sellerProfile->withCurrentPresentationSettings($note->seller_snapshot, $note->organization),
+            'seller' => $note->status === DeliveryNoteStatus::Draft
+                ? $this->sellerProfile->withCurrentPresentationSettings($note->seller_snapshot, $note->organization)
+                : $note->seller_snapshot,
             'buyer' => [
                 'name' => $note->recipient_name,
                 'company' => $note->recipient_company,

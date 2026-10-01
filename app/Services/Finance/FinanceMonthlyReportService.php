@@ -98,8 +98,7 @@ class FinanceMonthlyReportService
     {
         return Decimal::normalize((string) $this->baseQuery('sales_orders', $organization, $store)
             ->where('status', SalesOrderStatus::Confirmed->value)
-            ->whereDate('sale_date', '>=', $period->start->toDateString())
-            ->whereDate('sale_date', '<=', $period->end->toDateString())
+            ->whereBetween('sale_date', [$period->start->toDateString(), $period->end->toDateString()])
             ->sum('total_incl_tax'));
     }
 
@@ -117,8 +116,7 @@ class FinanceMonthlyReportService
         // "latest per order" logic is needed.
         return Decimal::normalize((string) $this->baseQuery('invoices', $organization, $store)
             ->where('status', InvoiceStatus::Issued->value)
-            ->whereDate('invoice_date', '>=', $start->toDateString())
-            ->whereDate('invoice_date', '<=', $end->toDateString())
+            ->whereBetween('invoice_date', [$start->toDateString(), $end->toDateString()])
             ->sum('total_incl_tax'));
     }
 
@@ -126,8 +124,7 @@ class FinanceMonthlyReportService
     {
         return Decimal::normalize((string) $this->baseQuery('payments', $organization, $store)
             ->where('status', PaymentStatus::Posted->value)
-            ->whereDate('payment_date', '>=', $period->start->toDateString())
-            ->whereDate('payment_date', '<=', $period->end->toDateString())
+            ->whereBetween('payment_date', [$period->start->toDateString(), $period->end->toDateString()])
             ->sum('amount'));
     }
 
@@ -135,8 +132,7 @@ class FinanceMonthlyReportService
     {
         return Decimal::normalize((string) $this->baseQuery('credit_notes', $organization, $store)
             ->where('status', 'issued')
-            ->whereDate('credit_note_date', '>=', $period->start->toDateString())
-            ->whereDate('credit_note_date', '<=', $period->end->toDateString())
+            ->whereBetween('credit_note_date', [$period->start->toDateString(), $period->end->toDateString()])
             ->sum('total_incl_tax'));
     }
 
@@ -144,8 +140,7 @@ class FinanceMonthlyReportService
     {
         return Decimal::normalize((string) $this->baseQuery('payment_refunds', $organization, $store)
             ->where('status', 'posted')
-            ->whereDate('refund_date', '>=', $period->start->toDateString())
-            ->whereDate('refund_date', '<=', $period->end->toDateString())
+            ->whereBetween('refund_date', [$period->start->toDateString(), $period->end->toDateString()])
             ->sum('amount'));
     }
 
@@ -156,8 +151,7 @@ class FinanceMonthlyReportService
             ->where('organization_id', $organization->getKey())
             ->when($store, fn ($query) => $query->where('store_id', $store->getKey()))
             ->where('status', SalesOrderStatus::Confirmed->value)
-            ->whereDate('sale_date', '>=', $period->start->toDateString())
-            ->whereDate('sale_date', '<=', $period->end->toDateString())
+            ->whereBetween('sale_date', [$period->start->toDateString(), $period->end->toDateString()])
             ->withSum(['customerReturns as returned_total' => fn ($query) => $query->where('status', 'received')], 'total_incl_tax')
             ->orderBy('sale_date')->orderBy('id')
             ->paginate($perPage)

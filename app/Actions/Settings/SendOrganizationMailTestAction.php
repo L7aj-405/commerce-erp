@@ -9,6 +9,7 @@ use App\Models\Organization;
 use App\Models\User;
 use App\Services\AuditLogger;
 use App\Services\OrganizationOutboundMailService;
+use App\Support\SensitiveDataRedactor;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -40,7 +41,7 @@ class SendOrganizationMailTestAction
         } catch (OrganizationMailDeliveryException $exception) {
             Log::warning('organization_mail.test_failed', [
                 'organization_id' => $organization->getKey(),
-                'exception' => $exception->getPrevious()?->getMessage() ?? $exception->getMessage(),
+                'exception' => SensitiveDataRedactor::text($exception->getPrevious()?->getMessage() ?? $exception->getMessage()),
             ]);
             $result = ['ok' => false, 'message' => 'Échec de l\'envoi. Vérifiez votre configuration e-mail.'];
         }

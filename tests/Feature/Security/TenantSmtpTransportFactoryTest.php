@@ -41,6 +41,29 @@ class TenantSmtpTransportFactoryTest extends TestCase
         $this->assertSame('smtp.example.com', $stream->getStreamOptions()['ssl']['peer_name']);
         $this->assertTrue($stream->getStreamOptions()['ssl']['verify_peer']);
         $this->assertTrue($stream->getStreamOptions()['ssl']['verify_peer_name']);
+        $this->assertTrue($transport->isAutoTls());
+        $this->assertTrue($transport->isTlsRequired());
+    }
+
+    public function test_ssl_uses_implicit_tls_and_none_never_silently_upgrades(): void
+    {
+        $this->fakeDns()->map('smtp.example.com', ['93.184.216.34']);
+
+        $ssl = $this->factory()->create([
+            'host' => 'smtp.example.com',
+            'port' => 465,
+            'encryption' => 'ssl',
+        ]);
+        $plain = $this->factory()->create([
+            'host' => 'smtp.example.com',
+            'port' => 465,
+            'encryption' => 'none',
+        ]);
+
+        $this->assertTrue($ssl->getStream()->isTLS());
+        $this->assertFalse($plain->getStream()->isTLS());
+        $this->assertFalse($plain->isAutoTls());
+        $this->assertFalse($plain->isTlsRequired());
     }
 
     public function test_it_brackets_an_ipv6_pinned_address(): void

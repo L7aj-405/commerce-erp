@@ -6,21 +6,12 @@ use App\Models\AuditLog;
 use App\Models\Organization;
 use App\Models\Store;
 use App\Models\User;
+use App\Support\SensitiveDataRedactor;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 
 class AuditLogger
 {
-    private const SENSITIVE_KEYS = [
-        'password',
-        'password_confirmation',
-        'remember_token',
-        'token',
-        'secret',
-        'api_key',
-        'credentials',
-    ];
-
     public function __construct(private readonly Request $request) {}
 
     /**
@@ -55,16 +46,6 @@ class AuditLogger
     /** @param array<string, mixed> $values */
     private function sanitize(array $values): array
     {
-        $sanitized = [];
-
-        foreach ($values as $key => $value) {
-            if (in_array(strtolower((string) $key), self::SENSITIVE_KEYS, true)) {
-                continue;
-            }
-
-            $sanitized[$key] = is_array($value) ? $this->sanitize($value) : $value;
-        }
-
-        return $sanitized;
+        return SensitiveDataRedactor::sanitizeArray($values);
     }
 }

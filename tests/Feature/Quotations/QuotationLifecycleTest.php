@@ -233,6 +233,7 @@ class QuotationLifecycleTest extends QuotationTestCase
         $issued = $this->issueQuotation($owner, $quotation);
         $frozenAccent = $issued->seller_snapshot['accent_color'];
         $frozenSeller = $issued->seller_snapshot;
+        $frozenHtml = app(QuotationDocumentRenderer::class)->html($issued);
 
         $organization->forceFill(['settings' => array_merge($organization->settings ?? [], [
             'quotation_profile' => ['accent_color' => '#123456', 'footer_text' => 'NOUVEAU PIED', 'default_validity_days' => 7],
@@ -241,6 +242,7 @@ class QuotationLifecycleTest extends QuotationTestCase
 
         $this->assertEquals($frozenSeller, $issued->fresh()->seller_snapshot);
         $this->assertSame($frozenAccent, $issued->fresh()->seller_snapshot['accent_color']);
+        $this->assertSame($frozenHtml, app(QuotationDocumentRenderer::class)->html($issued->fresh()));
     }
 
     public function test_pdf_renders_from_the_devis_snapshot_and_is_reproducible(): void

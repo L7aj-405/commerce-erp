@@ -4,6 +4,7 @@ namespace Tests\Feature\Auth;
 
 use App\Contracts\ChallengeVerifier;
 use App\Models\User;
+use App\Services\Security\NullChallengeVerifier;
 use Illuminate\Testing\TestResponse;
 use Tests\Support\FakeChallengeVerifier;
 use Tests\Support\PlatformTestCase;
@@ -64,6 +65,20 @@ class LoginSecurityTest extends PlatformTestCase
         $this->post(route('login.store'), ['email' => $user->email, 'password' => 'password'])
             ->assertRedirect(route('platform.index'));
 
+        $this->assertAuthenticatedAs($user);
+    }
+
+    public function test_unconfigured_challenge_provider_does_not_create_a_fake_permanent_login_block(): void
+    {
+        $user = User::factory()->create(['email' => 'owner@example.com']);
+        $this->app->instance(ChallengeVerifier::class, new NullChallengeVerifier);
+
+        $this->attemptWrongPassword($user->email);
+        $this->attemptWrongPassword($user->email);
+        $this->attemptWrongPassword($user->email);
+
+        $this->post(route('login.store'), ['email' => $user->email, 'password' => 'password'])
+            ->assertRedirect(route('platform.index'));
         $this->assertAuthenticatedAs($user);
     }
 

@@ -6,8 +6,8 @@ use App\Actions\Contacts\SaveOrganizationContactAction;
 use App\Models\Organization;
 use App\Models\OrganizationContact;
 use App\Models\User;
+use App\Support\SensitiveDataRedactor;
 use Illuminate\Support\Facades\Validator;
-use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Throwable;
 
@@ -130,6 +130,6 @@ class DocumentEmailRecipientService
 
     public function sanitizeFailure(Throwable $exception): string
     {
-        return Str::limit(preg_replace('/(password|secret|token|authorization|bearer)\s*[:=]\s*\S+/i', '$1=[redacted]', $exception->getMessage()) ?: $exception::class, 1000);
+        return SensitiveDataRedactor::text($exception->getMessage() ?: $exception::class);
     }
 }

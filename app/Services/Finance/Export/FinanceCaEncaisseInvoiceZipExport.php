@@ -2,6 +2,7 @@
 
 namespace App\Services\Finance\Export;
 
+use App\Support\SpreadsheetSafeText;
 use App\Enums\PaymentStatus;
 use App\Models\CreditNote;
 use App\Models\Invoice;
@@ -61,15 +62,6 @@ class FinanceCaEncaisseInvoiceZipExport
 
         abort_if($eligible->isEmpty(), 422, 'Aucune facture émise n’est associée à la période sélectionnée.');
 
-        if ($eligible->count() + $creditNotes->count() > self::MAX_INVOICES) {
-            abort(422, sprintf(
-                'Cette sélection contient %d factures, au-delà de la limite de %d pour un export ZIP en une fois. '
-                .'Filtrez par magasin pour réduire la sélection.',
-                $eligible->count() + $creditNotes->count(),
-                self::MAX_INVOICES,
-            ));
-        }
-
         // §24 — one batched query for the stamp snapshot across the whole
         // selection, instead of InvoiceDocumentRenderer lazy-loading it once
         // per invoice inside the loop below.
@@ -85,6 +77,10 @@ class FinanceCaEncaisseInvoiceZipExport
         $workingDir = $this->workingDirectory($organization);
 
         $zipPath = tempnam(sys_get_temp_dir(), 'finance_invoice_zip_');
+        if ($zipPath === false) {
+            $this->cleanup($workingDir);
+            throw new RuntimeException('Impossible de préparer le fichier temporaire de l’archive.');
+        }
         $zip = new ZipArchive;
         if ($zip->open($zipPath, ZipArchive::CREATE) !== true) {
             $this->cleanup($workingDir);
@@ -96,6 +92,8 @@ class FinanceCaEncaisseInvoiceZipExport
         $manifestRows = [];
         $creditNoteManifestRows = [];
         $tempPdfPaths = [];
+        $completed = false;
+        $closed = false;
 
         try {
             foreach ($eligible as $invoice) {
@@ -106,10 +104,9 @@ class FinanceCaEncaisseInvoiceZipExport
                     $usedNames,
                 );
 
-                $pdfPath = $workingDir.DIRECTORY_SEPARATOR.Str::random(24).'.pdf';
-                file_put_contents($pdfPath, $document['bytes']);
+                $pdfPath = $this->writeTemp($workingDir, $document['bytes']);
                 $tempPdfPaths[] = $pdfPath;
-                $zip->addFile($pdfPath, $entryName);
+                $this->addFile($zip, $pdfPath, $entryName);
 
                 $manifestRows[] = $this->manifestRow($invoice, $entryName, $collectedAmounts[$invoice->sales_order_id] ?? '0.0000');
 
@@ -126,10 +123,9 @@ class FinanceCaEncaisseInvoiceZipExport
                     $creditNote->id,
                     $usedNames,
                 );
-                $pdfPath = $workingDir.DIRECTORY_SEPARATOR.Str::random(24).'.pdf';
-                file_put_contents($pdfPath, $document['bytes']);
+                $pdfPath = $this->writeTemp($workingDir, $document['bytes']);
                 $tempPdfPaths[] = $pdfPath;
-                $zip->addFile($pdfPath, $entryName);
+                $this->addFile($zip, $pdfPath, $entryName);
                 $creditNoteManifestRows[] = [
                     $creditNote->credit_note_number,
                     $creditNote->credit_note_date->toDateString(),
@@ -141,16 +137,27 @@ class FinanceCaEncaisseInvoiceZipExport
                 unset($document);
             }
 
-            $zip->addFromString('manifest.csv', $this->manifest($manifestRows));
-            if ($creditNoteManifestRows !== []) {
-                $zip->addFromString('avoirs-manifest.csv', $this->creditNoteManifest($creditNoteManifestRows));
+            if (! $zip->addFromString('manifest.csv', $this->manifest($manifestRows))) {
+                throw new RuntimeException('Impossible d’ajouter le manifeste à l’archive ZIP.');
             }
+            if ($creditNoteManifestRows !== []
+                && ! $zip->addFromString('avoirs-manifest.csv', $this->creditNoteManifest($creditNoteManifestRows))) {
+                throw new RuntimeException('Impossible d’ajouter le manifeste des avoirs à l’archive ZIP.');
+            }
+            $completed = true;
         } finally {
-            $zip->close();
+            $closed = $zip->close();
             foreach ($tempPdfPaths as $path) {
                 @unlink($path);
             }
             @rmdir($workingDir);
+            if ((! $completed || ! $closed) && is_file($zipPath)) {
+                @unlink($zipPath);
+            }
+        }
+
+        if (! $closed) {
+            throw new RuntimeException('Impossible de finaliser l’archive ZIP.');
         }
 
         return [
@@ -171,6 +178,15 @@ class FinanceCaEncaisseInvoiceZipExport
             ->whereIn('invoice_id', $eligible->pluck('id'))
             ->with('invoice:id,invoice_number,version')
             ->orderBy('credit_note_date')->orderBy('id')->get();
+
+        if ($eligible->count() + $creditNotes->count() > self::MAX_INVOICES) {
+            abort(422, sprintf(
+                'Cette sélection contient %d documents, au-delà de la limite de %d pour un export synchrone. '
+                .'Filtrez par magasin pour réduire la sélection.',
+                $eligible->count() + $creditNotes->count(),
+                self::MAX_INVOICES,
+            ));
+        }
 
         return ['invoices' => $eligible, 'creditNotes' => $creditNotes];
     }
@@ -215,6 +231,25 @@ class FinanceCaEncaisseInvoiceZipExport
             @unlink($file);
         }
         @rmdir($dir);
+    }
+
+    private function writeTemp(string $directory, string $bytes): string
+    {
+        $path = $directory.DIRECTORY_SEPARATOR.Str::random(24).'.pdf';
+        $written = file_put_contents($path, $bytes, LOCK_EX);
+        if ($written === false || $written !== strlen($bytes)) {
+            @unlink($path);
+            throw new RuntimeException('Impossible d’écrire un fichier PDF temporaire.');
+        }
+
+        return $path;
+    }
+
+    private function addFile(ZipArchive $zip, string $path, string $entry): void
+    {
+        if (! $zip->addFile($path, $entry)) {
+            throw new RuntimeException('Impossible d’ajouter un document à l’archive ZIP.');
+        }
     }
 
     private function safeDocumentFolder(?string $number): string
@@ -293,7 +328,7 @@ class FinanceCaEncaisseInvoiceZipExport
         fwrite($handle, "\xEF\xBB\xBF");
         fputcsv($handle, ['N° facture', 'Version', 'Date facture', 'Client', 'Total TTC', 'Encaissé sur la période', 'Cachet', 'Fichier'], ';');
         foreach ($rows as $row) {
-            fputcsv($handle, $row, ';');
+            fputcsv($handle, SpreadsheetSafeText::row($row), ';');
         }
         rewind($handle);
         $csv = stream_get_contents($handle);
@@ -309,7 +344,7 @@ class FinanceCaEncaisseInvoiceZipExport
         fwrite($handle, "\xEF\xBB\xBF");
         fputcsv($handle, ['N° avoir', 'Date avoir', 'Facture d’origine', 'Version facture', 'Total TTC crédité', 'Fichier'], ';');
         foreach ($rows as $row) {
-            fputcsv($handle, $row, ';');
+            fputcsv($handle, SpreadsheetSafeText::row($row), ';');
         }
         rewind($handle);
         $csv = stream_get_contents($handle);

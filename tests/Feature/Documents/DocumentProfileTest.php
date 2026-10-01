@@ -145,7 +145,7 @@ class DocumentProfileTest extends DocumentTestCase
         $this->assertTrue($fake->options['pageNumbers']);
     }
 
-    public function test_current_presentation_settings_apply_to_existing_document_snapshots(): void
+    public function test_issued_document_keeps_its_issuance_time_presentation_snapshot(): void
     {
         [$owner, $organization, , $order] = $this->documentFixture();
         $organization->settings = array_replace_recursive($organization->settings ?? [], [
@@ -170,7 +170,7 @@ class DocumentProfileTest extends DocumentTestCase
         $organization->save();
 
         $html = app(InvoiceDocumentRenderer::class)->html($invoice->fresh());
-        $this->assertStringNotContainsString('class="runhead"', $html);
+        $this->assertStringContainsString('class="runhead"', $html);
 
         $fake = new class implements PdfGenerator {
             /** @var array<string, mixed> */
@@ -187,7 +187,7 @@ class DocumentProfileTest extends DocumentTestCase
 
         app(DocumentPdfService::class)->invoice($invoice->fresh());
 
-        $this->assertFalse($fake->options['pageNumbers']);
+        $this->assertTrue($fake->options['pageNumbers']);
     }
 
     public function test_item_line_style_settings_are_persisted_and_rendered_as_effective_pdf_colors(): void

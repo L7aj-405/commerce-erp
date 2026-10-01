@@ -86,6 +86,7 @@ class AuditLogTest extends PlatformTestCase
                     'token' => 'must-not-be-stored',
                     'safe' => 'visible',
                 ],
+                'error' => 'Authorization: Bearer secret-access-token',
             ],
         );
 
@@ -96,5 +97,6 @@ class AuditLogTest extends PlatformTestCase
         $this->assertArrayNotHasKey('token', $log->new_values['nested']);
         $this->assertSame('visible', $log->new_values['nested']['safe']);
         $this->assertStringNotContainsString('must-not-be-stored', json_encode($log->new_values, JSON_THROW_ON_ERROR));
+        $this->assertStringNotContainsString('secret-access-token', $log->new_values['error']);
     }
 }

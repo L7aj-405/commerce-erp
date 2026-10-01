@@ -384,10 +384,8 @@ class DocumentSellerProfile
     }
 
     /**
-     * Presentation-only controls are intentionally live settings: changing line
-     * style, running-header visibility, or pagination must not mutate historical
-     * seller/customer/financial snapshots, but it should affect the current PDF
-     * rendering immediately.
+     * Apply the current presentation to a draft preview. Official documents use
+     * the presentation frozen into their seller snapshot at issuance instead.
      *
      * @param  array<string, mixed>  $sellerSnapshot
      * @return array<string, mixed>
@@ -395,6 +393,18 @@ class DocumentSellerProfile
     public function withCurrentPresentationSettings(array $sellerSnapshot, Organization $organization): array
     {
         return array_replace($sellerSnapshot, $this->presentationSettings($organization));
+    }
+
+    /**
+     * Freeze the effective presentation settings into the document snapshot at
+     * the issuance boundary. Later Studio/profile edits cannot alter history.
+     *
+     * @param  array<string, mixed>  $sellerSnapshot
+     * @return array<string, mixed>
+     */
+    public function freezeCurrentPresentationSettings(array $sellerSnapshot, Organization $organization): array
+    {
+        return $this->withCurrentPresentationSettings($sellerSnapshot, $organization);
     }
 
     /** @return array<string, mixed> */

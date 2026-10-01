@@ -260,7 +260,7 @@ class FinanceCaEncaisseInvoiceZipExportTest extends QuotationTestCase
             $this->fail('Expected the oversized-selection guard to abort.');
         } catch (HttpException $exception) {
             $this->assertSame(422, $exception->getStatusCode());
-            $this->assertStringContainsString('501 factures', $exception->getMessage());
+            $this->assertStringContainsString('501 documents', $exception->getMessage());
         }
     }
 

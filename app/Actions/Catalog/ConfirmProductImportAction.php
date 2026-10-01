@@ -19,6 +19,7 @@ use App\Services\AuditLogger;
 use App\Services\CatalogImport\ProductImportFailureMapper;
 use App\Services\CatalogReferenceManager;
 use App\Support\InventoryQuantity;
+use App\Support\SensitiveDataRedactor;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -492,10 +493,9 @@ class ConfirmProductImportAction
             ? ($exception->getPrevious()?->getMessage() ?? 'Database query failed.')
             : $exception->getMessage();
         $message = preg_replace('/\s+/', ' ', $message) ?? 'Technical import failure.';
-        $message = preg_replace('/(?i)(password|token|secret|api[_-]?key)\s*[=:]\s*[^,;\s]+/', '$1=[redacted]', $message) ?? $message;
         $message = preg_replace('#(https?://)[^/@\s]+@#i', '$1[redacted]@', $message) ?? $message;
 
-        return Str::limit($message, 2000, '');
+        return SensitiveDataRedactor::text($message, 2000);
     }
 
     private function key(mixed $value): string

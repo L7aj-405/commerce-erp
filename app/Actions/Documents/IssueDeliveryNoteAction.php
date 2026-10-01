@@ -52,6 +52,10 @@ class IssueDeliveryNoteAction
                 throw ValidationException::withMessages(['order' => 'This Sales Order already has an issued full Delivery Note.']);
             }
             $this->verifier->verifyDeliveryNote($note);
+            $note->seller_snapshot = $this->sellerProfile->freezeCurrentPresentationSettings(
+                $note->seller_snapshot,
+                $note->organization,
+            );
             $this->sellerProfile->validate($note->seller_snapshot);
             $this->templates->deliveryNoteView($note->template_version);
             $note->delivery_note_number = $this->numbers->next($note->organization);

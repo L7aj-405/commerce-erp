@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Contracts\PdfGenerator;
 use App\Enums\DeliveryNoteStatus;
 use App\Enums\InvoiceStatus;
+use App\Enums\QuotationStatus;
 use App\Models\DeliveryNote;
 use App\Models\Invoice;
 use App\Models\Quotation;
@@ -29,7 +30,7 @@ class DocumentPdfService
         if ($note->status !== 'issued') {
             throw ValidationException::withMessages(['credit_note' => 'Only an issued Credit Note has an official PDF.']);
         }
-        return ['bytes' => $this->pdf->generate($this->creditNotes->html($note), $this->paginationOptions($note->organization, true)), 'filename' => $this->filename('Avoir', $note->credit_note_number), 'mime' => 'application/pdf'];
+        return ['bytes' => $this->pdf->generate($this->creditNotes->html($note), $this->snapshotPaginationOptions($note->seller_snapshot ?? [], true)), 'filename' => $this->filename('Avoir', $note->credit_note_number), 'mime' => 'application/pdf'];
     }
 
     /**
@@ -63,7 +64,12 @@ class DocumentPdfService
     public function quotation(Quotation $quotation): array
     {
         return [
-            'bytes' => $this->pdf->generate($this->quotations->html($quotation), $this->paginationOptions($quotation->organization, true)),
+            'bytes' => $this->pdf->generate(
+                $this->quotations->html($quotation),
+                $quotation->status === QuotationStatus::Draft
+                    ? $this->paginationOptions($quotation->organization, true)
+                    : $this->snapshotPaginationOptions($quotation->seller_snapshot, true),
+            ),
             'filename' => $this->filename('Devis', $quotation->quotation_number ?? 'brouillon'),
             'mime' => 'application/pdf',
         ];
@@ -83,7 +89,7 @@ class DocumentPdfService
             $number .= '-V'.$invoice->version;
         }
 
-        return ['bytes' => $this->pdf->generate($this->invoices->html($invoice), $this->paginationOptions($invoice->organization, true)), 'filename' => $this->filename('Facture', $number), 'mime' => 'application/pdf'];
+        return ['bytes' => $this->pdf->generate($this->invoices->html($invoice), $this->snapshotPaginationOptions($invoice->seller_snapshot, true)), 'filename' => $this->filename('Facture', $number), 'mime' => 'application/pdf'];
     }
 
     /** @return array{bytes:string, filename:string, mime:string} */
@@ -93,7 +99,7 @@ class DocumentPdfService
             throw ValidationException::withMessages(['delivery_note' => 'Only an issued Delivery Note has an official PDF.']);
         }
 
-        return ['bytes' => $this->pdf->generate($this->deliveryNotes->html($note), $this->paginationOptions($note->organization, false)), 'filename' => $this->filename('Bon-de-Livraison', $note->delivery_note_number), 'mime' => 'application/pdf'];
+        return ['bytes' => $this->pdf->generate($this->deliveryNotes->html($note), $this->snapshotPaginationOptions($note->seller_snapshot, false)), 'filename' => $this->filename('Bon-de-Livraison', $note->delivery_note_number), 'mime' => 'application/pdf'];
     }
 
     private function pageNumbersEnabled(\App\Models\Organization $organization, bool $default): bool
@@ -119,6 +125,26 @@ class DocumentPdfService
 
         return [
             'pageNumbers' => $this->pageNumbersEnabled($organization, $default),
+            'pagination' => is_array($pagination) ? $pagination : [],
+        ];
+    }
+
+    /**
+     * Official PDFs must use issuance-time pagination, never the organization's
+     * current Studio settings.
+     *
+     * @param  array<string, mixed>  $snapshot
+     * @return array{pageNumbers:bool,pagination:array<string,mixed>}
+     */
+    private function snapshotPaginationOptions(array $snapshot, bool $default): array
+    {
+        $pagination = data_get($snapshot, 'pdf_style.pagination', []);
+        $pageNumbers = data_get($snapshot, 'show_pdf_pagination');
+
+        return [
+            'pageNumbers' => $pageNumbers === null
+                ? $default
+                : (filter_var($pageNumbers, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) ?? $default),
             'pagination' => is_array($pagination) ? $pagination : [],
         ];
     }

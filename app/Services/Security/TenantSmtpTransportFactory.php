@@ -45,7 +45,20 @@ class TenantSmtpTransportFactory
             throw new RuntimeException("Unsafe SMTP destination ({$exception->category}).", previous: $exception);
         }
 
-        $scheme = $config['scheme'] ?? (($config['port'] ?? null) == 465 ? 'smtps' : 'smtp');
+        $encryption = strtolower((string) ($config['encryption'] ?? 'none'));
+        $scheme = $config['scheme'] ?? ($encryption === 'ssl' ? 'smtps' : 'smtp');
+        $options = $config;
+        if ($encryption === 'tls') {
+            // STARTTLS is mandatory, not opportunistic, when the tenant chose
+            // TLS. Symfony will abort if the server cannot negotiate it.
+            $options['auto_tls'] = true;
+            $options['require_tls'] = true;
+        } elseif ($encryption === 'none') {
+            // Plain SMTP is allowed only through the explicit "none" choice;
+            // even port 465 must not silently change the requested semantics.
+            $options['auto_tls'] = false;
+            $options['require_tls'] = false;
+        }
 
         $transport = (new EsmtpTransportFactory)->create(new Dsn(
             $scheme,
@@ -53,7 +66,7 @@ class TenantSmtpTransportFactory
             $config['username'] ?? null,
             $config['password'] ?? null,
             $config['port'] ?? null,
-            $config,
+            $options,
         ));
 
         if (! $transport instanceof SmtpTransport) {

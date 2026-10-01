@@ -26,7 +26,7 @@ class CreditNoteDocumentRenderer
 
         return [
             'note' => $note,
-            'seller' => $this->sellerProfile->withCurrentPresentationSettings($note->seller_snapshot ?? [], $note->organization),
+            'seller' => $note->seller_snapshot ?? [],
             'customer' => $note->customer_snapshot ?? [],
             'document' => [
                 'number' => $note->credit_note_number,

@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Support\SpreadsheetSafeText;
 use App\Models\NonStockItem;
 use App\Models\Organization;
 use Illuminate\Support\Collection;
@@ -19,13 +20,13 @@ class NonStockItemExporter
         $rows = NonStockItem::query()
             ->where('organization_id', $organization->getKey())
             ->orderBy('name')
-            ->get();
+            ->cursor();
 
         $handle = fopen('php://temp', 'r+');
         fputcsv($handle, ['Désignation', 'Référence', 'Prix HT', 'Prix TTC', 'TVA (%)', 'Unité', 'Devis (utilisations)', 'Statut', 'Créé le']);
 
         foreach ($rows as $item) {
-            fputcsv($handle, $this->line($item));
+            fputcsv($handle, SpreadsheetSafeText::row($this->line($item)));
         }
 
         rewind($handle);

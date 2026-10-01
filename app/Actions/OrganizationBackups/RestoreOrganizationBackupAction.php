@@ -6,6 +6,7 @@ use App\Models\Organization;
 use App\Models\User;
 use App\Services\AuditLogger;
 use App\Services\OrganizationBackups\OrganizationBackupRestorer;
+use App\Support\SensitiveDataRedactor;
 
 class RestoreOrganizationBackupAction
 {
@@ -32,7 +33,7 @@ class RestoreOrganizationBackupAction
             return $result;
         } catch (\Throwable $exception) {
             $this->audit->record('organization_backup.restore_failed', $actor, $organization, newValues: [
-                'reason' => $exception->getMessage(),
+                'reason' => SensitiveDataRedactor::text($exception->getMessage()),
             ]);
 
             throw $exception;

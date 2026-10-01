@@ -10,24 +10,37 @@ use App\Services\AuditLogger;
 use App\Services\OrganizationBackups\OrganizationBackupExporter;
 use App\Services\OrganizationBackups\OrganizationBackupStorage;
 use App\Services\OrganizationBackups\OrganizationBackupValidator;
+use App\Support\SensitiveDataRedactor;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Mail;
 use Throwable;
 
-class CreateScheduledOrganizationBackupJob implements ShouldQueue
+class CreateScheduledOrganizationBackupJob implements ShouldBeUnique, ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $tries = 3;
 
+    public int $timeout = 1800;
+
+    public bool $failOnTimeout = true;
+
+    public int $uniqueFor = 3900;
+
     /** @var array<int, int> */
     public array $backoff = [60, 300, 900];
 
     public function __construct(public readonly int $backupId) {}
+
+    public function uniqueId(): string
+    {
+        return 'scheduled-organization-backup:'.$this->backupId;
+    }
 
     public function handle(
         OrganizationBackupExporter $exporter,
@@ -150,6 +163,6 @@ class CreateScheduledOrganizationBackupJob implements ShouldQueue
 
     private function sanitizeFailure(Throwable $exception): string
     {
-        return str($exception->getMessage())->limit(500)->toString() ?: 'scheduled_backup_failed';
+        return SensitiveDataRedactor::text($exception->getMessage(), 500) ?: 'scheduled_backup_failed';
     }
 }

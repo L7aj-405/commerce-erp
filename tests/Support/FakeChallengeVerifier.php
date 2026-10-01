@@ -8,8 +8,7 @@ use Illuminate\Http\Request;
 /**
  * Test double for {@see ChallengeVerifier} — lets a login-security test
  * control whether the challenge passes or fails independently of
- * NullChallengeVerifier's environment-based default (which always passes in
- * `testing` so it never blocks the rest of the suite).
+ * the deliberately unconfigured NullChallengeVerifier.
  */
 class FakeChallengeVerifier implements ChallengeVerifier
 {

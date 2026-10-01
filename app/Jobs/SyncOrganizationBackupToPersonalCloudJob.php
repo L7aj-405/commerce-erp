@@ -7,23 +7,35 @@ use App\Services\AuditLogger;
 use App\Services\OrganizationBackups\OrganizationBackupStorage;
 use App\Services\OrganizationBackups\PersonalCloud\PersonalBackupStorageManager;
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Str;
+use App\Support\SensitiveDataRedactor;
 use Throwable;
 
-class SyncOrganizationBackupToPersonalCloudJob implements ShouldQueue
+class SyncOrganizationBackupToPersonalCloudJob implements ShouldBeUnique, ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $tries = 3;
 
+    public int $timeout = 1800;
+
+    public bool $failOnTimeout = true;
+
+    public int $uniqueFor = 3900;
+
     /** @var array<int, int> */
     public array $backoff = [60, 300, 900];
 
     public function __construct(public readonly int $cloudCopyId) {}
+
+    public function uniqueId(): string
+    {
+        return 'organization-backup-cloud-copy:'.$this->cloudCopyId;
+    }
 
     public function handle(
         OrganizationBackupStorage $storage,
@@ -114,6 +126,6 @@ class SyncOrganizationBackupToPersonalCloudJob implements ShouldQueue
 
     private function sanitizeFailure(Throwable $exception): string
     {
-        return Str::of($exception->getMessage())->limit(500)->toString() ?: 'google_drive_sync_failed';
+        return SensitiveDataRedactor::text($exception->getMessage(), 500) ?: 'google_drive_sync_failed';
     }
 }

@@ -24,6 +24,13 @@ abstract class TestCase extends BaseTestCase
         // see Tests\Support\FakeDnsResolver. Any test exercising the SSRF
         // guard itself calls fakeDns() to override specific hosts.
         $this->app->instance(DnsResolver::class, new Support\FakeDnsResolver);
+
+        // Dedicated deterministic test-only backup keys. Production must
+        // supply independent random values through the environment.
+        config([
+            'organization-backups.signing_key' => 'base64:'.base64_encode(str_repeat('s', 32)),
+            'organization-backups.encryption_key' => 'base64:'.base64_encode(str_repeat('e', 32)),
+        ]);
     }
 
     protected function fakeDns(): Support\FakeDnsResolver

@@ -70,4 +70,18 @@ class DeliveryNotePdfTest extends DocumentTestCase
         $this->assertStringContainsString('Désignation', $html);
         $this->assertStringContainsString('Qté', $html);
     }
+
+    public function test_issued_delivery_note_keeps_its_issuance_time_presentation(): void
+    {
+        [$owner, $organization, , $order] = $this->documentFixture(true);
+        $note = $this->issueDeliveryNote($owner, $this->createDeliveryNote($owner, $order->fresh()));
+        $frozenHtml = app(DeliveryNoteDocumentRenderer::class)->html($note);
+
+        $settings = $organization->settings ?? [];
+        data_set($settings, 'document_profile.pdf_template.published.document_header.visible', false);
+        $organization->settings = $settings;
+        $organization->save();
+
+        $this->assertSame($frozenHtml, app(DeliveryNoteDocumentRenderer::class)->html($note->fresh()));
+    }
 }

@@ -31,6 +31,10 @@ class IssueQuotationAction
         return DB::transaction(function () use ($actor, $quotation) {
             $quotation = $this->lockDraft($quotation);
             $this->assertHasLines($quotation);
+            $quotation->seller_snapshot = $this->sellerProfile->freezeCurrentPresentationSettings(
+                $quotation->seller_snapshot,
+                $quotation->organization,
+            );
             $this->sellerProfile->validate($quotation->seller_snapshot);
             $this->templates->quotationView($quotation->template_version);
 

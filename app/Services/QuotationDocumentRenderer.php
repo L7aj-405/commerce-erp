@@ -56,7 +56,9 @@ class QuotationDocumentRenderer
                     ? ($quotation->rootQuotation?->quotation_number ?? $quotation->quotation_number)
                     : null,
             ],
-            'seller' => $this->sellerProfile->withCurrentPresentationSettings($quotation->seller_snapshot, $quotation->organization),
+            'seller' => $quotation->status === QuotationStatus::Draft
+                ? $this->sellerProfile->withCurrentPresentationSettings($quotation->seller_snapshot, $quotation->organization)
+                : $quotation->seller_snapshot,
             'buyer' => [
                 'name' => $quotation->customer_name,
                 'company' => $quotation->customer_company,

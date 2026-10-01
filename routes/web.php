@@ -181,7 +181,9 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
     Route::get('/document-profile', [DocumentProfileController::class, 'edit'])->name('document-profile.edit');
     Route::put('/document-profile', [DocumentProfileController::class, 'update'])->name('document-profile.update');
     Route::get('/document-profile/studio', [DocumentTemplateStudioController::class, 'edit'])->name('document-profile.studio.edit');
-    Route::post('/document-profile/studio/preview', [DocumentTemplateStudioController::class, 'preview'])->name('document-profile.studio.preview');
+    Route::post('/document-profile/studio/preview', [DocumentTemplateStudioController::class, 'preview'])
+        ->middleware('throttle:20,1')
+        ->name('document-profile.studio.preview');
     Route::put('/document-profile/studio', [DocumentTemplateStudioController::class, 'update'])->name('document-profile.studio.update');
     Route::delete('/document-profile/studio', [DocumentTemplateStudioController::class, 'reset'])->name('document-profile.studio.reset');
     Route::get('/quotation-settings', [QuotationSettingsController::class, 'edit'])->name('quotation-settings.edit');
@@ -192,8 +194,8 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
     Route::put('/return-policy', [ReturnPolicyController::class, 'update'])->name('return-policy.update');
     Route::get('/organization-backups', [OrganizationBackupController::class, 'index'])->name('organization-backups.index');
     Route::put('/organization-backups/settings', [OrganizationBackupController::class, 'updateSettings'])->name('organization-backups.settings.update');
-    Route::post('/organization-backups', [OrganizationBackupController::class, 'store'])->name('organization-backups.store');
-    Route::post('/organization-backups/validate', [OrganizationBackupController::class, 'validateUpload'])->name('organization-backups.validate');
+    Route::post('/organization-backups', [OrganizationBackupController::class, 'store'])->middleware('throttle:3,10')->name('organization-backups.store');
+    Route::post('/organization-backups/validate', [OrganizationBackupController::class, 'validateUpload'])->middleware('throttle:10,10')->name('organization-backups.validate');
     Route::get('/organization-backups/google-drive/connect', [OrganizationBackupCloudController::class, 'connect'])->name('organization-backups.google-drive.connect');
     Route::get('/organization-backups/google-drive/callback', [OrganizationBackupCloudController::class, 'callback'])->name('organization-backups.google-drive.callback');
     Route::post('/organization-backups/google-drive/test', [OrganizationBackupCloudController::class, 'test'])->name('organization-backups.google-drive.test');
@@ -203,7 +205,9 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
     Route::post('/organization-backups/{organizationBackup}/copy/google-drive', [OrganizationBackupCloudController::class, 'copy'])->name('organization-backups.google-drive.copy');
     Route::post('/organization-backups/{organizationBackup}/validate', [OrganizationBackupController::class, 'validateHistory'])->name('organization-backups.history.validate');
     Route::get('/organization-backups/{organizationBackup}/download', [OrganizationBackupController::class, 'downloadHistory'])->name('organization-backups.history.download');
-    Route::post('/organization-backups/restore', [OrganizationBackupController::class, 'restore'])->name('organization-backups.restore');
+    Route::post('/organization-backups/restore', [OrganizationBackupController::class, 'restore'])
+        ->middleware(['password.confirm', 'throttle:3,10'])
+        ->name('organization-backups.restore');
     Route::post('/email-settings/test', [OrganizationMailSettingController::class, 'test'])->name('email-settings.test');
 
     // Account Settings (V1) — the authenticated user's OWN profile, never
@@ -555,13 +559,15 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
         Route::get('/creances', [FinanceDashboardController::class, 'creances'])->name('creances');
         Route::get('/journal', [FinanceJournalController::class, 'index'])->name('journal');
         Route::get('/ca-encaisse', [FinanceDashboardController::class, 'caEncaisse'])->name('ca-encaisse');
-        Route::get('/export/xlsx', [FinanceExportController::class, 'xlsx'])->name('export.xlsx');
-        Route::get('/export/pdf', [FinanceExportController::class, 'pdf'])->name('export.pdf');
-        Route::get('/export/invoices', [FinanceExportController::class, 'invoicesPdf'])->name('export.invoices');
-        Route::get('/ca-encaisse/export/xlsx', [FinanceExportController::class, 'caEncaisseXlsx'])->name('ca-encaisse.export.xlsx');
-        Route::get('/ca-encaisse/export/pdf', [FinanceExportController::class, 'caEncaissePdf'])->name('ca-encaisse.export.pdf');
-        Route::get('/ca-encaisse/export/invoices-zip', [FinanceExportController::class, 'caEncaisseInvoicesZip'])->name('ca-encaisse.export.invoices-zip');
-        Route::get('/ca-encaisse/export/full-package', [FinanceExportController::class, 'caEncaisseFullPackage'])->name('ca-encaisse.export.full-package');
+        Route::middleware('throttle:10,1')->group(function () {
+            Route::get('/export/xlsx', [FinanceExportController::class, 'xlsx'])->name('export.xlsx');
+            Route::get('/export/pdf', [FinanceExportController::class, 'pdf'])->name('export.pdf');
+            Route::get('/export/invoices', [FinanceExportController::class, 'invoicesPdf'])->name('export.invoices');
+            Route::get('/ca-encaisse/export/xlsx', [FinanceExportController::class, 'caEncaisseXlsx'])->name('ca-encaisse.export.xlsx');
+            Route::get('/ca-encaisse/export/pdf', [FinanceExportController::class, 'caEncaissePdf'])->name('ca-encaisse.export.pdf');
+            Route::get('/ca-encaisse/export/invoices-zip', [FinanceExportController::class, 'caEncaisseInvoicesZip'])->name('ca-encaisse.export.invoices-zip');
+            Route::get('/ca-encaisse/export/full-package', [FinanceExportController::class, 'caEncaisseFullPackage'])->name('ca-encaisse.export.full-package');
+        });
     });
 });
 
@@ -569,10 +575,10 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
 // sharing). Not behind `auth`: the temporary signature is the authorisation and
 // binds the URL to a single invoice id + expiry.
 Route::get('/invoices/{invoice}/shared-pdf', [DocumentRenderingController::class, 'sharedInvoicePdf'])
-    ->middleware('signed')
+    ->middleware(['signed', 'throttle:30,1'])
     ->name('invoices.shared-pdf');
 
 // Public, signature-gated read of one issued Devis PDF (WhatsApp / email sharing).
 Route::get('/quotations/{quotation}/shared-pdf', [QuotationRenderingController::class, 'shared'])
-    ->middleware('signed')
+    ->middleware(['signed', 'throttle:30,1'])
     ->name('quotations.shared-pdf');

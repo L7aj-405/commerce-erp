@@ -27,6 +27,10 @@ class SyncWooCommerceProductsJob implements ShouldBeUnique, ShouldQueue
 
     public int $timeout = 3600;
 
+    public bool $failOnTimeout = true;
+
+    public int $uniqueFor = 3900;
+
     public function __construct(
         public readonly int $integrationId,
         public readonly int $actorId,
