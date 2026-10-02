@@ -85,6 +85,7 @@ class RolePresetTest extends PlatformTestCase
         $permissions = $role->permissions()->pluck('key')->sort()->values()->all();
 
         $this->assertSame([
+            'contacts.view',
             'customers.view',
             'finance.export',
             'finance.receivables.view',

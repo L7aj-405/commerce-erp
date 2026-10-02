@@ -77,6 +77,7 @@ class InvoiceSnapshotTest extends DocumentTestCase
             'discount_type' => 'fixed',
             'discount_value' => '100.0000',
         ]);
+        $order = app(ConfirmSalesOrderAction::class)->execute($owner, $order)->fresh();
 
         $issued = $this->issueInvoice($owner, $this->createInvoice($owner, $order));
         $this->assertSame('6750.0000', $issued->subtotal_excl_tax);

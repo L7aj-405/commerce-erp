@@ -109,7 +109,7 @@
             position: fixed;
             top: 40%; left: 12%;
             font-size: 90px; font-weight: bold;
-            color: rgba(176, 69, 59, .12);
+            color: #f6e9e7;
             transform: rotate(-26deg);
         }
         /* Issued invoices: the seller's own logo (from the immutable snapshot),

@@ -4,6 +4,7 @@ namespace App\Services\OrganizationBackups;
 
 use App\Models\Organization;
 use App\Models\User;
+use Illuminate\Database\Connection;
 use Illuminate\Database\Query\JoinClause;
 use Illuminate\Support\Facades\DB;
 use JsonException;
@@ -53,33 +54,129 @@ class OrganizationBackupRestorer
             throw new OrganizationBackupException('Manifeste de sauvegarde malformé.');
         }
 
-        DB::beginTransaction();
+        $connection = DB::connection();
+        $driver = $connection->getDriverName();
+        if (! in_array($driver, ['mysql', 'mariadb', 'sqlite'], true)) {
+            throw new OrganizationBackupException("Le pilote de base de données {$driver} n’est pas pris en charge pour la restauration.");
+        }
+
+        $startingTransactionLevel = $connection->transactionLevel();
+        $foreignKeyState = null;
+        $connection->beginTransaction();
         try {
             $this->lockProtectedState($organization);
             // Re-run under the restore transaction to close the gap between
             // the initial non-mutating preflight and destructive replacement.
             $this->assertProtectedStateCompatible($zip, $manifest, $organization);
-            DB::statement('SET FOREIGN_KEY_CHECKS=0');
+            $foreignKeyState = $this->deferForeignKeyChecks($connection, $driver);
 
             foreach ($tables as $table) {
                 if ($table !== 'organizations' && $this->schema->hasOrganizationColumn($table)) {
-                    DB::table($table)->where('organization_id', $organization->getKey())->delete();
+                    $this->deleteCurrentRows($zip, (string) $table, $organization, $driver);
                 }
             }
 
             foreach ($tables as $table) {
-                $this->restoreTable($zip, (string) $table, $organization);
+                $this->restoreTable(
+                    $zip,
+                    (string) $table,
+                    $organization,
+                    preserveExisting: $driver === 'sqlite' && in_array($table, ['stores', 'warehouses'], true),
+                );
             }
 
-            DB::statement('SET FOREIGN_KEY_CHECKS=1');
+            if ($driver === 'sqlite') {
+                $this->assertSqliteForeignKeyIntegrity($connection);
+            }
+            $this->restoreForeignKeyState($connection, $foreignKeyState);
+            $foreignKeyState = null;
             $this->assertProtectedRelationsIntact($organization);
-            DB::commit();
+            $connection->commit();
         } catch (\Throwable $exception) {
-            DB::statement('SET FOREIGN_KEY_CHECKS=1');
-            DB::rollBack();
+            // Roll back our transaction/savepoint before any cleanup statement.
+            // Cleanup must never prevent rollback or replace the original error.
+            try {
+                if ($connection->transactionLevel() > $startingTransactionLevel) {
+                    $connection->rollBack($startingTransactionLevel);
+                }
+            } catch (\Throwable $rollbackException) {
+                $this->reportCleanupFailure($rollbackException);
+            } finally {
+                if ($foreignKeyState !== null) {
+                    try {
+                        $this->restoreForeignKeyState($connection, $foreignKeyState);
+                    } catch (\Throwable $cleanupException) {
+                        $this->reportCleanupFailure($cleanupException);
+                    }
+                }
+            }
 
             throw $exception;
         }
+    }
+
+    /** @return array{driver:string, enabled:bool} */
+    private function deferForeignKeyChecks(Connection $connection, string $driver): array
+    {
+        if ($driver === 'sqlite') {
+            $row = $connection->selectOne('PRAGMA defer_foreign_keys');
+            $enabled = (bool) ($row->defer_foreign_keys ?? false);
+            $connection->statement('PRAGMA defer_foreign_keys = ON');
+
+            return ['driver' => $driver, 'enabled' => $enabled];
+        }
+
+        $row = $connection->selectOne('SELECT @@FOREIGN_KEY_CHECKS AS enabled');
+        $enabled = (bool) ($row->enabled ?? true);
+        $connection->statement('SET FOREIGN_KEY_CHECKS=0');
+
+        return ['driver' => $driver, 'enabled' => $enabled];
+    }
+
+    /** @param array{driver:string, enabled:bool} $state */
+    private function restoreForeignKeyState(Connection $connection, array $state): void
+    {
+        if ($state['driver'] === 'sqlite') {
+            $connection->statement('PRAGMA defer_foreign_keys = '.($state['enabled'] ? 'ON' : 'OFF'));
+
+            return;
+        }
+
+        $connection->statement('SET FOREIGN_KEY_CHECKS='.($state['enabled'] ? '1' : '0'));
+    }
+
+    private function assertSqliteForeignKeyIntegrity(Connection $connection): void
+    {
+        if ($connection->select('PRAGMA foreign_key_check') !== []) {
+            throw new OrganizationBackupException('La restauration créerait une référence de base de données invalide. Aucune donnée n’a été restaurée.');
+        }
+    }
+
+    private function reportCleanupFailure(\Throwable $exception): void
+    {
+        try {
+            report($exception);
+        } catch (\Throwable) {
+            // Preserve the original restore failure even if reporting fails.
+        }
+    }
+
+    private function deleteCurrentRows(ZipArchive $zip, string $table, Organization $organization, string $driver): void
+    {
+        $query = DB::table($table)->where('organization_id', $organization->getKey());
+
+        // SQLite cannot disable foreign keys inside RefreshDatabase's outer
+        // transaction. Keep protected parent rows in place so ON DELETE
+        // CASCADE / SET NULL actions cannot mutate memberships, audit rows or
+        // active-store pointers; their business fields are updated below.
+        if ($driver === 'sqlite' && in_array($table, ['stores', 'warehouses'], true)) {
+            $archiveIds = $this->archiveIds($zip, $table, 'id');
+            if ($archiveIds !== []) {
+                $query->whereNotIn('id', $archiveIds);
+            }
+        }
+
+        $query->delete();
     }
 
     /** @param array<string, mixed> $manifest */
@@ -240,7 +337,7 @@ class OrganizationBackupRestorer
             ->exists();
     }
 
-    private function restoreTable(ZipArchive $zip, string $table, Organization $organization): void
+    private function restoreTable(ZipArchive $zip, string $table, Organization $organization, bool $preserveExisting = false): void
     {
         $stream = $zip->getStream("data/{$table}.jsonl");
         if (! is_resource($stream)) {
@@ -267,6 +364,11 @@ class OrganizationBackupRestorer
 
             if ($table === 'organizations') {
                 $this->restoreOrganization($row, $organization);
+                continue;
+            }
+
+            if ($preserveExisting) {
+                DB::table($table)->updateOrInsert(['id' => $row['id']], $row);
                 continue;
             }
 

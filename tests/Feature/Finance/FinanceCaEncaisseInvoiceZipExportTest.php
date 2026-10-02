@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Finance;
 
+use App\Actions\Payments\ReversePaymentAction;
 use App\Actions\Sales\ConfirmSalesOrderAction;
 use App\Actions\Sales\SaveSalesOrderLineAction;
 use App\Actions\Sales\StartSalesOrderCorrectionAction;
@@ -53,9 +54,9 @@ class FinanceCaEncaisseInvoiceZipExportTest extends QuotationTestCase
     {
         $this->fakePdfGenerator();
         [$owner, $organization, , $order] = $this->documentFixture(total: '10000.0000');
-        $invoice = $this->issueInvoice($owner, $this->createInvoice($owner, $order));
         $account = $this->createFinancialAccount($organization);
         $this->recordPayment($owner, $order, $account, '10000.0000', ['payment_date' => '2026-09-15']);
+        $invoice = $this->issueInvoice($owner, $this->createInvoice($owner, $order));
 
         $result = app(FinanceCaEncaisseInvoiceZipExport::class)->build($organization, FinancePeriod::fromMonth('2026-09'), null);
 
@@ -73,10 +74,10 @@ class FinanceCaEncaisseInvoiceZipExportTest extends QuotationTestCase
     {
         $this->fakePdfGenerator();
         [$owner, $organization, , $order] = $this->documentFixture(total: '1500.0000');
-        $invoice = $this->issueInvoice($owner, $this->createInvoice($owner, $order));
         $account = $this->createFinancialAccount($organization);
         $this->recordPayment($owner, $order, $account, '1000.0000', ['payment_date' => '2026-09-05']);
         $this->recordPayment($owner, $order, $account, '500.0000', ['payment_date' => '2026-09-20']);
+        $invoice = $this->issueInvoice($owner, $this->createInvoice($owner, $order));
 
         $result = app(FinanceCaEncaisseInvoiceZipExport::class)->build($organization, FinancePeriod::fromMonth('2026-09'), null);
 
@@ -93,9 +94,9 @@ class FinanceCaEncaisseInvoiceZipExportTest extends QuotationTestCase
     {
         $this->fakePdfGenerator();
         [$owner, $organization, , $order] = $this->documentFixture(total: '100.0000');
-        $original = $this->issueInvoice($owner, $this->createInvoice($owner, $order, ['invoice_date' => '2026-09-01']));
         $account = $this->createFinancialAccount($organization);
         $this->recordPayment($owner, $order, $account, '100.0000', ['payment_date' => '2026-09-05']);
+        $original = $this->issueInvoice($owner, $this->createInvoice($owner, $order, ['invoice_date' => '2026-09-01']));
 
         app(StartSalesOrderCorrectionAction::class)->execute($owner, $order, 'Ajout commercial');
         $line = $order->fresh()->lines()->firstOrFail();
@@ -105,6 +106,7 @@ class FinanceCaEncaisseInvoiceZipExportTest extends QuotationTestCase
             'discount_type' => 'none', 'discount_value' => '0.0000',
         ], $line);
         $order = app(ConfirmSalesOrderAction::class)->execute($owner, $order->fresh())->fresh();
+        $this->recordPayment($owner, $order, $account, '100.0000', ['payment_date' => '2026-09-06']);
         $current = $this->issueInvoice($owner, $this->createInvoice($owner, $order, ['invoice_date' => '2026-09-02']));
 
         $result = app(FinanceCaEncaisseInvoiceZipExport::class)->build($organization, FinancePeriod::fromMonth('2026-09'), null);
@@ -126,9 +128,11 @@ class FinanceCaEncaisseInvoiceZipExportTest extends QuotationTestCase
     {
         $this->fakePdfGenerator();
         [$owner, $organization, , $order] = $this->documentFixture(total: '10000.0000');
-        $invoice = $this->issueInvoice($owner, $this->createInvoice($owner, $order));
         $account = $this->createFinancialAccount($organization);
-        // Only 3,000 of the 10,000 collected in September.
+        $initialPayment = $this->recordPayment($owner, $order, $account, '10000.0000', ['payment_date' => '2026-09-01']);
+        $invoice = $this->issueInvoice($owner, $this->createInvoice($owner, $order));
+        app(ReversePaymentAction::class)->execute($owner, $initialPayment, 'Règlement initial annulé');
+        // After the reversal, only 3,000 of the 10,000 is collected in September.
         $this->recordPayment($owner, $order, $account, '3000.0000', ['payment_date' => '2026-09-15']);
 
         $result = app(FinanceCaEncaisseInvoiceZipExport::class)->build($organization, FinancePeriod::fromMonth('2026-09'), null);
@@ -189,17 +193,16 @@ class FinanceCaEncaisseInvoiceZipExportTest extends QuotationTestCase
         Storage::fake('local');
         [$owner, $organization, , $orderStamped] = $this->documentFixture(total: '400.0000');
         $this->configureOrganizationStamp($organization);
+        $account = $this->createFinancialAccount($organization);
+        $this->recordPayment($owner, $orderStamped->fresh(), $account, '400.0000', ['payment_date' => '2026-09-05']);
         $stampedInvoice = $this->issueInvoice($owner, $this->createInvoice($owner, $orderStamped));
         $this->actingAs($owner)->post(route('invoices.stamp', $stampedInvoice))->assertRedirect();
 
         $order2 = $this->createDraftOrder($owner, $organization, $orderStamped->store, null, ['sale_date' => '2026-09-02']);
         $this->addCustomLine($owner, $order2, ['unit_price_excl_tax' => '250.0000']);
         $order2 = app(ConfirmSalesOrderAction::class)->execute($owner, $order2)->fresh();
-        $unstampedInvoice = $this->issueInvoice($owner, $this->createInvoice($owner, $order2));
-
-        $account = $this->createFinancialAccount($organization);
-        $this->recordPayment($owner, $orderStamped->fresh(), $account, '400.0000', ['payment_date' => '2026-09-05']);
         $this->recordPayment($owner, $order2, $account, '250.0000', ['payment_date' => '2026-09-06']);
+        $unstampedInvoice = $this->issueInvoice($owner, $this->createInvoice($owner, $order2));
 
         $this->assertNotNull($stampedInvoice->fresh()->stampApposition);
 
@@ -222,9 +225,9 @@ class FinanceCaEncaisseInvoiceZipExportTest extends QuotationTestCase
     {
         $this->fakePdfGenerator();
         [$owner, $organization, , $order] = $this->documentFixture(total: '600.0000');
-        $invoice = $this->issueInvoice($owner, $this->createInvoice($owner, $order));
         $account = $this->createFinancialAccount($organization);
         $this->recordPayment($owner, $order, $account, '600.0000', ['payment_date' => '2026-09-08']);
+        $invoice = $this->issueInvoice($owner, $this->createInvoice($owner, $order));
         $beforeUpdatedAt = $invoice->fresh()->updated_at;
         $beforeStatus = $invoice->fresh()->status;
         $beforeStampCount = DocumentStampApposition::query()->count();
@@ -268,9 +271,9 @@ class FinanceCaEncaisseInvoiceZipExportTest extends QuotationTestCase
     {
         $this->fakePdfGenerator();
         [$owner, $organization, , $order] = $this->documentFixture(total: '300.0000');
-        $this->issueInvoice($owner, $this->createInvoice($owner, $order));
         $account = $this->createFinancialAccount($organization);
         $this->recordPayment($owner, $order, $account, '300.0000', ['payment_date' => '2026-09-05']);
+        $this->issueInvoice($owner, $this->createInvoice($owner, $order));
 
         $viewer = User::factory()->create();
         $this->addOrganizationMember($organization, $viewer, ['finance.view']);
@@ -294,9 +297,9 @@ class FinanceCaEncaisseInvoiceZipExportTest extends QuotationTestCase
     {
         $this->fakePdfGenerator();
         [$ownerA, $organizationA, , $orderA] = $this->documentFixture(total: '300.0000');
-        $this->issueInvoice($ownerA, $this->createInvoice($ownerA, $orderA));
         $accountA = $this->createFinancialAccount($organizationA);
         $this->recordPayment($ownerA, $orderA, $accountA, '300.0000', ['payment_date' => '2026-09-05']);
+        $this->issueInvoice($ownerA, $this->createInvoice($ownerA, $orderA));
 
         $ownerB = User::factory()->create();
         $organizationB = $this->createOrganization($ownerB);

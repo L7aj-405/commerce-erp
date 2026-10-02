@@ -267,6 +267,12 @@ class PosOrderAddendumTest extends PosTestCase
         $this->assertSame($sequenceAfterV1, (int) DB::table('invoice_sequences')->where('organization_id', $organization->id)
             ->where('year', (int) $invoiceV1->invoice_date->format('Y'))->value('next_number'));
 
+        $account = FinancialAccount::query()->where('organization_id', $organization->id)->where('code', 'POS-CASH')->firstOrFail();
+        app(RecordSalesOrderPaymentsAction::class)->execute($owner, $order->fresh(), [[
+            'method' => 'cash', 'financial_account_id' => $account->id, 'amount' => '500.0000',
+            'payment_date' => now()->toDateString(), 'reference' => 'COMPLEMENT-V2',
+        ]], (string) Str::uuid());
+
         $invoiceV2 = app(IssueInvoiceAction::class)->execute($owner, $invoiceV2)->fresh();
         $this->assertSame(InvoiceStatus::Superseded, $invoiceV1->fresh()->status);
         $this->assertSame(InvoiceStatus::Issued, $invoiceV2->status);

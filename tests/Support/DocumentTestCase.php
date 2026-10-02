@@ -15,8 +15,6 @@ use App\Models\Organization;
 use App\Models\SalesOrder;
 use App\Models\Store;
 use App\Models\User;
-use App\Services\SalesOrderPaymentCalculator;
-use App\Support\Decimal;
 
 abstract class DocumentTestCase extends PaymentTestCase
 {
@@ -27,8 +25,11 @@ abstract class DocumentTestCase extends PaymentTestCase
         $organization = $this->createOrganization($owner);
         $store = $this->createStore($organization, $owner);
         $customer ??= $this->createCustomer($organization, 'Client', [
-            'company_name' => 'Client SARL', 'email' => 'billing@example.test', 'phone' => '0600000000',
-            'tax_identifier' => 'ICE-123', 'billing_address' => '1 Commerce Street',
+            'company_name' => 'Client SARL',
+            'email' => 'billing@example.test',
+            'phone' => '0600000000',
+            'tax_identifier' => 'ICE-123',
+            'billing_address' => '1 Commerce Street',
         ]);
         $order = $this->createDraftOrder($owner, $organization, $store, $customer, ['sale_date' => '2026-05-29']);
         $this->addCustomLine($owner, $order, ['description' => 'Consulting', 'unit_price_excl_tax' => $total]);
@@ -47,13 +48,9 @@ abstract class DocumentTestCase extends PaymentTestCase
 
     protected function issueInvoice(User $actor, Invoice $invoice): Invoice
     {
-        $remaining = app(SalesOrderPaymentCalculator::class)->remainingAmount($invoice->salesOrder);
-        if (Decimal::compare($remaining, '0.0000') > 0) {
-            $account = $this->createFinancialAccount($invoice->organization);
-            $this->recordPayment($actor, $invoice->salesOrder, $account, $remaining);
-        }
-
-        return app(IssueInvoiceAction::class)->execute($actor, $invoice)->fresh();
+        return app(IssueInvoiceAction::class)
+            ->execute($actor, $invoice)
+            ->fresh();
     }
 
     protected function createDeliveryNote(User $actor, SalesOrder $order, array $data = []): DeliveryNote

@@ -268,7 +268,7 @@ class GoogleDriveBackupProvider implements PersonalBackupStorageProvider
             ->replaceMatches('/Bearer\\s+[A-Za-z0-9._~+\\/-]+=*/i', '[redacted-bearer-token]');
 
         if ($this->clientSecret() !== '') {
-            $sanitized = $sanitized->replace($this->clientSecret(), '[redacted-client-secret]');
+            $sanitized = $sanitized->replace($this->clientSecret(), '[redacted-secret]');
         }
 
         return $sanitized->limit(300)->toString();

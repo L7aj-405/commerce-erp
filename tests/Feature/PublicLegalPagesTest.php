@@ -16,11 +16,12 @@ class PublicLegalPagesTest extends TestCase
     {
         $this->get('/')
             ->assertOk()
-            ->assertInertia(fn (Assert $page) => $page
-                ->component('Home')
-                ->where('productName', '10xScale ERP')
-                ->where('legalLinks.privacy', route('privacy'))
-                ->where('legalLinks.terms', route('terms'))
+            ->assertInertia(
+                fn(Assert $page) => $page
+                    ->component('Home')
+                    ->where('productName', '10xScale ERP')
+                    ->where('legalLinks.privacy', route('privacy'))
+                    ->where('legalLinks.terms', route('terms'))
             );
     }
 
@@ -34,20 +35,21 @@ class PublicLegalPagesTest extends TestCase
         $response = $this->get('/privacy');
 
         $response->assertOk()
-            ->assertInertia(fn (Assert $page) => $page
-                ->component('Legal/Privacy')
-                ->where('pageTitle', 'Politique de confidentialité')
-                ->where('legal.productName', '10xScale ERP')
-                ->where('reviewDisclosures.product', '10xScale ERP')
-                ->where('reviewDisclosures.googleAuth', 'Connexion avec Google')
-                ->where('reviewDisclosures.googleAuthScopes', 'openid email profile')
-                ->where('reviewDisclosures.googleDrive', 'Sauvegardes Google Drive')
-                ->where('reviewDisclosures.googleDriveScope', 'https://www.googleapis.com/auth/drive.file')
-                ->where('reviewDisclosures.googleDataUse', 'Utilisation des données Google')
-                ->where('reviewDisclosures.retention', 'Conservation des données')
-                ->where('reviewDisclosures.revocation', 'Révocation de l’accès Google')
-                ->where('legalLinks.privacy', route('privacy'))
-                ->where('legalLinks.terms', route('terms'))
+            ->assertInertia(
+                fn(Assert $page) => $page
+                    ->component('Legal/Privacy')
+                    ->where('pageTitle', 'Politique de confidentialité')
+                    ->where('legal.productName', '10xScale ERP')
+                    ->where('reviewDisclosures.product', '10xScale ERP')
+                    ->where('reviewDisclosures.googleAuth', 'Connexion avec Google')
+                    ->where('reviewDisclosures.googleAuthScopes', 'openid email profile')
+                    ->where('reviewDisclosures.googleDrive', 'Sauvegardes Google Drive')
+                    ->where('reviewDisclosures.googleDriveScope', 'https://www.googleapis.com/auth/drive.file')
+                    ->where('reviewDisclosures.googleDataUse', 'Utilisation des données Google')
+                    ->where('reviewDisclosures.retention', 'Conservation des données')
+                    ->where('reviewDisclosures.revocation', 'Révocation de l’accès Google')
+                    ->where('legalLinks.privacy', route('privacy'))
+                    ->where('legalLinks.terms', route('terms'))
             );
 
         $response->assertDontSee('google-auth-secret-value');
@@ -58,12 +60,13 @@ class PublicLegalPagesTest extends TestCase
     {
         $this->get('/terms')
             ->assertOk()
-            ->assertInertia(fn (Assert $page) => $page
-                ->component('Legal/Terms')
-                ->where('pageTitle', 'Conditions d’utilisation')
-                ->where('legal.productName', '10xScale ERP')
-                ->where('legalLinks.privacy', route('privacy'))
-                ->where('legalLinks.terms', route('terms'))
+            ->assertInertia(
+                fn(Assert $page) => $page
+                    ->component('Legal/Terms')
+                    ->where('pageTitle', 'Conditions d’utilisation')
+                    ->where('legal.productName', '10xScale ERP')
+                    ->where('legalLinks.privacy', route('privacy'))
+                    ->where('legalLinks.terms', route('terms'))
             );
     }
 
@@ -80,33 +83,36 @@ class PublicLegalPagesTest extends TestCase
 
     public function test_legal_pages_do_not_render_tenant_specific_private_information(): void
     {
+        $owner = User::factory()->create();
+
         $organization = new Organization;
+        $organization->owner_id = $owner->getKey();
         $organization->name = 'Private Tenant Name';
-        $organization->slug = 'private-tenant-name';
         $organization->save();
 
         $this->get('/privacy')
             ->assertOk()
-            ->assertDontSee('Private Tenant Name')
-            ->assertDontSee('private-tenant-name');
+            ->assertDontSee('Private Tenant Name');
     }
 
     public function test_auth_pages_expose_privacy_and_terms_links(): void
     {
         $this->get('/login')
             ->assertOk()
-            ->assertInertia(fn (Assert $page) => $page
-                ->component('Auth/Login')
-                ->where('legalLinks.privacy', route('privacy'))
-                ->where('legalLinks.terms', route('terms'))
+            ->assertInertia(
+                fn(Assert $page) => $page
+                    ->component('Auth/Login')
+                    ->where('legalLinks.privacy', route('privacy'))
+                    ->where('legalLinks.terms', route('terms'))
             );
 
         $this->get('/register')
             ->assertOk()
-            ->assertInertia(fn (Assert $page) => $page
-                ->component('Auth/Register')
-                ->where('legalLinks.privacy', route('privacy'))
-                ->where('legalLinks.terms', route('terms'))
+            ->assertInertia(
+                fn(Assert $page) => $page
+                    ->component('Auth/Register')
+                    ->where('legalLinks.privacy', route('privacy'))
+                    ->where('legalLinks.terms', route('terms'))
             );
     }
 
@@ -114,9 +120,10 @@ class PublicLegalPagesTest extends TestCase
     {
         $this->get('/')
             ->assertOk()
-            ->assertInertia(fn (Assert $page) => $page
-                ->component('Home')
-                ->where('legalLinks.privacy', route('privacy'))
+            ->assertInertia(
+                fn(Assert $page) => $page
+                    ->component('Home')
+                    ->where('legalLinks.privacy', route('privacy'))
             );
     }
 }

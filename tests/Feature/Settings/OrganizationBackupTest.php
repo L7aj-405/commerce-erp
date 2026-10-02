@@ -8,13 +8,13 @@ use App\Models\AuditLog;
 use App\Models\Customer;
 use App\Models\InventoryMovement;
 use App\Models\Payment;
-use App\Models\PaymentAllocation;
 use App\Models\Product;
 use App\Models\User;
 use App\Models\WooCommerceIntegration;
 use App\Services\OrganizationBackups\OrganizationBackupException;
 use App\Services\OrganizationBackups\OrganizationBackupExporter;
 use App\Services\OrganizationBackups\OrganizationBackupCryptography;
+use App\Services\OrganizationBackups\OrganizationBackupRestorer;
 use App\Services\OrganizationBackups\OrganizationBackupSchema;
 use App\Services\OrganizationBackups\OrganizationBackupValidator;
 use Illuminate\Http\UploadedFile;
@@ -289,6 +289,12 @@ class OrganizationBackupTest extends DocumentTestCase
         [$owner, $organization, $store, $warehouse, $variant, $order, $invoice, $payment] = $this->backupFixture();
         $archive = app(OrganizationBackupExporter::class)->create($organization, $owner);
         $currentOwner = User::factory()->create();
+        $connection = DB::connection();
+        $transactionLevel = $connection->transactionLevel();
+        $pdoWasInTransaction = $connection->getPdo()->inTransaction();
+        $sqliteDeferState = $connection->getDriverName() === 'sqlite'
+            ? (int) $connection->scalar('PRAGMA defer_foreign_keys')
+            : null;
 
         Product::query()->where('organization_id', $organization->id)->update(['name' => 'Changed Product']);
         Customer::query()->where('organization_id', $organization->id)->update(['display_name' => 'Changed Customer']);
@@ -300,6 +306,11 @@ class OrganizationBackupTest extends DocumentTestCase
 
         app(RestoreOrganizationBackupAction::class)->execute($owner, $organization, $archive->path);
 
+        $this->assertSame($transactionLevel, $connection->transactionLevel());
+        $this->assertSame($pdoWasInTransaction, $connection->getPdo()->inTransaction());
+        if ($sqliteDeferState !== null) {
+            $this->assertSame($sqliteDeferState, (int) $connection->scalar('PRAGMA defer_foreign_keys'));
+        }
         $this->assertDatabaseHas('products', ['organization_id' => $organization->id, 'name' => 'Backup Product']);
         $this->assertDatabaseHas('customers', ['organization_id' => $organization->id, 'display_name' => 'Backup Customer']);
         $this->assertDatabaseHas('sales_orders', ['id' => $order->id, 'total_incl_tax' => '1080.0000']);
@@ -320,6 +331,7 @@ class OrganizationBackupTest extends DocumentTestCase
         $archive = app(OrganizationBackupExporter::class)->create($organization, $owner);
         $laterStore = $this->createStore($organization, $owner, 'Later Store');
         Product::query()->where('organization_id', $organization->id)->update(['name' => 'Must Stay Changed']);
+        $transactionLevel = DB::connection()->transactionLevel();
 
         try {
             app(RestoreOrganizationBackupAction::class)->execute($owner, $organization, $archive->path);
@@ -328,7 +340,70 @@ class OrganizationBackupTest extends DocumentTestCase
             $this->assertDatabaseHas('stores', ['id' => $laterStore->id, 'organization_id' => $organization->id]);
             $this->assertDatabaseHas('store_memberships', ['store_id' => $laterStore->id, 'user_id' => $owner->id]);
             $this->assertDatabaseHas('products', ['organization_id' => $organization->id, 'name' => 'Must Stay Changed']);
+            $this->assertSame($transactionLevel, DB::connection()->transactionLevel());
         }
+    }
+
+    public function test_failure_after_restore_transaction_begins_rolls_back_without_leaking_the_outer_transaction(): void
+    {
+        [$owner, $organization, $store] = $this->backupFixture();
+        $archive = app(OrganizationBackupExporter::class)->create($organization, $owner);
+        Product::query()->where('organization_id', $organization->id)->update(['name' => 'Must Survive Rollback']);
+        $laterBrandId = DB::table('brands')->insertGetId([
+            'organization_id' => $organization->id,
+            'name' => 'Must Survive Rollback',
+            'slug' => 'must-survive-rollback',
+            'status' => 'active',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $connection = DB::connection();
+        $transactionLevel = $connection->transactionLevel();
+        $pdoWasInTransaction = $connection->getPdo()->inTransaction();
+        $sqliteDeferState = $connection->getDriverName() === 'sqlite'
+            ? (int) $connection->scalar('PRAGMA defer_foreign_keys')
+            : null;
+
+        $failingSchema = new class extends OrganizationBackupSchema
+        {
+            public function hasOrganizationColumn(string $table): bool
+            {
+                if ($table === 'categories') {
+                    throw new \RuntimeException('Forced failure after destructive restore work began.');
+                }
+
+                return parent::hasOrganizationColumn($table);
+            }
+        };
+        $restorer = new OrganizationBackupRestorer(
+            app(OrganizationBackupValidator::class),
+            app(OrganizationBackupExporter::class),
+            $failingSchema,
+        );
+
+        try {
+            $restorer->restore($archive->path, $organization, $owner);
+            $this->fail('Restore should fail after its nested transaction begins.');
+        } catch (\RuntimeException $exception) {
+            $this->assertSame('Forced failure after destructive restore work began.', $exception->getMessage());
+        }
+
+        $this->assertSame($transactionLevel, $connection->transactionLevel());
+        $this->assertSame($pdoWasInTransaction, $connection->getPdo()->inTransaction());
+        if ($sqliteDeferState !== null) {
+            $this->assertSame($sqliteDeferState, (int) $connection->scalar('PRAGMA defer_foreign_keys'));
+        }
+        $this->assertDatabaseHas('stores', ['id' => $store->id, 'organization_id' => $organization->id]);
+        $this->assertDatabaseHas('store_memberships', ['store_id' => $store->id, 'user_id' => $owner->id]);
+        $this->assertDatabaseHas('users', ['id' => $owner->id, 'active_store_id' => $store->id]);
+        $this->assertDatabaseHas('products', ['organization_id' => $organization->id, 'name' => 'Must Survive Rollback']);
+        $this->assertDatabaseHas('brands', ['id' => $laterBrandId, 'organization_id' => $organization->id]);
+
+        $connection->beginTransaction();
+        $this->assertSame($transactionLevel + 1, $connection->transactionLevel());
+        $connection->rollBack($transactionLevel);
+        $this->assertSame($transactionLevel, $connection->transactionLevel());
+        $this->assertSame(1, (int) $connection->scalar('select 1'));
     }
 
     public function test_restore_fails_when_active_store_would_become_invalid(): void
@@ -524,7 +599,8 @@ class OrganizationBackupTest extends DocumentTestCase
         ]);
         $order = app(ConfirmSalesOrderAction::class)->execute($owner, $order)->fresh();
         $invoice = $this->issueInvoice($owner, $this->createInvoice($owner, $order));
-        $payment = PaymentAllocation::query()->where('sales_order_id', $order->id)->with('payment')->firstOrFail()->payment;
+        $account = $this->createFinancialAccount($organization);
+        $payment = $this->recordPayment($owner, $order, $account, $order->total_incl_tax);
 
         return [$owner, $organization, $store, $warehouse, $variant, $order, $invoice, $payment];
     }

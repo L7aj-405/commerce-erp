@@ -4,6 +4,7 @@ namespace Tests\Feature\Quotations;
 
 use App\Actions\Documents\CreateFullInvoiceFromSalesOrderAction;
 use App\Actions\Quotations\ConvertQuotationToSalesOrderAction;
+use App\Actions\Sales\ConfirmSalesOrderAction;
 use App\Enums\SalesOrderPaymentStatus;
 use App\Enums\SalesOrderStatus;
 use App\Models\Payment;
@@ -96,6 +97,7 @@ class QuotationFinanceBoundaryTest extends QuotationTestCase
         $this->assertSame('7980.0000', $issued->total_incl_tax);
 
         $order = app(ConvertQuotationToSalesOrderAction::class)->execute($owner, $issued, ['warehouse_id' => $warehouse->id])['order']->fresh();
+        $order = app(ConfirmSalesOrderAction::class)->execute($owner, $order)->fresh();
         $invoice = app(CreateFullInvoiceFromSalesOrderAction::class)->execute($owner, $order)->fresh();
 
         foreach ([$order, $invoice] as $document) {

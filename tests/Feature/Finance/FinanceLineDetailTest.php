@@ -106,9 +106,9 @@ class FinanceLineDetailTest extends DocumentTestCase
     public function test_ca_encaisse_exposes_every_sold_line_never_a_truncated_summary(): void
     {
         [$owner, $organization, , $order] = $this->sixLineOrderFixture();
-        $this->issueInvoice($owner, $this->createInvoice($owner, $order));
         $account = $this->createFinancialAccount($organization);
         $this->recordPayment($owner, $order, $account, $order->fresh()->total_incl_tax, ['payment_date' => '2026-09-05']);
+        $this->issueInvoice($owner, $this->createInvoice($owner, $order));
 
         $caEncaisse = app(FinanceCaEncaisseService::class);
         $row = $caEncaisse->rows($organization, FinancePeriod::fromMonth('2026-09'), null)->items()[0];
@@ -127,9 +127,9 @@ class FinanceLineDetailTest extends DocumentTestCase
     public function test_quantity_reference_and_variant_are_preserved_per_line(): void
     {
         [$owner, $organization, , $order] = $this->sixLineOrderFixture();
-        $this->issueInvoice($owner, $this->createInvoice($owner, $order));
         $account = $this->createFinancialAccount($organization);
         $this->recordPayment($owner, $order, $account, $order->fresh()->total_incl_tax, ['payment_date' => '2026-09-05']);
+        $this->issueInvoice($owner, $this->createInvoice($owner, $order));
 
         $row = app(FinanceCaEncaisseService::class)->rows($organization, FinancePeriod::fromMonth('2026-09'), null)->items()[0];
         $speaker = collect($row['lines'])->firstOrFail(fn ($l) => str_contains($l['designation'], 'DM5SE'));
@@ -146,9 +146,9 @@ class FinanceLineDetailTest extends DocumentTestCase
     public function test_a_single_item_invoice_still_returns_exactly_one_line(): void
     {
         [$owner, $organization, , $order] = $this->documentFixture(total: '250.0000');
-        $this->issueInvoice($owner, $this->createInvoice($owner, $order));
         $account = $this->createFinancialAccount($organization);
         $this->recordPayment($owner, $order, $account, '250.0000', ['payment_date' => '2026-09-05']);
+        $this->issueInvoice($owner, $this->createInvoice($owner, $order));
 
         $row = app(FinanceCaEncaisseService::class)->rows($organization, FinancePeriod::fromMonth('2026-09'), null)->items()[0];
 
@@ -159,9 +159,9 @@ class FinanceLineDetailTest extends DocumentTestCase
     {
         [$owner, $organization, , $order] = $this->sixLineOrderFixture();
         $invoiceTotal = $order->fresh()->total_incl_tax;
-        $this->issueInvoice($owner, $this->createInvoice($owner, $order));
         $account = $this->createFinancialAccount($organization);
         $this->recordPayment($owner, $order, $account, $invoiceTotal, ['payment_date' => '2026-09-05']);
+        $this->issueInvoice($owner, $this->createInvoice($owner, $order));
 
         $caEncaisse = app(FinanceCaEncaisseService::class);
         $period = FinancePeriod::fromMonth('2026-09');
@@ -177,9 +177,9 @@ class FinanceLineDetailTest extends DocumentTestCase
     public function test_partial_payment_with_multiple_items_shows_all_lines_and_only_the_collected_amount(): void
     {
         [$owner, $organization, , $order] = $this->sixLineOrderFixture();
-        $this->issueInvoice($owner, $this->createInvoice($owner, $order));
         $account = $this->createFinancialAccount($organization);
-        // Only a fraction of the six-line invoice's total is collected in September.
+        // Only a fraction of the six-line order's total is collected in September.
+        // No official invoice is issued yet because the order is not fully paid.
         $this->recordPayment($owner, $order, $account, '3000.0000', ['payment_date' => '2026-09-15']);
 
         $row = app(FinanceCaEncaisseService::class)->rows($organization, FinancePeriod::fromMonth('2026-09'), null)->items()[0];
@@ -222,9 +222,9 @@ class FinanceLineDetailTest extends DocumentTestCase
     public function test_excel_export_contains_every_line_and_the_collected_amount_only_once(): void
     {
         [$owner, $organization, , $order] = $this->sixLineOrderFixture();
-        $this->issueInvoice($owner, $this->createInvoice($owner, $order));
         $account = $this->createFinancialAccount($organization);
         $this->recordPayment($owner, $order, $account, $order->fresh()->total_incl_tax, ['payment_date' => '2026-09-05']);
+        $this->issueInvoice($owner, $this->createInvoice($owner, $order));
 
         $bytes = app(FinanceCaEncaisseExcelExport::class)->build($organization, FinancePeriod::fromMonth('2026-09'), null);
         $this->assertSame("PK\x03\x04", substr($bytes, 0, 4));
@@ -259,9 +259,9 @@ class FinanceLineDetailTest extends DocumentTestCase
     {
         $captured = $this->fakePdfGenerator();
         [$owner, $organization, , $order] = $this->sixLineOrderFixture();
-        $this->issueInvoice($owner, $this->createInvoice($owner, $order));
         $account = $this->createFinancialAccount($organization);
         $this->recordPayment($owner, $order, $account, $order->fresh()->total_incl_tax, ['payment_date' => '2026-09-05']);
+        $this->issueInvoice($owner, $this->createInvoice($owner, $order));
 
         app(FinanceCaEncaissePdfExport::class)->build($organization, [FinancePeriod::fromMonth('2026-09')], null);
 
@@ -274,14 +274,14 @@ class FinanceLineDetailTest extends DocumentTestCase
     public function test_lines_from_another_organization_never_leak_into_this_ones_rows(): void
     {
         [$ownerA, $organizationA, , $orderA] = $this->documentFixture(total: '100.0000');
-        $this->issueInvoice($ownerA, $this->createInvoice($ownerA, $orderA));
         $accountA = $this->createFinancialAccount($organizationA);
         $this->recordPayment($ownerA, $orderA, $accountA, '100.0000', ['payment_date' => '2026-09-05']);
+        $this->issueInvoice($ownerA, $this->createInvoice($ownerA, $orderA));
 
         [$ownerB, $organizationB, , $orderB] = $this->sixLineOrderFixture();
-        $this->issueInvoice($ownerB, $this->createInvoice($ownerB, $orderB));
         $accountB = $this->createFinancialAccount($organizationB);
         $this->recordPayment($ownerB, $orderB, $accountB, $orderB->fresh()->total_incl_tax, ['payment_date' => '2026-09-06']);
+        $this->issueInvoice($ownerB, $this->createInvoice($ownerB, $orderB));
 
         $period = FinancePeriod::fromMonth('2026-09');
         $rowsA = app(FinanceCaEncaisseService::class)->rows($organizationA, $period, null)->items();

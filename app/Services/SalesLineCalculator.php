@@ -9,9 +9,18 @@ use Illuminate\Validation\ValidationException;
 class SalesLineCalculator
 {
     /** @return array<string, string> */
-    public function calculate(string $quantity, string $unitPrice, string $taxRate, SalesOrderDiscountType $discountType, string $discountValue): array
+    public function calculate(
+        string $quantity,
+        string $unitPrice,
+        string $taxRate,
+        SalesOrderDiscountType $discountType,
+        string $discountValue,
+        bool $wholeQuantity = true,
+    ): array
     {
-        $quantity = $this->positiveIntegerQuantity($quantity);
+        $quantity = $wholeQuantity
+            ? $this->positiveIntegerQuantity($quantity)
+            : Decimal::positive($quantity, 'quantity');
         $unitPrice = Decimal::nonNegative($unitPrice, 'unit_price_excl_tax');
         $taxRate = Decimal::nonNegative($taxRate, 'tax_rate');
         if (Decimal::compare($taxRate, '100.0000') > 0) {

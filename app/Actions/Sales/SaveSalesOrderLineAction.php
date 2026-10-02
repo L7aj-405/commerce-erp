@@ -68,7 +68,14 @@ class SaveSalesOrderLineAction
                     'default_price' => $defaultPrice, 'override_price' => Decimal::normalize($unitPrice),
                 ]);
             }
-            $calculated = $this->calculator->calculate($data['quantity'], $unitPrice, $taxRate, $discountType, $data['discount_value'] ?? '0');
+            $calculated = $this->calculator->calculate(
+                $data['quantity'],
+                $unitPrice,
+                $taxRate,
+                $discountType,
+                $data['discount_value'] ?? '0',
+                $type === SalesOrderLineType::Catalog,
+            );
             if ($discountType !== SalesOrderDiscountType::None) {
                 $this->audit->record('sales_order.discount_applied', $actor, $order->organization, $order->store, $order, newValues: [
                     'order_number' => $order->order_number, 'discount_type' => $discountType->value,

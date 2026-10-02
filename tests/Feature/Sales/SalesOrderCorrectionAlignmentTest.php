@@ -3,7 +3,6 @@
 namespace Tests\Feature\Sales;
 
 use App\Actions\Documents\CreateFullInvoiceFromSalesOrderAction;
-use App\Actions\Documents\IssueInvoiceAction;
 use App\Actions\Documents\StampInvoiceAction;
 use App\Actions\Sales\ConfirmSalesOrderAction;
 use App\Actions\Sales\FulfillSalesOrderAction;
@@ -244,7 +243,7 @@ class SalesOrderCorrectionAlignmentTest extends DocumentTestCase
         $this->assertNull($replacement->stampApposition);
         $this->actingAs($owner)->get(route('sales.orders.show', $order))->assertOk()->assertInertia(fn (AssertableJson $page) => $page
             ->where('pendingReplacementInvoice', false));
-        $issuedReplacement = app(IssueInvoiceAction::class)->execute($owner, $replacement)->fresh();
+        $issuedReplacement = $this->issueInvoice($owner, $replacement);
 
         $this->assertSame($originalNumber, $issuedReplacement->invoice_number);
         $this->assertSame(2, $issuedReplacement->version);
@@ -259,8 +258,8 @@ class SalesOrderCorrectionAlignmentTest extends DocumentTestCase
         $originalHtml = app(InvoiceDocumentRenderer::class)->html($original->fresh());
         $replacementHtml = app(InvoiceDocumentRenderer::class)->html($issuedReplacement);
         $this->assertStringContainsString('100,00', $originalHtml);
-        $this->assertStringContainsString('Version 1', $originalHtml);
-        $this->assertStringContainsString('Version 2', $replacementHtml);
+        $this->assertStringContainsString('V1', $originalHtml);
+        $this->assertStringContainsString('V2', $replacementHtml);
         $originalPdf = app(DocumentPdfService::class)->invoice($original->fresh());
         $replacementPdf = app(DocumentPdfService::class)->invoice($issuedReplacement);
         $this->assertStringEndsWith('-V1.pdf', $originalPdf['filename']);

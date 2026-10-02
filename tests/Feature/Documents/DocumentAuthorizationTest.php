@@ -15,6 +15,11 @@ class DocumentAuthorizationTest extends DocumentTestCase
         $this->addDefaultSalesEmployee($organization, $store, $sales);
         $this->actingAs($sales)->post(route('sales.orders.invoices.store', $order))->assertRedirect();
         $invoice = $order->invoices()->firstOrFail();
+
+        $account = $this->createFinancialAccount($organization);
+        $remaining = app(\App\Services\SalesOrderPaymentCalculator::class)->remainingAmount($order);
+        $this->recordPayment($owner, $order, $account, $remaining);
+
         $this->actingAs($sales)->post(route('invoices.issue', $invoice))->assertRedirect();
         $this->actingAs($sales)->post(route('sales.orders.delivery-notes.store', $order))->assertRedirect();
         $note = $order->deliveryNotes()->firstOrFail();

@@ -107,7 +107,7 @@ body { color: {{ $bodyTextColor }}; font-family: "DejaVu Sans", sans-serif; font
 @if (! $footerVisible)
 .runfoot, .footer { display: none; }
 @endif
-.watermark-text { position: fixed; top: 40%; left: 12%; font-size: 90px; font-weight: bold; color: rgba(176, 69, 59, .12); transform: rotate(-26deg); }
+.watermark-text { position: fixed; top: 40%; left: 12%; font-size: 90px; font-weight: bold; color: #f6e9e7; transform: rotate(-26deg); }
 .watermark-logo { position: fixed; top: 0; left: 0; right: 0; text-align: center; z-index: -1; }
 .watermark-logo img { width: 95mm; margin-top: 118mm; opacity: 0.05; }
 .masthead, table.masthead { width: 100%; border-collapse: collapse; }

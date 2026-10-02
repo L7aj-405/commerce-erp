@@ -61,9 +61,9 @@ class FinanceCaEncaisseExcelMergeTest extends DocumentTestCase
     public function test_a_single_item_transaction_is_never_merged(): void
     {
         [$owner, $organization, , $order] = $this->multiLineOrder(1, '250.0000');
-        $this->issueInvoice($owner, $this->createInvoice($owner, $order));
         $account = $this->createFinancialAccount($organization);
         $this->recordPayment($owner, $order, $account, '250.0000', ['payment_date' => '2026-09-05']);
+        $this->issueInvoice($owner, $this->createInvoice($owner, $order));
 
         $bytes = app(FinanceCaEncaisseExcelExport::class)->build($organization, FinancePeriod::fromMonth('2026-09'), null);
         $xml = $this->sheetXmlOf($bytes);
@@ -76,9 +76,9 @@ class FinanceCaEncaisseExcelMergeTest extends DocumentTestCase
     {
         [$owner, $organization, , $order] = $this->multiLineOrder(3, '1000.0000');
         $orderTotal = $order->fresh()->total_incl_tax;
-        $this->issueInvoice($owner, $this->createInvoice($owner, $order));
         $account = $this->createFinancialAccount($organization);
         $this->recordPayment($owner, $order, $account, $orderTotal, ['payment_date' => '2026-09-05']);
+        $this->issueInvoice($owner, $this->createInvoice($owner, $order));
 
         $bytes = app(FinanceCaEncaisseExcelExport::class)->build($organization, FinancePeriod::fromMonth('2026-09'), null);
         $xml = $this->sheetXmlOf($bytes);
@@ -107,9 +107,9 @@ class FinanceCaEncaisseExcelMergeTest extends DocumentTestCase
     {
         [$owner, $organization, , $order] = $this->multiLineOrder(6, '500.0000');
         $orderTotal = $order->fresh()->total_incl_tax;
-        $this->issueInvoice($owner, $this->createInvoice($owner, $order));
         $account = $this->createFinancialAccount($organization);
         $this->recordPayment($owner, $order, $account, $orderTotal, ['payment_date' => '2026-09-05']);
+        $this->issueInvoice($owner, $this->createInvoice($owner, $order));
 
         $bytes = app(FinanceCaEncaisseExcelExport::class)->build($organization, FinancePeriod::fromMonth('2026-09'), null);
         $xml = $this->sheetXmlOf($bytes);
@@ -129,9 +129,9 @@ class FinanceCaEncaisseExcelMergeTest extends DocumentTestCase
     {
         [$owner, $organization, , $order] = $this->multiLineOrder(5, '2000.0000');
         $orderTotal = $order->fresh()->total_incl_tax; // 5 x 2000 HT (+ tax if any) — a single payment covers it all.
-        $this->issueInvoice($owner, $this->createInvoice($owner, $order));
         $account = $this->createFinancialAccount($organization);
         $this->recordPayment($owner, $order, $account, $orderTotal, ['payment_date' => '2026-09-05']);
+        $this->issueInvoice($owner, $this->createInvoice($owner, $order));
 
         $bytes = app(FinanceCaEncaisseExcelExport::class)->build($organization, FinancePeriod::fromMonth('2026-09'), null);
         $xml = $this->sheetXmlOf($bytes);
@@ -146,11 +146,11 @@ class FinanceCaEncaisseExcelMergeTest extends DocumentTestCase
     public function test_two_payments_on_the_same_invoice_are_rendered_as_sub_lines_inside_one_group(): void
     {
         [$owner, $organization, , $order] = $this->multiLineOrder(3, '1000.0000');
-        $this->issueInvoice($owner, $this->createInvoice($owner, $order));
         $account = $this->createFinancialAccount($organization);
         // Two distinct posted payments within the same month, same order.
         $this->recordPayment($owner, $order, $account, '2000.0000', ['payment_date' => '2026-09-05']);
-        $this->recordPayment($owner, $order, $account, '1000.0000', ['payment_date' => '2026-09-10']);
+        $this->recordPayment($owner, $order, $account, '4000.0000', ['payment_date' => '2026-09-10']);
+        $this->issueInvoice($owner, $this->createInvoice($owner, $order));
 
         $bytes = app(FinanceCaEncaisseExcelExport::class)->build($organization, FinancePeriod::fromMonth('2026-09'), null);
         $xml = $this->sheetXmlOf($bytes);
@@ -186,9 +186,9 @@ class FinanceCaEncaisseExcelMergeTest extends DocumentTestCase
     {
         [$owner, $organization, , $order] = $this->multiLineOrder(4, '750.0000');
         $orderTotal = $order->fresh()->total_incl_tax;
-        $this->issueInvoice($owner, $this->createInvoice($owner, $order));
         $account = $this->createFinancialAccount($organization);
         $this->recordPayment($owner, $order, $account, $orderTotal, ['payment_date' => '2026-09-05']);
+        $this->issueInvoice($owner, $this->createInvoice($owner, $order));
 
         $period = FinancePeriod::fromMonth('2026-09');
         $before = app(FinanceCaEncaisseService::class)->total($organization, $period, null);

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Sales;
 
+use App\Actions\Payments\ReversePaymentAction;
 use App\Actions\Sales\ConfirmSalesOrderAction;
 use Illuminate\Support\Facades\DB;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -17,8 +18,10 @@ class CustomerShowTest extends DocumentTestCase
     public function test_summary_reflects_only_this_customers_own_sales_invoices_and_payments(): void
     {
         [$owner, $organization, , $order, $customer] = $this->documentFixture(total: '1000.0000');
-        $this->issueInvoice($owner, $this->createInvoice($owner, $order));
         $account = $this->createFinancialAccount($organization);
+        $initialPayment = $this->recordPayment($owner, $order, $account, '1000.0000');
+        $this->issueInvoice($owner, $this->createInvoice($owner, $order));
+        app(ReversePaymentAction::class)->execute($owner, $initialPayment, 'Règlement initial annulé');
         $this->recordPayment($owner, $order, $account, '400.0000');
 
         // An unrelated customer/order in the same organization must never
@@ -57,8 +60,8 @@ class CustomerShowTest extends DocumentTestCase
             $order = $this->createDraftOrder($owner, $organization, $store, $customer, ['sale_date' => now()->toDateString()]);
             $this->addCustomLine($owner, $order, ['unit_price_excl_tax' => '50.0000']);
             $order = app(ConfirmSalesOrderAction::class)->execute($owner, $order)->fresh();
+            $this->recordPayment($owner, $order, $account, $order->total_incl_tax);
             $invoice = $this->issueInvoice($owner, $this->createInvoice($owner, $order));
-            $this->recordPayment($owner, $order, $account, '20.0000');
 
             return $invoice;
         };

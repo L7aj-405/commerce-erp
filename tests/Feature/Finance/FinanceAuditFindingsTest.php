@@ -61,11 +61,10 @@ class FinanceAuditFindingsTest extends DocumentTestCase
         [$owner, , , $order] = $this->documentFixture(total: '150.0000');
         // documentFixture fixes sale_date to 2026-05-29; the invoice keeps that
         // same fixed date regardless of when payments later land.
-        $invoice = $this->issueInvoice($owner, $this->createInvoice($owner, $order, ['invoice_date' => '2026-05-29']));
         $account = $this->createFinancialAccount($order->organization);
-
         $september = $this->recordPayment($owner, $order, $account, '50.0000', ['payment_date' => '2026-09-15']);
         $october = $this->recordPayment($owner, $order, $account, '100.0000', ['payment_date' => '2026-10-05']);
+        $invoice = $this->issueInvoice($owner, $this->createInvoice($owner, $order, ['invoice_date' => '2026-05-29']));
 
         $this->assertSame('2026-05-29', $invoice->invoice_date->toDateString());
         $this->assertSame('2026-09-15', $september->payment_date->toDateString());

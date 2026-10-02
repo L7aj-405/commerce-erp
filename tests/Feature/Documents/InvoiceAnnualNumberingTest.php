@@ -64,6 +64,7 @@ class InvoiceAnnualNumberingTest extends DocumentTestCase
         [$owner, $organization, $store, $order] = $this->documentFixture();
 
         $this->actingAs($owner)->put(route('document-profile.update'), [
+            'legal_name' => 'Test Seller',
             'invoice_numbering_year' => 2026,
             'invoice_next_number' => 21,
         ])->assertRedirect();
@@ -92,11 +93,13 @@ class InvoiceAnnualNumberingTest extends DocumentTestCase
         $this->issueInvoice($owner, $this->createInvoice($owner, $order, ['invoice_date' => '2026-09-21']));
 
         $this->actingAs($owner)->put(route('document-profile.update'), [
+            'legal_name' => 'Test Seller',
             'invoice_numbering_year' => 2026,
             'invoice_next_number' => 21,
         ])->assertSessionHasErrors('invoice_next_number');
 
         $this->actingAs($owner)->put(route('document-profile.update'), [
+            'legal_name' => 'Test Seller',
             'invoice_numbering_year' => 2026,
             'invoice_next_number' => 20,
         ])->assertSessionHasErrors('invoice_next_number');

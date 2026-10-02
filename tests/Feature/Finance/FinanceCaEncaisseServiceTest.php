@@ -29,9 +29,9 @@ class FinanceCaEncaisseServiceTest extends DocumentTestCase
         $order = $this->createDraftOrder($owner, $organization, $store, null, ['sale_date' => '2026-07-31']);
         $this->addCustomLine($owner, $order, ['unit_price_excl_tax' => '11853.0000']);
         $order = app(ConfirmSalesOrderAction::class)->execute($owner, $order)->fresh();
-        $invoice = $this->issueInvoice($owner, $this->createInvoice($owner, $order, ['invoice_date' => '2026-07-31']));
         $account = $this->createFinancialAccount($organization);
         $this->recordPayment($owner, $order, $account, '11853.0000', ['payment_date' => '2026-08-04']);
+        $invoice = $this->issueInvoice($owner, $this->createInvoice($owner, $order, ['invoice_date' => '2026-07-31']));
 
         $ventes = app(FinanceMonthlyReportService::class);
         $caEncaisse = app(FinanceCaEncaisseService::class);
@@ -56,10 +56,10 @@ class FinanceCaEncaisseServiceTest extends DocumentTestCase
     public function test_partial_payment_across_two_months_each_shows_only_its_own_amount(): void
     {
         [$owner, $organization, , $order] = $this->documentFixture(total: '10000.0000');
-        $this->issueInvoice($owner, $this->createInvoice($owner, $order));
         $account = $this->createFinancialAccount($organization);
         $this->recordPayment($owner, $order, $account, '3000.0000', ['payment_date' => '2026-09-15']);
         $this->recordPayment($owner, $order, $account, '7000.0000', ['payment_date' => '2026-10-05']);
+        $this->issueInvoice($owner, $this->createInvoice($owner, $order));
 
         $caEncaisse = app(FinanceCaEncaisseService::class);
         $september = FinancePeriod::fromMonth('2026-09');
@@ -107,8 +107,8 @@ class FinanceCaEncaisseServiceTest extends DocumentTestCase
         [$owner, $organization, , $order] = $this->documentFixture(total: '10000.0000');
         $account = $this->createFinancialAccount($organization);
         $this->recordPayment($owner, $order, $account, '3000.0000', ['payment_date' => '2026-09-15']);
-        $invoice = $this->issueInvoice($owner, $this->createInvoice($owner, $order, ['invoice_date' => '2026-10-01']));
         $this->recordPayment($owner, $order, $account, '7000.0000', ['payment_date' => '2026-10-05']);
+        $invoice = $this->issueInvoice($owner, $this->createInvoice($owner, $order, ['invoice_date' => '2026-10-01']));
 
         $caEncaisse = app(FinanceCaEncaisseService::class);
 
@@ -131,9 +131,9 @@ class FinanceCaEncaisseServiceTest extends DocumentTestCase
     public function test_reversed_payment_excluded_from_ca_encaisse(): void
     {
         [$owner, $organization, , $order] = $this->documentFixture(total: '500.0000');
-        $this->issueInvoice($owner, $this->createInvoice($owner, $order));
         $account = $this->createFinancialAccount($organization);
         $payment = $this->recordPayment($owner, $order, $account, '500.0000', ['payment_date' => '2026-09-10']);
+        $this->issueInvoice($owner, $this->createInvoice($owner, $order));
         app(ReversePaymentAction::class)->execute($owner, $payment, 'Erreur de caisse');
 
         $caEncaisse = app(FinanceCaEncaisseService::class);
@@ -153,14 +153,14 @@ class FinanceCaEncaisseServiceTest extends DocumentTestCase
         $orderA = $this->createDraftOrder($owner, $organization, $store, null, ['sale_date' => '2026-09-01']);
         $this->addCustomLine($owner, $orderA, ['description' => 'Produit A', 'unit_price_excl_tax' => '100.0000']);
         $orderA = app(ConfirmSalesOrderAction::class)->execute($owner, $orderA)->fresh();
-        $this->issueInvoice($owner, $this->createInvoice($owner, $orderA));
         $this->recordPayment($owner, $orderA, $account, '100.0000', ['payment_date' => '2026-09-05']);
+        $this->issueInvoice($owner, $this->createInvoice($owner, $orderA));
 
         $orderB = $this->createDraftOrder($owner, $organization, $store, null, ['sale_date' => '2026-09-02']);
         $this->addCustomLine($owner, $orderB, ['description' => 'Produit B', 'unit_price_excl_tax' => '200.0000']);
         $orderB = app(ConfirmSalesOrderAction::class)->execute($owner, $orderB)->fresh();
-        $this->issueInvoice($owner, $this->createInvoice($owner, $orderB));
         $this->recordPayment($owner, $orderB, $account, '200.0000', ['payment_date' => '2026-09-06']);
+        $this->issueInvoice($owner, $this->createInvoice($owner, $orderB));
 
         $caEncaisse = app(FinanceCaEncaisseService::class);
         $period = FinancePeriod::fromMonth('2026-09');
@@ -184,8 +184,8 @@ class FinanceCaEncaisseServiceTest extends DocumentTestCase
             $order = $this->createDraftOrder($owner, $organization, $store, null, ['sale_date' => '2026-09-01']);
             $this->addCustomLine($owner, $order, ['unit_price_excl_tax' => '150.0000']);
             $order = app(ConfirmSalesOrderAction::class)->execute($owner, $order)->fresh();
-            $this->issueInvoice($owner, $this->createInvoice($owner, $order));
             $this->recordPayment($owner, $order, $account, '150.0000', ['payment_date' => '2026-09-10']);
+            $this->issueInvoice($owner, $this->createInvoice($owner, $order));
             $expected = Decimal::add($expected, '150.0000');
         }
 
@@ -212,14 +212,14 @@ class FinanceCaEncaisseServiceTest extends DocumentTestCase
         $orderOne = $this->createDraftOrder($ownerA, $organizationA, $storeOneA, null, ['sale_date' => '2026-09-01']);
         $this->addCustomLine($ownerA, $orderOne, ['unit_price_excl_tax' => '300.0000']);
         $orderOne = app(ConfirmSalesOrderAction::class)->execute($ownerA, $orderOne)->fresh();
-        $this->issueInvoice($ownerA, $this->createInvoice($ownerA, $orderOne));
         $this->recordPayment($ownerA, $orderOne, $account, '300.0000', ['payment_date' => '2026-09-05']);
+        $this->issueInvoice($ownerA, $this->createInvoice($ownerA, $orderOne));
 
         $orderTwo = $this->createDraftOrder($ownerA, $organizationA, $storeTwoA, null, ['sale_date' => '2026-09-01']);
         $this->addCustomLine($ownerA, $orderTwo, ['unit_price_excl_tax' => '700.0000']);
         $orderTwo = app(ConfirmSalesOrderAction::class)->execute($ownerA, $orderTwo)->fresh();
-        $this->issueInvoice($ownerA, $this->createInvoice($ownerA, $orderTwo));
         $this->recordPayment($ownerA, $orderTwo, $account, '700.0000', ['payment_date' => '2026-09-06']);
+        $this->issueInvoice($ownerA, $this->createInvoice($ownerA, $orderTwo));
 
         $this->activate($ownerA, $organizationA, $storeOneA);
 
@@ -249,8 +249,8 @@ class FinanceCaEncaisseServiceTest extends DocumentTestCase
                 $order = $this->createDraftOrder($owner, $organization, $store, null, ['sale_date' => '2026-09-01']);
                 $this->addCustomLine($owner, $order, ['unit_price_excl_tax' => '50.0000']);
                 $order = app(ConfirmSalesOrderAction::class)->execute($owner, $order)->fresh();
-                $this->issueInvoice($owner, $this->createInvoice($owner, $order));
                 $this->recordPayment($owner, $order, $account, '50.0000', ['payment_date' => '2026-09-15']);
+                $this->issueInvoice($owner, $this->createInvoice($owner, $order));
             }
         };
 

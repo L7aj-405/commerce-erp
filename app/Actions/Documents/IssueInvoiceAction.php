@@ -17,8 +17,6 @@ use App\Services\DocumentSellerProfile;
 use App\Services\DocumentSnapshotVerifier;
 use App\Services\DocumentTemplateRegistry;
 use App\Services\InvoiceNumberGenerator;
-use App\Services\SalesOrderPaymentCalculator;
-use App\Support\Decimal;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -32,7 +30,6 @@ class IssueInvoiceAction
         private readonly DocumentSellerProfile $sellerProfile,
         private readonly DocumentTemplateRegistry $templates,
         private readonly AuditLogger $audit,
-        private readonly SalesOrderPaymentCalculator $payments,
     ) {}
 
     public function execute(User $actor, Invoice $invoice): Invoice
@@ -67,12 +64,6 @@ class IssueInvoiceAction
                 throw ValidationException::withMessages(['order' => 'This Sales Order already has an issued full Invoice.']);
             }
             $this->lockPaymentState($order);
-            $remaining = $this->payments->remainingAmount($order);
-            if (Decimal::compare($remaining, '0.0000') !== 0) {
-                throw ValidationException::withMessages([
-                    'payment' => 'La facture ne peut être émise qu’après le règlement intégral de la commande.',
-                ]);
-            }
             $this->verifier->verifyInvoice($invoice);
             $invoice->seller_snapshot = $this->sellerProfile->freezeCurrentPresentationSettings(
                 $invoice->seller_snapshot,

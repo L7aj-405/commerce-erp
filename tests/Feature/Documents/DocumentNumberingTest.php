@@ -20,7 +20,16 @@ class DocumentNumberingTest extends DocumentTestCase
         $this->addCustomLine($owner, $second, ['description' => 'Second service']);
         $second = app(ConfirmSalesOrderAction::class)->execute($owner, $second);
         $second = app(FulfillSalesOrderAction::class)->execute($owner, $second->fresh());
+        $account = $this->createFinancialAccount($organization);
 
+        $firstRemaining = app(\App\Services\SalesOrderPaymentCalculator::class)
+            ->remainingAmount($first);
+
+        $secondRemaining = app(\App\Services\SalesOrderPaymentCalculator::class)
+            ->remainingAmount($second);
+
+        $this->recordPayment($owner, $first, $account, $firstRemaining);
+        $this->recordPayment($owner, $second, $account, $secondRemaining);
         $year = now()->year;
         $firstInvoice = $this->issueInvoice($owner, $this->createInvoice($owner, $first));
         $this->assertSame("1/{$year}", $firstInvoice->invoice_number);
@@ -78,7 +87,7 @@ class DocumentNumberingTest extends DocumentTestCase
 
         try {
             DB::transaction(function () use ($organization) {
-                $this->assertSame('1/'.now()->year, app(InvoiceNumberGenerator::class)->next($organization, now()->year));
+                $this->assertSame('1/' . now()->year, app(InvoiceNumberGenerator::class)->next($organization, now()->year));
                 $this->assertSame('DN-000001', app(DeliveryNoteNumberGenerator::class)->next($organization));
                 $this->assertDatabaseCount('invoice_sequences', 1);
                 $this->assertDatabaseCount('delivery_note_sequences', 1);

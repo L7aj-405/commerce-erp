@@ -121,7 +121,7 @@ class DocumentTemplateStudioController extends Controller
             $organization->settings = $settings;
             $organization->save();
 
-            $audit->record('document_template.'.$data['mode'], $request->user(), $organization, $context->store(), $organization, newValues: [
+            $audit->record('document_template.' . $data['mode'], $request->user(), $organization, $context->store(), $organization, newValues: [
                 'mode' => $data['mode'],
             ]);
         });
@@ -329,7 +329,7 @@ class DocumentTemplateStudioController extends Controller
                 'horizontal_borders' => $this->bool($input, 'item_table.horizontal_borders', data_get($defaults, 'item_table.horizontal_borders')),
                 'vertical_borders' => $this->bool($input, 'item_table.vertical_borders', data_get($defaults, 'item_table.vertical_borders')),
                 'columns' => collect(['reference', 'designation', 'presentation', 'quantity', 'unit_price', 'line_total', 'discount', 'total'])
-                    ->mapWithKeys(fn (string $column) => [$column => $this->int($input, 'item_table.columns.'.$column, data_get($defaults, 'item_table.columns.'.$column), 4, 50)])
+                    ->mapWithKeys(fn(string $column) => [$column => $this->int($input, 'item_table.columns.' . $column, data_get($defaults, 'item_table.columns.' . $column), 4, 50)])
                     ->all(),
             ],
             'totals' => [
@@ -439,7 +439,12 @@ class DocumentTemplateStudioController extends Controller
     /** @param array<string, mixed> $input */
     private function bool(array $input, string $key, mixed $default): bool
     {
-        $value = data_get($input, $key);
+        $missing = new \stdClass;
+        $value = data_get($input, $key, $missing);
+
+        if ($value === $missing) {
+            return (bool) $default;
+        }
 
         return filter_var($value, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) ?? (bool) $default;
     }
@@ -495,16 +500,16 @@ class DocumentTemplateStudioController extends Controller
     private function typography(array $input, array $defaults, string $prefix): array
     {
         return [
-            'visible' => $this->bool($input, $prefix.'.visible', data_get($defaults, $prefix.'.visible')),
-            'font_family' => $this->option($input, $prefix.'.font_family', data_get($defaults, $prefix.'.font_family'), ['DejaVu Sans', 'Helvetica']),
-            'font_size' => $this->float($input, $prefix.'.font_size', data_get($defaults, $prefix.'.font_size'), 7, 36),
-            'font_weight' => $this->int($input, $prefix.'.font_weight', data_get($defaults, $prefix.'.font_weight'), 400, 800),
-            'color' => $this->hex($input, $prefix.'.color', data_get($defaults, $prefix.'.color')),
-            'letter_spacing_em' => $this->float($input, $prefix.'.letter_spacing_em', data_get($defaults, $prefix.'.letter_spacing_em'), 0, .2),
-            'line_height' => $this->float($input, $prefix.'.line_height', data_get($defaults, $prefix.'.line_height'), 1, 2),
-            'alignment' => $this->option($input, $prefix.'.alignment', data_get($defaults, $prefix.'.alignment'), ['left', 'center', 'right']),
-            'margin_top_mm' => $this->float($input, $prefix.'.margin_top_mm', data_get($defaults, $prefix.'.margin_top_mm'), 0, 30),
-            'margin_bottom_mm' => $this->float($input, $prefix.'.margin_bottom_mm', data_get($defaults, $prefix.'.margin_bottom_mm'), 0, 30),
+            'visible' => $this->bool($input, $prefix . '.visible', data_get($defaults, $prefix . '.visible')),
+            'font_family' => $this->option($input, $prefix . '.font_family', data_get($defaults, $prefix . '.font_family'), ['DejaVu Sans', 'Helvetica']),
+            'font_size' => $this->float($input, $prefix . '.font_size', data_get($defaults, $prefix . '.font_size'), 7, 36),
+            'font_weight' => $this->int($input, $prefix . '.font_weight', data_get($defaults, $prefix . '.font_weight'), 400, 800),
+            'color' => $this->hex($input, $prefix . '.color', data_get($defaults, $prefix . '.color')),
+            'letter_spacing_em' => $this->float($input, $prefix . '.letter_spacing_em', data_get($defaults, $prefix . '.letter_spacing_em'), 0, .2),
+            'line_height' => $this->float($input, $prefix . '.line_height', data_get($defaults, $prefix . '.line_height'), 1, 2),
+            'alignment' => $this->option($input, $prefix . '.alignment', data_get($defaults, $prefix . '.alignment'), ['left', 'center', 'right']),
+            'margin_top_mm' => $this->float($input, $prefix . '.margin_top_mm', data_get($defaults, $prefix . '.margin_top_mm'), 0, 30),
+            'margin_bottom_mm' => $this->float($input, $prefix . '.margin_bottom_mm', data_get($defaults, $prefix . '.margin_bottom_mm'), 0, 30),
         ];
     }
 
@@ -512,16 +517,16 @@ class DocumentTemplateStudioController extends Controller
     private function textGroup(array $input, array $defaults, string $prefix, bool $withWidth): array
     {
         $group = [
-            'font_family' => $this->option($input, $prefix.'.font_family', data_get($defaults, $prefix.'.font_family'), ['DejaVu Sans', 'Helvetica']),
-            'font_size' => $this->float($input, $prefix.'.font_size', data_get($defaults, $prefix.'.font_size'), 6, 20),
-            'font_weight' => $this->int($input, $prefix.'.font_weight', data_get($defaults, $prefix.'.font_weight'), 400, 800),
-            'color' => $this->hex($input, $prefix.'.color', data_get($defaults, $prefix.'.color')),
-            'line_height' => $this->float($input, $prefix.'.line_height', data_get($defaults, $prefix.'.line_height'), 1, 2),
-            'alignment' => $this->option($input, $prefix.'.alignment', data_get($defaults, $prefix.'.alignment'), ['left', 'center', 'right']),
+            'font_family' => $this->option($input, $prefix . '.font_family', data_get($defaults, $prefix . '.font_family'), ['DejaVu Sans', 'Helvetica']),
+            'font_size' => $this->float($input, $prefix . '.font_size', data_get($defaults, $prefix . '.font_size'), 6, 20),
+            'font_weight' => $this->int($input, $prefix . '.font_weight', data_get($defaults, $prefix . '.font_weight'), 400, 800),
+            'color' => $this->hex($input, $prefix . '.color', data_get($defaults, $prefix . '.color')),
+            'line_height' => $this->float($input, $prefix . '.line_height', data_get($defaults, $prefix . '.line_height'), 1, 2),
+            'alignment' => $this->option($input, $prefix . '.alignment', data_get($defaults, $prefix . '.alignment'), ['left', 'center', 'right']),
         ];
 
         if ($withWidth) {
-            $group['width_percent'] = $this->int($input, $prefix.'.width_percent', data_get($defaults, $prefix.'.width_percent'), 10, 50);
+            $group['width_percent'] = $this->int($input, $prefix . '.width_percent', data_get($defaults, $prefix . '.width_percent'), 10, 50);
         }
 
         return $group;

@@ -20,7 +20,9 @@ class DocumentProfileTest extends DocumentTestCase
         $oldInvoice = $this->issueInvoice($owner, $this->createInvoice($owner, $order));
 
         $this->actingAs($owner)->put(route('document-profile.update'), [
-            'legal_name' => 'New Seller', 'trade_name' => 'New Trade', 'tax_identifier' => 'ICE-NEW',
+            'legal_name' => 'New Seller',
+            'trade_name' => 'New Trade',
+            'tax_identifier' => 'ICE-NEW',
             'additional_identifiers' => [['label' => 'IF', 'value' => '12345']],
         ])->assertRedirect();
 
@@ -62,7 +64,7 @@ class DocumentProfileTest extends DocumentTestCase
 
     public function test_pdf_studio_stores_header_and_pagination_options_for_future_snapshots(): void
     {
-        [$owner, $organization, , $order] = $this->documentFixture();
+        [$owner, $organization,, $order] = $this->documentFixture();
 
         $this->actingAs($owner)->put(route('document-profile.studio.update'), [
             'mode' => 'publish',
@@ -87,7 +89,7 @@ class DocumentProfileTest extends DocumentTestCase
 
     public function test_explicit_string_false_settings_are_not_cast_back_to_true_in_pdf_html(): void
     {
-        [$owner, $organization, , $order] = $this->documentFixture();
+        [$owner, $organization,, $order] = $this->documentFixture();
         $organization->settings = array_replace_recursive($organization->settings ?? [], [
             'document_profile' => [
                 'legal_name' => '10xScale ERP',
@@ -109,7 +111,7 @@ class DocumentProfileTest extends DocumentTestCase
 
     public function test_pdf_pagination_option_is_passed_to_the_pdf_generator(): void
     {
-        [$owner, $organization, , $order] = $this->documentFixture();
+        [$owner, $organization,, $order] = $this->documentFixture();
         $organization->settings = array_replace_recursive($organization->settings ?? [], [
             'document_profile' => ['legal_name' => '10xScale ERP', 'show_pdf_pagination' => false],
         ]);
@@ -133,7 +135,7 @@ class DocumentProfileTest extends DocumentTestCase
 
         $this->assertFalse($fake->options['pageNumbers']);
 
-        [$owner2, $organization2, , $order2] = $this->documentFixture();
+        [$owner2, $organization2,, $order2] = $this->documentFixture();
         $organization2->settings = array_replace_recursive($organization2->settings ?? [], [
             'document_profile' => ['legal_name' => '10xScale ERP', 'show_pdf_pagination' => true],
         ]);
@@ -147,7 +149,7 @@ class DocumentProfileTest extends DocumentTestCase
 
     public function test_issued_document_keeps_its_issuance_time_presentation_snapshot(): void
     {
-        [$owner, $organization, , $order] = $this->documentFixture();
+        [$owner, $organization,, $order] = $this->documentFixture();
         $organization->settings = array_replace_recursive($organization->settings ?? [], [
             'document_profile' => [
                 'legal_name' => 'Snapshot Seller',
@@ -192,7 +194,7 @@ class DocumentProfileTest extends DocumentTestCase
 
     public function test_item_line_style_settings_are_persisted_and_rendered_as_effective_pdf_colors(): void
     {
-        [$owner, $organization, , $order] = $this->documentFixture();
+        [$owner, $organization,, $order] = $this->documentFixture();
 
         $this->actingAs($owner)->put(route('document-profile.studio.update'), [
             'mode' => 'publish',
@@ -221,7 +223,7 @@ class DocumentProfileTest extends DocumentTestCase
 
     public function test_email_is_available_in_company_block_and_website_remains_in_footer(): void
     {
-        [$owner, $organization, , $order] = $this->documentFixture();
+        [$owner, $organization,, $order] = $this->documentFixture();
         $organization->settings = array_replace_recursive($organization->settings ?? [], [
             'document_profile' => [
                 'legal_name' => '10xScale ERP',
@@ -242,21 +244,24 @@ class DocumentProfileTest extends DocumentTestCase
 
     public function test_studio_persists_independent_company_recipient_title_and_totals_styles(): void
     {
-        [$owner, $organization, , $order] = $this->documentFixture();
+        [$owner, $organization,, $order] = $this->documentFixture();
 
         $this->actingAs($owner)->put(route('document-profile.studio.update'), [
             'mode' => 'publish',
             'template' => [
                 'company_name' => ['visible' => false, 'color' => '#112233'],
                 'company_block' => [
-                    'show_email' => false, 'background_color' => '#f1f2f3',
-                    'row_spacing_mm' => 1.2, 'label_gap_mm' => 3,
+                    'show_email' => false,
+                    'background_color' => '#f1f2f3',
+                    'row_spacing_mm' => 1.2,
+                    'label_gap_mm' => 3,
                     'labels' => ['font_size' => 8, 'color' => '#223344', 'width_percent' => 24],
                     'values' => ['font_size' => 11, 'color' => '#334455'],
                 ],
                 'recipient_block' => [
                     'name' => ['font_size' => 13, 'color' => '#445566'],
-                    'row_spacing_mm' => 0.8, 'label_gap_mm' => 2,
+                    'row_spacing_mm' => 0.8,
+                    'label_gap_mm' => 2,
                     'labels' => ['font_size' => 12, 'width_percent' => 31],
                     'show_phone' => false,
                 ],
@@ -267,18 +272,17 @@ class DocumentProfileTest extends DocumentTestCase
 
         $published = data_get($organization->fresh()->settings, 'document_profile.pdf_template.published');
         $this->assertFalse(data_get($published, 'company_name.visible'));
-        $this->assertSame(8.0, data_get($published, 'company_block.labels.font_size'));
-        $this->assertSame(11.0, data_get($published, 'company_block.values.font_size'));
-        $this->assertSame(12.0, data_get($published, 'recipient_block.labels.font_size'));
-        $this->assertSame(13.0, data_get($published, 'recipient_block.name.font_size'));
+        $this->assertEquals(8.0, data_get($published, 'company_block.labels.font_size'));
+        $this->assertEquals(11.0, data_get($published, 'company_block.values.font_size'));
+        $this->assertEquals(12.0, data_get($published, 'recipient_block.labels.font_size'));
+        $this->assertEquals(13.0, data_get($published, 'recipient_block.name.font_size'));
         $this->assertSame(24, data_get($published, 'company_block.labels.width_percent'));
         $this->assertSame(31, data_get($published, 'recipient_block.labels.width_percent'));
-        $this->assertSame(3.0, data_get($published, 'company_block.label_gap_mm'));
-        $this->assertSame(2.0, data_get($published, 'recipient_block.label_gap_mm'));
+        $this->assertEquals(3.0, data_get($published, 'company_block.label_gap_mm'));
+        $this->assertEquals(2.0, data_get($published, 'recipient_block.label_gap_mm'));
         $this->assertSame(17, data_get($published, 'company_name.font_size'), 'Changing company labels must not change the company name.');
-        $this->assertSame(30.0, data_get($published, 'document_title.font_size'));
+        $this->assertEquals(30.0, data_get($published, 'document_title.font_size'));
         $this->assertSame(52, data_get($published, 'totals.width_percent'));
-
         $html = app(InvoiceDocumentRenderer::class)->html($this->createInvoice($owner, $order));
         $this->assertStringContainsString('.company-name { display: none;', $html);
         $this->assertStringContainsString('font-size: 13px', $html);
@@ -294,7 +298,7 @@ class DocumentProfileTest extends DocumentTestCase
 
     public function test_document_pdf_settings_are_organization_isolated(): void
     {
-        [$owner, $organization, , $order] = $this->documentFixture();
+        [$owner, $organization,, $order] = $this->documentFixture();
         $organization->settings = array_replace_recursive($organization->settings ?? [], [
             'document_profile' => [
                 'legal_name' => 'Hidden Header Org',
@@ -306,7 +310,7 @@ class DocumentProfileTest extends DocumentTestCase
         ]);
         $organization->save();
 
-        [$otherOwner, $otherOrganization, , $otherOrder] = $this->documentFixture();
+        [$otherOwner, $otherOrganization,, $otherOrder] = $this->documentFixture();
         $otherOrganization->settings = array_replace_recursive($otherOrganization->settings ?? [], [
             'document_profile' => [
                 'legal_name' => 'Visible Header Org',
@@ -329,7 +333,7 @@ class DocumentProfileTest extends DocumentTestCase
 
     public function test_document_template_studio_draft_does_not_affect_pdf_until_published(): void
     {
-        [$owner, $organization, , $order] = $this->documentFixture();
+        [$owner, $organization, $store, $order] = $this->documentFixture();
         $template = [
             'brand' => ['accent_color' => '#123456'],
             'document_header' => ['visible' => false],
@@ -368,14 +372,20 @@ class DocumentProfileTest extends DocumentTestCase
         $this->assertSame(50, $publishedProfile['item_line_opacity']);
         $this->assertSame('thick', $publishedProfile['item_line_thickness']);
 
-        $publishedHtml = app(InvoiceDocumentRenderer::class)->html($this->createInvoice($owner, $order));
+        $publishedOrder = $this->createDraftOrder($owner, $organization, $store);
+        $this->addCustomLine($owner, $publishedOrder);
+        $publishedOrder = app(ConfirmSalesOrderAction::class)->execute($owner, $publishedOrder);
+
+        $publishedHtml = app(InvoiceDocumentRenderer::class)->html(
+            $this->createInvoice($owner, $publishedOrder)
+        );
         $this->assertStringNotContainsString('class="runhead"', $publishedHtml);
         $this->assertStringContainsString('border-bottom: .95pt solid #808080', $publishedHtml);
     }
 
     public function test_document_template_studio_sanitizes_visual_schema_and_rejects_raw_css(): void
     {
-        [$owner, $organization, , $order] = $this->documentFixture();
+        [$owner, $organization,, $order] = $this->documentFixture();
 
         $this->actingAs($owner)->put(route('document-profile.studio.update'), [
             'mode' => 'publish',
@@ -395,7 +405,7 @@ class DocumentProfileTest extends DocumentTestCase
         ])->assertRedirect();
 
         $stored = data_get($organization->fresh()->settings, 'document_profile.pdf_template.published');
-        $this->assertSame(12.0, data_get($stored, 'page.base_font_size'));
+        $this->assertEquals(12.0, data_get($stored, 'page.base_font_size'));
         $this->assertSame('#1f211d', data_get($stored, 'page.text_color'));
         $this->assertNull(data_get($stored, 'item_table.unsafe_css'));
         $this->assertFalse(data_get($stored, 'amount_words.visible'));
@@ -432,7 +442,7 @@ class DocumentProfileTest extends DocumentTestCase
             ],
         ])->assertRedirect();
 
-        [$otherOwner, , , $otherOrder] = $this->documentFixture();
+        [$otherOwner,,, $otherOrder] = $this->documentFixture();
 
         $this->assertStringNotContainsString('class="runhead"', app(InvoiceDocumentRenderer::class)->html($this->createInvoice($owner, $order)));
         $this->assertStringContainsString('class="runhead"', app(InvoiceDocumentRenderer::class)->html($this->createInvoice($otherOwner, $otherOrder)));
@@ -470,7 +480,7 @@ class DocumentProfileTest extends DocumentTestCase
             ],
         ])->assertOk()->assertHeader('Content-Type', 'application/pdf');
 
-        $this->assertStringContainsString('data:image/png;base64,'.base64_encode('organization-logo-bytes'), $fake->html);
+        $this->assertStringContainsString('data:image/png;base64,' . base64_encode('organization-logo-bytes'), $fake->html);
         $this->assertStringContainsString('max-width: 62mm', $fake->html);
         $this->assertStringContainsString('text-align: center', $fake->html);
         $this->assertStringNotContainsString('class="runhead"', $fake->html);
@@ -487,9 +497,15 @@ class DocumentProfileTest extends DocumentTestCase
             'template' => [
                 'pagination' => ['visible' => false, 'position' => 'top', 'alignment' => 'center', 'font_size' => 9, 'color' => '#123456'],
                 'stamp' => [
-                    'visible' => true, 'position_anchor' => 'bottom_right', 'offset_x_mm' => 12,
-                    'offset_y_mm' => 18, 'display_width_mm' => 48, 'display_height_mm' => 30,
-                    'rotation_deg' => 7, 'opacity' => 72, 'preserve_aspect_ratio' => false,
+                    'visible' => true,
+                    'position_anchor' => 'bottom_right',
+                    'offset_x_mm' => 12,
+                    'offset_y_mm' => 18,
+                    'display_width_mm' => 48,
+                    'display_height_mm' => 30,
+                    'rotation_deg' => 7,
+                    'opacity' => 72,
+                    'preserve_aspect_ratio' => false,
                 ],
             ],
         ])->assertRedirect();
@@ -498,7 +514,7 @@ class DocumentProfileTest extends DocumentTestCase
         $this->assertFalse(data_get($published, 'pagination.visible'));
         $this->assertSame('top', data_get($published, 'pagination.position'));
         $this->assertSame('bottom_right', data_get($published, 'stamp.position_anchor'));
-        $this->assertSame(7.0, data_get($published, 'stamp.rotation_deg'));
+        $this->assertEquals(7.0, data_get($published, 'stamp.rotation_deg'));
         $this->assertSame(72, data_get($published, 'stamp.opacity'));
         $this->assertFalse(data_get($published, 'stamp.preserve_aspect_ratio'));
     }

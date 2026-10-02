@@ -88,11 +88,11 @@ class DeliveryNoteTest extends DocumentTestCase
 
     public function test_manual_order_show_exposes_delivery_note_action_without_pos_completion(): void
     {
-        [$owner, , , $order] = $this->documentFixture(false);
+        [$owner,,, $order] = $this->documentFixture(false);
 
         $this->actingAs($owner)->get(route('sales.orders.show', $order))
             ->assertOk()
-            ->assertInertia(fn (Assert $page) => $page
+            ->assertInertia(fn(Assert $page) => $page
                 ->component('Sales/Orders/Show')
                 ->where('order.source', 'manual')
                 ->where('order.fulfillment_status', 'unfulfilled')
@@ -103,10 +103,13 @@ class DeliveryNoteTest extends DocumentTestCase
 
     public function test_delivery_issue_fulfills_physical_order_without_rewriting_invoice_or_payment(): void
     {
-        [$owner, $organization, , $order] = $this->documentFixture(false, total: '250.0000');
-        $invoice = $this->issueInvoice($owner, $this->createInvoice($owner, $order));
+        [$owner, $organization,, $order] = $this->documentFixture(false, total: '250.0000');
+        $invoice = $this->createInvoice($owner, $order);
+
         $account = $this->createFinancialAccount($organization);
         $payment = $this->recordPayment($owner, $order, $account, '250.0000');
+
+        $invoice = $this->issueInvoice($owner, $invoice);
         $invoiceSnapshot = $invoice->fresh()->only(['id', 'invoice_number', 'status', 'total_incl_tax']);
         $paymentSnapshot = $payment->fresh()->only(['id', 'status', 'amount']);
 
@@ -120,7 +123,7 @@ class DeliveryNoteTest extends DocumentTestCase
 
     public function test_number_is_assigned_on_issue_and_issued_note_is_immutable(): void
     {
-        [$owner, , , $order] = $this->documentFixture(true);
+        [$owner,,, $order] = $this->documentFixture(true);
         $draft = $this->createDeliveryNote($owner, $order);
         $this->assertNull($draft->delivery_note_number);
         $issued = $this->issueDeliveryNote($owner, $draft);
@@ -128,14 +131,18 @@ class DeliveryNoteTest extends DocumentTestCase
         $this->assertDatabaseHas('audit_logs', ['event' => 'delivery_note.issued', 'auditable_id' => $issued->id]);
         $this->expectException(ValidationException::class);
         app(UpdateDeliveryNoteDraftAction::class)->execute($owner, $issued, [
-            'delivery_date' => now()->toDateString(), 'recipient_name' => 'Attack', 'recipient_company' => null,
-            'recipient_phone' => null, 'delivery_address' => null, 'notes' => null,
+            'delivery_date' => now()->toDateString(),
+            'recipient_name' => 'Attack',
+            'recipient_company' => null,
+            'recipient_phone' => null,
+            'delivery_address' => null,
+            'notes' => null,
         ]);
     }
 
     public function test_duplicate_full_delivery_document_is_rejected(): void
     {
-        [$owner, , , $order] = $this->documentFixture(true);
+        [$owner,,, $order] = $this->documentFixture(true);
         $this->createDeliveryNote($owner, $order);
         $this->expectException(ValidationException::class);
         $this->createDeliveryNote($owner, $order);
@@ -143,7 +150,7 @@ class DeliveryNoteTest extends DocumentTestCase
 
     public function test_issue_rejects_tampered_delivery_quantities_without_allocating_a_number(): void
     {
-        [$owner, , , $order] = $this->documentFixture(true);
+        [$owner,,, $order] = $this->documentFixture(true);
         $draft = $this->createDeliveryNote($owner, $order);
         $line = $draft->lines()->firstOrFail();
         $line->quantity = '999.0000';
@@ -159,11 +166,15 @@ class DeliveryNoteTest extends DocumentTestCase
 
     public function test_recipient_snapshot_and_delivery_date_remain_independent_and_preserved(): void
     {
-        [$owner, , , $order, $customer] = $this->documentFixture(true);
+        [$owner,,, $order, $customer] = $this->documentFixture(true);
         $note = $this->createDeliveryNote($owner, $order, ['delivery_date' => '2026-06-04']);
         $note = app(UpdateDeliveryNoteDraftAction::class)->execute($owner, $note, [
-            'delivery_date' => '2026-06-04', 'recipient_name' => 'Warehouse Recipient', 'recipient_company' => 'Receiver SARL',
-            'recipient_phone' => '0622222222', 'delivery_address' => 'Dock 4', 'notes' => null,
+            'delivery_date' => '2026-06-04',
+            'recipient_name' => 'Warehouse Recipient',
+            'recipient_company' => 'Receiver SARL',
+            'recipient_phone' => '0622222222',
+            'delivery_address' => 'Dock 4',
+            'notes' => null,
         ]);
         $issued = $this->issueDeliveryNote($owner, $note);
         $customer->display_name = 'Changed';
@@ -176,7 +187,7 @@ class DeliveryNoteTest extends DocumentTestCase
 
     public function test_draft_delivery_note_can_be_cancelled_but_issued_note_cannot(): void
     {
-        [$owner, , , $order] = $this->documentFixture(true);
+        [$owner,,, $order] = $this->documentFixture(true);
         $cancelled = app(CancelDeliveryNoteDraftAction::class)->execute($owner, $this->createDeliveryNote($owner, $order), 'Wrong recipient');
         $this->assertSame('cancelled', $cancelled->status->value);
         $this->assertDatabaseHas('audit_logs', ['event' => 'delivery_note.draft_cancelled', 'auditable_id' => $cancelled->id]);

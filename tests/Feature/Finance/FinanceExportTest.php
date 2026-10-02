@@ -22,7 +22,8 @@ class FinanceExportTest extends DocumentTestCase
     public function test_xlsx_export_produces_a_valid_workbook_with_accounting_event_sheets(): void
     {
         [$owner, $organization, , $order] = $this->documentFixture(total: '1000.0000');
-        $this->issueInvoice($owner, $this->createInvoice($owner, $order, ['invoice_date' => '2026-05-29']));
+        // A partial collection may exist before an official invoice; issuance is intentionally not forced here.
+        $this->createInvoice($owner, $order, ['invoice_date' => '2026-05-29']);
         $account = $this->createFinancialAccount($organization);
         $this->recordPayment($owner, $order, $account, '400.0000', ['payment_date' => '2026-05-30']);
 
@@ -130,9 +131,9 @@ class FinanceExportTest extends DocumentTestCase
     public function test_paid_amounts_by_sales_order_returns_the_real_amount_not_null(): void
     {
         [$owner, $organization, , $order] = $this->documentFixture(total: '750.0000');
-        $this->issueInvoice($owner, $this->createInvoice($owner, $order, ['invoice_date' => '2026-05-29']));
         $account = $this->createFinancialAccount($organization);
         $this->recordPayment($owner, $order, $account, '750.0000', ['payment_date' => '2026-05-30']);
+        $this->issueInvoice($owner, $this->createInvoice($owner, $order, ['invoice_date' => '2026-05-29']));
 
         $paid = app(FinanceReceivablesService::class)->paidAmountsBySalesOrder([$order->id], now());
 
@@ -143,9 +144,9 @@ class FinanceExportTest extends DocumentTestCase
     public function test_situation_pdf_export_no_longer_throws_when_a_payment_exists(): void
     {
         [$owner, $organization, , $order] = $this->documentFixture(total: '750.0000');
-        $this->issueInvoice($owner, $this->createInvoice($owner, $order, ['invoice_date' => '2026-05-29']));
         $account = $this->createFinancialAccount($organization);
         $this->recordPayment($owner, $order, $account, '750.0000', ['payment_date' => '2026-05-30']);
+        $this->issueInvoice($owner, $this->createInvoice($owner, $order, ['invoice_date' => '2026-05-29']));
 
         $result = app(FinanceSituationPdfExport::class)->build($organization, FinancePeriod::fromMonths(['2026-05']), null);
 
@@ -160,9 +161,9 @@ class FinanceExportTest extends DocumentTestCase
     public function test_ca_encaisse_xlsx_export_downloads_correctly(): void
     {
         [$owner, $organization, , $order] = $this->documentFixture(total: '900.0000');
-        $this->issueInvoice($owner, $this->createInvoice($owner, $order, ['invoice_date' => '2026-05-29']));
         $account = $this->createFinancialAccount($organization);
         $this->recordPayment($owner, $order, $account, '900.0000', ['payment_date' => '2026-05-30']);
+        $this->issueInvoice($owner, $this->createInvoice($owner, $order, ['invoice_date' => '2026-05-29']));
         $this->activate($owner, $organization);
 
         $response = $this->actingAs($owner)->get(route('finance.ca-encaisse.export.xlsx', ['month' => '2026-05']));
@@ -192,9 +193,9 @@ class FinanceExportTest extends DocumentTestCase
     public function test_ca_encaisse_pdf_export_downloads_correctly_with_a_titled_month(): void
     {
         [$owner, $organization, , $order] = $this->documentFixture(total: '900.0000');
-        $this->issueInvoice($owner, $this->createInvoice($owner, $order, ['invoice_date' => '2026-05-29']));
         $account = $this->createFinancialAccount($organization);
         $this->recordPayment($owner, $order, $account, '900.0000', ['payment_date' => '2026-05-30']);
+        $this->issueInvoice($owner, $this->createInvoice($owner, $order, ['invoice_date' => '2026-05-29']));
         $this->activate($owner, $organization);
 
         $response = $this->actingAs($owner)->get(route('finance.ca-encaisse.export.pdf', ['month' => '2026-05']));
@@ -206,9 +207,9 @@ class FinanceExportTest extends DocumentTestCase
     public function test_ca_encaisse_export_amounts_equal_the_ui_amounts(): void
     {
         [$owner, $organization, , $order] = $this->documentFixture(total: '1234.0000');
-        $this->issueInvoice($owner, $this->createInvoice($owner, $order, ['invoice_date' => '2026-05-29']));
         $account = $this->createFinancialAccount($organization);
         $this->recordPayment($owner, $order, $account, '1234.0000', ['payment_date' => '2026-05-30']);
+        $this->issueInvoice($owner, $this->createInvoice($owner, $order, ['invoice_date' => '2026-05-29']));
 
         $service = app(FinanceCaEncaisseService::class);
         $period = FinancePeriod::fromMonth('2026-05');

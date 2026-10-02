@@ -30,8 +30,8 @@ class FinancePerformanceTest extends DocumentTestCase
             $order = $this->createDraftOrder($owner, $organization, $store, null, ['sale_date' => now()->toDateString()]);
             $this->addCustomLine($owner, $order, ['unit_price_excl_tax' => '100.0000']);
             $order = app(ConfirmSalesOrderAction::class)->execute($owner, $order)->fresh();
+            $this->recordPayment($owner, $order, $account, $order->total_incl_tax);
             $invoice = $this->issueInvoice($owner, $this->createInvoice($owner, $order));
-            $this->recordPayment($owner, $order, $account, '40.0000');
             $invoices->push($invoice);
         }
 
