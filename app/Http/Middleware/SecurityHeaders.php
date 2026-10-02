@@ -40,8 +40,13 @@ class SecurityHeaders
             return $response;
         }
 
+        $isStudioPdfPreview = $request->routeIs('document-profile.studio.preview');
         $response->headers->set('X-Content-Type-Options', 'nosniff');
-        $response->headers->set('X-Frame-Options', 'DENY');
+        if ($isStudioPdfPreview) {
+            $response->headers->set('X-Frame-Options', 'SAMEORIGIN');
+        } else {
+            $response->headers->set('X-Frame-Options', 'DENY');
+        }
         $response->headers->set('Referrer-Policy', 'strict-origin-when-cross-origin');
         $response->headers->set('Permissions-Policy', 'geolocation=(), microphone=(), camera=(), payment=(), usb=()');
 
@@ -59,7 +64,9 @@ class SecurityHeaders
             "object-src 'none'",
             "base-uri 'self'",
             "form-action 'self'",
-            "frame-ancestors 'none'",
+            $isStudioPdfPreview
+                ? "frame-ancestors 'self'"
+                : "frame-ancestors 'none'",
         ]));
 
         return $response;
