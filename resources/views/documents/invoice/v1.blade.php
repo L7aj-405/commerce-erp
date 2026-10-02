@@ -256,7 +256,6 @@
                 <div class="company-name">{{ ($seller['trade_name'] ?? null) ?: $seller['legal_name'] }}</div>
             @endif
             <div class="seller">
-                @if (($seller['trade_name'] ?? null) && ($seller['legal_name'] ?? null))<div class="seller-identity info-value">{{ $seller['legal_name'] }}</div>@endif
                 <table class="info-kv company-info-table"><tbody>
                     @if ($seller['address'] ?? null) @include('documents.partials.information-row', ['rowClass' => 'seller-address', 'label' => 'Adresse :', 'value' => $seller['address']]) @endif
                     @if ($seller['tax_identifier'] ?? null) @include('documents.partials.information-row', ['rowClass' => 'seller-tax', 'label' => 'ICE :', 'value' => $seller['tax_identifier']]) @endif
