@@ -156,6 +156,7 @@ export default function ApplicationShell({ children, wide = false, flush = false
             label: 'Administration',
             icon: <IconShield />,
             items: [
+                { href: '/activity', label: 'Activité', permission: 'audit.view', icon: <IconList /> },
                 ...(tenant.organization
                     ? [
                           {

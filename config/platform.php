@@ -120,6 +120,7 @@ return [
         'organization_backups.view' => 'View organization backups and restore page',
         'organization_backups.create' => 'Create and download organization backups',
         'organization_backups.restore' => 'Validate and restore organization backups',
+        'audit.view' => 'View organization activity and audit history',
     ],
 
     'default_roles' => [
@@ -238,6 +239,7 @@ return [
                 'integrations.sync',
                 'integrations.woocommerce.stock_tasks.view',
                 'integrations.woocommerce.stock_tasks.manage',
+                'audit.view',
             ],
         ],
         'sales-employee' => [
@@ -439,6 +441,7 @@ return [
                 'integrations.sync',
                 'integrations.woocommerce.stock_tasks.view',
                 'integrations.woocommerce.stock_tasks.manage',
+                'audit.view',
                 'finance.view',
                 'finance.export',
                 'finance.receivables.view',

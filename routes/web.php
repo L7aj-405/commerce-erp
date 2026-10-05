@@ -67,6 +67,7 @@ use App\Http\Controllers\Sales\PosOrderCompletionController;
 use App\Http\Controllers\Sales\CustomerReturnController;
 use App\Http\Controllers\Sales\CustomerExchangeController;
 use App\Http\Controllers\Settings\ActiveSessionController;
+use App\Http\Controllers\Settings\ActivityAuditController;
 use App\Http\Controllers\Settings\OrganizationDocumentStampController;
 use App\Http\Controllers\Settings\OrganizationMailSettingController;
 use App\Http\Controllers\Settings\OrganizationBackupController;
@@ -175,6 +176,7 @@ Route::middleware('auth')->group(function () {
 // registered, still-unverified accounts are actually gated by it).
 Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () {
     Route::get('/platform', PlatformController::class)->name('platform.index');
+    Route::get('/activity', ActivityAuditController::class)->name('activity.index');
     Route::get('/contacts/lookup', [OrganizationContactController::class, 'lookup'])->name('contacts.lookup');
     Route::resource('contacts', OrganizationContactController::class)->except(['destroy']);
     Route::delete('/contacts/{contact}', [OrganizationContactController::class, 'destroy'])->name('contacts.destroy');
