@@ -93,6 +93,36 @@ class PosSearchTest extends PosTestCase
             ->assertJsonPath('data.0.stock.total_available', '18.0000');
     }
 
+    public function test_organization_stock_filtering_and_ordering_happen_before_pagination(): void
+    {
+        $owner = User::factory()->create();
+        $organization = $this->createOrganization($owner);
+        $store = $this->createStore($organization, $owner);
+        $warehouse = $this->createWarehouse($organization);
+
+        foreach (range(1, 24) as $index) {
+            $this->createProduct($organization, "Unavailable {$index}", "OOS-{$index}");
+        }
+
+        $available = $this->createProduct($organization, 'Available after first page', 'AVAILABLE')->variants->first();
+        $this->activate($owner, $organization, $store);
+        $this->openStock($owner, $organization, $warehouse, $available, '3.0000');
+
+        $this->actingAs($owner)->getJson(route('pos.products.index', [
+            'warehouse_id' => $warehouse->id,
+        ]))->assertOk()
+            ->assertJsonPath('data.0.id', $available->id)
+            ->assertJsonPath('data.0.stock.total_available', '3.0000');
+
+        $this->actingAs($owner)->getJson(route('pos.products.index', [
+            'warehouse_id' => $warehouse->id,
+            'availability' => 'in_stock',
+        ]))->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $available->id)
+            ->assertJsonPath('meta.has_more', false);
+    }
+
     public function test_catalogue_can_filter_by_price_range(): void
     {
         [$owner, $organization, , $warehouse] = $this->searchContext();

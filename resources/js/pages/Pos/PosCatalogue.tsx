@@ -36,6 +36,10 @@ export default function PosCatalogue({ warehouseId, filters, isAdding, justAdded
     const [error, setError] = useState('');
     const [displayOpen, setDisplayOpen] = useState(false);
     const abortRef = useRef<AbortController | null>(null);
+    const loadingMoreRef = useRef(false);
+    const requestSequenceRef = useRef(0);
+    const requestContextRef = useRef('');
+    const sentinelRef = useRef<HTMLDivElement | null>(null);
     const trimmed = query.trim();
     const debouncedQuery = useDebouncedValue(trimmed, 250);
 
@@ -44,6 +48,7 @@ export default function PosCatalogue({ warehouseId, filters, isAdding, justAdded
         [warehouseId, filters],
     );
     const debouncedFilterKey = useDebouncedValue(filterKey, 200);
+    const requestContextKey = `${debouncedFilterKey}:${debouncedQuery}`;
 
     async function lookup(page = 1, append = false, barcode?: string) {
         if (!warehouseId) {
@@ -52,9 +57,12 @@ export default function PosCatalogue({ warehouseId, filters, isAdding, justAdded
             return [];
         }
 
-        abortRef.current?.abort();
+        if (append && (loadingMoreRef.current || requestContextKey !== requestContextRef.current)) return [];
+        if (!append) abortRef.current?.abort();
         const controller = new AbortController();
         abortRef.current = controller;
+        const requestSequence = ++requestSequenceRef.current;
+        if (append) loadingMoreRef.current = true;
         setLoading(true);
         setError('');
 
@@ -76,7 +84,15 @@ export default function PosCatalogue({ warehouseId, filters, isAdding, justAdded
                 throw new Error(response.status === 403 ? 'Accès au catalogue non autorisé.' : 'Le chargement du catalogue a échoué.');
             }
             const payload = (await response.json()) as Payload;
-            setResults((current) => (append ? [...current, ...payload.data] : payload.data));
+            if (requestContextKey !== requestContextRef.current) return [];
+            setResults((current) => {
+                if (!append) return payload.data;
+
+                const byId = new Map(current.map((product) => [product.id, product]));
+                payload.data.forEach((product) => byId.set(product.id, product));
+
+                return Array.from(byId.values());
+            });
             setNextPage(payload.meta.next_page);
             return payload.data;
         } catch (reason) {
@@ -84,14 +100,37 @@ export default function PosCatalogue({ warehouseId, filters, isAdding, justAdded
             setError(reason instanceof Error ? reason.message : 'Le chargement du catalogue a échoué.');
             return [];
         } finally {
-            setLoading(false);
+            if (append) loadingMoreRef.current = false;
+            if (requestSequence === requestSequenceRef.current) setLoading(false);
         }
     }
 
     useEffect(() => {
+        requestContextRef.current = requestContextKey;
+        setNextPage(null);
         void lookup(1, false);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [debouncedFilterKey, debouncedQuery]);
+    }, [requestContextKey]);
+
+    useEffect(() => {
+        const sentinel = sentinelRef.current;
+        if (!sentinel || !nextPage) return;
+
+        const observer = new IntersectionObserver(
+            ([entry]) => {
+                if (entry.isIntersecting && !loadingMoreRef.current) {
+                    void lookup(nextPage, true);
+                }
+            },
+            { root: sentinel.parentElement, rootMargin: '240px 0px' },
+        );
+        observer.observe(sentinel);
+
+        return () => observer.disconnect();
+        // lookup deliberately reads the current filter/search closure; any change
+        // resets page 1 above and recreates this observer through nextPage.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [nextPage]);
 
     const initialLoading = loading && results.length === 0;
     const refreshing = loading && results.length > 0;
@@ -316,18 +355,9 @@ export default function PosCatalogue({ warehouseId, filters, isAdding, justAdded
                     </div>
                 )}
 
-                {nextPage && !initialLoading && (
-                    <div className="mt-4 flex justify-center">
-                        <button
-                            type="button"
-                            disabled={loading}
-                            onClick={() => void lookup(nextPage, true)}
-                            className="rounded-field border border-line-strong px-4 py-2 text-[13px] font-medium text-ink-muted transition-soft hover:text-ink disabled:opacity-50"
-                        >
-                            {loading ? 'Chargement…' : 'Charger plus'}
-                        </button>
-                    </div>
-                )}
+                <div ref={sentinelRef} className="flex min-h-8 items-center justify-center py-2" aria-hidden={!nextPage}>
+                    {nextPage && loading && <InlineLoader label="Chargement des produits…" />}
+                </div>
             </div>
         </div>
     );

@@ -147,9 +147,23 @@ class PosController extends Controller
         ]);
         $warehouse = $this->warehouse($organization, (int) $filters['warehouse_id']);
 
+        $organizationAvailability = InventoryBalance::query()
+            ->select('inventory_balances.product_variant_id')
+            ->selectRaw('SUM(inventory_balances.on_hand - inventory_balances.reserved) as total_available')
+            ->join('warehouses', function ($join) use ($organization) {
+                $join->on('warehouses.id', '=', 'inventory_balances.warehouse_id')
+                    ->where('warehouses.organization_id', '=', $organization->getKey())
+                    ->where('warehouses.status', '=', WarehouseStatus::Active->value);
+            })
+            ->where('inventory_balances.organization_id', $organization->getKey())
+            ->groupBy('inventory_balances.product_variant_id');
+
         $variants = ProductVariant::query()
-            ->where('organization_id', $organization->getKey())
-            ->where('status', CatalogStatus::Active->value)
+            ->leftJoinSub($organizationAvailability, 'organization_stock', function ($join) {
+                $join->on('organization_stock.product_variant_id', '=', 'product_variants.id');
+            })
+            ->where('product_variants.organization_id', $organization->getKey())
+            ->where('product_variants.status', CatalogStatus::Active->value)
             ->whereHas('product', function ($query) use ($filters) {
                 $query->where('status', CatalogStatus::Active->value)
                     ->when($filters['brand_id'] ?? null, fn ($q, $brandId) => $q->where('brand_id', $brandId))
@@ -159,35 +173,39 @@ class PosController extends Controller
             ->when(isset($filters['price_min']), fn ($query) => $query->where('default_sale_price', '>=', (string) $filters['price_min']))
             ->when(isset($filters['price_max']), fn ($query) => $query->where('default_sale_price', '<=', (string) $filters['price_max']))
             ->when($filters['search'] ?? null, fn ($query, string $search) => $query->where(fn ($query) => $query
-                ->where('sku', 'like', "%{$search}%")
-                ->orWhere('reference', 'like', "%{$search}%")
-                ->orWhere('barcode', 'like', "%{$search}%")
+                ->where('product_variants.sku', 'like', "%{$search}%")
+                ->orWhere('product_variants.reference', 'like', "%{$search}%")
+                ->orWhere('product_variants.barcode', 'like', "%{$search}%")
                 ->orWhereHas('product', fn ($q) => $q
                     ->where('name', 'like', "%{$search}%")
                     ->orWhereHas('brand', fn ($brand) => $brand->where('name', 'like', "%{$search}%")))))
+            ->when(($filters['availability'] ?? 'all') === 'in_stock', fn ($query) => $query
+                ->whereRaw('COALESCE(organization_stock.total_available, 0) > 0'))
+            ->when(($filters['availability'] ?? 'all') === 'out_of_stock', fn ($query) => $query
+                ->whereRaw('COALESCE(organization_stock.total_available, 0) <= 0'))
             ->with([
                 'product:id,name,image_url,brand_id,default_category_id',
                 'product.brand:id,name',
                 'taxRate:id,name,rate',
                 'inventoryBalances' => fn ($query) => $query->where('warehouse_id', $warehouse->getKey()),
             ])
-            ->orderBy('product_id')
-            ->orderByRaw('CASE WHEN sku IS NULL OR sku = ? THEN 1 ELSE 0 END', [''])
-            ->orderBy('sku')
-            ->paginate(($filters['barcode'] ?? null) ? 1 : 24, ['id', 'organization_id', 'product_id', 'label', 'sku', 'reference', 'barcode', 'image_url', 'default_sale_price', 'public_price_ttc', 'unit_price_ht', 'tax_rate_id'])
+            ->select([
+                'product_variants.id', 'product_variants.organization_id', 'product_variants.product_id',
+                'product_variants.label', 'product_variants.sku', 'product_variants.reference',
+                'product_variants.barcode', 'product_variants.image_url', 'product_variants.default_sale_price',
+                'product_variants.public_price_ttc', 'product_variants.unit_price_ht', 'product_variants.tax_rate_id',
+            ])
+            ->selectRaw('COALESCE(organization_stock.total_available, 0) as organization_total_available')
+            ->orderByRaw('CASE WHEN COALESCE(organization_stock.total_available, 0) > 0 THEN 0 ELSE 1 END')
+            ->orderBy('product_variants.product_id')
+            ->orderByRaw('CASE WHEN product_variants.sku IS NULL OR product_variants.sku = ? THEN 1 ELSE 0 END', [''])
+            ->orderBy('product_variants.sku')
+            ->paginate(($filters['barcode'] ?? null) ? 1 : 24)
             ->withQueryString();
 
         $defaultTaxRate = $priceResolver->defaultTaxRate($store, $organization->getKey());
 
-        $totalAvailability = InventoryBalance::query()
-            ->where('organization_id', $organization->getKey())
-            ->whereIn('product_variant_id', $variants->getCollection()->pluck('id'))
-            ->whereHas('warehouse', fn ($query) => $query->where('status', WarehouseStatus::Active->value))
-            ->get()
-            ->groupBy('product_variant_id')
-            ->map(fn ($rows) => $rows->reduce(fn (string $carry, InventoryBalance $row) => Decimal::add($carry, $row->available), '0.0000'));
-
-        $items = $variants->getCollection()->map(function (ProductVariant $variant) use ($totalAvailability, $priceResolver, $defaultTaxRate) {
+        $items = $variants->getCollection()->map(function (ProductVariant $variant) use ($priceResolver, $defaultTaxRate) {
             $balance = $variant->inventoryBalances->first();
             $price = $priceResolver->resolveWith($variant, $defaultTaxRate);
 
@@ -214,15 +232,9 @@ class PosController extends Controller
                     'on_hand' => $balance?->on_hand ?? '0.0000',
                     'reserved' => $balance?->reserved ?? '0.0000',
                     'available' => $balance?->available ?? '0.0000',
-                    'total_available' => $totalAvailability->get($variant->getKey(), '0.0000'),
+                    'total_available' => Decimal::normalize($variant->getAttribute('organization_total_available') ?? '0'),
                 ],
             ];
-        })->filter(function (array $row) use ($filters) {
-            return match ($filters['availability'] ?? 'all') {
-                'in_stock' => Decimal::compare($row['stock']['total_available'], '0.0000') > 0,
-                'out_of_stock' => Decimal::compare($row['stock']['total_available'], '0.0000') <= 0,
-                default => true,
-            };
         })->values();
 
         return response()->json([

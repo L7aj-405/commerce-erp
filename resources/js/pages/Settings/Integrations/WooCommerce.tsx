@@ -1,6 +1,7 @@
 import { Button } from '@/components/ui/Button';
 import { Checkbox, FormBanner, PasswordField, TextField } from '@/components/ui/form';
 import PageHeader from '@/components/ui/PageHeader';
+import { InlineLoader } from '@/components/ui/Spinner';
 import ApplicationShell from '@/layouts/ApplicationShell';
 import { formatDateTime } from '@/utils/format';
 import { Head, router, useForm } from '@inertiajs/react';
@@ -90,43 +91,62 @@ export default function WooCommerceSettings({ integration, runs, warehouses, sto
     const [dispatching, setDispatching] = useState(false);
     const [testing, setTesting] = useState(false);
     const [confirmSync, setConfirmSync] = useState(false);
+    const [awaitingRun, setAwaitingRun] = useState(false);
+    const [pollError, setPollError] = useState('');
 
     const latestRun = runs[0] ?? null;
     const [liveRun, setLiveRun] = useState<SyncRun | null>(latestRun);
     const [syncedCount, setSyncedCount] = useState(integration?.synced_product_count ?? 0);
     const pollRef = useRef<number | null>(null);
+    const syncBaselineRunIdRef = useRef<number | null>(latestRun?.id ?? null);
 
     useEffect(() => {
         setLiveRun(latestRun);
     }, [latestRun]);
 
-    // Poll the run status while a synchronization is running.
+    // Poll after dispatch as well as while a run is active: the queue may not
+    // have created its run row yet when the POST response returns.
     useEffect(() => {
-        if (!integration || liveRun?.status !== 'running') {
-            if (pollRef.current) window.clearInterval(pollRef.current);
+        const shouldPoll = awaitingRun || liveRun?.status === 'running';
+        if (!integration || !shouldPoll) {
+            if (pollRef.current !== null) window.clearTimeout(pollRef.current);
             return;
         }
-        pollRef.current = window.setInterval(async () => {
+
+        let cancelled = false;
+        const poll = async () => {
             try {
                 const response = await fetch(`/integrations/woocommerce/${integration.id}/status`, {
                     headers: { Accept: 'application/json' },
                     credentials: 'same-origin',
                 });
-                if (!response.ok) return;
-                const payload = (await response.json()) as { run: SyncRun | null; synced_product_count: number };
+                if (!response.ok) throw new Error('status');
+                const payload = (await response.json()) as { run: SyncRun | null; synced_product_count: number; last_product_sync_completed_at: string | null };
+                if (cancelled) return;
+                setPollError('');
                 setSyncedCount(payload.synced_product_count);
-                setLiveRun(payload.run);
-                if (payload.run && payload.run.status !== 'running') {
+                const isNewRun = payload.run !== null && payload.run.id !== syncBaselineRunIdRef.current;
+                const acceptedRun = isNewRun || !awaitingRun;
+                if (acceptedRun) setLiveRun(payload.run);
+
+                if (isNewRun) setAwaitingRun(false);
+                if (acceptedRun && payload.run && payload.run.status !== 'running') {
                     router.reload({ only: ['runs', 'integration'] });
+                    return;
                 }
             } catch {
-                /* transient — keep polling */
+                if (!cancelled) setPollError('Impossible d’actualiser l’état de la synchronisation. Nouvelle tentative en cours…');
             }
-        }, 2500);
-        return () => {
-            if (pollRef.current) window.clearInterval(pollRef.current);
+
+            if (!cancelled) pollRef.current = window.setTimeout(poll, 2500);
         };
-    }, [integration, liveRun?.status]);
+
+        pollRef.current = window.setTimeout(poll, 2500);
+        return () => {
+            cancelled = true;
+            if (pollRef.current !== null) window.clearTimeout(pollRef.current);
+        };
+    }, [integration, liveRun?.status, awaitingRun]);
 
     const submit = (event: FormEvent) => {
         event.preventDefault();
@@ -165,12 +185,12 @@ export default function WooCommerceSettings({ integration, runs, warehouses, sto
     const startSync = () => {
         if (!integration || dispatching) return;
         setDispatching(true);
+        setPollError('');
+        syncBaselineRunIdRef.current = liveRun?.id ?? null;
         setConfirmSync(false);
-        // Fire-and-forget: the job runs on the queue. Once dispatched, the job-status
-        // panel (with its poll) takes over — no long-lived button spinner.
         router.post(`/integrations/woocommerce/${integration.id}/sync`, { mode: 'full' }, {
             preserveScroll: true,
-            onSuccess: () => router.reload({ only: ['runs', 'integration'] }),
+            onSuccess: () => setAwaitingRun(true),
             onFinish: () => setDispatching(false),
         });
     };
@@ -328,12 +348,12 @@ export default function WooCommerceSettings({ integration, runs, warehouses, sto
                                     <Button
                                         type="button"
                                         size="sm"
-                                        loading={dispatching}
-                                        loadingText="Démarrage…"
-                                        disabled={liveRun?.status === 'running'}
+                                        loading={dispatching || awaitingRun || liveRun?.status === 'running'}
+                                        loadingText={dispatching ? 'Démarrage…' : 'Synchronisation en cours…'}
+                                        disabled={awaitingRun || liveRun?.status === 'running'}
                                         onClick={() => setConfirmSync(true)}
                                     >
-                                        {liveRun?.status === 'running' ? 'Synchronisation en cours…' : 'Synchroniser les produits'}
+                                        {awaitingRun || liveRun?.status === 'running' ? 'Synchronisation en cours…' : 'Synchroniser les produits'}
                                     </Button>
                                 )}
                             </div>
@@ -343,22 +363,24 @@ export default function WooCommerceSettings({ integration, runs, warehouses, sto
                                 {testResult.message}
                             </p>
                         )}
+                        {pollError && <p className="mt-3 rounded-field bg-danger-soft px-3 py-2 text-[13px] text-danger">{pollError}</p>}
                     </div>
 
-                    {liveRun && (
+                    {(awaitingRun || liveRun) && (
                         <div className="rounded-card border border-line bg-surface p-5 shadow-card">
                             <div className="flex items-center justify-between">
                                 <h2 className="text-sm font-semibold text-ink">Synchronisation</h2>
                                 <span className={`rounded-full px-2 py-0.5 text-[12px] font-semibold ${
-                                    liveRun.status === 'completed' ? 'bg-success-soft text-success'
-                                        : liveRun.status === 'failed' ? 'bg-danger-soft text-danger'
-                                            : liveRun.status === 'completed_with_errors' ? 'bg-warning-soft text-warning'
+                                    liveRun?.status === 'completed' ? 'bg-success-soft text-success'
+                                        : liveRun?.status === 'failed' ? 'bg-danger-soft text-danger'
+                                            : liveRun?.status === 'completed_with_errors' ? 'bg-warning-soft text-warning'
                                                 : 'bg-sage text-ink-muted'
                                 }`}>
-                                    {STATUS_LABELS[liveRun.status] ?? liveRun.status}
+                                    {awaitingRun ? 'Démarrage…' : STATUS_LABELS[liveRun!.status] ?? liveRun!.status}
                                 </span>
                             </div>
-                            <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5 text-[13px]">
+                            {awaitingRun && <InlineLoader label="La synchronisation est en cours de démarrage…" className="mt-3 text-[13px]" />}
+                            {liveRun && !awaitingRun && <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5 text-[13px]">
                                 <div className="flex justify-between"><dt className="text-ink-muted">Lus</dt><dd className="tabular-nums">{liveRun.products_read}</dd></div>
                                 <div className="flex justify-between"><dt className="text-ink-muted">Créés</dt><dd className="tabular-nums">{liveRun.products_created}</dd></div>
                                 <div className="flex justify-between"><dt className="text-ink-muted">Mis à jour</dt><dd className="tabular-nums">{liveRun.products_updated}</dd></div>
@@ -366,9 +388,9 @@ export default function WooCommerceSettings({ integration, runs, warehouses, sto
                                 <div className="flex justify-between"><dt className="text-ink-muted">Catégories</dt><dd className="tabular-nums">{liveRun.categories_synced}</dd></div>
                                 <div className="flex justify-between"><dt className="text-ink-muted">Ajust. stock</dt><dd className="tabular-nums">{liveRun.stock_adjustments}</dd></div>
                                 <div className="flex justify-between"><dt className="text-ink-muted">En erreur</dt><dd className={`tabular-nums ${liveRun.products_failed > 0 ? 'text-danger' : ''}`}>{liveRun.products_failed}</dd></div>
-                            </dl>
-                            {liveRun.message && <p className="mt-3 text-[12px] text-ink-muted">{liveRun.message}</p>}
-                            {(liveRun.errors?.length ?? 0) > 0 && (
+                            </dl>}
+                            {liveRun && !awaitingRun && liveRun.message && <p className="mt-3 text-[12px] text-ink-muted">{liveRun.message}</p>}
+                            {liveRun && !awaitingRun && (liveRun.errors?.length ?? 0) > 0 && (
                                 <ul className="mt-3 max-h-40 space-y-1 overflow-y-auto rounded-field bg-raised p-2 text-[12px] text-ink-muted">
                                     {liveRun.errors!.slice(0, 50).map((error, index) => (
                                         <li key={index}>{error.remote_id ? `Woo #${error.remote_id} — ` : ''}{error.message}</li>
