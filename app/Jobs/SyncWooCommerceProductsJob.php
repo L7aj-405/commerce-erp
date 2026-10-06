@@ -6,6 +6,7 @@ use App\Actions\WooCommerce\SyncWooCommerceProductsAction;
 use App\Models\User;
 use App\Models\WooCommerceIntegration;
 use App\Models\WooCommerceSyncRun;
+use App\Services\Notifications\OperationalNotificationProducer;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -64,5 +65,11 @@ class SyncWooCommerceProductsJob implements ShouldBeUnique, ShouldQueue
                 'message' => 'La tâche de synchronisation a échoué.',
                 'completed_at' => now(),
             ]);
+
+        $run = WooCommerceSyncRun::query()->where('woocommerce_integration_id', $this->integrationId)->latest('id')->first();
+        $integration = WooCommerceIntegration::query()->with('organization')->find($this->integrationId);
+        if ($run && $integration?->organization) {
+            app(OperationalNotificationProducer::class)->wooCommerce($integration->organization, $run);
+        }
     }
 }

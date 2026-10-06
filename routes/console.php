@@ -1,6 +1,10 @@
 <?php
 
+use App\Jobs\RecordQueueWorkerHeartbeatJob;
 use App\Models\ProductImport;
+use App\Models\SystemHealthHeartbeat;
+use App\Models\UserNotification;
+use App\Services\Notifications\SystemHealthNotificationMonitor;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
@@ -47,3 +51,14 @@ Artisan::command('organization-backups:cleanup-temporary-files', function () {
 Schedule::command('catalog:cleanup-product-imports')->daily();
 Schedule::command('organization-backups:dispatch-due')->everyMinute()->withoutOverlapping();
 Schedule::command('organization-backups:cleanup-temporary-files')->hourly()->withoutOverlapping();
+Schedule::call(fn () => SystemHealthHeartbeat::beat('scheduler'))
+    ->name('system-health:scheduler-heartbeat')->everyMinute()->withoutOverlapping();
+Schedule::job(new RecordQueueWorkerHeartbeatJob)
+    ->name('system-health:queue-worker-heartbeat')->everyMinute();
+Schedule::call(fn () => app(SystemHealthNotificationMonitor::class)->evaluateAll())
+    ->name('notifications:system-health-transitions')->everyFiveMinutes()->withoutOverlapping();
+Schedule::call(function () {
+    UserNotification::query()->whereNotNull('read_at')->where('created_at', '<', now()->subDays(max(1, (int) config('notifications.retention_days', 90))))->delete();
+    UserNotification::query()->whereNull('read_at')->where('severity', '!=', 'critical')
+        ->where('created_at', '<', now()->subDays(max(1, (int) config('notifications.unread_retention_days', 180))))->delete();
+})->name('notifications:cleanup')->daily()->withoutOverlapping();

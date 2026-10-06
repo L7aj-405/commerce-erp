@@ -4,6 +4,7 @@ namespace App\Http\Middleware;
 
 use App\Models\Organization;
 use App\Services\ActiveTenantContext;
+use App\Services\Notifications\NotificationFeed;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -57,6 +58,9 @@ class HandleInertiaRequests extends Middleware
                     ? $request->user()->permissionKeysFor($organization)
                     : [],
             ],
+            'notifications' => fn () => $user
+                ? app(NotificationFeed::class)->summary($user, $organization)
+                : ['unread_count' => 0, 'recent' => [], 'poll_seconds' => 20, 'preferences' => ['sound_enabled' => false, 'sound_volume' => 0.5, 'disabled_categories' => []]],
             'flash' => [
                 'success' => fn () => $request->session()->get('success'),
                 'warehouseCreatedId' => fn () => $request->session()->get('warehouse_created_id'),

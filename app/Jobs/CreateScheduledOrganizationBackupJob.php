@@ -6,6 +6,7 @@ use App\Actions\OrganizationBackups\ApplyOrganizationBackupRetentionAction;
 use App\Actions\OrganizationBackups\QueuePersonalCloudBackupSyncAction;
 use App\Mail\OrganizationBackupFailedMail;
 use App\Models\OrganizationBackup;
+use App\Services\Notifications\OperationalNotificationProducer;
 use App\Services\AuditLogger;
 use App\Services\OrganizationBackups\OrganizationBackupExporter;
 use App\Services\OrganizationBackups\OrganizationBackupStorage;
@@ -101,6 +102,7 @@ class CreateScheduledOrganizationBackupJob implements ShouldBeUnique, ShouldQueu
                 'size_bytes' => $backup->size_bytes,
                 'checksum' => $backup->checksum,
             ]);
+            app(OperationalNotificationProducer::class)->backupCompleted($organization, $backup);
 
             $personalCloudSync->execute($backup->fresh(['organization']));
             $retention->execute($organization, (int) ($setting?->retention_count ?? 30));
@@ -140,6 +142,7 @@ class CreateScheduledOrganizationBackupJob implements ShouldBeUnique, ShouldQueu
                 'backup_uuid' => $backup->uuid,
                 'reason' => $backup->failure_message,
             ]);
+            app(OperationalNotificationProducer::class)->backupFailed($organization, $backup);
         }
     }
 

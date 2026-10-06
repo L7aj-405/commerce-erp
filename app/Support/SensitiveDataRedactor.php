@@ -26,10 +26,15 @@ final class SensitiveDataRedactor
 
     public static function text(string $value, int $limit = 1000): string
     {
+        $redacted = preg_replace(
+            '/\b([a-z][a-z0-9+.-]*):\/\/[^\/\s:@]+:[^@\/\s]+@/i',
+            '$1://[REDACTED]@',
+            $value,
+        ) ?? '[REDACTED]';
         $redacted = preg_replace([
             '/Bearer\s+[A-Za-z0-9._~+\/-]+=*/i',
             '/(?:access_token|refresh_token|consumer_secret|client_secret|smtp_password|password|authorization|credentials|api[_-]?key|private[_-]?key)\s*[:=]\s*[^\s,;]+/i',
-        ], '[REDACTED]', $value) ?? '[REDACTED]';
+        ], '[REDACTED]', $redacted) ?? '[REDACTED]';
 
         return Str::limit($redacted, $limit, '');
     }

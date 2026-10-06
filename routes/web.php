@@ -68,6 +68,9 @@ use App\Http\Controllers\Sales\CustomerReturnController;
 use App\Http\Controllers\Sales\CustomerExchangeController;
 use App\Http\Controllers\Settings\ActiveSessionController;
 use App\Http\Controllers\Settings\ActivityAuditController;
+use App\Http\Controllers\Settings\SystemHealthController;
+use App\Http\Controllers\Settings\NotificationPreferenceController;
+use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\Settings\OrganizationDocumentStampController;
 use App\Http\Controllers\Settings\OrganizationMailSettingController;
 use App\Http\Controllers\Settings\OrganizationBackupController;
@@ -177,6 +180,14 @@ Route::middleware('auth')->group(function () {
 Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () {
     Route::get('/platform', PlatformController::class)->name('platform.index');
     Route::get('/activity', ActivityAuditController::class)->name('activity.index');
+    Route::get('/system-health', SystemHealthController::class)->name('system-health.index');
+    Route::get('/notifications', [NotificationController::class, 'index'])->name('notifications.index');
+    Route::get('/notifications/feed', [NotificationController::class, 'feed'])->name('notifications.feed');
+    Route::patch('/notifications/{notification}/read', [NotificationController::class, 'markRead'])->name('notifications.read');
+    Route::patch('/notifications/{notification}/unread', [NotificationController::class, 'markUnread'])->name('notifications.unread');
+    Route::post('/notifications/read-all', [NotificationController::class, 'markAllRead'])->name('notifications.read-all');
+    Route::get('/account/notifications', [NotificationPreferenceController::class, 'edit'])->name('notifications.preferences.edit');
+    Route::put('/account/notifications', [NotificationPreferenceController::class, 'update'])->name('notifications.preferences.update');
     Route::get('/contacts/lookup', [OrganizationContactController::class, 'lookup'])->name('contacts.lookup');
     Route::resource('contacts', OrganizationContactController::class)->except(['destroy']);
     Route::delete('/contacts/{contact}', [OrganizationContactController::class, 'destroy'])->name('contacts.destroy');

@@ -60,6 +60,11 @@ class Organization extends Model
         return $this->hasMany(AuditLog::class);
     }
 
+    public function userNotifications(): HasMany
+    {
+        return $this->hasMany(UserNotification::class);
+    }
+
     public function backupSetting(): HasOne
     {
         return $this->hasOne(OrganizationBackupSetting::class);

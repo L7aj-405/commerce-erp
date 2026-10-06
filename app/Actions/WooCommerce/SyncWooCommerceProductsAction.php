@@ -18,6 +18,7 @@ use App\Models\Warehouse;
 use App\Models\WooCommerceIntegration;
 use App\Models\WooCommerceSyncRun;
 use App\Services\AuditLogger;
+use App\Services\Notifications\OperationalNotificationProducer;
 use App\Services\WooCommerce\NormalizedWooProduct;
 use App\Services\WooCommerce\NormalizedWooVariant;
 use App\Services\WooCommerce\WooCategorySynchronizer;
@@ -53,6 +54,7 @@ class SyncWooCommerceProductsAction
         private readonly CreateVariantAction $createVariant,
         private readonly AdjustInventoryAction $adjustInventory,
         private readonly AuditLogger $audit,
+        private readonly OperationalNotificationProducer $notifications,
     ) {}
 
     /** Test seam: inject a fake client. */
@@ -173,6 +175,8 @@ class SyncWooCommerceProductsAction
                 'products_skipped', 'products_failed', 'variants_synced', 'categories_synced', 'stock_adjustments',
             ]),
         );
+
+        $this->notifications->wooCommerce($organization, $run);
 
         return $run->fresh();
     }

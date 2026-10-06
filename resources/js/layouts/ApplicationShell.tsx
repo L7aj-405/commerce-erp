@@ -1,4 +1,5 @@
 import { BrandLockup, BrandMark } from '@/components/ui/brand';
+import NotificationBell from '@/components/notifications/NotificationBell';
 import { useToast } from '@/components/ui/toast';
 import type { SharedPageProps } from '@/types/app';
 import { Link, router, usePage } from '@inertiajs/react';
@@ -12,7 +13,7 @@ const SIDEBAR_KEY = 'shell.sidebar.collapsed';
 
 export default function ApplicationShell({ children, wide = false, flush = false }: PropsWithChildren<{ wide?: boolean; flush?: boolean }>) {
     const page = usePage<SharedPageProps>();
-    const { auth, tenant, flash } = page.props;
+    const { auth, tenant, flash, notifications } = page.props;
     const currentPath = page.url.split('?')[0];
 
     // Bridge server flash("success", …) redirects into the toast system so every
@@ -157,6 +158,7 @@ export default function ApplicationShell({ children, wide = false, flush = false
             icon: <IconShield />,
             items: [
                 { href: '/activity', label: 'Activité', permission: 'audit.view', icon: <IconList /> },
+                { href: '/system-health', label: 'Opérations système', permission: 'system.health.view', icon: <IconShield /> },
                 ...(tenant.organization
                     ? [
                           {
@@ -195,6 +197,7 @@ export default function ApplicationShell({ children, wide = false, flush = false
                 { href: '/return-policy', label: 'Politique de retour', permission: ['settings.view', 'settings.update'], icon: <IconRotateBack /> },
                 { href: '/email-settings', label: 'Email / SMTP', permission: ['settings.view', 'settings.update'], icon: <IconMail /> },
                 { href: '/organization-backups', label: 'Sauvegardes & restauration', permission: 'organization_backups.view', icon: <IconShield /> },
+                { href: '/account/notifications', label: 'Notifications', icon: <IconBell /> },
                 { href: '/catalog/tax-rates', label: 'Taxes (TVA)', permission: 'tax_rates.view', icon: <IconPercent /> },
             ],
         },
@@ -374,6 +377,8 @@ export default function ApplicationShell({ children, wide = false, flush = false
                         <div className="hidden min-w-0 flex-1 sm:flex">{orgStoreSwitcher}</div>
                         <div className="min-w-0 flex-1 sm:hidden" />
 
+                        <NotificationBell initial={notifications ?? { unread_count: 0, recent: [], poll_seconds: 20, preferences: { sound_enabled: false, sound_volume: 0.5, disabled_categories: [] } }} />
+
                         {/* Profile menu */}
                         <details className="relative shrink-0">
                             <summary className="flex cursor-pointer list-none items-center gap-2 rounded-field px-1.5 py-1.5 transition-soft hover:bg-sage sm:px-2">
@@ -404,6 +409,12 @@ export default function ApplicationShell({ children, wide = false, flush = false
                                     className="block rounded-field px-3 py-2.5 text-[13px] text-ink-muted transition-soft hover:bg-sage hover:text-ink"
                                 >
                                     Sécurité
+                                </Link>
+                                <Link
+                                    href="/account/notifications"
+                                    className="block rounded-field px-3 py-2.5 text-[13px] text-ink-muted transition-soft hover:bg-sage hover:text-ink"
+                                >
+                                    Notifications
                                 </Link>
 
                                 {(tenant.organization && tenant.permissions.includes('members.view')) ||
@@ -512,6 +523,7 @@ function IconSettings() { return <svg {...s}><path d="M12 8a4 4 0 1 0 0 8 4 4 0 
 function IconFolder() { return <svg {...s}><path d="M3 6h7l2 3h9v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6Z" /></svg>; }
 function IconPercent() { return <svg {...s}><path d="M19 5 5 19" /><circle cx="7" cy="7" r="2" /><circle cx="17" cy="17" r="2" /></svg>; }
 function IconMail() { return <svg {...s}><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m4 7 8 6 8-6" /></svg>; }
+function IconBell() { return <svg {...s}><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" /></svg>; }
 function IconStamp() { return <svg {...s}><circle cx="12" cy="8" r="5" /><path d="M9 8h6M9 6.5h6M9 9.5h4M6 21h12l-1.5-5h-9L6 21Z" /></svg>; }
 function IconChevron() { return <svg {...s} width={14} height={14}><path d="m9 5 5 7-5 7" /></svg>; }
 function IconCollapse() { return <svg {...s}><path d="M14 6 8 12l6 6" /></svg>; }

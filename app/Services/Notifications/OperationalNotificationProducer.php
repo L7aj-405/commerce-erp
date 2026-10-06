@@ -1,0 +1,61 @@
+<?php
+
+namespace App\Services\Notifications;
+
+use App\Enums\NotificationCategory;
+use App\Enums\NotificationSeverity;
+use App\Models\Organization;
+use App\Models\OrganizationBackup;
+use App\Models\OrganizationBackupCloudCopy;
+use App\Models\User;
+use App\Models\WooCommerceSyncRun;
+
+final class OperationalNotificationProducer
+{
+    public function __construct(private readonly NotificationPublisher $publisher) {}
+
+    public function wooCommerce(Organization $organization, WooCommerceSyncRun $run): void
+    {
+        $severity = $run->status === WooCommerceSyncRun::STATUS_FAILED
+            ? NotificationSeverity::Critical
+            : ($run->status === WooCommerceSyncRun::STATUS_COMPLETED_WITH_ERRORS ? NotificationSeverity::Warning : NotificationSeverity::Success);
+        $this->publisher->publish($organization, $this->publisher->recipientsWithPermission($organization, 'integrations.view'),
+            NotificationCategory::WooCommerce, $severity,
+            $run->status === WooCommerceSyncRun::STATUS_FAILED ? 'Synchronisation WooCommerce échouée' : 'Synchronisation WooCommerce terminée',
+            $run->status === WooCommerceSyncRun::STATUS_FAILED ? 'La synchronisation des produits a échoué.' : "{$run->products_read} produit(s) traité(s), {$run->products_failed} échec(s).",
+            '/integrations/woocommerce', 'woocommerce_sync_run', $run->getKey(), $run->status,
+            $run->only(['products_read', 'products_created', 'products_updated', 'products_skipped', 'products_failed']));
+    }
+
+    public function backupCompleted(Organization $organization, OrganizationBackup $backup): void
+    {
+        $this->backup($organization, $backup, NotificationSeverity::Success, 'Sauvegarde terminée', 'La sauvegarde planifiée de l’organisation est disponible.', 'completed');
+    }
+
+    public function backupFailed(Organization $organization, OrganizationBackup $backup): void
+    {
+        $this->backup($organization, $backup, NotificationSeverity::Critical, 'Échec de la sauvegarde', 'La sauvegarde planifiée n’a pas pu être terminée.', 'failed');
+    }
+
+    public function cloudCopyFailed(Organization $organization, OrganizationBackupCloudCopy $copy): void
+    {
+        $this->publisher->publish($organization, $this->publisher->recipientsWithPermission($organization, 'organization_backups.view'),
+            NotificationCategory::Backup, NotificationSeverity::Critical, 'Échec de la copie Google Drive',
+            'La copie de sauvegarde vers Google Drive a échoué.', '/organization-backups', 'organization_backup_cloud_copy', $copy->getKey(), 'failed');
+    }
+
+    public function security(User $user, Organization $organization, int $auditLogId, string $event): void
+    {
+        [$title, $message] = $event === 'two_factor.disabled'
+            ? ['Double authentification désactivée', 'La double authentification de votre compte a été désactivée.']
+            : ['Codes de récupération renouvelés', 'De nouveaux codes de récupération ont été générés pour votre compte.'];
+        $this->publisher->publishToUser($user, $organization, NotificationCategory::Security, NotificationSeverity::Critical,
+            $title, $message, '/security', 'audit_log', $auditLogId, $event);
+    }
+
+    private function backup(Organization $organization, OrganizationBackup $backup, NotificationSeverity $severity, string $title, string $message, string $event): void
+    {
+        $this->publisher->publish($organization, $this->publisher->recipientsWithPermission($organization, 'organization_backups.view'),
+            NotificationCategory::Backup, $severity, $title, $message, '/organization-backups', 'organization_backup', $backup->getKey(), $event);
+    }
+}

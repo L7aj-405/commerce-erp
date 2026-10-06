@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Settings;
 use App\Http\Controllers\Controller;
 use App\Models\UserSocialIdentity;
 use App\Services\AuditLogger;
+use App\Services\Notifications\OperationalNotificationProducer;
 use App\Services\Security\RecoveryCodeService;
 use App\Services\Security\TotpService;
 use Illuminate\Http\JsonResponse;
@@ -120,7 +121,10 @@ class TwoFactorAuthenticationController extends Controller
             'two_factor_confirmed_at' => null,
         ])->save();
 
-        $audit->record('two_factor.disabled', $user, $user->activeOrganization, auditable: $user);
+        $log = $audit->record('two_factor.disabled', $user, $user->activeOrganization, auditable: $user);
+        if ($organization = $user->activeOrganization) {
+            app(OperationalNotificationProducer::class)->security($user, $organization, $log->getKey(), 'two_factor.disabled');
+        }
 
         return back()->with('success', 'Double authentification désactivée.');
     }
@@ -136,7 +140,10 @@ class TwoFactorAuthenticationController extends Controller
         $plainCodes = $recovery->generate();
         $user->forceFill(['two_factor_recovery_codes' => $recovery->hash($plainCodes)])->save();
 
-        $audit->record('two_factor.recovery_codes_regenerated', $user, $user->activeOrganization, auditable: $user);
+        $log = $audit->record('two_factor.recovery_codes_regenerated', $user, $user->activeOrganization, auditable: $user);
+        if ($organization = $user->activeOrganization) {
+            app(OperationalNotificationProducer::class)->security($user, $organization, $log->getKey(), 'two_factor.recovery_codes_regenerated');
+        }
 
         return response()->json(['recovery_codes' => $plainCodes]);
     }

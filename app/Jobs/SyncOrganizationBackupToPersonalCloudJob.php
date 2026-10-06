@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\OrganizationBackupCloudCopy;
+use App\Services\Notifications\OperationalNotificationProducer;
 use App\Services\AuditLogger;
 use App\Services\OrganizationBackups\OrganizationBackupStorage;
 use App\Services\OrganizationBackups\PersonalCloud\PersonalBackupStorageManager;
@@ -109,6 +110,7 @@ class SyncOrganizationBackupToPersonalCloudJob implements ShouldBeUnique, Should
                     'provider' => $copy->provider,
                     'reason' => $copy->failure_message,
                 ]);
+                app(OperationalNotificationProducer::class)->cloudCopyFailed($organization, $copy);
             }
 
             throw $exception;
