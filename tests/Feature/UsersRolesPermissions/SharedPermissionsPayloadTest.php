@@ -16,6 +16,12 @@ use Tests\Support\PlatformTestCase;
  */
 class SharedPermissionsPayloadTest extends PlatformTestCase
 {
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->withFreshAuthentication();
+    }
+
     public function test_shared_tenant_permissions_include_the_new_finance_and_settings_keys_for_a_general_admin_role(): void
     {
         $owner = User::factory()->create();

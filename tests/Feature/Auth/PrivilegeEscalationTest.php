@@ -7,6 +7,12 @@ use Tests\Support\PlatformTestCase;
 
 class PrivilegeEscalationTest extends PlatformTestCase
 {
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->withFreshAuthentication();
+    }
+
     public function test_normal_user_cannot_assign_themselves_admin_or_owner(): void
     {
         $owner = User::factory()->create();

@@ -14,21 +14,21 @@ final class TrustedTwoFactorDeviceManager
     public function __construct(private readonly CookieJar $cookies) {}
 
     /** @return list<int> */
-    public function allowedDurations(): array
+    public function allowedDurations(?User $user = null): array
     {
-        $maximum = max(1, (int) config('two-factor.trusted_device_max_days', 30));
+        $maximum = $this->maximumDuration($user);
 
         return collect(config('two-factor.trusted_device_durations', [7, 15, 20, 30]))
             ->map(fn ($days) => (int) $days)->filter(fn (int $days) => $days > 0 && $days <= $maximum)
             ->unique()->sort()->values()->all();
     }
 
-    public function defaultDuration(): int
+    public function defaultDuration(?User $user = null): int
     {
-        $allowed = $this->allowedDurations();
+        $allowed = $this->allowedDurations($user);
         $configured = (int) config('two-factor.trusted_device_default_days', 30);
 
-        return in_array($configured, $allowed, true) ? $configured : ($allowed[0] ?? 7);
+        return in_array($configured, $allowed, true) ? $configured : ($allowed[array_key_last($allowed)] ?? 7);
     }
 
     public function validFor(User $user, Request $request): ?TrustedTwoFactorDevice
@@ -43,6 +43,13 @@ final class TrustedTwoFactorDeviceManager
             return null;
         }
 
+        // A user who becomes privileged is subject to the shorter cap
+        // immediately. Existing grants are not mutated, but cannot be used
+        // after created_at + the current privileged maximum.
+        if ($user->isPrivilegedAccount() && $device->created_at->copy()->addDays($this->maximumDuration($user))->isPast()) {
+            return null;
+        }
+
         $device->last_used_at = now();
         $device->last_ip = $request->ip();
         $device->save();
@@ -53,7 +60,7 @@ final class TrustedTwoFactorDeviceManager
     /** @return array{TrustedTwoFactorDevice, Cookie} */
     public function create(User $user, Request $request, int $durationDays): array
     {
-        abort_unless(in_array($durationDays, $this->allowedDurations(), true), 422, 'Durée de confiance invalide.');
+        abort_unless(in_array($durationDays, $this->allowedDurations($user), true), 422, 'Durée de confiance invalide.');
         $token = bin2hex(random_bytes(32));
         [$browser, $platform] = $this->describeUserAgent((string) $request->userAgent());
 
@@ -129,5 +136,18 @@ final class TrustedTwoFactorDeviceManager
     private function cookieName(): string
     {
         return (string) config('two-factor.trusted_device_cookie', 'trusted_2fa_device');
+    }
+
+    private function maximumDuration(?User $user): int
+    {
+        $standard = max(1, (int) config('two-factor.trusted_device_max_days', 30));
+
+        if (! $user || ! $user->isPrivilegedAccount()) {
+            return $standard;
+        }
+
+        $privileged = max(1, (int) config('two-factor.trusted_device_privileged_max_days', 15));
+
+        return min($standard, $privileged);
     }
 }

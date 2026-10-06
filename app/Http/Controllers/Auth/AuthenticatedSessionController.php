@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Auth;
 use App\Contracts\ChallengeVerifier;
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Services\AuditLogger;
 use App\Services\Security\LoginThrottle;
 use App\Services\Security\TrustedTwoFactorDeviceManager;
 use App\Support\LegalMetadata;
@@ -32,6 +33,7 @@ class AuthenticatedSessionController extends Controller
         LoginThrottle $throttle,
         ChallengeVerifier $challenge,
         TrustedTwoFactorDeviceManager $trustedDevices,
+        AuditLogger $audit,
     ): RedirectResponse
     {
         $credentials = $request->validate([
@@ -68,6 +70,10 @@ class AuthenticatedSessionController extends Controller
         // challenge in TwoFactorChallengeController also passes (§E4).
         if (! Auth::validate($credentials)) {
             $throttle->recordFailure($email, $ip);
+            Log::notice('auth.login_failed', [
+                'email_hash' => Str::substr(hash('sha256', Str::lower(trim($email))), 0, 16),
+                'ip' => $ip,
+            ]);
 
             // Deliberately identical whether the email doesn't exist or the
             // password is wrong (§D3) — never "account not found" vs "wrong
@@ -88,6 +94,9 @@ class AuthenticatedSessionController extends Controller
             if ($trustedDevices->validFor($user, $request)) {
                 Auth::login($user, $request->boolean('remember'));
                 $request->session()->regenerate();
+                $audit->record('auth.login_succeeded', $user, $user->activeOrganization, auditable: $user, newValues: [
+                    'second_factor' => 'trusted_device',
+                ]);
 
                 return redirect()->intended(route('platform.index'));
             }
@@ -100,6 +109,9 @@ class AuthenticatedSessionController extends Controller
 
         Auth::login($user, $request->boolean('remember'));
         $request->session()->regenerate();
+        $audit->record('auth.login_succeeded', $user, $user->activeOrganization, auditable: $user, newValues: [
+            'second_factor' => 'not_enabled',
+        ]);
 
         return redirect()->intended(route('platform.index'));
     }

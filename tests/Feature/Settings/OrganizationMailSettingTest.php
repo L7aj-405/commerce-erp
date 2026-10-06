@@ -12,6 +12,12 @@ use Tests\Support\PlatformTestCase;
 
 class OrganizationMailSettingTest extends PlatformTestCase
 {
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->withFreshAuthentication();
+    }
+
     public function test_organization_admin_can_save_smtp_configuration(): void
     {
         $owner = User::factory()->create();

@@ -9,6 +9,12 @@ use Tests\Support\PlatformTestCase;
 
 class AuditLogTest extends PlatformTestCase
 {
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->withFreshAuthentication();
+    }
+
     public function test_organization_and_store_creation_are_audited(): void
     {
         $owner = User::factory()->create();
@@ -87,6 +93,9 @@ class AuditLogTest extends PlatformTestCase
                     'safe' => 'visible',
                 ],
                 'error' => 'Authorization: Bearer secret-access-token',
+                'callback_url' => 'https://example.test/callback?code=oauth-secret&safe=yes',
+                'session_id' => 'raw-session-id',
+                'object' => (object) ['password' => 'hidden-object-secret'],
             ],
         );
 
@@ -98,5 +107,10 @@ class AuditLogTest extends PlatformTestCase
         $this->assertSame('visible', $log->new_values['nested']['safe']);
         $this->assertStringNotContainsString('must-not-be-stored', json_encode($log->new_values, JSON_THROW_ON_ERROR));
         $this->assertStringNotContainsString('secret-access-token', $log->new_values['error']);
+        $encoded = json_encode($log->new_values, JSON_THROW_ON_ERROR);
+        $this->assertStringNotContainsString('oauth-secret', $encoded);
+        $this->assertStringNotContainsString('raw-session-id', $encoded);
+        $this->assertStringNotContainsString('hidden-object-secret', $encoded);
+        $this->assertSame('[OMITTED]', $log->new_values['object']);
     }
 }

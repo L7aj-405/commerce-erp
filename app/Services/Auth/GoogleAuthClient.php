@@ -14,24 +14,34 @@ class GoogleAuthClient
 
     private const TOKEN_INFO_URL = 'https://oauth2.googleapis.com/tokeninfo';
 
-    public function authorizationUrl(string $state): string
+    public function authorizationUrl(
+        string $state,
+        bool $forceReauthentication = false,
+        ?string $redirectUri = null,
+    ): string
     {
-        return self::AUTH_URL.'?'.http_build_query([
+        $parameters = [
             'client_id' => $this->clientId(),
-            'redirect_uri' => $this->redirectUri(),
+            'redirect_uri' => $redirectUri ?? $this->redirectUri(),
             'response_type' => 'code',
             'scope' => config('services.google_auth.scope', 'openid email profile'),
             'state' => $state,
-            'prompt' => 'select_account',
-        ]);
+            'prompt' => $forceReauthentication ? 'login' : 'select_account',
+        ];
+
+        if ($forceReauthentication) {
+            $parameters['max_age'] = 0;
+        }
+
+        return self::AUTH_URL.'?'.http_build_query($parameters);
     }
 
-    public function identityFromCode(string $code): GoogleAuthIdentity
+    public function identityFromCode(string $code, ?string $redirectUri = null): GoogleAuthIdentity
     {
         $token = Http::asForm()->post(self::TOKEN_URL, [
             'client_id' => $this->clientId(),
             'client_secret' => $this->clientSecret(),
-            'redirect_uri' => $this->redirectUri(),
+            'redirect_uri' => $redirectUri ?? $this->redirectUri(),
             'grant_type' => 'authorization_code',
             'code' => $code,
         ]);

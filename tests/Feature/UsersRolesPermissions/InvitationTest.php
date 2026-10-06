@@ -13,6 +13,12 @@ use Tests\Support\PlatformTestCase;
 
 class InvitationTest extends PlatformTestCase
 {
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->withFreshAuthentication();
+    }
+
     public function test_admin_can_invite_a_brand_new_user_by_email_and_they_can_accept(): void
     {
         Mail::fake();

@@ -4,11 +4,14 @@ namespace App\Http\Controllers\Auth;
 
 use App\Actions\Auth\ResolveGoogleAuthenticatedUserAction;
 use App\Http\Controllers\Controller;
+use App\Services\AuditLogger;
 use App\Services\Auth\GoogleAuthClient;
 use App\Services\Security\TrustedTwoFactorDeviceManager;
+use App\Support\SensitiveDataRedactor;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use RuntimeException;
 
@@ -27,6 +30,7 @@ class GoogleAuthenticationController extends Controller
         GoogleAuthClient $google,
         ResolveGoogleAuthenticatedUserAction $resolveUser,
         TrustedTwoFactorDeviceManager $trustedDevices,
+        AuditLogger $audit,
     ): RedirectResponse {
         $expectedState = $request->session()->pull('auth.google.state');
         if (! is_string($expectedState) || ! hash_equals($expectedState, (string) $request->query('state'))) {
@@ -45,6 +49,10 @@ class GoogleAuthenticationController extends Controller
             $identity = $google->identityFromCode((string) $request->query('code'));
             $user = $resolveUser->execute($identity);
         } catch (RuntimeException $exception) {
+            Log::notice('auth.google_failed', [
+                'ip' => $request->ip(),
+                'reason' => SensitiveDataRedactor::text($exception->getMessage(), 160),
+            ]);
             return redirect()->route('login')->withErrors(['google' => $exception->getMessage()]);
         }
 
@@ -52,6 +60,9 @@ class GoogleAuthenticationController extends Controller
             if ($trustedDevices->validFor($user, $request)) {
                 Auth::login($user);
                 $request->session()->regenerate();
+                $audit->record('auth.google_login_succeeded', $user, $user->activeOrganization, auditable: $user, newValues: [
+                    'second_factor' => 'trusted_device',
+                ]);
 
                 return redirect()->intended(route('platform.index'));
             }
@@ -64,6 +75,9 @@ class GoogleAuthenticationController extends Controller
 
         Auth::login($user);
         $request->session()->regenerate();
+        $audit->record('auth.google_login_succeeded', $user, $user->activeOrganization, auditable: $user, newValues: [
+            'second_factor' => 'not_enabled',
+        ]);
 
         return redirect()->intended(route('platform.index'));
     }

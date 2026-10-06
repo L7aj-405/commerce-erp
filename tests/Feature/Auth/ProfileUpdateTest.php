@@ -8,12 +8,19 @@ use Tests\Support\PlatformTestCase;
 /**
  * Account Settings V1 — "Mon profil". Name/email are the user's OWN state,
  * never organization membership/role/permissions. Changing the email is
- * security-sensitive: it requires the current password, resets
+ * security-sensitive: it requires centralized fresh authentication, resets
  * `email_verified_at`, and re-sends the same verification notification a new
  * registration goes through — MustVerifyEmail must never be weakened.
  */
 class ProfileUpdateTest extends PlatformTestCase
 {
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->withFreshAuthentication(level: 1);
+    }
+
     public function test_a_user_can_update_their_name_without_a_password(): void
     {
         $user = User::factory()->create(['name' => 'Old Name']);
@@ -29,27 +36,27 @@ class ProfileUpdateTest extends PlatformTestCase
         $this->assertDatabaseHas('audit_logs', ['event' => 'account.profile_updated']);
     }
 
-    public function test_changing_the_email_requires_the_current_password(): void
+    public function test_changing_the_email_requires_fresh_authentication(): void
     {
         $user = User::factory()->create();
 
+        $this->flushSession();
         $this->actingAs($user)->patch('/account/profile', [
             'name' => $user->name,
             'email' => 'new-address@example.test',
-        ])->assertSessionHasErrors('current_password');
+        ])->assertRedirect(route('security.confirm'));
 
         $this->assertSame($user->email, $user->fresh()->email);
     }
 
-    public function test_changing_the_email_with_the_wrong_password_is_rejected(): void
+    public function test_invalid_fresh_auth_password_does_not_change_the_email(): void
     {
         $user = User::factory()->create();
 
-        $this->actingAs($user)->patch('/account/profile', [
-            'name' => $user->name,
-            'email' => 'new-address@example.test',
-            'current_password' => 'not-the-password',
-        ])->assertSessionHasErrors('current_password');
+        $this->flushSession();
+        $this->actingAs($user)->patch('/account/profile', ['name' => $user->name, 'email' => 'new-address@example.test']);
+        $this->post(route('security.confirm.password'), ['password' => 'not-the-password'])
+            ->assertSessionHasErrors('password');
 
         $this->assertSame($user->email, $user->fresh()->email);
     }
@@ -62,7 +69,6 @@ class ProfileUpdateTest extends PlatformTestCase
         $this->actingAs($user)->patch('/account/profile', [
             'name' => $user->name,
             'email' => 'new@example.test',
-            'current_password' => 'password',
         ])->assertRedirect(route('account.profile.edit'));
 
         $user->refresh();
@@ -79,7 +85,6 @@ class ProfileUpdateTest extends PlatformTestCase
         $this->actingAs($user)->patch('/account/profile', [
             'name' => $user->name,
             'email' => $other->email,
-            'current_password' => 'password',
         ])->assertSessionHasErrors('email');
 
         $this->assertSame($user->email, $user->fresh()->email);
@@ -95,7 +100,6 @@ class ProfileUpdateTest extends PlatformTestCase
         $this->actingAs($user)->patch('/account/profile', [
             'name' => $user->name,
             'email' => 'changed@example.test',
-            'current_password' => 'password',
         ]);
 
         $this->actingAs($user)->get(route('platform.index'))->assertRedirect(route('verification.notice'));

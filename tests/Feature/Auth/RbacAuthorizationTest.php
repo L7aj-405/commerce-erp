@@ -7,6 +7,12 @@ use Tests\Support\PlatformTestCase;
 
 class RbacAuthorizationTest extends PlatformTestCase
 {
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->withFreshAuthentication();
+    }
+
     public function test_authorized_permission_succeeds_and_missing_permission_fails(): void
     {
         $owner = User::factory()->create();

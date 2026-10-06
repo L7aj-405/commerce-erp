@@ -23,6 +23,16 @@ abstract class PlatformTestCase extends TestCase
 {
     use RefreshDatabase;
 
+    protected function withFreshAuthentication(int $level = 2): static
+    {
+        $state = ['auth.fresh.account_confirmed_at' => time()];
+        if ($level >= 2) {
+            $state['auth.fresh.two_factor_confirmed_at'] = time();
+        }
+
+        return $this->withSession($state);
+    }
+
     protected function createOrganization(User $owner, string $name = 'Organization'): Organization
     {
         return app(OrganizationCreator::class)->create($owner, $name);

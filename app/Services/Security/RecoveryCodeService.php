@@ -20,7 +20,7 @@ class RecoveryCodeService
     public function generate(): array
     {
         return array_map(
-            fn () => Str::upper(Str::random(4).'-'.Str::random(4)),
+            fn () => Str::upper(Str::random(6).'-'.Str::random(6)),
             range(1, self::COUNT),
         );
     }

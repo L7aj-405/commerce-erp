@@ -9,6 +9,12 @@ use Tests\Support\PlatformTestCase;
 
 class OrganizationIsolationTest extends PlatformTestCase
 {
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->withFreshAuthentication();
+    }
+
     public function test_user_cannot_view_update_or_delete_another_organization(): void
     {
         $userA = User::factory()->create();

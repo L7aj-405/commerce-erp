@@ -144,21 +144,50 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->two_factor_secret !== null && $this->two_factor_confirmed_at !== null;
     }
 
-    /**
-     * Sprint 1.1 §7 — organization owners and admins are privileged accounts
-     * on a public multi-tenant SaaS (they can manage members, roles,
-     * integrations and settings for the whole organization), so 2FA is
-     * mandatory for them regardless of the organization's own `require_2fa`
-     * toggle — see EnsureTwoFactorPolicy. The `roles` table is unique per
-     * (organization_id, slug), so a custom role can never itself take the
-     * 'owner'/'admin' slug — checking the slug alone is sufficient.
-     */
     public function hasPrivilegedRoleIn(Organization $organization): bool
     {
+        $slugs = array_values(array_filter(config('security.privileged_role_slugs', []), 'is_string'));
+        $permissions = array_values(array_filter(config('security.privileged_permission_keys', []), 'is_string'));
+
         return $this->organizationMemberships()
             ->where('organization_id', $organization->getKey())
             ->where('status', 'active')
-            ->whereHas('role', fn ($query) => $query->whereIn('slug', ['owner', 'admin']))
+            ->whereHas('role', function ($query) use ($slugs, $permissions) {
+                $query->where(function ($roles) use ($slugs, $permissions) {
+                    if ($slugs !== []) {
+                        $roles->whereIn('slug', $slugs);
+                    } else {
+                        $roles->whereRaw('1 = 0');
+                    }
+
+                    if ($permissions !== []) {
+                        $roles->orWhereHas('permissions', fn ($query) => $query->whereIn('key', $permissions));
+                    }
+                });
+            })
+            ->exists();
+    }
+
+    public function isPrivilegedAccount(): bool
+    {
+        $slugs = array_values(array_filter(config('security.privileged_role_slugs', []), 'is_string'));
+        $permissions = array_values(array_filter(config('security.privileged_permission_keys', []), 'is_string'));
+
+        return $this->organizationMemberships()
+            ->where('status', 'active')
+            ->whereHas('role', function ($query) use ($slugs, $permissions) {
+                $query->where(function ($roles) use ($slugs, $permissions) {
+                    if ($slugs !== []) {
+                        $roles->whereIn('slug', $slugs);
+                    } else {
+                        $roles->whereRaw('1 = 0');
+                    }
+
+                    if ($permissions !== []) {
+                        $roles->orWhereHas('permissions', fn ($query) => $query->whereIn('key', $permissions));
+                    }
+                });
+            })
             ->exists();
     }
 }

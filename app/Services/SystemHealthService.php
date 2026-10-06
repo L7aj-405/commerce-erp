@@ -31,6 +31,7 @@ final class SystemHealthService
             $restricted = $this->check('unknown', 'Métrique globale réservée aux propriétaires privilégiés.');
             $checks = [
                 'application' => $includeGlobalMetrics ? $this->application() : $restricted,
+                'security' => $includeGlobalMetrics ? $this->securityConfiguration() : $restricted,
                 'database' => $includeGlobalMetrics ? $this->database() : $restricted,
                 'queue' => $includeGlobalMetrics ? $this->queue() : $restricted,
                 'scheduler' => $includeGlobalMetrics ? $this->scheduler() : $restricted,
@@ -67,6 +68,35 @@ final class SystemHealthService
             'version' => config('app.version') ?: config('system-health.app_version'),
             'commit' => config('system-health.commit_sha'),
             'build_at' => is_file($manifest) ? date(DATE_ATOM, filemtime($manifest)) : null,
+        ]);
+    }
+
+    /** @return array<string, mixed> */
+    private function securityConfiguration(): array
+    {
+        $production = app()->environment('production');
+        $debugSafe = ! (bool) config('app.debug');
+        $secureCookie = (bool) config('session.secure');
+        $httpOnly = (bool) config('session.http_only');
+        $appKeyConfigured = filled(config('app.key'));
+        $backupSigningConfigured = filled(config('organization-backups.signing_key'));
+        $backupEncryptionConfigured = filled(config('organization-backups.encryption_key'));
+
+        $critical = $production && (! $debugSafe || ! $secureCookie || ! $httpOnly || ! $appKeyConfigured);
+        $degraded = $production && (! $backupSigningConfigured || ! $backupEncryptionConfigured);
+        $status = $critical ? 'critical' : ($degraded ? 'degraded' : 'operational');
+
+        return $this->check($status, match ($status) {
+            'critical' => 'Une configuration de sécurité obligatoire est absente ou dangereuse.',
+            'degraded' => 'Les clés de sauvegarde obligatoires ne sont pas toutes configurées.',
+            default => 'Configuration de sécurité attendue disponible.',
+        }, [
+            'debug_safe' => $debugSafe,
+            'secure_session_cookie' => $secureCookie,
+            'http_only_session_cookie' => $httpOnly,
+            'app_key_configured' => $appKeyConfigured,
+            'backup_signing_key_configured' => $backupSigningConfigured,
+            'backup_encryption_key_configured' => $backupEncryptionConfigured,
         ]);
     }
 

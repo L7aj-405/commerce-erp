@@ -3,6 +3,7 @@
 use App\Http\Middleware\EnsureTwoFactorPolicy;
 use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Middleware\ResolveTenantContext;
+use App\Http\Middleware\RequireFreshAuthentication;
 use App\Http\Middleware\SecurityHeaders;
 use App\Support\TrustedProxyRanges;
 use Illuminate\Foundation\Application;
@@ -30,6 +31,7 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
         $middleware->alias([
             'two-factor.policy' => EnsureTwoFactorPolicy::class,
+            'fresh-auth' => RequireFreshAuthentication::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

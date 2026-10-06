@@ -15,7 +15,7 @@ type Snapshot = {
 };
 type Props = { snapshot: Snapshot; pollSeconds: number; canManage: boolean };
 
-const labels: Record<string, string> = { application: 'Application', database: 'Base de données', queue: 'File d’attente', scheduler: 'Scheduler', backups: 'Sauvegardes', woocommerce: 'WooCommerce', storage: 'Stockage', smtp: 'Email / SMTP' };
+const labels: Record<string, string> = { application: 'Application', security: 'Configuration de sécurité', database: 'Base de données', queue: 'File d’attente', scheduler: 'Scheduler', backups: 'Sauvegardes', woocommerce: 'WooCommerce', storage: 'Stockage', smtp: 'Email / SMTP' };
 const statusLabels: Record<Status, string> = { operational: 'Opérationnel', degraded: 'Dégradé', critical: 'Critique', unknown: 'Inconnu' };
 const statusStyles: Record<Status, string> = { operational: 'bg-success-soft text-success', degraded: 'bg-warning-soft text-warning', critical: 'bg-danger-soft text-danger', unknown: 'bg-raised text-ink-muted' };
 

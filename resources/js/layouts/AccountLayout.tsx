@@ -5,6 +5,7 @@ import type { PropsWithChildren } from 'react';
 const TABS = [
     { href: '/account/profile', label: 'Profil' },
     { href: '/security', label: 'Sécurité' },
+    { href: '/security/sessions', label: 'Sessions' },
 ];
 
 /**

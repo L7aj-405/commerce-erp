@@ -10,6 +10,7 @@ use App\Models\OrganizationMailSetting;
 use App\Services\ActiveTenantContext;
 use App\Services\AuditLogger;
 use App\Services\Security\OutboundDestinationGuard;
+use App\Services\Security\FreshAuthentication;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -43,10 +44,11 @@ class OrganizationMailSettingController extends Controller
         ]);
     }
 
-    public function update(Request $request, ActiveTenantContext $context, SaveOrganizationMailSettingAction $action, OutboundDestinationGuard $guard, AuditLogger $audit): RedirectResponse
+    public function update(Request $request, ActiveTenantContext $context, SaveOrganizationMailSettingAction $action, OutboundDestinationGuard $guard, AuditLogger $audit, FreshAuthentication $fresh): RedirectResponse
     {
         $organization = $context->organizationOrFail();
         $this->authorize('updateSettings', $organization);
+        $fresh->ensure($request, FreshAuthentication::LEVEL_TWO_FACTOR);
 
         $existing = $organization->mailSetting()->first();
 

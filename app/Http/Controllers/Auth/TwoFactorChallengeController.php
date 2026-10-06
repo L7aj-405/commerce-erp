@@ -39,9 +39,11 @@ class TwoFactorChallengeController extends Controller
             return redirect()->route('login');
         }
 
+        $user = User::query()->find($request->session()->get('login.2fa.user_id'));
+
         return Inertia::render('Auth/TwoFactorChallenge', [
-            'trustedDeviceDurations' => $trustedDevices->allowedDurations(),
-            'trustedDeviceDefaultDays' => $trustedDevices->defaultDuration(),
+            'trustedDeviceDurations' => $trustedDevices->allowedDurations($user),
+            'trustedDeviceDefaultDays' => $trustedDevices->defaultDuration($user),
         ]);
     }
 
@@ -80,7 +82,7 @@ class TwoFactorChallengeController extends Controller
                 Rule::requiredIf($request->boolean('trust_device')),
                 'nullable',
                 'integer',
-                Rule::in($trustedDevices->allowedDurations()),
+                Rule::in($trustedDevices->allowedDurations($user)),
             ],
         ]);
 
@@ -98,6 +100,10 @@ class TwoFactorChallengeController extends Controller
 
         if (! $verified) {
             RateLimiter::hit($throttleKey, self::COOLDOWN_SECONDS);
+            logger()->warning('auth.two_factor_failed', [
+                'user_id' => $user->getKey(),
+                'ip' => $request->ip(),
+            ]);
             throw ValidationException::withMessages(['code' => 'Code invalide.']);
         }
 
@@ -107,6 +113,14 @@ class TwoFactorChallengeController extends Controller
 
         Auth::login($user, $remember);
         $request->session()->regenerate();
+
+        $audit->record(
+            'auth.two_factor_succeeded',
+            $user,
+            $user->activeOrganization,
+            auditable: $user,
+            newValues: ['method' => $usedRecovery ? 'recovery_code' : 'totp'],
+        );
 
         if ($usedRecovery) {
             $audit->record('two_factor.recovery_code_used', $user, $user->activeOrganization, auditable: $user);

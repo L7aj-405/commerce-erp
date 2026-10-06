@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Settings;
 use App\Actions\Auth\SetInitialUserPasswordAction;
 use App\Http\Controllers\Controller;
 use App\Services\AuditLogger;
+use App\Services\Notifications\OperationalNotificationProducer;
 use App\Services\Security\TrustedTwoFactorDeviceManager;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -53,7 +54,12 @@ class PasswordController extends Controller
         ])->withCookie($trustedDevices->forgetCookie());
     }
 
-    public function update(Request $request, AuditLogger $audit, TrustedTwoFactorDeviceManager $trustedDevices): JsonResponse
+    public function update(
+        Request $request,
+        AuditLogger $audit,
+        TrustedTwoFactorDeviceManager $trustedDevices,
+        OperationalNotificationProducer $notifications,
+    ): JsonResponse
     {
         $user = $request->user();
 
@@ -82,7 +88,10 @@ class PasswordController extends Controller
             ->where('id', '!=', $request->session()->getId())
             ->delete();
 
-        $audit->record('auth.password_changed', $user, $user->activeOrganization, auditable: $user);
+        $log = $audit->record('auth.password_changed', $user, $user->activeOrganization, auditable: $user);
+        if ($organization = $user->activeOrganization) {
+            $notifications->accountSecurity($user, $organization, $log->getKey(), 'password_changed');
+        }
 
         return response()->json(['message' => 'Mot de passe modifié. Vos autres sessions et appareils de confiance ont été révoqués.'])
             ->withCookie($trustedDevices->forgetCookie());

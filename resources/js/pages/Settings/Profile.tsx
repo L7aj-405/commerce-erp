@@ -11,7 +11,7 @@ type Props = {
 };
 
 export default function Profile({ user, emailVerified, status }: Props) {
-    const form = useForm({ name: user.name, email: user.email, current_password: '' });
+    const form = useForm({ name: user.name, email: user.email });
     const resendForm = useForm({});
     const emailChanged = form.data.email !== user.email;
 
@@ -19,7 +19,6 @@ export default function Profile({ user, emailVerified, status }: Props) {
         event.preventDefault();
         form.patch('/account/profile', {
             preserveScroll: true,
-            onSuccess: () => form.setData('current_password', ''),
         });
     };
 
@@ -88,19 +87,9 @@ export default function Profile({ user, emailVerified, status }: Props) {
                     {emailChanged && (
                         <div className="rounded-field border border-line bg-raised p-3.5">
                             <p className="text-[13px] text-ink-muted">
-                                Changer votre adresse email est une opération sensible : confirmez votre mot de passe actuel pour continuer.
+                                Changer votre adresse email est une opération sensible : une confirmation de sécurité vous sera demandée avant de continuer.
                                 Vous devrez vérifier la nouvelle adresse avant de retrouver l’accès complet.
                             </p>
-                            <TextField
-                                label="Mot de passe actuel"
-                                type="password"
-                                name="current_password"
-                                autoComplete="current-password"
-                                className="mt-3"
-                                value={form.data.current_password}
-                                onChange={(event) => form.setData('current_password', event.target.value)}
-                                error={form.errors.current_password}
-                            />
                         </div>
                     )}
 

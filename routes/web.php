@@ -5,6 +5,7 @@ use App\Http\Controllers\Auth\ConfirmablePasswordController;
 use App\Http\Controllers\Auth\EmailVerificationNotificationController;
 use App\Http\Controllers\Auth\EmailVerificationPromptController;
 use App\Http\Controllers\Auth\GoogleAuthenticationController;
+use App\Http\Controllers\Auth\FreshAuthenticationController;
 use App\Http\Controllers\Auth\InvitationAcceptController;
 use App\Http\Controllers\Auth\NewPasswordController;
 use App\Http\Controllers\Auth\PasswordResetLinkController;
@@ -172,6 +173,16 @@ Route::middleware('auth')->group(function () {
     // action (see the `password.confirm` middleware on the 2FA routes below).
     Route::get('/confirm-password', [ConfirmablePasswordController::class, 'show'])->name('password.confirm');
     Route::post('/confirm-password', [ConfirmablePasswordController::class, 'store'])->middleware('throttle:6,1');
+
+    Route::get('/security/confirm', [FreshAuthenticationController::class, 'show'])->name('security.confirm');
+    Route::post('/security/confirm/password', [FreshAuthenticationController::class, 'password'])
+        ->middleware('throttle:6,1')->name('security.confirm.password');
+    Route::post('/security/confirm/two-factor', [FreshAuthenticationController::class, 'twoFactor'])
+        ->middleware('throttle:6,1')->name('security.confirm.two-factor');
+    Route::get('/security/confirm/google', [FreshAuthenticationController::class, 'googleRedirect'])
+        ->middleware('throttle:6,1')->name('security.confirm.google');
+    Route::get('/security/confirm/google/callback', [FreshAuthenticationController::class, 'googleCallback'])
+        ->middleware('throttle:10,1')->name('security.confirm.google.callback');
 });
 
 // Every business route in the ERP requires a verified email (§C — existing
@@ -203,16 +214,20 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
     Route::get('/quotation-settings', [QuotationSettingsController::class, 'edit'])->name('quotation-settings.edit');
     Route::put('/quotation-settings', [QuotationSettingsController::class, 'update'])->name('quotation-settings.update');
     Route::get('/email-settings', [OrganizationMailSettingController::class, 'edit'])->name('email-settings.edit');
-    Route::put('/email-settings', [OrganizationMailSettingController::class, 'update'])->name('email-settings.update');
+    Route::put('/email-settings', [OrganizationMailSettingController::class, 'update'])
+        ->middleware('throttle:6,1')->name('email-settings.update');
     Route::get('/return-policy', [ReturnPolicyController::class, 'edit'])->name('return-policy.edit');
     Route::put('/return-policy', [ReturnPolicyController::class, 'update'])->name('return-policy.update');
     Route::get('/organization-backups', [OrganizationBackupController::class, 'index'])->name('organization-backups.index');
     Route::put('/organization-backups/settings', [OrganizationBackupController::class, 'updateSettings'])->name('organization-backups.settings.update');
     Route::post('/organization-backups', [OrganizationBackupController::class, 'store'])->middleware('throttle:3,10')->name('organization-backups.store');
     Route::post('/organization-backups/validate', [OrganizationBackupController::class, 'validateUpload'])->middleware('throttle:10,10')->name('organization-backups.validate');
-    Route::get('/organization-backups/google-drive/connect', [OrganizationBackupCloudController::class, 'connect'])->name('organization-backups.google-drive.connect');
-    Route::get('/organization-backups/google-drive/callback', [OrganizationBackupCloudController::class, 'callback'])->name('organization-backups.google-drive.callback');
-    Route::post('/organization-backups/google-drive/test', [OrganizationBackupCloudController::class, 'test'])->name('organization-backups.google-drive.test');
+    Route::get('/organization-backups/google-drive/connect', [OrganizationBackupCloudController::class, 'connect'])
+        ->middleware('throttle:6,1')->name('organization-backups.google-drive.connect');
+    Route::get('/organization-backups/google-drive/callback', [OrganizationBackupCloudController::class, 'callback'])
+        ->middleware('throttle:10,1')->name('organization-backups.google-drive.callback');
+    Route::post('/organization-backups/google-drive/test', [OrganizationBackupCloudController::class, 'test'])
+        ->middleware('throttle:6,1')->name('organization-backups.google-drive.test');
     Route::delete('/organization-backups/google-drive', [OrganizationBackupCloudController::class, 'disconnect'])->name('organization-backups.google-drive.disconnect');
     Route::post('/organization-backups/cloud-copies/{cloudCopy}/retry', [OrganizationBackupCloudController::class, 'retry'])->name('organization-backups.cloud-copies.retry');
     Route::post('/organization-backups/cloud-copies/{cloudCopy}/validate', [OrganizationBackupCloudController::class, 'validateCloudBackup'])->name('organization-backups.cloud-copies.validate');
@@ -220,9 +235,10 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
     Route::post('/organization-backups/{organizationBackup}/validate', [OrganizationBackupController::class, 'validateHistory'])->name('organization-backups.history.validate');
     Route::get('/organization-backups/{organizationBackup}/download', [OrganizationBackupController::class, 'downloadHistory'])->name('organization-backups.history.download');
     Route::post('/organization-backups/restore', [OrganizationBackupController::class, 'restore'])
-        ->middleware(['password.confirm', 'throttle:3,10'])
+        ->middleware('throttle:3,10')
         ->name('organization-backups.restore');
-    Route::post('/email-settings/test', [OrganizationMailSettingController::class, 'test'])->name('email-settings.test');
+    Route::post('/email-settings/test', [OrganizationMailSettingController::class, 'test'])
+        ->middleware('throttle:6,1')->name('email-settings.test');
 
     // Account Settings (V1) — the authenticated user's OWN profile, never
     // organization membership/role/permissions (those stay under
@@ -231,8 +247,10 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
     // account pages, so they share the same verified-email + org-2FA-policy
     // gate rather than inventing a carve-out for one and not the other.
     Route::get('/account/profile', [ProfileController::class, 'edit'])->name('account.profile.edit');
-    Route::patch('/account/profile', [ProfileController::class, 'update'])->name('account.profile.update');
-    Route::post('/account/password/initial', [PasswordController::class, 'storeInitial'])->name('account.password.initial');
+    Route::patch('/account/profile', [ProfileController::class, 'update'])
+        ->middleware('fresh-auth:email-change')->name('account.profile.update');
+    Route::post('/account/password/initial', [PasswordController::class, 'storeInitial'])
+        ->middleware('fresh-auth:1')->name('account.password.initial');
     Route::patch('/account/password', [PasswordController::class, 'update'])->name('account.password.update');
 
     // Account security (§E) — TOTP two-factor authentication. Enrollment
@@ -240,8 +258,9 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
     // time from an already-authenticated session is the normal, expected
     // flow); disabling it or regenerating recovery codes does (§E8).
     Route::get('/security', [TwoFactorAuthenticationController::class, 'show'])->name('security.edit');
+    Route::get('/security/sessions', [ActiveSessionController::class, 'index'])->name('security.sessions.index');
     Route::post('/two-factor-authentication', [TwoFactorAuthenticationController::class, 'store'])
-        ->middleware('throttle:6,1')->name('two-factor.enable');
+        ->middleware(['fresh-auth:1', 'throttle:6,1'])->name('two-factor.enable');
     Route::post('/two-factor-authentication/confirm', [TwoFactorAuthenticationController::class, 'confirm'])
         ->middleware('throttle:6,1')->name('two-factor.confirm');
     // Password.confirm's automatic redirect-and-replay only really suits a
@@ -252,16 +271,17 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
     // stay in place as ready-made infra for a future GET-gated settings page
     // (change password/email) where the timestamp approach fits naturally.
     Route::delete('/two-factor-authentication', [TwoFactorAuthenticationController::class, 'destroy'])
-        ->middleware('throttle:6,1')->name('two-factor.disable');
+        ->middleware(['fresh-auth:2', 'throttle:6,1'])->name('two-factor.disable');
     Route::post('/two-factor-recovery-codes', [TwoFactorAuthenticationController::class, 'regenerateRecoveryCodes'])
-        ->middleware('throttle:6,1')->name('two-factor.recovery-codes.regenerate');
+        ->middleware(['fresh-auth:2', 'throttle:6,1'])->name('two-factor.recovery-codes.regenerate');
     // §8 — active sessions (see ActiveSessionController's class doc).
     Route::delete('/security/sessions/{token}', [ActiveSessionController::class, 'destroy'])->name('security.sessions.destroy');
-    Route::delete('/security/sessions', [ActiveSessionController::class, 'destroyOthers'])->name('security.sessions.destroy-others');
+    Route::delete('/security/sessions', [ActiveSessionController::class, 'destroyOthers'])
+        ->middleware('fresh-auth:1')->name('security.sessions.destroy-others');
     Route::delete('/security/trusted-devices/{device}', [TrustedTwoFactorDeviceController::class, 'destroy'])
         ->name('security.trusted-devices.destroy');
     Route::delete('/security/trusted-devices', [TrustedTwoFactorDeviceController::class, 'destroyAll'])
-        ->name('security.trusted-devices.destroy-all');
+        ->middleware('fresh-auth:2')->name('security.trusted-devices.destroy-all');
     Route::get('/document-stamp', [OrganizationDocumentStampController::class, 'edit'])->name('document-stamp.edit');
     Route::post('/document-stamp', [OrganizationDocumentStampController::class, 'store'])->name('document-stamp.store');
     Route::delete('/document-stamp', [OrganizationDocumentStampController::class, 'destroy'])->name('document-stamp.destroy');
@@ -408,10 +428,14 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
 
     Route::prefix('integrations')->name('integrations.')->group(function () {
         Route::get('/woocommerce', [WooCommerceIntegrationController::class, 'index'])->name('woocommerce.index');
-        Route::post('/woocommerce', [WooCommerceIntegrationController::class, 'store'])->name('woocommerce.store');
-        Route::patch('/woocommerce/{integration}', [WooCommerceIntegrationController::class, 'update'])->name('woocommerce.update');
-        Route::post('/woocommerce/{integration}/test', [WooCommerceIntegrationController::class, 'test'])->name('woocommerce.test');
-        Route::post('/woocommerce/{integration}/sync', [WooCommerceIntegrationController::class, 'sync'])->name('woocommerce.sync');
+        Route::post('/woocommerce', [WooCommerceIntegrationController::class, 'store'])
+            ->middleware('throttle:6,1')->name('woocommerce.store');
+        Route::patch('/woocommerce/{integration}', [WooCommerceIntegrationController::class, 'update'])
+            ->middleware('throttle:6,1')->name('woocommerce.update');
+        Route::post('/woocommerce/{integration}/test', [WooCommerceIntegrationController::class, 'test'])
+            ->middleware('throttle:6,1')->name('woocommerce.test');
+        Route::post('/woocommerce/{integration}/sync', [WooCommerceIntegrationController::class, 'sync'])
+            ->middleware('throttle:3,10')->name('woocommerce.sync');
         Route::get('/woocommerce/{integration}/status', [WooCommerceIntegrationController::class, 'runStatus'])->name('woocommerce.status');
 
         // Manual Woo stock bridge — operator checklist (Part A). No automatic

@@ -46,10 +46,24 @@ final class OperationalNotificationProducer
 
     public function security(User $user, Organization $organization, int $auditLogId, string $event): void
     {
-        [$title, $message] = $event === 'two_factor.disabled'
-            ? ['Double authentification désactivée', 'La double authentification de votre compte a été désactivée.']
-            : ['Codes de récupération renouvelés', 'De nouveaux codes de récupération ont été générés pour votre compte.'];
-        $this->publisher->publishToUser($user, $organization, NotificationCategory::Security, NotificationSeverity::Critical,
+        [$title, $message, $severity] = match ($event) {
+            'two_factor.enabled' => [
+                'Double authentification activée',
+                'La double authentification protège désormais votre compte.',
+                NotificationSeverity::Success,
+            ],
+            'two_factor.disabled' => [
+                'Double authentification désactivée',
+                'La double authentification de votre compte a été désactivée.',
+                NotificationSeverity::Critical,
+            ],
+            default => [
+                'Codes de récupération renouvelés',
+                'De nouveaux codes de récupération ont été générés pour votre compte.',
+                NotificationSeverity::Critical,
+            ],
+        };
+        $this->publisher->publishToUser($user, $organization, NotificationCategory::Security, $severity,
             $title, $message, '/security', 'audit_log', $auditLogId, $event);
     }
 
@@ -89,6 +103,46 @@ final class OperationalNotificationProducer
             'audit_log',
             $auditLogId,
             'two_factor.trusted_device_'.$event,
+        );
+    }
+
+    public function sessionSecurity(User $user, Organization $organization, int $auditLogId, string $event): void
+    {
+        [$title, $message] = $event === 'revoked_all'
+            ? ['Autres sessions déconnectées', 'Toutes les autres sessions actives de votre compte ont été déconnectées.']
+            : ['Session déconnectée', 'Une autre session active de votre compte a été déconnectée.'];
+
+        $this->publisher->publishToUser(
+            $user,
+            $organization,
+            NotificationCategory::Security,
+            NotificationSeverity::Warning,
+            $title,
+            $message,
+            '/security/sessions',
+            'audit_log',
+            $auditLogId,
+            'auth.session_'.$event,
+        );
+    }
+
+    public function accountSecurity(User $user, Organization $organization, int $auditLogId, string $event): void
+    {
+        [$title, $message] = $event === 'email_changed'
+            ? ['Adresse email modifiée', 'L’adresse email de connexion de votre compte a été modifiée.']
+            : ['Mot de passe modifié', 'Le mot de passe de votre compte a été modifié et vos autres sessions ont été déconnectées.'];
+
+        $this->publisher->publishToUser(
+            $user,
+            $organization,
+            NotificationCategory::Security,
+            NotificationSeverity::Critical,
+            $title,
+            $message,
+            '/security',
+            'audit_log',
+            $auditLogId,
+            'auth.'.$event,
         );
     }
 

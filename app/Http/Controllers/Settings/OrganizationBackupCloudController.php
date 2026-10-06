@@ -14,6 +14,7 @@ use App\Services\OrganizationBackups\OrganizationBackupException;
 use App\Services\OrganizationBackups\OrganizationBackupValidator;
 use App\Services\OrganizationBackups\PersonalCloud\PersonalBackupStorageManager;
 use App\Services\OrganizationBackups\PersonalCloud\PersonalCloudBackupException;
+use App\Services\Security\FreshAuthentication;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
@@ -21,10 +22,11 @@ use Illuminate\Support\Str;
 
 class OrganizationBackupCloudController extends Controller
 {
-    public function connect(Request $request, ActiveTenantContext $context, PersonalBackupStorageManager $providers): RedirectResponse
+    public function connect(Request $request, ActiveTenantContext $context, PersonalBackupStorageManager $providers, FreshAuthentication $fresh): RedirectResponse
     {
         $organization = $context->organizationOrFail();
         abort_unless($request->user()->hasPermission($organization, 'organization_backups.create'), 403);
+        $fresh->ensure($request, FreshAuthentication::LEVEL_TWO_FACTOR);
 
         $state = Str::random(48);
         session([
@@ -124,9 +126,11 @@ class OrganizationBackupCloudController extends Controller
         ActiveTenantContext $context,
         PersonalBackupStorageManager $providers,
         AuditLogger $audit,
+        FreshAuthentication $fresh,
     ): RedirectResponse {
         $organization = $context->organizationOrFail();
         abort_unless($request->user()->hasPermission($organization, 'organization_backups.create'), 403);
+        $fresh->ensure($request, FreshAuthentication::LEVEL_TWO_FACTOR);
         $connection = $this->googleConnection($organization->getKey());
 
         try {

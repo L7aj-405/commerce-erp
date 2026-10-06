@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Auth;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Services\AuditLogger;
+use App\Services\Notifications\OperationalNotificationProducer;
 use App\Services\Security\TrustedTwoFactorDeviceManager;
 use Illuminate\Auth\Events\PasswordReset;
 use Illuminate\Http\RedirectResponse;
@@ -35,7 +36,12 @@ class NewPasswordController extends Controller
         ]);
     }
 
-    public function store(Request $request, AuditLogger $audit, TrustedTwoFactorDeviceManager $trustedDevices): RedirectResponse
+    public function store(
+        Request $request,
+        AuditLogger $audit,
+        TrustedTwoFactorDeviceManager $trustedDevices,
+        OperationalNotificationProducer $notifications,
+    ): RedirectResponse
     {
         $data = $request->validate([
             'token' => ['required'],
@@ -45,7 +51,7 @@ class NewPasswordController extends Controller
 
         $status = Password::broker()->reset(
             $data,
-            function (User $user) use ($request, $audit, $trustedDevices): void {
+            function (User $user) use ($request, $audit, $trustedDevices, $notifications): void {
                 $user->forceFill([
                     'password' => $request->string('password')->toString(),
                     'remember_token' => Str::random(60),
@@ -60,7 +66,10 @@ class NewPasswordController extends Controller
 
                 event(new PasswordReset($user));
 
-                $audit->record('auth.password_reset', $user, $user->activeOrganization, auditable: $user);
+                $log = $audit->record('auth.password_reset', $user, $user->activeOrganization, auditable: $user);
+                if ($organization = $user->activeOrganization) {
+                    $notifications->accountSecurity($user, $organization, $log->getKey(), 'password_changed');
+                }
             }
         );
 

@@ -7,6 +7,7 @@ use App\Models\OrganizationMembership;
 use App\Models\Role;
 use App\Models\User;
 use App\Services\MembershipService;
+use App\Services\Security\FreshAuthentication;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -21,9 +22,10 @@ class OrganizationMembershipController extends Controller
      * the given email, this 422s — the caller should fall back to the invite
      * flow (see OrganizationInvitationController).
      */
-    public function store(Request $request, Organization $organization, MembershipService $memberships): RedirectResponse
+    public function store(Request $request, Organization $organization, MembershipService $memberships, FreshAuthentication $fresh): RedirectResponse
     {
         $this->authorize('create', [OrganizationMembership::class, $organization]);
+        $fresh->ensure($request, FreshAuthentication::LEVEL_TWO_FACTOR);
 
         $data = $request->validate([
             'user_id' => ['required_without:email', 'nullable', 'integer', Rule::exists('users', 'id')],
@@ -57,9 +59,10 @@ class OrganizationMembershipController extends Controller
         return back();
     }
 
-    public function update(Request $request, OrganizationMembership $membership, MembershipService $memberships): RedirectResponse
+    public function update(Request $request, OrganizationMembership $membership, MembershipService $memberships, FreshAuthentication $fresh): RedirectResponse
     {
         $this->authorize('update', $membership);
+        $fresh->ensure($request, FreshAuthentication::LEVEL_TWO_FACTOR);
 
         $data = $request->validate([
             'role_id' => [
@@ -85,9 +88,10 @@ class OrganizationMembershipController extends Controller
         return back();
     }
 
-    public function destroy(Request $request, OrganizationMembership $membership, MembershipService $memberships): RedirectResponse
+    public function destroy(Request $request, OrganizationMembership $membership, MembershipService $memberships, FreshAuthentication $fresh): RedirectResponse
     {
         $this->authorize('delete', $membership);
+        $fresh->ensure($request, FreshAuthentication::LEVEL_TWO_FACTOR);
         $memberships->removeOrganizationMember($request->user(), $membership);
 
         return back();

@@ -7,6 +7,7 @@ use App\Models\Role;
 use App\Services\ActiveTenantContext;
 use App\Services\AuditLogger;
 use App\Services\RolePermissionService;
+use App\Services\Security\FreshAuthentication;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -34,10 +35,11 @@ class RoleController extends Controller
      * permission they didn't already hold themselves. Omitting both starts
      * the role ("Custom") with zero permissions.
      */
-    public function store(Request $request, ActiveTenantContext $context, AuditLogger $audit, RolePermissionService $permissionService): RedirectResponse
+    public function store(Request $request, ActiveTenantContext $context, AuditLogger $audit, RolePermissionService $permissionService, FreshAuthentication $fresh): RedirectResponse
     {
         $organization = $context->organizationOrFail();
         $this->authorize('create', [Role::class, $organization]);
+        $fresh->ensure($request, FreshAuthentication::LEVEL_TWO_FACTOR);
 
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
@@ -119,9 +121,10 @@ class RoleController extends Controller
         return back();
     }
 
-    public function permissions(Request $request, Role $role, RolePermissionService $service): RedirectResponse
+    public function permissions(Request $request, Role $role, RolePermissionService $service, FreshAuthentication $fresh): RedirectResponse
     {
         $this->authorize('assignPermissions', $role);
+        $fresh->ensure($request, FreshAuthentication::LEVEL_TWO_FACTOR);
 
         $data = $request->validate([
             'permission_ids' => ['present', 'array'],
@@ -134,9 +137,10 @@ class RoleController extends Controller
         return back();
     }
 
-    public function destroy(Request $request, Role $role, AuditLogger $audit): RedirectResponse
+    public function destroy(Request $request, Role $role, AuditLogger $audit, FreshAuthentication $fresh): RedirectResponse
     {
         $this->authorize('delete', $role);
+        $fresh->ensure($request, FreshAuthentication::LEVEL_TWO_FACTOR);
 
         $organization = $role->organization;
         $values = $role->only(['name', 'slug']);

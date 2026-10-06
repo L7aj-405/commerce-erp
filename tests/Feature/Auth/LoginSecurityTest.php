@@ -37,6 +37,23 @@ class LoginSecurityTest extends PlatformTestCase
         $this->assertAuthenticatedAs($user);
     }
 
+    public function test_successful_password_login_is_recorded_without_credentials(): void
+    {
+        $user = User::factory()->create(['email' => 'audited@example.com']);
+
+        $this->post(route('login.store'), [
+            'email' => $user->email,
+            'password' => 'password',
+        ])->assertRedirect(route('platform.index'));
+
+        $this->assertDatabaseHas('audit_logs', [
+            'actor_id' => $user->getKey(),
+            'event' => 'auth.login_succeeded',
+        ]);
+        $payload = \App\Models\AuditLog::query()->where('event', 'auth.login_succeeded')->sole()->new_values;
+        $this->assertSame(['second_factor' => 'not_enabled'], $payload);
+    }
+
     public function test_after_three_failures_a_challenge_is_required_even_with_the_correct_password(): void
     {
         $user = User::factory()->create(['email' => 'owner@example.com']);

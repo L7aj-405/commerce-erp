@@ -15,6 +15,7 @@ use App\Services\OrganizationBackups\OrganizationBackupSchedule;
 use App\Services\OrganizationBackups\OrganizationBackupSettingsService;
 use App\Services\OrganizationBackups\OrganizationBackupStorage;
 use App\Services\OrganizationBackups\OrganizationBackupValidator;
+use App\Services\Security\FreshAuthentication;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -244,10 +245,11 @@ class OrganizationBackupController extends Controller
         ])->deleteFileAfterSend(true);
     }
 
-    public function restore(Request $request, ActiveTenantContext $context, RestoreOrganizationBackupAction $action): RedirectResponse
+    public function restore(Request $request, ActiveTenantContext $context, RestoreOrganizationBackupAction $action, FreshAuthentication $fresh): RedirectResponse
     {
         $organization = $context->organizationOrFail();
         abort_unless($request->user()->hasPermission($organization, 'organization_backups.restore'), 403);
+        $fresh->ensure($request, FreshAuthentication::LEVEL_TWO_FACTOR);
         $data = $request->validate([
             'token' => ['required', 'string'],
             'confirm' => ['accepted'],

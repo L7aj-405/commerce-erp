@@ -12,9 +12,6 @@ use App\Services\Security\TrustedTwoFactorDeviceManager;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -31,7 +28,6 @@ class TwoFactorAuthenticationController extends Controller
     public function show(Request $request, TrustedTwoFactorDeviceManager $trustedDevices): Response
     {
         $user = $request->user();
-        $currentSessionId = $request->session()->getId();
 
         return Inertia::render('Settings/Security', [
             // Surfaces EnsureTwoFactorPolicy's redirect explanation (e.g. "Votre
@@ -63,21 +59,6 @@ class TwoFactorAuthenticationController extends Controller
                     'lastUsedAt' => $device->last_used_at?->toIso8601String(),
                     'expiresAt' => $device->expires_at->toIso8601String(),
                     'isCurrent' => $trustedDevices->currentDeviceId($request) === $device->getKey(),
-                ])
-                ->values(),
-            // §8 — active sessions (database session driver only, see
-            // ActiveSessionController's class doc for why the raw id is
-            // never sent to the client).
-            'sessions' => DB::table('sessions')
-                ->where('user_id', $user->getKey())
-                ->orderByDesc('last_activity')
-                ->get(['id', 'ip_address', 'user_agent', 'last_activity'])
-                ->map(fn ($session) => [
-                    'token' => ActiveSessionController::opaqueToken($session->id),
-                    'isCurrent' => hash_equals($session->id, $currentSessionId),
-                    'ipAddress' => $session->ip_address,
-                    'userAgent' => $session->user_agent,
-                    'lastActiveAt' => Carbon::createFromTimestamp($session->last_activity)->toIso8601String(),
                 ])
                 ->values(),
         ]);
@@ -125,7 +106,10 @@ class TwoFactorAuthenticationController extends Controller
             'two_factor_recovery_codes' => $recovery->hash($plainCodes),
         ])->save();
 
-        $audit->record('two_factor.enabled', $user, $user->activeOrganization, auditable: $user);
+        $log = $audit->record('two_factor.enabled', $user, $user->activeOrganization, auditable: $user);
+        if ($organization = $user->activeOrganization) {
+            app(OperationalNotificationProducer::class)->security($user, $organization, $log->getKey(), 'two_factor.enabled');
+        }
 
         return response()->json(['recovery_codes' => $plainCodes]);
     }
@@ -133,8 +117,6 @@ class TwoFactorAuthenticationController extends Controller
     /** §E8 — the password is part of this exact request, not a stale session timestamp. */
     public function destroy(Request $request, AuditLogger $audit, TrustedTwoFactorDeviceManager $trustedDevices): RedirectResponse
     {
-        $this->confirmPassword($request);
-
         $user = $request->user();
         $user->forceFill([
             'two_factor_secret' => null,
@@ -157,8 +139,6 @@ class TwoFactorAuthenticationController extends Controller
     /** §E8 — the password is part of this exact request, not a stale session timestamp. */
     public function regenerateRecoveryCodes(Request $request, RecoveryCodeService $recovery, AuditLogger $audit): JsonResponse
     {
-        $this->confirmPassword($request);
-
         $user = $request->user();
         abort_unless($user->hasEnabledTwoFactorAuthentication(), 422, 'La double authentification n’est pas activée.');
 
@@ -171,14 +151,5 @@ class TwoFactorAuthenticationController extends Controller
         }
 
         return response()->json(['recovery_codes' => $plainCodes]);
-    }
-
-    private function confirmPassword(Request $request): void
-    {
-        $data = $request->validate(['password' => ['required', 'string']]);
-
-        if (! Auth::guard('web')->validate(['email' => $request->user()->email, 'password' => $data['password']])) {
-            throw ValidationException::withMessages(['password' => 'Mot de passe incorrect.']);
-        }
     }
 }

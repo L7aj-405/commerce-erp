@@ -15,6 +15,12 @@ use Tests\Support\DocumentTestCase;
  */
 class FinanceAuthorizationTest extends DocumentTestCase
 {
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->withFreshAuthentication();
+    }
+
     public function test_finance_totals_are_strictly_scoped_to_the_requesting_organization(): void
     {
         $ownerA = User::factory()->create();

@@ -15,6 +15,16 @@ use Tests\Support\PlatformTestCase;
  */
 class TwoFactorAuthenticationTest extends PlatformTestCase
 {
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->withSession([
+            'auth.fresh.account_confirmed_at' => time(),
+            'auth.fresh.two_factor_confirmed_at' => time(),
+        ]);
+    }
+
     private function currentCodeFor(User $user): string
     {
         return $this->totpCodeFor($user->fresh()->two_factor_secret);
@@ -183,6 +193,10 @@ class TwoFactorAuthenticationTest extends PlatformTestCase
             ->assertRedirect(route('platform.index'));
 
         $this->assertAuthenticatedAs($user);
+        $this->assertDatabaseHas('audit_logs', [
+            'actor_id' => $user->getKey(),
+            'event' => 'auth.two_factor_succeeded',
+        ]);
     }
 
     public function test_an_invalid_totp_code_is_rejected_and_the_session_stays_unauthenticated(): void
@@ -232,7 +246,10 @@ class TwoFactorAuthenticationTest extends PlatformTestCase
     {
         [$user, $oldCode] = $this->enrolledUserWithRecoveryCode();
 
-        $response = $this->actingAs($user)->postJson('/two-factor-recovery-codes', ['password' => 'password'])->assertOk();
+        $response = $this->actingAs($user)
+            ->withFreshAuthentication()
+            ->postJson('/two-factor-recovery-codes')
+            ->assertOk();
         $newCodes = $response->json('recovery_codes');
         $this->assertNotContains($oldCode, $newCodes);
 
@@ -241,23 +258,29 @@ class TwoFactorAuthenticationTest extends PlatformTestCase
         $this->post(route('two-factor.challenge.store'), ['code' => $oldCode])->assertSessionHasErrors('code');
     }
 
-    public function test_regenerating_recovery_codes_with_the_wrong_password_is_rejected(): void
+    public function test_regenerating_recovery_codes_requires_fresh_level_two_authentication(): void
     {
         [$user] = $this->enrolledUserWithRecoveryCode();
 
-        $this->actingAs($user)->postJson('/two-factor-recovery-codes', ['password' => 'not-the-password'])
-            ->assertStatus(422);
+        $this->flushSession();
+        $this->actingAs($user)->postJson('/two-factor-recovery-codes')
+            ->assertStatus(409)
+            ->assertJsonPath('reauthentication_url', route('security.confirm'));
     }
 
-    public function test_disabling_two_factor_requires_the_correct_password(): void
+    public function test_disabling_two_factor_requires_fresh_level_two_authentication(): void
     {
         [$user] = $this->enrolledUserWithRecoveryCode();
 
-        $this->actingAs($user)->json('DELETE', '/two-factor-authentication', ['password' => 'not-the-password'])
-            ->assertStatus(422);
+        $this->flushSession();
+        $this->actingAs($user)->json('DELETE', '/two-factor-authentication')
+            ->assertStatus(409);
         $this->assertTrue($user->fresh()->hasEnabledTwoFactorAuthentication());
 
-        $this->actingAs($user)->json('DELETE', '/two-factor-authentication', ['password' => 'password'])
+        $this->withSession([
+            'auth.fresh.account_confirmed_at' => time(),
+            'auth.fresh.two_factor_confirmed_at' => time(),
+        ])->actingAs($user)->json('DELETE', '/two-factor-authentication')
             ->assertRedirect();
         $this->assertFalse($user->fresh()->hasEnabledTwoFactorAuthentication());
     }
@@ -311,6 +334,21 @@ class TwoFactorAuthenticationTest extends PlatformTestCase
         $this->activate($employee, $organization);
 
         $this->actingAs($employee)->get(route('platform.index'))->assertOk();
+    }
+
+    public function test_configured_privileged_permission_profile_requires_two_factor_without_a_hardcoded_role_name(): void
+    {
+        $owner = User::factory()->create();
+        $organization = $this->createOrganization($owner);
+        $this->configureOrganizationSecurity($organization, requireTwoFactorForPrivilegedRoles: true);
+        $member = User::factory()->create();
+        $role = $this->createRole($organization, ['roles.assign-permissions'], 'Custom security administrator');
+        $membership = $this->addOrganizationMember($organization, $member, [], roleName: 'Temporary role');
+        $membership->role_id = $role->getKey();
+        $membership->save();
+        $this->activate($member, $organization);
+
+        $this->actingAs($member)->get(route('platform.index'))->assertRedirect(route('security.edit'));
     }
 
     public function test_privileged_role_two_factor_policy_does_not_block_an_owner_who_already_has_it_enabled(): void

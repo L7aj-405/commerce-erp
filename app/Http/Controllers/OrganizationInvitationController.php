@@ -6,6 +6,7 @@ use App\Models\Organization;
 use App\Models\Role;
 use App\Models\UserInvitation;
 use App\Services\InvitationService;
+use App\Services\Security\FreshAuthentication;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -16,9 +17,10 @@ use Illuminate\Validation\Rule;
  */
 class OrganizationInvitationController extends Controller
 {
-    public function store(Request $request, Organization $organization, InvitationService $invitations): RedirectResponse
+    public function store(Request $request, Organization $organization, InvitationService $invitations, FreshAuthentication $fresh): RedirectResponse
     {
         $this->authorize('create', [UserInvitation::class, $organization]);
+        $fresh->ensure($request, FreshAuthentication::LEVEL_TWO_FACTOR);
 
         $data = $request->validate([
             'email' => ['required', 'email', 'max:255'],

@@ -18,6 +18,12 @@ use Tests\Support\PlatformTestCase;
  */
 class EmailVerificationTest extends PlatformTestCase
 {
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->withFreshAuthentication();
+    }
+
     public function test_registration_remains_publicly_available(): void
     {
         $this->get(route('register'))->assertOk();

@@ -10,6 +10,12 @@ use Tests\Support\PlatformTestCase;
 
 class RolePresetTest extends PlatformTestCase
 {
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->withFreshAuthentication();
+    }
+
     public function test_owner_can_create_general_admin_preset_role_with_finance_access(): void
     {
         $owner = User::factory()->create();

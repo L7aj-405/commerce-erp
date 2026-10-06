@@ -11,6 +11,12 @@ use Tests\Support\PlatformTestCase;
 
 class SettingsViewPermissionTest extends PlatformTestCase
 {
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->withFreshAuthentication();
+    }
+
     public function test_settings_view_grants_read_only_access_to_document_profile(): void
     {
         $owner = User::factory()->create();

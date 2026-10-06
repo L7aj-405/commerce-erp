@@ -567,13 +567,13 @@ class OrganizationBackupTest extends DocumentTestCase
             ->assertSessionHasErrors('backup');
     }
 
-    public function test_restore_requires_a_recent_password_confirmation(): void
+    public function test_restore_requires_recent_fresh_authentication(): void
     {
         [$owner] = $this->backupFixture();
 
         $this->actingAs($owner)
             ->post(route('organization-backups.restore'), ['token' => 'invalid-token'])
-            ->assertRedirect(route('password.confirm'));
+            ->assertRedirect(route('security.confirm'));
     }
 
     /** @return array{User, \App\Models\Organization, \App\Models\Store, \App\Models\Warehouse, \App\Models\ProductVariant, \App\Models\SalesOrder, \App\Models\Invoice, Payment} */

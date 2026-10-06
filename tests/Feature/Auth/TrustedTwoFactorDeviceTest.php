@@ -5,6 +5,7 @@ namespace Tests\Feature\Auth;
 use App\Models\TrustedTwoFactorDevice;
 use App\Models\User;
 use App\Services\Security\RecoveryCodeService;
+use App\Services\Security\TrustedTwoFactorDeviceManager;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Notification;
 use Tests\Support\PlatformTestCase;
@@ -12,6 +13,16 @@ use Tests\Support\PlatformTestCase;
 class TrustedTwoFactorDeviceTest extends PlatformTestCase
 {
     private const RECOVERY_CODE = 'ABCD-EFGH';
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->withSession([
+            'auth.fresh.account_confirmed_at' => time(),
+            'auth.fresh.two_factor_confirmed_at' => time(),
+        ]);
+    }
 
     private function enabledUser(bool $withOrganization = false): User
     {
@@ -133,6 +144,36 @@ class TrustedTwoFactorDeviceTest extends PlatformTestCase
 
         $this->assertGuest();
         $this->assertDatabaseCount('trusted_two_factor_devices', 0);
+    }
+
+    public function test_privileged_accounts_receive_the_shorter_centrally_configured_duration_list(): void
+    {
+        config([
+            'two-factor.trusted_device_max_days' => 30,
+            'two-factor.trusted_device_privileged_max_days' => 15,
+        ]);
+        $privileged = $this->enabledUser(withOrganization: true);
+        $standard = $this->enabledUser();
+        $manager = app(TrustedTwoFactorDeviceManager::class);
+
+        $this->assertSame([7, 15], $manager->allowedDurations($privileged));
+        $this->assertSame([7, 15, 20, 30], $manager->allowedDurations($standard));
+    }
+
+    public function test_an_existing_long_grant_stops_working_at_the_privileged_cap_without_mutating_its_expiry(): void
+    {
+        config(['two-factor.trusted_device_privileged_max_days' => 15]);
+        $user = $this->enabledUser(withOrganization: true);
+        [$device, $cookie] = $this->trustedDevice($user, ['expires_at' => now()->addDays(30)]);
+        $originalExpiry = $device->expires_at->toDateTimeString();
+        $this->travel(16)->days();
+
+        $this->withCookie(config('two-factor.trusted_device_cookie'), $cookie)
+            ->post(route('login.store'), ['email' => $user->email, 'password' => 'password'])
+            ->assertRedirect(route('two-factor.challenge.show'));
+
+        $this->assertGuest();
+        $this->assertSame($originalExpiry, $device->fresh()->expires_at->toDateTimeString());
     }
 
     public function test_user_can_revoke_one_or_all_own_devices_but_not_another_users_device(): void

@@ -16,6 +16,7 @@ use App\Models\WooCommerceSyncRun;
 use App\Services\ActiveTenantContext;
 use App\Services\AuditLogger;
 use App\Services\Security\OutboundDestinationGuard;
+use App\Services\Security\FreshAuthentication;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -70,10 +71,11 @@ class WooCommerceIntegrationController extends Controller
         ]);
     }
 
-    public function store(Request $request, ActiveTenantContext $context, SaveWooCommerceIntegrationAction $action, OutboundDestinationGuard $guard, AuditLogger $audit): RedirectResponse
+    public function store(Request $request, ActiveTenantContext $context, SaveWooCommerceIntegrationAction $action, OutboundDestinationGuard $guard, AuditLogger $audit, FreshAuthentication $fresh): RedirectResponse
     {
         $organization = $context->organizationOrFail();
         $this->authorize('create', [WooCommerceIntegration::class, $organization]);
+        $fresh->ensure($request, FreshAuthentication::LEVEL_TWO_FACTOR);
 
         $data = $this->validated($request, $organization->getKey(), creating: true);
         $this->assertSafeStoreUrl($data['store_url'], $guard, $audit, $request->user(), $organization);
@@ -82,10 +84,11 @@ class WooCommerceIntegrationController extends Controller
         return redirect()->route('integrations.woocommerce.index')->with('success', 'Intégration WooCommerce enregistrée.');
     }
 
-    public function update(Request $request, ActiveTenantContext $context, WooCommerceIntegration $integration, SaveWooCommerceIntegrationAction $action, OutboundDestinationGuard $guard, AuditLogger $audit): RedirectResponse
+    public function update(Request $request, ActiveTenantContext $context, WooCommerceIntegration $integration, SaveWooCommerceIntegrationAction $action, OutboundDestinationGuard $guard, AuditLogger $audit, FreshAuthentication $fresh): RedirectResponse
     {
         $context->organizationOrFail();
         $this->authorize('update', $integration);
+        $fresh->ensure($request, FreshAuthentication::LEVEL_TWO_FACTOR);
 
         $data = $this->validated($request, $integration->organization_id, creating: false);
         $this->assertSafeStoreUrl($data['store_url'], $guard, $audit, $request->user(), $integration->organization);

@@ -4,12 +4,11 @@ namespace App\Http\Controllers\Settings;
 
 use App\Http\Controllers\Controller;
 use App\Services\AuditLogger;
+use App\Services\Notifications\OperationalNotificationProducer;
 use App\Services\Security\TrustedTwoFactorDeviceManager;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\Rule;
-use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -41,14 +40,18 @@ class ProfileController extends Controller
         ]);
     }
 
-    public function update(Request $request, AuditLogger $audit, TrustedTwoFactorDeviceManager $trustedDevices): RedirectResponse
+    public function update(
+        Request $request,
+        AuditLogger $audit,
+        TrustedTwoFactorDeviceManager $trustedDevices,
+        OperationalNotificationProducer $notifications,
+    ): RedirectResponse
     {
         $user = $request->user();
 
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'email', 'max:255', Rule::unique('users', 'email')->ignore($user->getKey())],
-            'current_password' => ['nullable', 'string'],
         ], [
             'name.required' => 'Indiquez votre nom.',
             'email.required' => 'Indiquez votre adresse email.',
@@ -57,18 +60,6 @@ class ProfileController extends Controller
         ]);
 
         $emailChanged = $data['email'] !== $user->email;
-
-        if ($emailChanged) {
-            if (blank($data['current_password'] ?? null)) {
-                throw ValidationException::withMessages([
-                    'current_password' => 'Votre mot de passe actuel est requis pour changer d’adresse email.',
-                ]);
-            }
-
-            if (! Auth::guard('web')->validate(['email' => $user->email, 'password' => $data['current_password']])) {
-                throw ValidationException::withMessages(['current_password' => 'Mot de passe incorrect.']);
-            }
-        }
 
         $oldValues = ['name' => $user->name, 'email' => $user->email];
 
@@ -81,7 +72,7 @@ class ProfileController extends Controller
 
         $user->save();
 
-        $audit->record(
+        $log = $audit->record(
             $emailChanged ? 'account.email_changed' : 'account.profile_updated',
             $user,
             $user->activeOrganization,
@@ -92,6 +83,9 @@ class ProfileController extends Controller
 
         if ($emailChanged) {
             $trustedDevices->revokeAll($user);
+            if ($organization = $user->activeOrganization) {
+                $notifications->accountSecurity($user, $organization, $log->getKey(), 'email_changed');
+            }
             $user->sendEmailVerificationNotification();
 
             return redirect()->route('account.profile.edit')

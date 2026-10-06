@@ -5,6 +5,7 @@ namespace Tests\Feature\Auth;
 use App\Http\Controllers\Settings\ActiveSessionController;
 use App\Models\User;
 use App\Services\AuditLogger;
+use App\Services\Notifications\OperationalNotificationProducer;
 use Illuminate\Http\Request;
 use Illuminate\Session\ArraySessionHandler;
 use Illuminate\Session\Store;
@@ -44,15 +45,19 @@ class ActiveSessionTest extends PlatformTestCase
         $user = User::factory()->create();
         $this->insertSession('other-device-session', $user, now()->subMinute()->timestamp);
 
-        $response = $this->actingAs($user)->withHeader('X-Inertia', 'true')->get(route('security.edit'));
+        $response = $this->actingAs($user)->withHeader('X-Inertia', 'true')->get(route('security.sessions.index'));
 
         $response->assertOk();
         $sessions = $response->json('props.sessions');
         $this->assertNotEmpty($sessions);
         foreach ($sessions as $session) {
             $this->assertArrayNotHasKey('id', $session);
+            $this->assertArrayNotHasKey('userAgent', $session);
             $this->assertNotSame('other-device-session', $session['token']);
         }
+        $listed = collect($sessions)->first(fn (array $session) => ! $session['isCurrent']);
+        $this->assertSame('Navigateur sur Appareil', $listed['deviceLabel']);
+        $this->assertSame('198.51.100.xxx', $listed['ipAddress']);
     }
 
     public function test_the_current_session_is_flagged_and_cannot_be_revoked_via_this_endpoint(): void
@@ -76,7 +81,12 @@ class ActiveSessionTest extends PlatformTestCase
             $currentSessionId,
         ));
 
-        (new ActiveSessionController)->destroy($request, $token, new AuditLogger($request));
+        (new ActiveSessionController)->destroy(
+            $request,
+            $token,
+            new AuditLogger($request),
+            app(OperationalNotificationProducer::class),
+        );
 
         // The controller explicitly excludes the requester's own current
         // session from the candidates it will ever delete.
@@ -116,10 +126,28 @@ class ActiveSessionTest extends PlatformTestCase
         $this->insertSession('mine-b', $user, now()->timestamp);
         $this->insertSession('someone-elses', $otherUser, now()->timestamp);
 
-        $this->actingAs($user)->delete('/security/sessions')->assertRedirect();
+        $this->actingAs($user)
+            ->withSession(['auth.fresh.account_confirmed_at' => time()])
+            ->delete('/security/sessions')->assertRedirect();
 
         $this->assertDatabaseMissing('sessions', ['id' => 'mine-a']);
         $this->assertDatabaseMissing('sessions', ['id' => 'mine-b']);
         $this->assertDatabaseHas('sessions', ['id' => 'someone-elses']);
+    }
+
+    public function test_session_revocation_notifies_only_the_affected_user_without_exposing_session_id(): void
+    {
+        $user = User::factory()->create();
+        $organization = $this->createOrganization($user);
+        $this->activate($user, $organization);
+        $this->insertSession('notification-session-secret', $user, now()->timestamp);
+
+        $this->actingAs($user)
+            ->delete('/security/sessions/'.ActiveSessionController::opaqueToken('notification-session-secret'))
+            ->assertRedirect();
+
+        $notification = $user->inAppNotifications()->where('event_type', 'auth.session_revoked')->sole();
+        $this->assertStringNotContainsString('notification-session-secret', $notification->message);
+        $this->assertDatabaseHas('audit_logs', ['event' => 'auth.session_revoked', 'actor_id' => $user->getKey()]);
     }
 }

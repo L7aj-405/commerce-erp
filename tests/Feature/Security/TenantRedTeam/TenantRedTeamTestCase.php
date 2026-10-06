@@ -71,6 +71,7 @@ abstract class TenantRedTeamTestCase extends CatalogTestCase
     protected function setUp(): void
     {
         parent::setUp();
+        $this->withFreshAuthentication();
 
         $this->userA = User::factory()->create(['email' => 'red-team-a@example.test']);
         $this->userB = User::factory()->create(['email' => 'red-team-b@example.test']);

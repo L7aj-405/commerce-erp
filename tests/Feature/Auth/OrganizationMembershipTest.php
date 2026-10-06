@@ -7,6 +7,12 @@ use Tests\Support\PlatformTestCase;
 
 class OrganizationMembershipTest extends PlatformTestCase
 {
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->withFreshAuthentication();
+    }
+
     public function test_valid_membership_can_be_created_and_is_tenant_scoped(): void
     {
         $owner = User::factory()->create();

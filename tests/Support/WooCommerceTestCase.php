@@ -29,6 +29,8 @@ abstract class WooCommerceTestCase extends InventoryTestCase
     {
         parent::setUp();
 
+        $this->withFreshAuthentication();
+
         // Keep the client's transient-retry loop from sleeping in tests.
         config(['woocommerce.retry_times' => 1, 'woocommerce.retry_backoff_ms' => 0]);
     }

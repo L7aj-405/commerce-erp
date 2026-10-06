@@ -9,6 +9,12 @@ use Tests\Support\PlatformTestCase;
 
 class RoleEscalationTest extends PlatformTestCase
 {
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->withFreshAuthentication();
+    }
+
     public function test_actor_cannot_create_a_role_granting_a_permission_they_do_not_hold(): void
     {
         $owner = User::factory()->create();

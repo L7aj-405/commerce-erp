@@ -5,14 +5,6 @@ import { toCanvas } from 'qrcode';
 import type { FormEvent } from 'react';
 import { useEffect, useRef, useState } from 'react';
 
-type SessionRow = {
-    token: string;
-    isCurrent: boolean;
-    ipAddress: string | null;
-    userAgent: string | null;
-    lastActiveAt: string;
-};
-
 type TrustedDeviceRow = {
     id: string;
     deviceName: string | null;
@@ -31,7 +23,6 @@ type Props = {
     googleAuthConnected: boolean;
     recoveryCodesRemaining: number;
     trustedDevices: TrustedDeviceRow[];
-    sessions: SessionRow[];
 };
 
 /** "Mot de passe" — current/new/confirm, same fetch-based pattern as the 2FA
@@ -207,10 +198,15 @@ async function apiCall<T>(url: string, method: string, body?: Record<string, unk
         body: body ? JSON.stringify(body) : undefined,
     });
 
-    return { status: response.status, data: (await response.json().catch(() => ({}))) as T };
+    const data = (await response.json().catch(() => ({}))) as T & { reauthentication_url?: string };
+    if (response.status === 409 && data.reauthentication_url) {
+        window.location.assign(data.reauthentication_url);
+    }
+
+    return { status: response.status, data };
 }
 
-export default function Security({ status, twoFactorEnabled, hasPassword, googleAuthConnected, recoveryCodesRemaining, trustedDevices, sessions }: Props) {
+export default function Security({ status, twoFactorEnabled, hasPassword, googleAuthConnected, recoveryCodesRemaining, trustedDevices }: Props) {
     const [enabled, setEnabled] = useState(twoFactorEnabled);
     const [codesRemaining, setCodesRemaining] = useState(recoveryCodesRemaining);
     const [step, setStep] = useState<'idle' | 'enrolling' | 'recovery'>('idle');
@@ -219,7 +215,6 @@ export default function Security({ status, twoFactorEnabled, hasPassword, google
     const [code, setCode] = useState('');
     const [recoveryCodes, setRecoveryCodes] = useState<string[]>([]);
     const [error, setError] = useState<string | null>(null);
-    const [password, setPassword] = useState('');
     const [showDisableForm, setShowDisableForm] = useState(false);
     const [busy, setBusy] = useState(false);
     const [revokingDevice, setRevokingDevice] = useState<string | 'all' | null>(null);
@@ -279,36 +274,28 @@ export default function Security({ status, twoFactorEnabled, hasPassword, google
         setCode('');
     };
 
-    const disable = async (event: FormEvent) => {
-        event.preventDefault();
+    const disable = async () => {
         setError(null);
         setBusy(true);
-        const { status, data } = await apiCall<{ errors?: { password?: string[] } }>('/two-factor-authentication', 'DELETE', { password });
+        const { status } = await apiCall<Record<string, never>>('/two-factor-authentication', 'DELETE');
         setBusy(false);
         if (status >= 400) {
-            setError(data.errors?.password?.[0] ?? 'Mot de passe incorrect.');
+            if (status !== 409) setError('Impossible de désactiver la double authentification.');
             return;
         }
         setEnabled(false);
         setTrustedDeviceRows([]);
         setCodesRemaining(0);
         setShowDisableForm(false);
-        setPassword('');
     };
 
     const regenerateCodes = async () => {
-        const confirmPassword = window.prompt('Confirmez votre mot de passe pour régénérer vos codes de récupération :');
-        if (!confirmPassword) return;
         setError(null);
         setBusy(true);
-        const { status, data } = await apiCall<{ recovery_codes?: string[]; errors?: { password?: string[] } }>(
-            '/two-factor-recovery-codes',
-            'POST',
-            { password: confirmPassword },
-        );
+        const { status, data } = await apiCall<{ recovery_codes?: string[] }>('/two-factor-recovery-codes', 'POST');
         setBusy(false);
         if (status !== 200 || !data.recovery_codes) {
-            setError(data.errors?.password?.[0] ?? 'Échec de la régénération.');
+            if (status !== 409) setError('Échec de la régénération.');
             return;
         }
         setRecoveryCodes(data.recovery_codes);
@@ -374,24 +361,17 @@ export default function Security({ status, twoFactorEnabled, hasPassword, google
                             )}
 
                             {enabled && showDisableForm && (
-                                <form onSubmit={disable} className="mt-4 flex flex-col items-stretch gap-2 sm:flex-row sm:flex-wrap sm:items-end">
-                                    <label className="text-sm">
-                                        Confirmez votre mot de passe
-                                        <input
-                                            type="password"
-                                            value={password}
-                                            onChange={(e) => setPassword(e.target.value)}
-                                            className="mt-1 block h-11 w-full rounded-lg border border-slate-300 px-3 text-sm sm:w-auto"
-                                            autoFocus
-                                        />
-                                    </label>
-                                    <Button type="submit" disabled={busy || !password}>
+                                <div className="mt-4 rounded-lg border border-warning/30 bg-warning-soft p-3">
+                                    <p className="text-sm text-warning">Une confirmation de sécurité renforcée sera demandée.</p>
+                                    <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+                                    <Button type="button" onClick={disable} disabled={busy}>
                                         Confirmer la désactivation
                                     </Button>
                                     <button type="button" onClick={() => setShowDisableForm(false)} className="py-2 text-sm text-ink-muted underline-offset-4 hover:underline">
                                         Annuler
                                     </button>
-                                </form>
+                                    </div>
+                                </div>
                             )}
                         </>
                     )}
@@ -510,53 +490,6 @@ export default function Security({ status, twoFactorEnabled, hasPassword, google
                     </section>
                 )}
 
-                <section className="rounded-2xl border bg-white p-4 sm:p-6">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                        <div className="min-w-0">
-                            <p className="font-medium text-ink">Sessions actives</p>
-                            <p className="mt-1 text-sm text-ink-muted">Les appareils actuellement connectés à votre compte.</p>
-                        </div>
-                        {sessions.filter((s) => !s.isCurrent).length > 0 && (
-                            <Button
-                                variant="secondary"
-                                onClick={() => router.delete('/security/sessions', { preserveScroll: true })}
-                                className="w-full sm:w-auto"
-                            >
-                                Déconnecter les autres sessions
-                            </Button>
-                        )}
-                    </div>
-
-                    <ul className="mt-4 divide-y">
-                        {sessions.map((session) => (
-                            <li key={session.token} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 py-3">
-                                <div className="min-w-0 flex-1">
-                                    <p className="truncate text-sm font-medium text-ink">
-                                        {session.userAgent ?? 'Appareil inconnu'}
-                                        {session.isCurrent && (
-                                            <span className="ml-2 rounded-full bg-success-soft px-2 py-0.5 text-xs font-medium text-success">
-                                                Cet appareil
-                                            </span>
-                                        )}
-                                    </p>
-                                    <p className="mt-0.5 text-xs text-ink-muted">
-                                        {session.ipAddress ?? 'IP inconnue'} · dernière activité{' '}
-                                        {new Date(session.lastActiveAt).toLocaleString('fr-FR')}
-                                    </p>
-                                </div>
-                                {!session.isCurrent && (
-                                    <button
-                                        type="button"
-                                        onClick={() => router.delete(`/security/sessions/${session.token}`, { preserveScroll: true })}
-                                        className="shrink-0 rounded-field px-2 py-1.5 text-sm text-danger underline-offset-4 hover:underline"
-                                    >
-                                        Révoquer
-                                    </button>
-                                )}
-                            </li>
-                        ))}
-                    </ul>
-                </section>
             </div>
         </AccountLayout>
     );

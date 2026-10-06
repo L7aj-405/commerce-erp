@@ -18,6 +18,12 @@ use Tests\Support\PlatformTestCase;
  */
 class OrganizationMailSettingSsrfTest extends PlatformTestCase
 {
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->withFreshAuthentication();
+    }
+
     public function test_saving_smtp_settings_with_a_private_host_is_rejected(): void
     {
         $owner = User::factory()->create();

@@ -17,6 +17,12 @@ use Tests\Support\PlatformTestCase;
 
 class OrganizationGoogleDriveBackupTest extends PlatformTestCase
 {
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->withFreshAuthentication();
+    }
+
     public function test_authorized_user_can_start_google_oauth_with_state(): void
     {
         config(['services.google_drive.client_id' => 'client-id', 'services.google_drive.redirect_uri' => 'https://erp.test/callback']);

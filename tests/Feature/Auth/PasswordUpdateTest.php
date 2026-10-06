@@ -26,6 +26,7 @@ class PasswordUpdateTest extends PlatformTestCase
         // This feature's session-invalidation behaviour only exists on the
         // `database` driver — see ActiveSessionTest's own doc for why.
         config(['session.driver' => 'database']);
+        $this->withFreshAuthentication(level: 1);
     }
 
     public function test_changing_the_password_requires_the_correct_current_password(): void

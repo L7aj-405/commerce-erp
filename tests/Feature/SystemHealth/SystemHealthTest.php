@@ -49,6 +49,7 @@ class SystemHealthTest extends PlatformTestCase
             ->assertInertia(fn (Assert $page) => $page
                 ->component('SystemHealth/Index')
                 ->has('snapshot.checks.application')
+                ->has('snapshot.checks.security')
                 ->has('snapshot.checks.database')
                 ->has('snapshot.checks.queue')
                 ->has('snapshot.checks.scheduler'));
@@ -56,6 +57,22 @@ class SystemHealthTest extends PlatformTestCase
         $this->actingAs($owner)->getJson(route('system-health.index'))->assertOk()
             ->assertJsonPath('checks.database.status', 'operational')
             ->assertJsonMissingPath('checks.smtp.data.smtp_password');
+    }
+
+    public function test_security_health_reports_configuration_presence_without_secret_values(): void
+    {
+        [$owner] = $this->ownerAndOrganization();
+        config([
+            'organization-backups.signing_key' => 'must-not-be-rendered-signing',
+            'organization-backups.encryption_key' => 'must-not-be-rendered-encryption',
+        ]);
+        Cache::flush();
+
+        $response = $this->actingAs($owner)->getJson(route('system-health.index'))->assertOk()
+            ->assertJsonPath('checks.security.data.backup_signing_key_configured', true)
+            ->assertJsonPath('checks.security.data.backup_encryption_key_configured', true);
+
+        $this->assertStringNotContainsString('must-not-be-rendered', $response->getContent());
     }
 
     public function test_member_without_health_permission_is_forbidden(): void
