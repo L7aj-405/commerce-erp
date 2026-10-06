@@ -53,6 +53,45 @@ final class OperationalNotificationProducer
             $title, $message, '/security', 'audit_log', $auditLogId, $event);
     }
 
+    public function trustedDevice(
+        User $user,
+        Organization $organization,
+        int $auditLogId,
+        string $event,
+        ?string $deviceName = null,
+    ): void {
+        [$title, $message, $severity] = match ($event) {
+            'created' => [
+                'Nouvel appareil de confiance',
+                'Un appareil'.($deviceName ? ' ('.$deviceName.')' : '').' peut désormais ignorer la seconde étape de connexion.',
+                NotificationSeverity::Warning,
+            ],
+            'revoked' => [
+                'Appareil de confiance révoqué',
+                'Un appareil'.($deviceName ? ' ('.$deviceName.')' : '').' ne peut plus ignorer la seconde étape de connexion.',
+                NotificationSeverity::Success,
+            ],
+            default => [
+                'Appareils de confiance révoqués',
+                'Tous les appareils de confiance de votre compte ont été révoqués.',
+                NotificationSeverity::Critical,
+            ],
+        };
+
+        $this->publisher->publishToUser(
+            $user,
+            $organization,
+            NotificationCategory::Security,
+            $severity,
+            $title,
+            $message,
+            '/security',
+            'audit_log',
+            $auditLogId,
+            'two_factor.trusted_device_'.$event,
+        );
+    }
+
     private function backup(Organization $organization, OrganizationBackup $backup, NotificationSeverity $severity, string $title, string $message, string $event): void
     {
         $this->publisher->publish($organization, $this->publisher->recipientsWithPermission($organization, 'organization_backups.view'),

@@ -13,19 +13,39 @@ type SessionRow = {
     lastActiveAt: string;
 };
 
+type TrustedDeviceRow = {
+    id: string;
+    deviceName: string | null;
+    browser: string | null;
+    platform: string | null;
+    lastIp: string | null;
+    lastUsedAt: string | null;
+    expiresAt: string;
+    isCurrent: boolean;
+};
+
 type Props = {
     status?: string | null;
     twoFactorEnabled: boolean;
     hasPassword: boolean;
     googleAuthConnected: boolean;
     recoveryCodesRemaining: number;
+    trustedDevices: TrustedDeviceRow[];
     sessions: SessionRow[];
 };
 
 /** "Mot de passe" — current/new/confirm, same fetch-based pattern as the 2FA
  * actions on this page. On success the server rotates this session and
  * signs out every other one, so we surface that explicitly. */
-function PasswordSection({ initialHasPassword, googleAuthConnected }: { initialHasPassword: boolean; googleAuthConnected: boolean }) {
+function PasswordSection({
+    initialHasPassword,
+    googleAuthConnected,
+    onCredentialsChanged,
+}: {
+    initialHasPassword: boolean;
+    googleAuthConnected: boolean;
+    onCredentialsChanged: () => void;
+}) {
     const [open, setOpen] = useState(false);
     const [hasPassword, setHasPassword] = useState(initialHasPassword);
     const [currentPassword, setCurrentPassword] = useState('');
@@ -64,6 +84,7 @@ function PasswordSection({ initialHasPassword, googleAuthConnected }: { initialH
             return;
         }
         setHasPassword(true);
+        onCredentialsChanged();
         setDoneMessage(data.message ?? (isInitialSetup
             ? 'Votre mot de passe a été défini. Vous pouvez maintenant vous connecter avec Google ou avec votre adresse e-mail.'
             : 'Mot de passe modifié. Vos autres sessions ont été déconnectées.'));
@@ -189,7 +210,7 @@ async function apiCall<T>(url: string, method: string, body?: Record<string, unk
     return { status: response.status, data: (await response.json().catch(() => ({}))) as T };
 }
 
-export default function Security({ status, twoFactorEnabled, hasPassword, googleAuthConnected, recoveryCodesRemaining, sessions }: Props) {
+export default function Security({ status, twoFactorEnabled, hasPassword, googleAuthConnected, recoveryCodesRemaining, trustedDevices, sessions }: Props) {
     const [enabled, setEnabled] = useState(twoFactorEnabled);
     const [codesRemaining, setCodesRemaining] = useState(recoveryCodesRemaining);
     const [step, setStep] = useState<'idle' | 'enrolling' | 'recovery'>('idle');
@@ -201,6 +222,26 @@ export default function Security({ status, twoFactorEnabled, hasPassword, google
     const [password, setPassword] = useState('');
     const [showDisableForm, setShowDisableForm] = useState(false);
     const [busy, setBusy] = useState(false);
+    const [revokingDevice, setRevokingDevice] = useState<string | 'all' | null>(null);
+    const [trustedDeviceRows, setTrustedDeviceRows] = useState(trustedDevices);
+
+    useEffect(() => setTrustedDeviceRows(trustedDevices), [trustedDevices]);
+
+    const revokeDevice = (deviceId: string) => {
+        setRevokingDevice(deviceId);
+        router.delete(`/security/trusted-devices/${deviceId}`, {
+            preserveScroll: true,
+            onFinish: () => setRevokingDevice(null),
+        });
+    };
+
+    const revokeAllDevices = () => {
+        setRevokingDevice('all');
+        router.delete('/security/trusted-devices', {
+            preserveScroll: true,
+            onFinish: () => setRevokingDevice(null),
+        });
+    };
 
     const startEnrollment = async () => {
         setError(null);
@@ -213,6 +254,7 @@ export default function Security({ status, twoFactorEnabled, hasPassword, google
         }
         setSecret(data.secret);
         setOtpauthUri(data.otpauth_uri);
+        setTrustedDeviceRows([]);
         setStep('enrolling');
     };
 
@@ -248,6 +290,7 @@ export default function Security({ status, twoFactorEnabled, hasPassword, google
             return;
         }
         setEnabled(false);
+        setTrustedDeviceRows([]);
         setCodesRemaining(0);
         setShowDisableForm(false);
         setPassword('');
@@ -289,7 +332,11 @@ export default function Security({ status, twoFactorEnabled, hasPassword, google
             )}
 
             <div className="mt-6 space-y-6">
-                <PasswordSection initialHasPassword={hasPassword} googleAuthConnected={googleAuthConnected} />
+                <PasswordSection
+                    initialHasPassword={hasPassword}
+                    googleAuthConnected={googleAuthConnected}
+                    onCredentialsChanged={() => setTrustedDeviceRows([])}
+                />
 
                 {error && <p className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
 
@@ -403,6 +450,65 @@ export default function Security({ status, twoFactorEnabled, hasPassword, google
                         </div>
                     )}
                 </section>
+
+                {enabled && (
+                    <section className="rounded-2xl border bg-white p-4 sm:p-6">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div className="min-w-0">
+                                <p className="font-medium text-ink">Appareils de confiance</p>
+                                <p className="mt-1 text-sm text-ink-muted">
+                                    Ces appareils peuvent ignorer la seconde étape de connexion jusqu’à leur expiration. Le mot de passe reste obligatoire.
+                                </p>
+                            </div>
+                            {trustedDeviceRows.length > 0 && (
+                                <Button
+                                    variant="secondary"
+                                    onClick={revokeAllDevices}
+                                    disabled={revokingDevice !== null}
+                                    className="w-full sm:w-auto"
+                                >
+                                    {revokingDevice === 'all' ? 'Révocation…' : 'Révoquer tous les appareils'}
+                                </Button>
+                            )}
+                        </div>
+
+                        {trustedDeviceRows.length === 0 ? (
+                            <p className="mt-4 rounded-lg bg-slate-50 px-3 py-3 text-sm text-ink-muted">
+                                Aucun appareil de confiance actif.
+                            </p>
+                        ) : (
+                            <ul className="mt-4 divide-y">
+                                {trustedDeviceRows.map((device) => (
+                                    <li key={device.id} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 py-3">
+                                        <div className="min-w-0 flex-1">
+                                            <p className="truncate text-sm font-medium text-ink">
+                                                {device.deviceName ?? ([device.browser, device.platform].filter(Boolean).join(' sur ') || 'Appareil inconnu')}
+                                                {device.isCurrent && (
+                                                    <span className="ml-2 rounded-full bg-success-soft px-2 py-0.5 text-xs font-medium text-success">
+                                                        Cet appareil
+                                                    </span>
+                                                )}
+                                            </p>
+                                            <p className="mt-0.5 text-xs text-ink-muted">
+                                                Expire le {new Date(device.expiresAt).toLocaleString('fr-FR')}
+                                                {device.lastUsedAt ? ` · utilisé le ${new Date(device.lastUsedAt).toLocaleString('fr-FR')}` : ''}
+                                                {device.lastIp ? ` · ${device.lastIp}` : ''}
+                                            </p>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => revokeDevice(device.id)}
+                                            disabled={revokingDevice !== null}
+                                            className="shrink-0 rounded-field px-2 py-1.5 text-sm text-danger underline-offset-4 hover:underline disabled:opacity-50"
+                                        >
+                                            {revokingDevice === device.id ? 'Révocation…' : 'Révoquer'}
+                                        </button>
+                                    </li>
+                                ))}
+                            </ul>
+                        )}
+                    </section>
+                )}
 
                 <section className="rounded-2xl border bg-white p-4 sm:p-6">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

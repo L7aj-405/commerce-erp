@@ -7,11 +7,14 @@ use App\Models\User;
 use App\Services\AuditLogger;
 use App\Services\Security\RecoveryCodeService;
 use App\Services\Security\TotpService;
+use App\Services\Security\TrustedTwoFactorDeviceManager;
+use App\Services\Notifications\OperationalNotificationProducer;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Validation\ValidationException;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -30,16 +33,26 @@ class TwoFactorChallengeController extends Controller
 
     private const COOLDOWN_SECONDS = 300;
 
-    public function create(Request $request): Response|RedirectResponse
+    public function create(Request $request, TrustedTwoFactorDeviceManager $trustedDevices): Response|RedirectResponse
     {
         if (! $request->session()->has('login.2fa.user_id')) {
             return redirect()->route('login');
         }
 
-        return Inertia::render('Auth/TwoFactorChallenge');
+        return Inertia::render('Auth/TwoFactorChallenge', [
+            'trustedDeviceDurations' => $trustedDevices->allowedDurations(),
+            'trustedDeviceDefaultDays' => $trustedDevices->defaultDuration(),
+        ]);
     }
 
-    public function store(Request $request, TotpService $totp, RecoveryCodeService $recovery, AuditLogger $audit): RedirectResponse
+    public function store(
+        Request $request,
+        TotpService $totp,
+        RecoveryCodeService $recovery,
+        AuditLogger $audit,
+        TrustedTwoFactorDeviceManager $trustedDevices,
+        OperationalNotificationProducer $notifications,
+    ): RedirectResponse
     {
         $userId = $request->session()->get('login.2fa.user_id');
         if (! $userId) {
@@ -60,7 +73,16 @@ class TwoFactorChallengeController extends Controller
             return redirect()->route('login');
         }
 
-        $data = $request->validate(['code' => ['required', 'string', 'max:64']]);
+        $data = $request->validate([
+            'code' => ['required', 'string', 'max:64'],
+            'trust_device' => ['sometimes', 'boolean'],
+            'duration_days' => [
+                Rule::requiredIf($request->boolean('trust_device')),
+                'nullable',
+                'integer',
+                Rule::in($trustedDevices->allowedDurations()),
+            ],
+        ]);
 
         $verified = $totp->verify($user->two_factor_secret, $data['code'], 'login');
         $usedRecovery = false;
@@ -90,6 +112,27 @@ class TwoFactorChallengeController extends Controller
             $audit->record('two_factor.recovery_code_used', $user, $user->activeOrganization, auditable: $user);
         }
 
-        return redirect()->intended(route('platform.index'));
+        $response = redirect()->intended(route('platform.index'));
+
+        if ($request->boolean('trust_device')) {
+            [$device, $cookie] = $trustedDevices->create($user, $request, (int) $data['duration_days']);
+            $log = $audit->record(
+                'two_factor.trusted_device_created',
+                $user,
+                $user->activeOrganization,
+                auditable: $device,
+                newValues: [
+                    'device_name' => $device->device_name,
+                    'expires_at' => $device->expires_at->toIso8601String(),
+                ],
+            );
+            if ($organization = $user->activeOrganization) {
+                $notifications->trustedDevice($user, $organization, $log->getKey(), 'created', $device->device_name);
+            }
+
+            $response->withCookie($cookie);
+        }
+
+        return $response;
     }
 }

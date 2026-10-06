@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Settings;
 use App\Actions\Auth\SetInitialUserPasswordAction;
 use App\Http\Controllers\Controller;
 use App\Services\AuditLogger;
+use App\Services\Security\TrustedTwoFactorDeviceManager;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -24,7 +25,11 @@ use Illuminate\Validation\ValidationException;
  */
 class PasswordController extends Controller
 {
-    public function storeInitial(Request $request, SetInitialUserPasswordAction $action): JsonResponse
+    public function storeInitial(
+        Request $request,
+        SetInitialUserPasswordAction $action,
+        TrustedTwoFactorDeviceManager $trustedDevices,
+    ): JsonResponse
     {
         $data = $request->validate([
             'password' => ['required', 'confirmed', Password::defaults()],
@@ -35,6 +40,7 @@ class PasswordController extends Controller
         ]);
 
         $action->execute($request->user(), $data['password']);
+        $trustedDevices->revokeAll($request->user());
 
         $request->session()->regenerate();
         DB::table('sessions')
@@ -44,10 +50,10 @@ class PasswordController extends Controller
 
         return response()->json([
             'message' => 'Votre mot de passe a été défini. Vous pouvez maintenant vous connecter avec Google ou avec votre adresse e-mail.',
-        ]);
+        ])->withCookie($trustedDevices->forgetCookie());
     }
 
-    public function update(Request $request, AuditLogger $audit): JsonResponse
+    public function update(Request $request, AuditLogger $audit, TrustedTwoFactorDeviceManager $trustedDevices): JsonResponse
     {
         $user = $request->user();
 
@@ -66,6 +72,7 @@ class PasswordController extends Controller
         }
 
         $user->forceFill(['password' => $data['password']])->save();
+        $trustedDevices->revokeAll($user);
 
         // §8 — rotate this session's id, then drop every other one: a
         // password change ends every session but the one making the change.
@@ -77,6 +84,7 @@ class PasswordController extends Controller
 
         $audit->record('auth.password_changed', $user, $user->activeOrganization, auditable: $user);
 
-        return response()->json(['message' => 'Mot de passe modifié. Vos autres sessions ont été déconnectées.']);
+        return response()->json(['message' => 'Mot de passe modifié. Vos autres sessions et appareils de confiance ont été révoqués.'])
+            ->withCookie($trustedDevices->forgetCookie());
     }
 }

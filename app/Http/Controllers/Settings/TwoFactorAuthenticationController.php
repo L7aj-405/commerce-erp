@@ -8,6 +8,7 @@ use App\Services\AuditLogger;
 use App\Services\Notifications\OperationalNotificationProducer;
 use App\Services\Security\RecoveryCodeService;
 use App\Services\Security\TotpService;
+use App\Services\Security\TrustedTwoFactorDeviceManager;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -27,7 +28,7 @@ use Inertia\Response;
  */
 class TwoFactorAuthenticationController extends Controller
 {
-    public function show(Request $request): Response
+    public function show(Request $request, TrustedTwoFactorDeviceManager $trustedDevices): Response
     {
         $user = $request->user();
         $currentSessionId = $request->session()->getId();
@@ -48,6 +49,22 @@ class TwoFactorAuthenticationController extends Controller
             'recoveryCodesRemaining' => $user->hasEnabledTwoFactorAuthentication()
                 ? count($user->two_factor_recovery_codes ?? [])
                 : 0,
+            'trustedDevices' => $user->trustedTwoFactorDevices()
+                ->whereNull('revoked_at')
+                ->where('expires_at', '>', now())
+                ->orderByDesc('last_used_at')
+                ->get()
+                ->map(fn ($device) => [
+                    'id' => $device->getKey(),
+                    'deviceName' => $device->device_name,
+                    'browser' => $device->browser,
+                    'platform' => $device->platform,
+                    'lastIp' => $device->last_ip,
+                    'lastUsedAt' => $device->last_used_at?->toIso8601String(),
+                    'expiresAt' => $device->expires_at->toIso8601String(),
+                    'isCurrent' => $trustedDevices->currentDeviceId($request) === $device->getKey(),
+                ])
+                ->values(),
             // §8 — active sessions (database session driver only, see
             // ActiveSessionController's class doc for why the raw id is
             // never sent to the client).
@@ -67,10 +84,14 @@ class TwoFactorAuthenticationController extends Controller
     }
 
     /** Step 1: generate a fresh (unconfirmed) secret and return its setup key / otpauth URI. */
-    public function store(Request $request, TotpService $totp): JsonResponse
+    public function store(Request $request, TotpService $totp, TrustedTwoFactorDeviceManager $trustedDevices): JsonResponse
     {
         $user = $request->user();
         abort_if($user->hasEnabledTwoFactorAuthentication(), 422, 'La double authentification est déjà activée.');
+
+        // Starting a new enrollment replaces any abandoned/old secret, so no
+        // previous trusted-device grant may survive it.
+        $trustedDevices->revokeAll($user);
 
         $secret = $totp->generateSecret();
         $user->forceFill([
@@ -82,7 +103,7 @@ class TwoFactorAuthenticationController extends Controller
         return response()->json([
             'secret' => $secret,
             'otpauth_uri' => $totp->provisioningUri($secret, $user->email, config('app.name', '10xScale ERP')),
-        ]);
+        ])->withCookie($trustedDevices->forgetCookie());
     }
 
     /** Step 2: the user proves they scanned/typed the secret correctly before it counts as enabled. */
@@ -110,7 +131,7 @@ class TwoFactorAuthenticationController extends Controller
     }
 
     /** §E8 — the password is part of this exact request, not a stale session timestamp. */
-    public function destroy(Request $request, AuditLogger $audit): RedirectResponse
+    public function destroy(Request $request, AuditLogger $audit, TrustedTwoFactorDeviceManager $trustedDevices): RedirectResponse
     {
         $this->confirmPassword($request);
 
@@ -121,12 +142,16 @@ class TwoFactorAuthenticationController extends Controller
             'two_factor_confirmed_at' => null,
         ])->save();
 
+        $trustedDevices->revokeAll($user);
+
         $log = $audit->record('two_factor.disabled', $user, $user->activeOrganization, auditable: $user);
         if ($organization = $user->activeOrganization) {
             app(OperationalNotificationProducer::class)->security($user, $organization, $log->getKey(), 'two_factor.disabled');
         }
 
-        return back()->with('success', 'Double authentification désactivée.');
+        return back()
+            ->with('success', 'Double authentification désactivée.')
+            ->withCookie($trustedDevices->forgetCookie());
     }
 
     /** §E8 — the password is part of this exact request, not a stale session timestamp. */

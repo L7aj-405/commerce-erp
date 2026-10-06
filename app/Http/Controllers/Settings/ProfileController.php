@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Settings;
 
 use App\Http\Controllers\Controller;
 use App\Services\AuditLogger;
+use App\Services\Security\TrustedTwoFactorDeviceManager;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -40,7 +41,7 @@ class ProfileController extends Controller
         ]);
     }
 
-    public function update(Request $request, AuditLogger $audit): RedirectResponse
+    public function update(Request $request, AuditLogger $audit, TrustedTwoFactorDeviceManager $trustedDevices): RedirectResponse
     {
         $user = $request->user();
 
@@ -90,12 +91,12 @@ class ProfileController extends Controller
         );
 
         if ($emailChanged) {
+            $trustedDevices->revokeAll($user);
             $user->sendEmailVerificationNotification();
 
-            return redirect()->route('account.profile.edit')->with(
-                'success',
-                'Profil mis à jour. Vérifiez votre nouvelle adresse email pour la confirmer.',
-            );
+            return redirect()->route('account.profile.edit')
+                ->with('success', 'Profil mis à jour. Vérifiez votre nouvelle adresse email pour la confirmer.')
+                ->withCookie($trustedDevices->forgetCookie());
         }
 
         return redirect()->route('account.profile.edit')->with('success', 'Profil mis à jour.');

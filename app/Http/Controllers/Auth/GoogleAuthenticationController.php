@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Auth;
 use App\Actions\Auth\ResolveGoogleAuthenticatedUserAction;
 use App\Http\Controllers\Controller;
 use App\Services\Auth\GoogleAuthClient;
+use App\Services\Security\TrustedTwoFactorDeviceManager;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -25,6 +26,7 @@ class GoogleAuthenticationController extends Controller
         Request $request,
         GoogleAuthClient $google,
         ResolveGoogleAuthenticatedUserAction $resolveUser,
+        TrustedTwoFactorDeviceManager $trustedDevices,
     ): RedirectResponse {
         $expectedState = $request->session()->pull('auth.google.state');
         if (! is_string($expectedState) || ! hash_equals($expectedState, (string) $request->query('state'))) {
@@ -47,6 +49,13 @@ class GoogleAuthenticationController extends Controller
         }
 
         if ($user->hasEnabledTwoFactorAuthentication()) {
+            if ($trustedDevices->validFor($user, $request)) {
+                Auth::login($user);
+                $request->session()->regenerate();
+
+                return redirect()->intended(route('platform.index'));
+            }
+
             $request->session()->put('login.2fa.user_id', $user->getKey());
             $request->session()->put('login.2fa.remember', false);
 

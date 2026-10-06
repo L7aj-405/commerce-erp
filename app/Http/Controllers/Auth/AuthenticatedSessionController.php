@@ -6,6 +6,7 @@ use App\Contracts\ChallengeVerifier;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Services\Security\LoginThrottle;
+use App\Services\Security\TrustedTwoFactorDeviceManager;
 use App\Support\LegalMetadata;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -26,7 +27,12 @@ class AuthenticatedSessionController extends Controller
         ]);
     }
 
-    public function store(Request $request, LoginThrottle $throttle, ChallengeVerifier $challenge): RedirectResponse
+    public function store(
+        Request $request,
+        LoginThrottle $throttle,
+        ChallengeVerifier $challenge,
+        TrustedTwoFactorDeviceManager $trustedDevices,
+    ): RedirectResponse
     {
         $credentials = $request->validate([
             'email' => ['required', 'email'],
@@ -77,6 +83,15 @@ class AuthenticatedSessionController extends Controller
         $user = User::query()->where('email', $email)->firstOrFail();
 
         if ($user->hasEnabledTwoFactorAuthentication()) {
+            // A trusted device replaces only the second factor. The password
+            // above is still verified on every login attempt.
+            if ($trustedDevices->validFor($user, $request)) {
+                Auth::login($user, $request->boolean('remember'));
+                $request->session()->regenerate();
+
+                return redirect()->intended(route('platform.index'));
+            }
+
             $request->session()->put('login.2fa.user_id', $user->getKey());
             $request->session()->put('login.2fa.remember', $request->boolean('remember'));
 

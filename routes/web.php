@@ -78,6 +78,7 @@ use App\Http\Controllers\Settings\OrganizationBackupCloudController;
 use App\Http\Controllers\Settings\PasswordController;
 use App\Http\Controllers\Settings\ProfileController;
 use App\Http\Controllers\Settings\TwoFactorAuthenticationController;
+use App\Http\Controllers\Settings\TrustedTwoFactorDeviceController;
 use App\Http\Controllers\Settings\ReturnPolicyController;
 use App\Http\Controllers\StoreController;
 use App\Http\Controllers\StoreMembershipController;
@@ -257,6 +258,10 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
     // §8 — active sessions (see ActiveSessionController's class doc).
     Route::delete('/security/sessions/{token}', [ActiveSessionController::class, 'destroy'])->name('security.sessions.destroy');
     Route::delete('/security/sessions', [ActiveSessionController::class, 'destroyOthers'])->name('security.sessions.destroy-others');
+    Route::delete('/security/trusted-devices/{device}', [TrustedTwoFactorDeviceController::class, 'destroy'])
+        ->name('security.trusted-devices.destroy');
+    Route::delete('/security/trusted-devices', [TrustedTwoFactorDeviceController::class, 'destroyAll'])
+        ->name('security.trusted-devices.destroy-all');
     Route::get('/document-stamp', [OrganizationDocumentStampController::class, 'edit'])->name('document-stamp.edit');
     Route::post('/document-stamp', [OrganizationDocumentStampController::class, 'store'])->name('document-stamp.store');
     Route::delete('/document-stamp', [OrganizationDocumentStampController::class, 'destroy'])->name('document-stamp.destroy');

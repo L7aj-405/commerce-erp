@@ -66,6 +66,11 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->hasOne(UserNotificationPreference::class);
     }
 
+    public function trustedTwoFactorDevices(): HasMany
+    {
+        return $this->hasMany(TrustedTwoFactorDevice::class);
+    }
+
     public function reversedPayments(): HasMany
     {
         return $this->hasMany(Payment::class, 'reversed_by_user_id');

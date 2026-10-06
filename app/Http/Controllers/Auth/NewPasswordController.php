@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Auth;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Services\AuditLogger;
+use App\Services\Security\TrustedTwoFactorDeviceManager;
 use Illuminate\Auth\Events\PasswordReset;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -34,7 +35,7 @@ class NewPasswordController extends Controller
         ]);
     }
 
-    public function store(Request $request, AuditLogger $audit): RedirectResponse
+    public function store(Request $request, AuditLogger $audit, TrustedTwoFactorDeviceManager $trustedDevices): RedirectResponse
     {
         $data = $request->validate([
             'token' => ['required'],
@@ -44,7 +45,7 @@ class NewPasswordController extends Controller
 
         $status = Password::broker()->reset(
             $data,
-            function (User $user) use ($request, $audit): void {
+            function (User $user) use ($request, $audit, $trustedDevices): void {
                 $user->forceFill([
                     'password' => $request->string('password')->toString(),
                     'remember_token' => Str::random(60),
@@ -55,6 +56,7 @@ class NewPasswordController extends Controller
                 // their own yet at this point (they are an anonymous holder
                 // of a valid token), so every row for this user is stale.
                 DB::table('sessions')->where('user_id', $user->getKey())->delete();
+                $trustedDevices->revokeAll($user);
 
                 event(new PasswordReset($user));
 

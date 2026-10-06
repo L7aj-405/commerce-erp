@@ -3,6 +3,7 @@
 use App\Jobs\RecordQueueWorkerHeartbeatJob;
 use App\Models\ProductImport;
 use App\Models\SystemHealthHeartbeat;
+use App\Models\TrustedTwoFactorDevice;
 use App\Models\UserNotification;
 use App\Services\Notifications\SystemHealthNotificationMonitor;
 use Illuminate\Foundation\Inspiring;
@@ -48,9 +49,22 @@ Artisan::command('organization-backups:cleanup-temporary-files', function () {
     $this->info("Deleted {$deleted} expired organization backup temporary files.");
 })->purpose('Delete expired private organization backup staging files');
 
+Artisan::command('security:cleanup-trusted-devices', function () {
+    $cutoff = now()->subDays(max(1, (int) config('two-factor.trusted_device_cleanup_days', 30)));
+    $count = TrustedTwoFactorDevice::query()
+        ->where(function ($query) use ($cutoff): void {
+            $query->where('expires_at', '<', $cutoff)
+                ->orWhere(fn ($revoked) => $revoked->whereNotNull('revoked_at')->where('revoked_at', '<', $cutoff));
+        })
+        ->delete();
+
+    $this->info("Deleted {$count} expired or revoked trusted device records.");
+})->purpose('Delete old expired or revoked trusted 2FA device records');
+
 Schedule::command('catalog:cleanup-product-imports')->daily();
 Schedule::command('organization-backups:dispatch-due')->everyMinute()->withoutOverlapping();
 Schedule::command('organization-backups:cleanup-temporary-files')->hourly()->withoutOverlapping();
+Schedule::command('security:cleanup-trusted-devices')->daily()->withoutOverlapping();
 Schedule::call(fn () => SystemHealthHeartbeat::beat('scheduler'))
     ->name('system-health:scheduler-heartbeat')->everyMinute()->withoutOverlapping();
 Schedule::job(new RecordQueueWorkerHeartbeatJob)
