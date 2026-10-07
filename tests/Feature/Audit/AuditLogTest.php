@@ -3,8 +3,10 @@
 namespace Tests\Feature\Audit;
 
 use App\Models\AuditLog;
+use App\Models\TrustedTwoFactorDevice;
 use App\Models\User;
 use App\Services\AuditLogger;
+use Illuminate\Support\Facades\Schema;
 use Tests\Support\PlatformTestCase;
 
 class AuditLogTest extends PlatformTestCase
@@ -13,6 +15,17 @@ class AuditLogTest extends PlatformTestCase
     {
         parent::setUp();
         $this->withFreshAuthentication();
+    }
+
+    public function test_auditable_id_schema_is_string_compatible_and_keeps_the_morph_index(): void
+    {
+        $this->assertSame('varchar', Schema::getColumnType('audit_logs', 'auditable_id'));
+
+        $index = collect(Schema::getIndexes('audit_logs'))
+            ->firstWhere('name', 'audit_logs_auditable_type_auditable_id_index');
+
+        $this->assertNotNull($index);
+        $this->assertSame(['auditable_type', 'auditable_id'], $index['columns']);
     }
 
     public function test_organization_and_store_creation_are_audited(): void
@@ -112,5 +125,36 @@ class AuditLogTest extends PlatformTestCase
         $this->assertStringNotContainsString('raw-session-id', $encoded);
         $this->assertStringNotContainsString('hidden-object-secret', $encoded);
         $this->assertSame('[OMITTED]', $log->new_values['object']);
+    }
+
+    public function test_polymorphic_audit_targets_support_integer_and_string_model_keys(): void
+    {
+        $owner = User::factory()->create();
+        $organization = $this->createOrganization($owner);
+
+        $device = new TrustedTwoFactorDevice;
+        $device->user_id = $owner->getKey();
+        $device->token_hash = hash('sha256', 'audit-device-token');
+        $device->device_name = 'Audit device';
+        $device->expires_at = now()->addDays(15);
+        $device->save();
+
+        $integerLog = app(AuditLogger::class)->record(
+            'organization.audit_target_test',
+            $owner,
+            $organization,
+            auditable: $organization,
+        );
+        $stringLog = app(AuditLogger::class)->record(
+            'two_factor.trusted_device_audit_target_test',
+            $owner,
+            $organization,
+            auditable: $device,
+        );
+
+        $this->assertSame((string) $organization->getKey(), (string) $integerLog->fresh()->auditable_id);
+        $this->assertSame($device->getKey(), $stringLog->fresh()->auditable_id);
+        $this->assertTrue($integerLog->fresh()->auditable->is($organization));
+        $this->assertTrue($stringLog->fresh()->auditable->is($device));
     }
 }

@@ -3,6 +3,7 @@
 namespace Tests\Feature\Audit;
 
 use App\Models\AuditLog;
+use App\Models\TrustedTwoFactorDevice;
 use App\Models\User;
 use App\Services\AuditLogger;
 use App\Services\PermissionProvisioner;
@@ -40,6 +41,41 @@ class ActivityAuditCenterTest extends PlatformTestCase
                 ->where('logs.data.0.action_label', 'Produit modifié')
                 ->where('logs.data.0.module.label', 'Catalogue')
                 ->where('logs.data.0.target.reference', 'Console X32'));
+    }
+
+    public function test_activity_center_renders_integer_and_string_audit_targets(): void
+    {
+        $owner = User::factory()->create();
+        $organization = $this->createOrganization($owner);
+        $this->activate($owner, $organization);
+
+        $device = new TrustedTwoFactorDevice;
+        $device->user_id = $owner->getKey();
+        $device->token_hash = hash('sha256', 'activity-device-token');
+        $device->device_name = 'Chrome sur Windows';
+        $device->expires_at = now()->addDays(15);
+        $device->save();
+
+        app(AuditLogger::class)->record(
+            'organization.audit_target_test',
+            $owner,
+            $organization,
+            auditable: $organization,
+        );
+        app(AuditLogger::class)->record(
+            'two_factor.trusted_device_audit_target_test',
+            $owner,
+            $organization,
+            auditable: $device,
+        );
+
+        $this->actingAs($owner)->get(route('activity.index', ['event' => 'organization.audit_target_test']))
+            ->assertOk()->assertInertia(fn (Assert $page) => $page
+                ->where('logs.data.0.target.id', (string) $organization->getKey()));
+
+        $this->actingAs($owner)->get(route('activity.index', ['event' => 'two_factor.trusted_device_audit_target_test']))
+            ->assertOk()->assertInertia(fn (Assert $page) => $page
+                ->where('logs.data.0.target.id', $device->getKey()));
     }
 
     public function test_user_without_audit_permission_is_forbidden(): void
