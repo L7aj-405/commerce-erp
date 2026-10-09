@@ -17,6 +17,7 @@ type Member = {
     status: 'active' | 'suspended';
     is_owner: boolean;
     store_memberships: Array<{ id: number; store: { id: number; name: string; code: string } }>;
+    default_warehouse: { id: number; name: string; code: string; available: boolean } | null;
 };
 
 type Invitation = {
@@ -28,6 +29,7 @@ type Invitation = {
 };
 
 type StoreOption = { id: number; name: string; code: string };
+type WarehouseOption = { id: number; name: string; code: string };
 
 type Props = {
     organization: { id: number; name: string };
@@ -37,6 +39,7 @@ type Props = {
     permissionGroups: PermissionGroups;
     presets: Preset[];
     stores: StoreOption[];
+    warehouses: WarehouseOption[];
     can: {
         viewRoles: boolean;
         createRole: boolean;
@@ -48,7 +51,7 @@ type Props = {
     };
 };
 
-export default function UsersAccessIndex({ organization, memberships, roles, invitations, permissionGroups, presets, stores, can }: Props) {
+export default function UsersAccessIndex({ organization, memberships, roles, invitations, permissionGroups, presets, stores, warehouses, can }: Props) {
     const { auth, flash } = usePage<SharedPageProps>().props;
     const selectableRoles = roles.filter((role) => role.slug !== 'owner');
 
@@ -76,6 +79,7 @@ export default function UsersAccessIndex({ organization, memberships, roles, inv
                                 <th className="px-4 py-2.5">Rôle</th>
                                 <th className="px-4 py-2.5">Statut</th>
                                 {stores.length > 0 && <th className="px-4 py-2.5">Magasins</th>}
+                                <th className="px-4 py-2.5">Entrepôt par défaut</th>
                                 <th className="px-4 py-2.5" />
                             </tr>
                         </thead>
@@ -86,6 +90,7 @@ export default function UsersAccessIndex({ organization, memberships, roles, inv
                                     member={member}
                                     roles={selectableRoles}
                                     stores={stores}
+                                    warehouses={warehouses}
                                     isSelf={member.user.id === auth.user?.id}
                                     can={can}
                                 />
@@ -102,6 +107,7 @@ export default function UsersAccessIndex({ organization, memberships, roles, inv
                             member={member}
                             roles={selectableRoles}
                             stores={stores}
+                            warehouses={warehouses}
                             isSelf={member.user.id === auth.user?.id}
                             can={can}
                         />
@@ -284,6 +290,72 @@ function TabButton({ active, onClick, children }: { active: boolean; onClick: ()
     );
 }
 
+/**
+ * POS default warehouse — pre-selected when this member opens the POS. Not an
+ * access restriction: the member can still pick another warehouse there. Owner
+ * and self are editable too (it is a preference, not a privilege).
+ */
+function DefaultWarehouseField({
+    member,
+    warehouses,
+    editable,
+    fullWidth = false,
+}: {
+    member: Member;
+    warehouses: WarehouseOption[];
+    editable: boolean;
+    fullWidth?: boolean;
+}) {
+    const current = member.default_warehouse;
+    const unavailable = current !== null && !current.available;
+
+    const change = (value: string) => {
+        router.patch(
+            `/organization-memberships/${member.id}`,
+            { default_warehouse_id: value === '' ? null : Number(value) },
+            { preserveScroll: true },
+        );
+    };
+
+    if (!editable) {
+        return current ? (
+            <span className={unavailable ? 'text-ink-faint' : 'text-ink'}>
+                {current.name} · {current.code}
+                {unavailable && <span className="ml-1.5 text-[11px] text-danger">(indisponible)</span>}
+            </span>
+        ) : (
+            <span className="text-ink-faint">—</span>
+        );
+    }
+
+    return (
+        <div className={fullWidth ? '' : 'min-w-40'}>
+            <select
+                value={current?.id ?? ''}
+                onChange={(e) => change(e.target.value)}
+                aria-label={`Entrepôt par défaut de ${member.user.name}`}
+                title="Entrepôt sélectionné automatiquement à l’ouverture du point de vente"
+                className={`rounded-field border border-line-strong bg-surface px-2 text-[13px] ${fullWidth ? 'h-9 w-full' : 'py-1'}`}
+            >
+                <option value="">Aucun (par défaut du point de vente)</option>
+                {unavailable && (
+                    <option value={current.id} disabled>
+                        {current.name} · {current.code} (indisponible)
+                    </option>
+                )}
+                {warehouses.map((warehouse) => (
+                    <option key={warehouse.id} value={warehouse.id}>
+                        {warehouse.name} · {warehouse.code}
+                    </option>
+                ))}
+            </select>
+            {unavailable && (
+                <p className="mt-1 text-[11px] text-danger">Entrepôt inactif — ignoré au point de vente.</p>
+            )}
+        </div>
+    );
+}
+
 /** Shared state/handlers for a membership row, reused by both the desktop `<tr>` and the mobile `<li>` card. */
 function useMemberRowActions(member: Member) {
     const [managingStores, setManagingStores] = useState(false);
@@ -317,12 +389,14 @@ function MemberRow({
     member,
     roles,
     stores,
+    warehouses,
     isSelf,
     can,
 }: {
     member: Member;
     roles: RoleSummary[];
     stores: StoreOption[];
+    warehouses: WarehouseOption[];
     isSelf: boolean;
     can: Props['can'];
 }) {
@@ -394,6 +468,9 @@ function MemberRow({
                     )}
                 </td>
             )}
+            <td className="px-4 py-2.5">
+                <DefaultWarehouseField member={member} warehouses={warehouses} editable={can.updateMembers} />
+            </td>
             <td className="px-4 py-2.5 text-right">
                 {!locked && (can.updateMembers || can.deleteMembers) && (
                     <div className="flex justify-end gap-1">
@@ -419,12 +496,14 @@ function MemberCard({
     member,
     roles,
     stores,
+    warehouses,
     isSelf,
     can,
 }: {
     member: Member;
     roles: RoleSummary[];
     stores: StoreOption[];
+    warehouses: WarehouseOption[];
     isSelf: boolean;
     can: Props['can'];
 }) {
@@ -511,6 +590,13 @@ function MemberCard({
                     )}
                 </div>
             )}
+
+            <div className="mt-3 text-[13px]">
+                <p className="text-ink-faint">Entrepôt par défaut</p>
+                <div className="mt-1">
+                    <DefaultWarehouseField member={member} warehouses={warehouses} editable={can.updateMembers} fullWidth />
+                </div>
+            </div>
 
             {!locked && (can.updateMembers || can.deleteMembers) && (
                 <div className="mt-3 flex gap-2 border-t border-line pt-3">

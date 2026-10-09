@@ -69,6 +69,9 @@ class OrganizationBackupRestorer
             // the initial non-mutating preflight and destructive replacement.
             $this->assertProtectedStateCompatible($zip, $manifest, $organization);
             $foreignKeyState = $this->deferForeignKeyChecks($connection, $driver);
+            if (in_array('warehouses', $tables, true)) {
+                $this->clearMemberDefaultWarehousesMissingFrom($zip, $organization);
+            }
 
             foreach ($tables as $table) {
                 if ($table !== 'organizations' && $this->schema->hasOrganizationColumn($table)) {
@@ -271,6 +274,7 @@ class OrganizationBackupRestorer
         $storeIds = DB::table('stores')->where('organization_id', $organizationId)->pluck('id');
 
         DB::table('store_memberships')->where('organization_id', $organization->getKey())->lockForUpdate()->get(['id']);
+        DB::table('organization_memberships')->where('organization_id', $organizationId)->lockForUpdate()->get(['id']);
         DB::table('audit_logs')->where('organization_id', $organizationId)->lockForUpdate()->get(['id']);
         DB::table('users')
             ->where(function ($query) use ($organizationId, $storeIds) {
@@ -282,6 +286,22 @@ class OrganizationBackupRestorer
             ->lockForUpdate()
             ->get(['id']);
         DB::table('woocommerce_integrations')->where('organization_id', $organizationId)->lockForUpdate()->get(['id']);
+    }
+
+    /**
+     * Memberships are protected (never restored), but their POS default
+     * warehouse is only a preference. If the restored data set no longer
+     * contains that warehouse, drop the preference instead of failing the
+     * restore or leaving a dangling reference. Runs before current warehouses
+     * are deleted: the FK is RESTRICT, which SQLite enforces immediately.
+     */
+    private function clearMemberDefaultWarehousesMissingFrom(ZipArchive $zip, Organization $organization): void
+    {
+        DB::table('organization_memberships')
+            ->where('organization_id', $organization->getKey())
+            ->whereNotNull('default_warehouse_id')
+            ->whereNotIn('default_warehouse_id', $this->archiveIds($zip, 'warehouses', 'id'))
+            ->update(['default_warehouse_id' => null]);
     }
 
     private function assertProtectedRelationsIntact(Organization $organization): void

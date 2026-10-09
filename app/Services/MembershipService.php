@@ -2,12 +2,14 @@
 
 namespace App\Services;
 
+use App\Enums\WarehouseStatus;
 use App\Models\Organization;
 use App\Models\OrganizationMembership;
 use App\Models\Role;
 use App\Models\Store;
 use App\Models\StoreMembership;
 use App\Models\User;
+use App\Models\Warehouse;
 use Illuminate\Validation\ValidationException;
 
 class MembershipService
@@ -90,6 +92,48 @@ class MembershipService
             auditable: $membership,
             oldValues: ['status' => $oldStatus],
             newValues: ['status' => $status],
+        );
+    }
+
+    /**
+     * Set (or clear) the warehouse pre-selected for this member in the POS.
+     * Unlike role/status this is not a privilege, so members may set their own
+     * and the owner may have one. It grants no warehouse access.
+     */
+    public function changeDefaultWarehouse(User $actor, OrganizationMembership $membership, ?Warehouse $warehouse): void
+    {
+        abort_unless($actor->hasPermission($membership->organization_id, 'members.update'), 403);
+
+        if ($warehouse !== null && (
+            $warehouse->organization_id !== $membership->organization_id
+            || $warehouse->status !== WarehouseStatus::Active
+        )) {
+            throw ValidationException::withMessages([
+                'default_warehouse_id' => 'Sélectionnez un entrepôt actif de cette organisation.',
+            ]);
+        }
+
+        $oldWarehouseId = $membership->default_warehouse_id;
+        $newWarehouseId = $warehouse?->getKey();
+
+        if ($oldWarehouseId === $newWarehouseId) {
+            return;
+        }
+
+        $oldWarehouse = $oldWarehouseId
+            ? Warehouse::query()->where('organization_id', $membership->organization_id)->find($oldWarehouseId, ['id', 'name'])
+            : null;
+
+        $membership->default_warehouse_id = $newWarehouseId;
+        $membership->save();
+
+        $this->audit->record(
+            'organization_membership.default_warehouse_updated',
+            $actor,
+            $membership->organization,
+            auditable: $membership,
+            oldValues: ['user_id' => $membership->user_id, 'default_warehouse_id' => $oldWarehouseId, 'default_warehouse_name' => $oldWarehouse?->name],
+            newValues: ['user_id' => $membership->user_id, 'default_warehouse_id' => $newWarehouseId, 'default_warehouse_name' => $warehouse?->name],
         );
     }
 

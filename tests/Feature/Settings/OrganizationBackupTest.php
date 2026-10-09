@@ -434,6 +434,27 @@ class OrganizationBackupTest extends DocumentTestCase
         }
     }
 
+    public function test_restore_keeps_member_default_warehouse_present_in_backup_and_clears_one_absent_from_it(): void
+    {
+        [$owner, $organization, , $warehouse] = $this->backupFixture();
+        $member = User::factory()->create();
+        $keptMembership = $this->addOrganizationMember($organization, $member, ['organizations.view']);
+        $keptMembership->default_warehouse_id = $warehouse->id;
+        $keptMembership->save();
+        $archive = app(OrganizationBackupExporter::class)->create($organization, $owner);
+
+        $laterWarehouse = $this->createWarehouse($organization, 'Later Warehouse');
+        $ownerMembership = $organization->memberships()->where('user_id', $owner->id)->firstOrFail();
+        $ownerMembership->default_warehouse_id = $laterWarehouse->id;
+        $ownerMembership->save();
+
+        app(RestoreOrganizationBackupAction::class)->execute($owner, $organization, $archive->path);
+
+        $this->assertDatabaseMissing('warehouses', ['id' => $laterWarehouse->id]);
+        $this->assertNull($ownerMembership->fresh()->default_warehouse_id);
+        $this->assertSame($warehouse->id, $keptMembership->fresh()->default_warehouse_id);
+    }
+
     public function test_restore_accepts_woocommerce_children_when_preserved_parent_integration_still_exists(): void
     {
         [$owner, $organization, $store, $warehouse] = $this->backupFixture();

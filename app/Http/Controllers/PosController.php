@@ -22,11 +22,13 @@ use App\Models\Customer;
 use App\Models\FinancialAccount;
 use App\Models\InventoryBalance;
 use App\Models\Organization;
+use App\Models\OrganizationMembership;
 use App\Models\ProductVariant;
 use App\Models\SalesOrder;
 use App\Models\SalesOrderLine;
 use App\Models\Store;
 use App\Models\Supplier;
+use App\Models\User;
 use App\Models\Warehouse;
 use App\Services\ActiveTenantContext;
 use App\Services\AuditLogger;
@@ -63,6 +65,8 @@ class PosController extends Controller
                 ->get(['id', 'name', 'code'])
             : collect();
 
+        $memberDefaultWarehouseId = $this->memberDefaultWarehouseId($request->user(), $organization, $warehouses->pluck('id')->all());
+
         $activeSaleModel = $store ? $this->activeDraftQuery($organization, $store)
             ->with($this->draftRelations())
             ->latest('updated_at')
@@ -98,7 +102,10 @@ class PosController extends Controller
             'store' => $store?->only(['id', 'name', 'code']),
             'warehouses' => $warehouses,
             'currencyCode' => config('platform.currency_code', 'MAD'),
-            'defaultWarehouseId' => $activeSaleModel?->pos_warehouse_id ?? $warehouses->first()?->id,
+            // An in-progress sale keeps its warehouse; otherwise the member's
+            // own default (if still active in this org), then the first active one.
+            'defaultWarehouseId' => $activeSaleModel?->pos_warehouse_id ?? $memberDefaultWarehouseId ?? $warehouses->first()?->id,
+            'memberDefaultWarehouseId' => $memberDefaultWarehouseId,
             'activeSale' => $activeSaleModel ? $this->draftPayload($activeSaleModel, $posSummary) : null,
             'heldSales' => $heldSaleModels->map(fn (SalesOrder $order) => $this->heldSalePayload($order))->values(),
             'completedOrder' => $completedOrderModel ? $this->completedOrder($completedOrderModel, $paymentCalculator, $request->session()->get('pos.completed_tenders', [])) : null,
@@ -526,7 +533,7 @@ class PosController extends Controller
 
         $active = null;
         if (($data['start_new_sale'] ?? false) === true) {
-            $warehouse = $this->warehouse($organization, (int) ($data['warehouse_id'] ?? $this->defaultWarehouseId($organization)));
+            $warehouse = $this->warehouse($organization, (int) ($data['warehouse_id'] ?? $this->defaultWarehouseId($request->user(), $organization)));
             $active = $createOrder->execute($request->user(), $organization, $store, [
                 'customer_id' => null,
                 'sale_date' => now()->toDateString(),
@@ -725,13 +732,36 @@ class PosController extends Controller
         }
     }
 
-    private function defaultWarehouseId(Organization $organization): int
+    private function defaultWarehouseId(User $user, Organization $organization): int
     {
-        return (int) Warehouse::query()
+        $activeWarehouseIds = Warehouse::query()
             ->where('organization_id', $organization->getKey())
             ->where('status', WarehouseStatus::Active->value)
             ->orderBy('name')
-            ->value('id');
+            ->pluck('id')
+            ->all();
+
+        return (int) ($this->memberDefaultWarehouseId($user, $organization, $activeWarehouseIds) ?? $activeWarehouseIds[0] ?? 0);
+    }
+
+    /**
+     * The member's configured POS default warehouse, or null when unset or no
+     * longer usable (inactive, removed, or not in this organization). Only a
+     * pre-selection: it never restricts nor grants warehouse access.
+     *
+     * @param  list<int>  $activeWarehouseIds  active warehouses of $organization
+     */
+    private function memberDefaultWarehouseId(User $user, Organization $organization, array $activeWarehouseIds): ?int
+    {
+        $warehouseId = OrganizationMembership::query()
+            ->where('organization_id', $organization->getKey())
+            ->where('user_id', $user->getKey())
+            ->where('status', 'active')
+            ->value('default_warehouse_id');
+
+        return $warehouseId !== null && in_array((int) $warehouseId, array_map('intval', $activeWarehouseIds), true)
+            ? (int) $warehouseId
+            : null;
     }
 
     private function activeDraftQuery(Organization $organization, Store $store)

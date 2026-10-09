@@ -92,6 +92,9 @@ class OrganizationController extends Controller
             oldValues: ['name' => $organization->name],
         );
 
+        // memberships → warehouses is a RESTRICT FK; clear the POS default
+        // first so cascade order can never block the organization delete.
+        $organization->memberships()->whereNotNull('default_warehouse_id')->update(['default_warehouse_id' => null]);
         $organization->delete();
 
         return redirect()->route('platform.index');

@@ -2,12 +2,14 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\WarehouseStatus;
 use App\Models\Organization;
 use App\Models\OrganizationMembership;
 use App\Models\Permission;
 use App\Models\Role;
 use App\Models\StoreMembership;
 use App\Models\UserInvitation;
+use App\Models\Warehouse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
@@ -39,7 +41,13 @@ class UsersAccessController extends Controller
 
         $memberships = OrganizationMembership::query()
             ->where('organization_id', $organization->getKey())
-            ->with(['user:id,name,email', 'role:id,name,slug,is_system'])
+            ->with([
+                'user:id,name,email',
+                'role:id,name,slug,is_system',
+                'defaultWarehouse' => fn ($query) => $query
+                    ->where('organization_id', $organization->getKey())
+                    ->select(['id', 'organization_id', 'name', 'code', 'status']),
+            ])
             ->orderBy('created_at')
             ->get()
             ->map(fn (OrganizationMembership $membership) => [
@@ -48,6 +56,14 @@ class UsersAccessController extends Controller
                 'role' => $membership->role->only(['id', 'name', 'slug', 'is_system']),
                 'status' => $membership->status,
                 'is_owner' => $membership->user_id === $organization->owner_id,
+                // POS pre-selection only. `available` is false when the warehouse
+                // was deactivated since — the POS then ignores it.
+                'default_warehouse' => $membership->defaultWarehouse ? [
+                    'id' => $membership->defaultWarehouse->id,
+                    'name' => $membership->defaultWarehouse->name,
+                    'code' => $membership->defaultWarehouse->code,
+                    'available' => $membership->defaultWarehouse->status === WarehouseStatus::Active,
+                ] : null,
                 'store_memberships' => ($storesByUser->get($membership->user_id) ?? collect())
                     ->map(fn (StoreMembership $sm) => [
                         'id' => $sm->id,
@@ -100,6 +116,16 @@ class UsersAccessController extends Controller
 
         $stores = $organization->stores()->where('status', 'active')->orderBy('name')->get(['id', 'name', 'code']);
 
+        // No Store → Warehouse association exists, so every active warehouse of
+        // this organization is a valid POS default. Only sent to member editors.
+        $warehouses = $user->hasPermission($organization, 'members.update')
+            ? Warehouse::query()
+                ->where('organization_id', $organization->getKey())
+                ->where('status', WarehouseStatus::Active->value)
+                ->orderBy('name')
+                ->get(['id', 'name', 'code'])
+            : collect();
+
         return Inertia::render('Settings/UsersAccess/Index', [
             'organization' => $organization->only(['id', 'name']),
             'memberships' => $memberships,
@@ -112,6 +138,7 @@ class UsersAccessController extends Controller
                 'permissions' => $preset['permissions'],
             ])->values(),
             'stores' => $stores,
+            'warehouses' => $warehouses,
             'can' => [
                 'viewRoles' => $canViewRoles,
                 'createRole' => $user->hasPermission($organization, 'roles.create'),

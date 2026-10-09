@@ -13,6 +13,11 @@ class OrganizationMembership extends Model
 
     protected $guarded = ['*'];
 
+    protected function casts(): array
+    {
+        return ['default_warehouse_id' => 'integer'];
+    }
+
     public function organization(): BelongsTo
     {
         return $this->belongsTo(Organization::class);
@@ -26,6 +31,16 @@ class OrganizationMembership extends Model
     public function role(): BelongsTo
     {
         return $this->belongsTo(Role::class);
+    }
+
+    /**
+     * Warehouse pre-selected for this member when opening the POS. A UX
+     * preference only — it grants no access and may point at a warehouse
+     * that has since become inactive (callers must re-check availability).
+     */
+    public function defaultWarehouse(): BelongsTo
+    {
+        return $this->belongsTo(Warehouse::class, 'default_warehouse_id');
     }
 
     public function resolveRouteBindingQuery($query, $value, $field = null)

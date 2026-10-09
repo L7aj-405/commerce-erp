@@ -48,6 +48,8 @@ type Props = {
     warehouses: Warehouse[];
     currencyCode: string;
     defaultWarehouseId: number | null;
+    /** The member's own configured POS default (already validated server-side), or null. */
+    memberDefaultWarehouseId: number | null;
     activeSale: ActiveSale | null;
     heldSales: HeldSale[];
     brands: Option[];
@@ -77,6 +79,7 @@ export default function PosIndex({
     warehouses,
     currencyCode,
     defaultWarehouseId,
+    memberDefaultWarehouseId,
     activeSale: initialActiveSale,
     heldSales: initialHeldSales,
     brands,
@@ -111,6 +114,10 @@ export default function PosIndex({
     // Product ids showing a brief "added" pulse on their catalogue card.
     const [addedFlash, setAddedFlash] = useState<Record<number, number>>({});
 
+    // Warehouse the cashier explicitly picked on this page. Survives Inertia
+    // prop refreshes (e.g. after completing a sale) so the default never
+    // overrides a deliberate choice; a full reload starts from the default again.
+    const manualWarehouseRef = useRef<number | null>(null);
     const activeSaleRef = useRef<ActiveSale | null>(initialActiveSale);
     const ensureDraftRef = useRef<Promise<ActiveSale> | null>(null);
     const operationIdRef = useRef<string>('');
@@ -119,9 +126,11 @@ export default function PosIndex({
     useEffect(() => {
         setActiveSale(initialActiveSale);
         setHeldSales(initialHeldSales);
-        setWarehouseId(initialActiveSale?.warehouse?.id ?? defaultWarehouseId ?? null);
+        const manual = manualWarehouseRef.current;
+        const manualStillAvailable = manual !== null && warehouses.some((warehouse) => warehouse.id === manual) ? manual : null;
+        setWarehouseId(initialActiveSale?.warehouse?.id ?? manualStillAvailable ?? defaultWarehouseId ?? null);
         setOptimisticQty({});
-    }, [initialActiveSale, initialHeldSales, defaultWarehouseId]);
+    }, [initialActiveSale, initialHeldSales, defaultWarehouseId, warehouses]);
 
     // On completion the server redirects back with `completedOrder`; reset the panel
     // and honour a pending "print" request from "Valider & imprimer".
@@ -519,12 +528,19 @@ export default function PosIndex({
                         Entrepôt
                         <select
                             value={warehouseId ?? ''}
-                            onChange={(event) => setWarehouseId(event.target.value ? Number(event.target.value) : null)}
+                            onChange={(event) => {
+                                const next = event.target.value ? Number(event.target.value) : null;
+                                manualWarehouseRef.current = next;
+                                setWarehouseId(next);
+                            }}
                             className="h-9 rounded-field border border-line-strong bg-surface px-2 text-[13px] text-ink outline-none focus:border-primary lg:h-8"
                         >
                             <option value="">Sélectionner…</option>
                             {warehouses.map((warehouse) => (
-                                <option key={warehouse.id} value={warehouse.id}>{warehouse.name} · {warehouse.code}</option>
+                                <option key={warehouse.id} value={warehouse.id}>
+                                    {warehouse.name} · {warehouse.code}
+                                    {warehouse.id === memberDefaultWarehouseId ? ' (par défaut)' : ''}
+                                </option>
                             ))}
                         </select>
                     </label>

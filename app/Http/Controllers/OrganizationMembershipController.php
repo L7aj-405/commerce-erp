@@ -2,10 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\WarehouseStatus;
 use App\Models\Organization;
 use App\Models\OrganizationMembership;
 use App\Models\Role;
 use App\Models\User;
+use App\Models\Warehouse;
 use App\Services\MembershipService;
 use App\Services\Security\FreshAuthentication;
 use Illuminate\Http\RedirectResponse;
@@ -72,6 +74,16 @@ class OrganizationMembershipController extends Controller
                 Rule::exists('roles', 'id')->where('organization_id', $membership->organization_id),
             ],
             'status' => ['sometimes', 'required', Rule::in(['active', 'suspended'])],
+            // Tenant-scoped: only an ACTIVE warehouse of the membership's own
+            // organization is accepted; forged/cross-org IDs fail validation.
+            'default_warehouse_id' => [
+                'sometimes',
+                'nullable',
+                'integer',
+                Rule::exists('warehouses', 'id')
+                    ->where('organization_id', $membership->organization_id)
+                    ->where('status', WarehouseStatus::Active->value),
+            ],
         ]);
 
         if (array_key_exists('role_id', $data)) {
@@ -83,6 +95,15 @@ class OrganizationMembershipController extends Controller
 
         if (array_key_exists('status', $data)) {
             $memberships->changeStatus($request->user(), $membership, $data['status']);
+        }
+
+        if (array_key_exists('default_warehouse_id', $data)) {
+            $warehouse = $data['default_warehouse_id'] === null
+                ? null
+                : Warehouse::query()
+                    ->where('organization_id', $membership->organization_id)
+                    ->findOrFail($data['default_warehouse_id']);
+            $memberships->changeDefaultWarehouse($request->user(), $membership, $warehouse);
         }
 
         return back();
