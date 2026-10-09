@@ -98,19 +98,24 @@ class ProductController extends Controller
         ]);
     }
 
-    public function create(ActiveTenantContext $context): Response
+    public function create(Request $request, ActiveTenantContext $context): Response
     {
         $organization = $context->organizationOrFail();
         $this->authorize('create', [Product::class, $organization]);
 
-        return Inertia::render('Catalog/Products/Form', ['product' => null, ...$this->lookups($organization->id)]);
+        return Inertia::render('Catalog/Products/Form', [
+            'product' => null,
+            'canManageCost' => $request->user()->hasPermission($organization, 'product_cost.manage'),
+            ...$this->lookups($organization->id),
+        ]);
     }
 
     public function store(Request $request, ActiveTenantContext $context, CreateProductAction $action): RedirectResponse
     {
         $organization = $context->organizationOrFail();
         $this->authorize('create', [Product::class, $organization]);
-        $product = $action->execute($request->user(), $organization, $request->validate($this->rules($organization->id)));
+        $canManageCost = $request->user()->hasPermission($organization, 'product_cost.manage');
+        $product = $action->execute($request->user(), $organization, $request->validate($this->rules($organization->id, $canManageCost)));
 
         return redirect()->route('catalog.products.show', $product)->with('success', 'Produit créé avec succès.');
     }
@@ -120,7 +125,11 @@ class ProductController extends Controller
         $this->authorize('view', $product);
         $canViewStock = $request->user()->hasPermission($product->organization_id, 'inventory.view');
         $canTransfer = $request->user()->hasPermission($product->organization_id, 'inventory.transfer');
+        $canViewCost = $request->user()->hasPermission($product->organization_id, 'product_cost.view');
         $product->load(['brand', 'defaultCategory', 'defaultUnit', 'variants.taxRate']);
+        if (! $canViewCost) {
+            $product->variants->each->makeHidden('purchase_price');
+        }
 
         $defaultTaxRate = $priceResolver->defaultTaxRate($context->store(), (int) $product->organization_id);
         $priceByVariant = $product->variants->mapWithKeys(function ($variant) use ($priceResolver, $defaultTaxRate) {
@@ -186,12 +195,18 @@ class ProductController extends Controller
         ]);
     }
 
-    public function edit(Product $product): Response
+    public function edit(Request $request, Product $product): Response
     {
         $this->authorize('update', $product);
+        $canManageCost = $request->user()->hasPermission($product->organization_id, 'product_cost.manage');
+        $product->load('variants');
+        if (! $request->user()->hasPermission($product->organization_id, 'product_cost.view')) {
+            $product->variants->each->makeHidden('purchase_price');
+        }
 
         return Inertia::render('Catalog/Products/Form', [
-            'product' => $product->load('variants'),
+            'product' => $product,
+            'canManageCost' => $canManageCost,
             ...$this->lookups($product->organization_id),
         ]);
     }
@@ -230,7 +245,7 @@ class ProductController extends Controller
     }
 
     /** @return array<string, mixed> */
-    private function rules(int $organizationId): array
+    private function rules(int $organizationId, bool $canManageCost = false): array
     {
         return [
             'name' => ['required', 'string', 'max:255'],
@@ -245,7 +260,7 @@ class ProductController extends Controller
             'variant.sku' => ['required', 'string', 'max:255', Rule::unique('product_variants', 'sku')->where('organization_id', $organizationId)],
             'variant.reference' => ['nullable', 'string', 'max:255'],
             'variant.barcode' => ['nullable', 'string', 'max:255', Rule::unique('product_variants', 'barcode')->where('organization_id', $organizationId)],
-            'variant.purchase_price' => ['nullable', 'numeric', 'min:0', 'decimal:0,4'],
+            'variant.purchase_price' => $canManageCost ? ['nullable', 'numeric', 'min:0', 'decimal:0,4'] : ['prohibited'],
             'variant.public_price_ttc' => ['nullable', 'numeric', 'min:0', 'decimal:0,4', 'required_without_all:variant.regular_sale_price,variant.default_sale_price'],
             'variant.unit_price_ht' => ['nullable', 'numeric', 'min:0', 'decimal:0,4'],
             'variant.regular_sale_price' => ['nullable', 'numeric', 'min:0', 'decimal:0,4', 'required_without_all:variant.default_sale_price,variant.public_price_ttc'],

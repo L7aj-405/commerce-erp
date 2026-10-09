@@ -3,6 +3,7 @@
 namespace App\Actions\Sales;
 
 use App\Actions\Inventory\CreateOrderTransferRequestsAction;
+use App\Actions\Commissions\GenerateSalesOrderCommissionEntriesAction;
 use App\Actions\Sales\Concerns\AuthorizesSalesAction;
 use App\Enums\SalesOrderLineType;
 use App\Enums\SalesOrderSource;
@@ -16,6 +17,7 @@ use App\Services\PosStockAllocator;
 use App\Services\SalesOrderPaymentCalculator;
 use App\Services\SalesOrderRevisionSnapshot;
 use App\Services\SalesOrderTotalsCalculator;
+use App\Services\SalespersonEligibilityService;
 use App\Support\Decimal;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -31,6 +33,9 @@ class ConfirmSalesOrderAction
         private readonly CreateOrderTransferRequestsAction $transferRequests,
         private readonly SalesOrderPaymentCalculator $payments,
         private readonly SalesOrderRevisionSnapshot $revisionSnapshots,
+        private readonly SnapshotSalesOrderLineMarginsAction $marginSnapshots,
+        private readonly SalespersonEligibilityService $salespersons,
+        private readonly GenerateSalesOrderCommissionEntriesAction $commissions,
         private readonly AuditLogger $audit,
     ) {}
 
@@ -44,9 +49,14 @@ class ConfirmSalesOrderAction
                 throw ValidationException::withMessages(['order' => 'Only a draft order can be confirmed.']);
             }
             $this->totals->recalculate($order);
-            $lines = $order->lines()->with(['allocations.warehouse', 'productVariant', 'procurements'])->get();
+            $lines = $order->lines()->with(['allocations.warehouse', 'productVariant', 'procurements'])->lockForUpdate()->get();
             if ($lines->isEmpty()) {
                 throw ValidationException::withMessages(['lines' => 'At least one line is required before confirmation.']);
+            }
+
+            if ($order->salesperson_id !== null) {
+                $salesperson = $this->salespersons->resolve($order->organization_id, $order->salesperson_id);
+                $order->salesperson_name_snapshot = $salesperson->name;
             }
 
             $revision = $order->currentRevision;
@@ -172,10 +182,19 @@ class ConfirmSalesOrderAction
                 $allocation->save();
             }
 
+            // Cost is frozen at the same atomic boundary as the commercial
+            // commitment, after all authoritative line calculations succeed.
+            $this->marginSnapshots->execute($order, $lines);
+
             $order->status = SalesOrderStatus::Confirmed;
             $order->confirmed_at = now();
             $order->confirmed_by_user_id = $actor->getKey();
             $order->save();
+
+            // Commission snapshots belong to the same atomic boundary as the
+            // confirmed sale and its immutable C2/C3 snapshots. The action is
+            // source-key idempotent, including controlled correction cycles.
+            $this->commissions->execute($actor, $order->load(['organization', 'store', 'lines']));
 
             if ($revision && $revision->status === 'in_progress') {
                 $this->payments->recalculate($order);

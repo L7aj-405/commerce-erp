@@ -24,6 +24,7 @@ use App\Services\PosStockAllocator;
 use App\Services\SalesLineCalculator;
 use App\Services\SalesOrderPaymentCalculator;
 use App\Services\SalesOrderTotalsCalculator;
+use App\Services\SalespersonEligibilityService;
 use App\Support\Decimal;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
@@ -52,6 +53,7 @@ class CreatePosSaleAction
         private readonly SalesOrderTotalsCalculator $totals,
         private readonly PosDraftCheckoutCalculator $posSummary,
         private readonly PosStockAllocator $stockAllocator,
+        private readonly SalespersonEligibilityService $salespersons,
         private readonly AuditLogger $audit,
     ) {}
 
@@ -102,6 +104,11 @@ class CreatePosSaleAction
 
                 $this->applyGlobalDiscount($draft);
                 $this->applyShippingLine($actor, $draft);
+                // The employee completing checkout owns the POS sale. A held
+                // cart cannot silently retain another user's attribution.
+                $salesperson = $this->salespersons->resolve($organization, $actor->getKey());
+                $draft->salesperson_id = $salesperson->getKey();
+                $draft->salesperson_name_snapshot = $salesperson->name;
                 $draft->client_operation_id = $data['client_operation_id'];
                 $draft->pos_checkout_hash = $checkoutHash;
                 $draft->save();

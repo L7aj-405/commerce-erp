@@ -30,6 +30,7 @@ class OrganizationBackupSchema
         'customer_return_sequences', 'customer_returns', 'customer_return_lines', 'credit_note_sequences', 'credit_notes', 'credit_note_lines',
         'customer_exchange_sequences', 'customer_exchanges', 'customer_exchange_payments',
         'organization_document_stamps', 'document_stamp_appositions', 'organization_contacts',
+        'commission_rule_sets', 'commission_rule_tiers', 'commission_entries',
     ];
 
     /** @return list<string> */

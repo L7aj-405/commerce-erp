@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Sales;
 
 use App\Actions\Sales\CreateSalesOrderAction;
+use App\Actions\Sales\ReassignSalesOrderSalespersonAction;
 use App\Actions\Sales\StartSalesOrderCorrectionAction;
 use App\Actions\Sales\UpdateSalesOrderAction;
 use App\Enums\CatalogStatus;
@@ -30,6 +31,8 @@ use App\Services\PosStockAllocator;
 use App\Services\Pos\PosOrderCompletionEligibility;
 use App\Services\ProductPriceResolver;
 use App\Services\SalesOrderPaymentCalculator;
+use App\Services\SalesMarginReportService;
+use App\Services\SalespersonEligibilityService;
 use App\Services\ReturnPolicyService;
 use App\Support\Decimal;
 use Illuminate\Http\JsonResponse;
@@ -116,10 +119,21 @@ class SalesOrderController extends Controller
         return redirect()->route('sales.orders.edit', $order);
     }
 
-    public function show(SalesOrder $order, SalesOrderPaymentCalculator $payments, PosStockAllocator $stock, ReturnPolicyService $returnPolicies, PosOrderCompletionEligibility $completionEligibility): Response
+    public function show(SalesOrder $order, SalesOrderPaymentCalculator $payments, PosStockAllocator $stock, ReturnPolicyService $returnPolicies, PosOrderCompletionEligibility $completionEligibility, SalesMarginReportService $margins, SalespersonEligibilityService $salespersons): Response
     {
         $this->authorize('view', $order);
         $order = $this->loadOrder($order);
+        $canViewMargin = request()->user()->hasPermission($order->organization_id, 'product_cost.view');
+        $canReassignSalesperson = request()->user()->hasPermission($order->organization_id, 'sales_orders.reassign_salesperson');
+        if (! $canViewMargin) {
+            $order->lines->each->makeHidden([
+                'purchase_price_snapshot',
+                'cost_total_snapshot',
+                'margin_amount_snapshot',
+                'margin_rate_snapshot',
+                'cost_status',
+            ]);
+        }
 
         $canRecordPayment = request()->user()->can('create', [Payment::class, $order]);
         $invoices = $order->invoices()->latest('id')->get([
@@ -204,6 +218,8 @@ class SalesOrderController extends Controller
                 ]),
             'returnPolicy' => $order->fulfilled_at ? $returnPolicies->evaluate($order) : null,
             'commercialSummary' => $returnSummary,
+            'marginSummary' => $canViewMargin ? $margins->forOrder($order) : null,
+            'salespersons' => $canReassignSalesperson ? $salespersons->choices($order->organization_id) : [],
             'completionEligibility' => $completion,
             'awaitingReplenishment' => $order->awaitingReplenishment(),
             'procurement' => $this->procurementPayload($order, $stock),
@@ -256,6 +272,8 @@ class SalesOrderController extends Controller
                 'createExchange' => $order->fulfillment_status === SalesOrderFulfillmentStatus::Fulfilled
                     && $order->invoices()->where('status', InvoiceStatus::Issued->value)->exists()
                     && request()->user()->can('create', [\App\Models\CustomerExchange::class, $order]),
+                'viewMargin' => $canViewMargin,
+                'reassignSalesperson' => $canReassignSalesperson,
             ],
         ]);
     }
@@ -298,7 +316,7 @@ class SalesOrderController extends Controller
         return redirect()->route('sales.orders.edit', $order);
     }
 
-    public function edit(Request $request, SalesOrder $order, PosStockAllocator $stock): Response
+    public function edit(Request $request, SalesOrder $order, PosStockAllocator $stock, SalespersonEligibilityService $salespersons): Response
     {
         $this->authorize('update', $order);
 
@@ -343,6 +361,9 @@ class SalesOrderController extends Controller
                 'status' => $originatingQuotation->status->value,
                 'revision_number' => (int) $originatingQuotation->revision_number,
             ] : null,
+            'salespersons' => $request->user()->hasPermission($order->organization_id, 'sales_orders.assign_salesperson')
+                ? $salespersons->choices($order->organization_id)
+                : [],
             'can' => $this->abilities($request, $order),
         ]);
     }
@@ -353,6 +374,17 @@ class SalesOrderController extends Controller
         $action->execute($request->user(), $order, $request->validate($this->headerRules($order->organization_id)));
 
         return back();
+    }
+
+    public function reassignSalesperson(Request $request, SalesOrder $order, ReassignSalesOrderSalespersonAction $action): RedirectResponse
+    {
+        $data = $request->validate([
+            'salesperson_id' => ['nullable', 'integer'],
+            'reason' => ['required', 'string', 'max:2000'],
+        ]);
+        $action->execute($request->user(), $order, $data['salesperson_id'] ?? null, $data['reason']);
+
+        return back()->with('success', 'Commercial réattribué avec succès.');
     }
 
     /**
@@ -447,6 +479,7 @@ class SalesOrderController extends Controller
             'customer_id' => ['nullable', 'integer', Rule::exists('customers', 'id')->where(fn ($query) => $query->where('organization_id', $organizationId)->where('status', 'active'))],
             'sale_date' => ['required', 'date'], 'currency_code' => ['required', 'string', 'size:3', 'uppercase'],
             'notes' => ['nullable', 'string', 'max:5000'],
+            'salesperson_id' => ['nullable', 'integer'],
         ];
     }
 
@@ -543,6 +576,7 @@ class SalesOrderController extends Controller
             'store:id,name,code',
             'customer:id,type,display_name,company_name,email,phone,tax_identifier,billing_address',
             'createdBy:id,name',
+            'salesperson:id,name',
             'cancelledBy:id,name',
             'lines.productVariant:id,organization_id,label,sku,status',
             'lines.addendum:id,sequence',
@@ -563,6 +597,7 @@ class SalesOrderController extends Controller
             'cancel' => $request->user()->can('cancel', $order), 'fulfill' => $request->user()->can('fulfill', $order),
             'overridePrice' => $request->user()->hasPermission($order->organization_id, 'sales_orders.override_price'),
             'applyDiscount' => $request->user()->hasPermission($order->organization_id, 'sales_orders.apply_discount'),
+            'assignSalesperson' => $request->user()->hasPermission($order->organization_id, 'sales_orders.assign_salesperson'),
             'reportOutOfStockArticle' => $request->user()->hasPermission($order->organization_id, 'procurement.manage'),
         ];
     }

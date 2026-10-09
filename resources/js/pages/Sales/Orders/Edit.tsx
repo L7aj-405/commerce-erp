@@ -18,6 +18,9 @@ type Order = {
     sale_date: string;
     currency_code: string;
     notes: string | null;
+    salesperson_id: number | null;
+    salesperson_name_snapshot: string | null;
+    salesperson: { id: number; name: string } | null;
     status: string;
     subtotal_excl_tax: string;
     discount_total: string;
@@ -36,16 +39,18 @@ type Props = {
     correction: Correction | null;
     procurementUnderCovered: number;
     originatingQuotation: OriginatingQuotation | null;
-    can: { update: boolean; confirm: boolean; overridePrice: boolean; applyDiscount: boolean };
+    salespersons: { id: number; name: string }[];
+    can: { update: boolean; confirm: boolean; overridePrice: boolean; applyDiscount: boolean; assignSalesperson: boolean };
 };
 
-export default function EditOrder({ order, taxRates, lineSearchUrl, customerSearchUrl, isEditable, correction, procurementUnderCovered, originatingQuotation, can }: Props) {
+export default function EditOrder({ order, taxRates, lineSearchUrl, customerSearchUrl, isEditable, correction, procurementUnderCovered, originatingQuotation, salespersons, can }: Props) {
     const currency = order.currency_code;
     const header = useForm({
         customer_id: order.customer_id,
         sale_date: order.sale_date.slice(0, 10),
         currency_code: order.currency_code,
         notes: order.notes ?? '',
+        salesperson_id: order.salesperson_id,
     });
     const [customerLabel, setCustomerLabel] = useState(order.customer_company || order.customer_name || '');
     const confirmation = useForm({});
@@ -145,6 +150,24 @@ export default function EditOrder({ order, taxRates, lineSearchUrl, customerSear
                         />
                     </label>
                     <div className="flex items-end text-xs text-ink-faint">Devise : {order.currency_code}</div>
+                    <label className="block text-sm">
+                        <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-ink-muted">Commercial</span>
+                        {can.assignSalesperson && !correction ? (
+                            <select
+                                disabled={!isEditable}
+                                value={header.data.salesperson_id ?? ''}
+                                onChange={(e) => header.setData('salesperson_id', e.target.value ? Number(e.target.value) : null)}
+                                className="w-full rounded-field border border-line-strong px-3 py-2 disabled:bg-raised"
+                            >
+                                <option value="">Non attribuée</option>
+                                {salespersons.map((salesperson) => <option key={salesperson.id} value={salesperson.id}>{salesperson.name}</option>)}
+                            </select>
+                        ) : (
+                            <div className="rounded-field border border-line bg-raised px-3 py-2 text-ink">
+                                {order.salesperson_name_snapshot ?? order.salesperson?.name ?? 'Non attribuée'}
+                            </div>
+                        )}
+                    </label>
                     <label className="block text-sm md:col-span-3">
                         <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-ink-muted">Notes</span>
                         <textarea

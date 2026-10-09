@@ -36,6 +36,7 @@ class CustomerReturn extends Model
     public function lines(): HasMany { return $this->hasMany(CustomerReturnLine::class)->orderBy('position'); }
     public function creditNotes(): HasMany { return $this->hasMany(CreditNote::class); }
     public function refunds(): HasMany { return $this->hasMany(PaymentRefund::class); }
+    public function commissionEntries(): HasMany { return $this->hasMany(CommissionEntry::class); }
     public function exchange(): HasOne { return $this->hasOne(CustomerExchange::class); }
     public function createdBy(): BelongsTo { return $this->belongsTo(User::class, 'created_by_user_id'); }
     public function receivedBy(): BelongsTo { return $this->belongsTo(User::class, 'received_by_user_id'); }

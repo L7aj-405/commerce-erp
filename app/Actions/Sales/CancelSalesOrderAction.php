@@ -2,6 +2,7 @@
 
 namespace App\Actions\Sales;
 
+use App\Actions\Commissions\ReverseSalesOrderCommissionsAction;
 use App\Actions\Documents\CancelDeliveryNoteDraftAction;
 use App\Actions\Documents\CancelInvoiceDraftAction;
 use App\Actions\Inventory\CancelTransferRequestAction;
@@ -37,6 +38,7 @@ class CancelSalesOrderAction
         private readonly CancelInvoiceDraftAction $invoiceDrafts,
         private readonly CancelDeliveryNoteDraftAction $deliveryNoteDrafts,
         private readonly RefundPaymentAction $refunds,
+        private readonly ReverseSalesOrderCommissionsAction $commissionReversals,
         private readonly AuditLogger $audit,
     ) {}
 
@@ -195,6 +197,14 @@ class CancelSalesOrderAction
                 foreach ($pending as $request) {
                     $this->transferRequests->execute($actor, $request, 'Commande annulée', orderPortionOnly: true);
                 }
+
+                $this->commissionReversals->execute(
+                    $actor,
+                    $order,
+                    \App\Models\CommissionEntry::TYPE_CANCELLATION,
+                    $order->getKey(),
+                    'Annulation de commande : '.(string) $reason,
+                );
             }
             $order->status = SalesOrderStatus::Cancelled;
             $order->cancelled_at = now();

@@ -26,6 +26,7 @@ const GROUP_LABELS: Record<string, string> = {
     roles: 'Rôles',
     catalog: 'Catalogue',
     products: 'Produits',
+    product_cost: "Prix d'achat",
     categories: 'Catégories',
     brands: 'Marques',
     units: 'Unités',
@@ -45,6 +46,7 @@ const GROUP_LABELS: Record<string, string> = {
     delivery_notes: 'Bons de livraison',
     integrations: 'Intégrations',
     finance: 'Finance',
+    commissions: 'Commissions',
 };
 
 function groupLabel(key: string) {

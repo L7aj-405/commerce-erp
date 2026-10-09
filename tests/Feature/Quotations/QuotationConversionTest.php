@@ -47,6 +47,8 @@ class QuotationConversionTest extends QuotationTestCase
         $order = $result['order'];
 
         $this->assertSame(SalesOrderStatus::Draft, $order->status);
+        $this->assertSame($owner->id, $order->salesperson_id);
+        $this->assertSame($owner->name, $order->salesperson_name_snapshot);
         $this->assertSame(2, $order->lines()->count());
         $catalogLine = $order->lines()->where('line_type', SalesOrderLineType::Catalog->value)->firstOrFail();
         $customLine = $order->lines()->where('line_type', SalesOrderLineType::Custom->value)->firstOrFail();

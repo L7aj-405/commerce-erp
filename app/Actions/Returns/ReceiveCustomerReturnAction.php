@@ -2,6 +2,7 @@
 
 namespace App\Actions\Returns;
 
+use App\Actions\Commissions\CreateReturnCommissionReversalsAction;
 use App\Enums\InventoryMovementType;
 use App\Enums\InvoiceStatus;
 use App\Models\CreditNote;
@@ -22,6 +23,7 @@ class ReceiveCustomerReturnAction
         private readonly InventoryBalanceLocker $balances,
         private readonly CreditNoteNumberGenerator $numbers,
         private readonly SalesOrderPaymentCalculator $payments,
+        private readonly CreateReturnCommissionReversalsAction $commissionReversals,
         private readonly AuditLogger $audit,
     ) {}
 
@@ -72,6 +74,7 @@ class ReceiveCustomerReturnAction
             $customerReturn->received_at = now();
             $customerReturn->received_by_user_id = $actor->id;
             $customerReturn->save();
+            $this->commissionReversals->execute($actor, $customerReturn);
             $this->payments->recalculate($customerReturn->salesOrder);
             $this->audit->record('sales_return.received', $actor, $customerReturn->organization, $customerReturn->store, $customerReturn, oldValues: ['status' => 'draft'], newValues: ['status' => 'received', 'disposition' => $customerReturn->disposition, 'stock_reintroduced' => $customerReturn->disposition === 'restock']);
 

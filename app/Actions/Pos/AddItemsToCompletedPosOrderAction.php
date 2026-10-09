@@ -19,6 +19,7 @@ use App\Services\AuditLogger;
 use App\Services\InventoryReservationManager;
 use App\Services\Pos\PosOrderCompletionEligibility;
 use App\Services\ProductPriceResolver;
+use App\Services\SaleLineMarginCalculator;
 use App\Services\SalesLineCalculator;
 use App\Services\SalesOrderPaymentCalculator;
 use App\Services\SalesOrderTotalsCalculator;
@@ -44,6 +45,7 @@ class AddItemsToCompletedPosOrderAction
         private readonly RecordWooCommerceStockTaskAction $wooStockTasks,
         private readonly AuditLogger $audit,
         private readonly PosOrderCompletionEligibility $eligibility,
+        private readonly SaleLineMarginCalculator $margins,
     ) {}
 
     /** @param list<array{product_variant_id: int, quantity: string}> $items */
@@ -97,6 +99,7 @@ class AddItemsToCompletedPosOrderAction
                     $variant = ProductVariant::query()
                         ->where('organization_id', $order->organization_id)
                         ->whereKey($item['product_variant_id'])
+                        ->lockForUpdate()
                         ->with(['product.defaultUnit', 'taxRate'])
                         ->firstOrFail();
                     if ($variant->status !== CatalogStatus::Active || $variant->product->status !== CatalogStatus::Active) {
@@ -133,6 +136,13 @@ class AddItemsToCompletedPosOrderAction
                     $line->tax_unresolved = false;
                     $line->discount_type = SalesOrderDiscountType::None;
                     foreach ($calculated as $field => $value) {
+                        $line->{$field} = $value;
+                    }
+                    foreach ($this->margins->calculate(
+                        $calculated['taxable_amount'],
+                        $calculated['quantity'],
+                        $variant->purchase_price,
+                    ) as $field => $value) {
                         $line->{$field} = $value;
                     }
                     $line->save();

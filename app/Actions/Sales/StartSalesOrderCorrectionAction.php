@@ -2,6 +2,7 @@
 
 namespace App\Actions\Sales;
 
+use App\Actions\Commissions\ReverseSalesOrderCommissionsAction;
 use App\Actions\Inventory\CancelTransferRequestAction;
 use App\Actions\Sales\Concerns\AuthorizesSalesAction;
 use App\Enums\InventoryReservationStatus;
@@ -34,6 +35,7 @@ class StartSalesOrderCorrectionAction
         private readonly InventoryReservationManager $reservations,
         private readonly CancelTransferRequestAction $transferRequests,
         private readonly SalesOrderRevisionSnapshot $snapshots,
+        private readonly ReverseSalesOrderCommissionsAction $commissionReversals,
         private readonly AuditLogger $audit,
     ) {}
 
@@ -91,6 +93,14 @@ class StartSalesOrderCorrectionAction
             $revision->initiated_by_user_id = $actor->getKey();
             $revision->initiated_at = now();
             $revision->save();
+
+            $this->commissionReversals->execute(
+                $actor,
+                $order,
+                \App\Models\CommissionEntry::TYPE_CORRECTION,
+                $revision->getKey(),
+                'Correction commerciale : '.$reason,
+            );
 
             foreach ($order->lines as $line) {
                 foreach ($line->allocations as $allocation) {

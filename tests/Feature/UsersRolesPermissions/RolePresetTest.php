@@ -91,6 +91,14 @@ class RolePresetTest extends PlatformTestCase
         $permissions = $role->permissions()->pluck('key')->sort()->values()->all();
 
         $this->assertSame([
+            'commissions.export',
+            'commissions.ledger.approve',
+            'commissions.ledger.mark_paid',
+            'commissions.ledger.reconcile',
+            'commissions.ledger.view',
+            'commissions.rules.manage',
+            'commissions.rules.view',
+            'commissions.simulate',
             'contacts.view',
             'customers.view',
             'finance.export',
@@ -98,6 +106,10 @@ class RolePresetTest extends PlatformTestCase
             'finance.view',
             'invoices.view',
             'payments.view',
+            'product_cost.export',
+            'product_cost.import',
+            'product_cost.manage',
+            'product_cost.view',
             'quotations.view',
         ], $permissions);
 

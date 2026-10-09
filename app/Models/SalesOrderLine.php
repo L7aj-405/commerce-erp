@@ -30,6 +30,10 @@ class SalesOrderLine extends Model
             'taxable_amount' => 'decimal:4',
             'tax_amount' => 'decimal:4',
             'total_incl_tax' => 'decimal:4',
+            'purchase_price_snapshot' => 'decimal:4',
+            'cost_total_snapshot' => 'decimal:4',
+            'margin_amount_snapshot' => 'decimal:4',
+            'margin_rate_snapshot' => 'decimal:4',
         ];
     }
 
@@ -56,6 +60,11 @@ class SalesOrderLine extends Model
     public function allocations(): HasMany
     {
         return $this->hasMany(SalesOrderInventoryAllocation::class);
+    }
+
+    public function commissionEntries(): HasMany
+    {
+        return $this->hasMany(CommissionEntry::class);
     }
 
     public function procurements(): HasMany

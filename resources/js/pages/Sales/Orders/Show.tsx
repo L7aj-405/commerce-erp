@@ -38,6 +38,11 @@ type Line = {
     tax_rate: string;
     tax_amount: string;
     total_incl_tax: string;
+    purchase_price_snapshot?: string | null;
+    cost_total_snapshot?: string | null;
+    margin_amount_snapshot?: string | null;
+    margin_rate_snapshot?: string | null;
+    cost_status?: 'pending' | 'available' | 'missing' | 'unavailable' | null;
     allocations: Allocation[];
     out_of_stock_article: OutOfStockArticleRef;
     addendum: { id: number; sequence: number } | null;
@@ -77,6 +82,9 @@ type Order = {
     store: { name: string; code: string };
     customer: Customer;
     created_by: { name: string } | null;
+    salesperson_id: number | null;
+    salesperson_name_snapshot: string | null;
+    salesperson: { id: number; name: string } | null;
     lines: Line[];
 };
 type Account = { id: number; name: string; code: string; type: string; currency_code: string; accepted_methods: string[] };
@@ -179,6 +187,8 @@ type Props = {
     customerExchanges: CustomerExchange[];
     returnPolicy: any | null;
     commercialSummary: { gross: string; returns: string; net: string; state: 'none' | 'partial' | 'full'; fully_returned: boolean };
+    marginSummary: { net_revenue_excl_tax: string; covered_revenue_excl_tax: string; cost_total: string; gross_margin_amount: string; gross_margin_rate: string | null; missing_cost_line_count: number } | null;
+    salespersons: { id: number; name: string }[];
     completionEligibility: CompletionEligibility;
     can: {
         update: boolean;
@@ -194,6 +204,8 @@ type Props = {
         completePos: boolean;
         createReturn: boolean;
         createExchange: boolean;
+        viewMargin: boolean;
+        reassignSalesperson: boolean;
     };
 };
 
@@ -228,12 +240,14 @@ const TR_STATUS_LABEL: Record<string, string> = {
     cancelled: 'Annulée',
 };
 
-export default function ShowOrder({ order, paymentSummary, payments, refunds, financialAccounts, documents, awaitingReplenishment, procurement, transferRequests, revisions, activeCorrection, pendingReplacementInvoice, invoiceStaleAfterCompletion, addenda, customerReturns, customerExchanges, returnPolicy, commercialSummary, completionEligibility, can }: Props) {
+export default function ShowOrder({ order, paymentSummary, payments, refunds, financialAccounts, documents, awaitingReplenishment, procurement, transferRequests, revisions, activeCorrection, pendingReplacementInvoice, invoiceStaleAfterCompletion, addenda, customerReturns, customerExchanges, returnPolicy, commercialSummary, marginSummary, salespersons, completionEligibility, can }: Props) {
     const [confirmCancel, setConfirmCancel] = useState(false);
     const cancellation = useForm({ reason: '' });
     const createInvoice = useForm({});
     const correctionForm = useForm({ reason: '' });
     const [showCorrection, setShowCorrection] = useState(false);
+    const [showSalespersonCorrection, setShowSalespersonCorrection] = useState(false);
+    const salespersonForm = useForm({ salesperson_id: order.salesperson_id, reason: '' });
     const paymentForm = useForm<{ client_operation_id: string; payments: PaymentEntry[] }>({
         client_operation_id: crypto.randomUUID(),
         payments: [blankPayment(paymentSummary.remaining)],
@@ -256,6 +270,13 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
     const startCorrection = (event: FormEvent) => {
         event.preventDefault();
         correctionForm.post(`/sales/orders/${order.id}/corrections`);
+    };
+    const reassignSalesperson = (event: FormEvent) => {
+        event.preventDefault();
+        salespersonForm.patch(`/sales/orders/${order.id}/salesperson`, {
+            preserveScroll: true,
+            onSuccess: () => setShowSalespersonCorrection(false),
+        });
     };
     const recordPayments = (event: FormEvent) => {
         event.preventDefault();
@@ -425,6 +446,33 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
                 </div>
             )}
 
+            {showSalespersonCorrection && can.reassignSalesperson && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="presentation">
+                    <form onSubmit={reassignSalesperson} role="dialog" aria-modal="true" aria-labelledby="salesperson-title" className="w-full max-w-lg space-y-4 rounded-card border border-line bg-surface p-5 shadow-xl">
+                        <div>
+                            <h2 id="salesperson-title" className="text-lg font-semibold text-ink">Réattribuer le commercial</h2>
+                            <p className="mt-1 text-sm text-ink-muted">Cette correction modifie l’attribution historique et sera auditée.</p>
+                        </div>
+                        <label className="block text-sm">
+                            <span className="mb-1 block font-medium text-ink">Commercial</span>
+                            <select value={salespersonForm.data.salesperson_id ?? ''} onChange={(e) => salespersonForm.setData('salesperson_id', e.target.value ? Number(e.target.value) : null)} className="w-full rounded-field border border-line-strong px-3 py-2">
+                                <option value="">Non attribuée</option>
+                                {salespersons.map((salesperson) => <option key={salesperson.id} value={salesperson.id}>{salesperson.name}</option>)}
+                            </select>
+                        </label>
+                        <label className="block text-sm">
+                            <span className="mb-1 block font-medium text-ink">Motif</span>
+                            <textarea required value={salespersonForm.data.reason} onChange={(e) => salespersonForm.setData('reason', e.target.value)} className="min-h-24 w-full rounded-field border border-line-strong px-3 py-2" />
+                        </label>
+                        {Object.values(salespersonForm.errors).map((error) => error && <p key={error} className="text-sm text-danger">{error}</p>)}
+                        <div className="flex justify-end gap-2">
+                            <Button type="button" variant="secondary" onClick={() => setShowSalespersonCorrection(false)}>Annuler</Button>
+                            <Button type="submit" loading={salespersonForm.processing}>Confirmer la réattribution</Button>
+                        </div>
+                    </form>
+                </div>
+            )}
+
             {order.status === 'confirmed' && order.fulfillment_status === 'fulfilled' && (
                 <div className="mb-6 rounded-field border border-line bg-raised/60 px-4 py-3 text-sm text-ink-muted">
                     Les articles déjà remis sont verrouillés. Vous pouvez uniquement ajouter un nouveau complément POS local ; toute réduction ou suppression relève d’un retour ou d’un avoir.
@@ -474,6 +522,14 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
                     <DocBadge tone={paymentStatusTone(paymentSummary.status)}>
                         {label(paymentStatusLabel, paymentSummary.status)}
                     </DocBadge>
+                </Card>
+                <Card label="Commercial">
+                    <span>{order.salesperson_name_snapshot ?? order.salesperson?.name ?? 'Non attribuée'}</span>
+                    {can.reassignSalesperson && order.status === 'confirmed' && (
+                        <button type="button" onClick={() => setShowSalespersonCorrection(true)} className="ml-2 text-xs font-medium text-primary underline">
+                            Réattribuer
+                        </button>
+                    )}
                 </Card>
             </div>
 
@@ -532,6 +588,24 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
                         </div>
                     </div>
                 </section>
+                {can.viewMargin && marginSummary && (
+                    <section className="rounded-card border border-line bg-surface p-5 lg:col-span-2">
+                        <div className="flex items-center justify-between gap-3">
+                            <h2 className="text-sm font-semibold text-ink">Marge brute HT</h2>
+                            {marginSummary.missing_cost_line_count > 0 && (
+                                <span className="rounded-full bg-warning-soft px-2.5 py-1 text-xs font-medium text-warning">
+                                    {marginSummary.missing_cost_line_count} coût(s) indisponible(s)
+                                </span>
+                            )}
+                        </div>
+                        <dl className="mt-3 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+                            <Row term="CA net HT couvert" value={formatMoney(marginSummary.covered_revenue_excl_tax, order.currency_code)} />
+                            <Row term="Coût d’achat HT" value={formatMoney(marginSummary.cost_total, order.currency_code)} />
+                            <Row term="Marge brute" value={formatMoney(marginSummary.gross_margin_amount, order.currency_code)} />
+                            <Row term="Taux de marge" value={marginSummary.gross_margin_rate === null ? '—' : `${formatQuantity(marginSummary.gross_margin_rate)}%`} />
+                        </dl>
+                    </section>
+                )}
             </div>
 
             {/* Product lines */}
@@ -545,6 +619,7 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
                             <th className="px-4 py-3 text-right font-medium">Remise HT</th>
                             <th className="px-4 py-3 text-right font-medium">TVA</th>
                             <th className="px-4 py-3 text-right font-medium">Total TTC</th>
+                            {can.viewMargin && <th className="px-4 py-3 text-right font-medium">Marge HT</th>}
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-line">
@@ -581,6 +656,13 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
                                 <td className="px-4 py-3 text-right font-medium tabular-nums text-ink">
                                     {formatMoney(line.total_incl_tax, order.currency_code)}
                                 </td>
+                                {can.viewMargin && (
+                                    <td className="px-4 py-3 text-right tabular-nums">
+                                        {line.cost_status === 'available' && line.margin_amount_snapshot !== null
+                                            ? formatMoney(line.margin_amount_snapshot, order.currency_code)
+                                            : <span className="text-warning">Indisponible</span>}
+                                    </td>
+                                )}
                             </tr>
                         ))}
                     </tbody>

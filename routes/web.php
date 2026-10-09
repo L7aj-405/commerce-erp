@@ -16,6 +16,7 @@ use App\Http\Controllers\Catalog\BrandController;
 use App\Http\Controllers\Catalog\CategoryController;
 use App\Http\Controllers\Catalog\NonStockItemController;
 use App\Http\Controllers\Catalog\ProductController;
+use App\Http\Controllers\Catalog\ProductCostController;
 use App\Http\Controllers\Catalog\ProductImportController;
 use App\Http\Controllers\Catalog\ProductVariantController;
 use App\Http\Controllers\Catalog\TaxRateController;
@@ -33,6 +34,10 @@ use App\Http\Controllers\Documents\CreditNoteController;
 use App\Http\Controllers\Finance\FinanceDashboardController;
 use App\Http\Controllers\Finance\FinanceExportController;
 use App\Http\Controllers\Finance\FinanceJournalController;
+use App\Http\Controllers\Finance\CommissionRuleController;
+use App\Http\Controllers\Finance\CommissionLedgerController;
+use App\Http\Controllers\Finance\CommissionDashboardController;
+use App\Http\Controllers\Commissions\MyCommissionController;
 use App\Http\Controllers\Integrations\WooCommerceIntegrationController;
 use App\Http\Controllers\Integrations\WooCommerceStockTaskController;
 use App\Http\Controllers\Inventory\InventoryMovementController;
@@ -349,6 +354,12 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
     Route::delete('/roles/{role}', [RoleController::class, 'destroy'])->name('roles.destroy');
 
     Route::prefix('catalog')->name('catalog.')->group(function () {
+        Route::get('/purchase-prices', [ProductCostController::class, 'index'])->name('product-costs.index');
+        Route::get('/purchase-prices/export', [ProductCostController::class, 'export'])->name('product-costs.export');
+        Route::patch('/purchase-prices/{variant}', [ProductCostController::class, 'update'])->whereNumber('variant')->name('product-costs.update');
+        Route::post('/purchase-prices/import', [ProductCostController::class, 'storeImport'])->name('product-costs.imports.store');
+        Route::get('/purchase-prices/imports/{productCostImport}', [ProductCostController::class, 'showImport'])->name('product-costs.imports.show');
+        Route::post('/purchase-prices/imports/{productCostImport}/confirm', [ProductCostController::class, 'confirmImport'])->name('product-costs.imports.confirm');
         Route::get('/products', [ProductController::class, 'index'])->name('products.index');
         Route::get('/products/import', [ProductImportController::class, 'create'])->name('product-imports.create');
         Route::post('/products/import', [ProductImportController::class, 'store'])->name('product-imports.store');
@@ -535,6 +546,7 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
         Route::get('/orders/{order}/line-search', [SalesOrderController::class, 'lineSearch'])->name('orders.line-search');
         Route::get('/orders/{order}/customer-search', [SalesOrderController::class, 'customerSearch'])->name('orders.customer-search');
         Route::patch('/orders/{order}', [SalesOrderController::class, 'update'])->name('orders.update');
+        Route::patch('/orders/{order}/salesperson', [SalesOrderController::class, 'reassignSalesperson'])->name('orders.salesperson.update');
         Route::post('/orders/{order}/lines', [SalesOrderLineController::class, 'store'])->name('orders.lines.store');
         Route::patch('/orders/{order}/lines/{lineId}', [SalesOrderLineController::class, 'update'])->whereNumber('lineId')->name('orders.lines.update');
         Route::delete('/orders/{order}/lines/{lineId}', [SalesOrderLineController::class, 'destroy'])->whereNumber('lineId')->name('orders.lines.destroy');
@@ -588,6 +600,10 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
         Route::post('/{article}/resolve', [OutOfStockArticleController::class, 'resolve'])->name('resolve');
     });
 
+    // Salesperson self-service commission view — always scoped to the
+    // authenticated user (commissions.own.view), never to a request parameter.
+    Route::get('/my-commissions', [MyCommissionController::class, 'index'])->name('commissions.own');
+
     // Finance V1 — read-only reporting over existing Sales/Invoice/Payment data.
     // Authorization is Finance's own path (finance.view / finance.export /
     // finance.receivables.view via FinanceAccessGuard), never
@@ -601,6 +617,21 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
         Route::get('/creances', [FinanceDashboardController::class, 'creances'])->name('creances');
         Route::get('/journal', [FinanceJournalController::class, 'index'])->name('journal');
         Route::get('/ca-encaisse', [FinanceDashboardController::class, 'caEncaisse'])->name('ca-encaisse');
+        Route::get('/commissions', [CommissionDashboardController::class, 'index'])->name('commissions.dashboard');
+        Route::get('/commissions/salespeople/{salesperson}', [CommissionDashboardController::class, 'salesperson'])
+            ->where('salesperson', '[0-9]+|unattributed')->name('commissions.salesperson');
+        Route::get('/commissions/rules', [CommissionRuleController::class, 'index'])->name('commissions.rules.index');
+        Route::post('/commissions/rules', [CommissionRuleController::class, 'store'])->name('commissions.rules.store');
+        Route::put('/commissions/rules/{commissionRule}', [CommissionRuleController::class, 'update'])->name('commissions.rules.update');
+        Route::post('/commissions/rules/{commissionRule}/duplicate', [CommissionRuleController::class, 'duplicate'])->name('commissions.rules.duplicate');
+        Route::post('/commissions/rules/{commissionRule}/activate', [CommissionRuleController::class, 'activate'])->name('commissions.rules.activate');
+        Route::post('/commissions/rules/{commissionRule}/archive', [CommissionRuleController::class, 'archive'])->name('commissions.rules.archive');
+        Route::post('/commissions/rules/{commissionRule}/simulate', [CommissionRuleController::class, 'simulate'])->name('commissions.rules.simulate');
+        Route::get('/commissions/ledger', [CommissionLedgerController::class, 'index'])->name('commissions.ledger.index');
+        Route::get('/commissions/ledger/{commissionEntry}', [CommissionLedgerController::class, 'show'])->name('commissions.ledger.show');
+        Route::post('/commissions/ledger/approve', [CommissionLedgerController::class, 'approve'])->name('commissions.ledger.approve');
+        Route::post('/commissions/ledger/mark-paid', [CommissionLedgerController::class, 'markPaid'])->name('commissions.ledger.mark-paid');
+        Route::post('/commissions/ledger/reconcile', [CommissionLedgerController::class, 'reconcile'])->name('commissions.ledger.reconcile');
         Route::middleware('throttle:10,1')->group(function () {
             Route::get('/export/xlsx', [FinanceExportController::class, 'xlsx'])->name('export.xlsx');
             Route::get('/export/pdf', [FinanceExportController::class, 'pdf'])->name('export.pdf');
@@ -609,6 +640,8 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
             Route::get('/ca-encaisse/export/pdf', [FinanceExportController::class, 'caEncaissePdf'])->name('ca-encaisse.export.pdf');
             Route::get('/ca-encaisse/export/invoices-zip', [FinanceExportController::class, 'caEncaisseInvoicesZip'])->name('ca-encaisse.export.invoices-zip');
             Route::get('/ca-encaisse/export/full-package', [FinanceExportController::class, 'caEncaisseFullPackage'])->name('ca-encaisse.export.full-package');
+            Route::get('/commissions/export/xlsx', [CommissionDashboardController::class, 'exportXlsx'])->name('commissions.export.xlsx');
+            Route::get('/commissions/export/pdf', [CommissionDashboardController::class, 'exportPdf'])->name('commissions.export.pdf');
         });
     });
 });

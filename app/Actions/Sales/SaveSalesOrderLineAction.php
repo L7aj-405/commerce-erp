@@ -52,6 +52,9 @@ class SaveSalesOrderLineAction
                     ->where('sales_order_id', $order->getKey())->whereKey($line->getKey())->firstOrFail();
             }
             $type = SalesOrderLineType::from($data['line_type']);
+            $requiresCostSnapshot = ! $line
+                || $line->line_type !== $type
+                || (int) $line->product_variant_id !== (int) ($data['product_variant_id'] ?? 0);
             $discountType = SalesOrderDiscountType::from($data['discount_type'] ?? SalesOrderDiscountType::None->value);
             if ($discountType !== SalesOrderDiscountType::None && ! $actor->hasPermission($order->organization_id, 'sales_orders.apply_discount')) {
                 abort(403);
@@ -96,6 +99,13 @@ class SaveSalesOrderLineAction
             $line->discount_type = $discountType;
             foreach ($calculated as $field => $value) {
                 $line->{$field} = $value;
+            }
+            if ($requiresCostSnapshot) {
+                $line->purchase_price_snapshot = null;
+                $line->cost_total_snapshot = null;
+                $line->margin_amount_snapshot = null;
+                $line->margin_rate_snapshot = null;
+                $line->cost_status = 'pending';
             }
             $line->save();
             $line->allocations()->delete();

@@ -75,6 +75,7 @@ class PosOrderAddendumTest extends PosTestCase
         $originalPayment = $order->paymentAllocations()->firstOrFail()->payment->only(['id', 'amount', 'status']);
         $originalMovement = InventoryMovement::query()->firstOrFail()->only(['id', 'quantity', 'quantity_before', 'quantity_after', 'reference_id']);
         $originalMovements = InventoryMovement::query()->count();
+        $originalSalesperson = [$order->salesperson_id, $order->salesperson_name_snapshot];
 
         $this->actingAs($owner)->post(route('sales.orders.completion.store', $order), [
             'client_operation_id' => (string) Str::uuid(),
@@ -99,6 +100,7 @@ class PosOrderAddendumTest extends PosTestCase
         $this->assertSame('500.0000', app(SalesOrderPaymentCalculator::class)->remainingAmount($order));
         $this->assertDatabaseHas('audit_logs', ['organization_id' => $organization->id, 'event' => 'sales_order.items_added']);
         $this->assertSame($store->id, $order->store_id);
+        $this->assertSame($originalSalesperson, [$order->salesperson_id, $order->salesperson_name_snapshot]);
     }
 
     public function test_same_product_is_a_new_line_and_duplicate_submission_is_idempotent(): void

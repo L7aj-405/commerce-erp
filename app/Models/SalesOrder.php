@@ -56,6 +56,11 @@ class SalesOrder extends Model
         return $this->belongsTo(Customer::class);
     }
 
+    public function salesperson(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'salesperson_id');
+    }
+
     public function posWarehouse(): BelongsTo
     {
         return $this->belongsTo(Warehouse::class, 'pos_warehouse_id');
@@ -74,6 +79,11 @@ class SalesOrder extends Model
     public function paymentRefunds(): HasMany
     {
         return $this->hasMany(PaymentRefund::class);
+    }
+
+    public function commissionEntries(): HasMany
+    {
+        return $this->hasMany(CommissionEntry::class);
     }
 
     public function customerReturns(): HasMany

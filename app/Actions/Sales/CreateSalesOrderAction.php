@@ -15,6 +15,7 @@ use App\Models\Store;
 use App\Models\User;
 use App\Services\AuditLogger;
 use App\Services\SalesOrderNumberGenerator;
+use App\Services\SalespersonEligibilityService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -22,7 +23,11 @@ class CreateSalesOrderAction
 {
     use AuthorizesSalesAction;
 
-    public function __construct(private readonly SalesOrderNumberGenerator $numbers, private readonly AuditLogger $audit) {}
+    public function __construct(
+        private readonly SalesOrderNumberGenerator $numbers,
+        private readonly SalespersonEligibilityService $salespersons,
+        private readonly AuditLogger $audit,
+    ) {}
 
     /** @param array<string, mixed> $data */
     public function execute(
@@ -38,10 +43,18 @@ class CreateSalesOrderAction
 
         return DB::transaction(function () use ($actor, $organization, $store, $data, $source, $clientOperationId) {
             $customer = $this->customer($organization, $data['customer_id'] ?? null);
+            $requestedSalespersonId = $data['salesperson_id'] ?? $actor->getKey();
+            if ((int) $requestedSalespersonId !== (int) $actor->getKey()
+                && ! $actor->hasPermission($organization->getKey(), 'sales_orders.assign_salesperson')) {
+                abort(403);
+            }
+            $salesperson = $this->salespersons->resolve($organization, $requestedSalespersonId);
             $order = new SalesOrder;
             $order->organization_id = $organization->getKey();
             $order->store_id = $store->getKey();
             $order->customer_id = $customer?->getKey();
+            $order->salesperson_id = $salesperson?->getKey();
+            $order->salesperson_name_snapshot = $salesperson?->name;
             $order->order_number = $this->numbers->next($organization);
             $order->source = $source;
             $order->client_operation_id = $clientOperationId;
@@ -64,7 +77,15 @@ class CreateSalesOrderAction
                 'customer_id' => $customer?->getKey(), 'sale_date' => $order->sale_date->toDateString(),
                 'currency_code' => $order->currency_code, 'source' => $source->value,
                 'status' => SalesOrderStatus::Draft->value,
+                'salesperson_id' => $salesperson?->getKey(),
             ]);
+            if ($salesperson && (int) $salesperson->getKey() !== (int) $actor->getKey()) {
+                $this->audit->record('sales.salesperson_assigned', $actor, $organization, $store, $order, newValues: [
+                    'order_number' => $order->order_number,
+                    'salesperson_id' => $salesperson->getKey(),
+                    'salesperson_name' => $salesperson->name,
+                ]);
+            }
 
             return $order;
         });
