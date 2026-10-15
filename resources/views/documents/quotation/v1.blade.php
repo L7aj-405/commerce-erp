@@ -721,11 +721,7 @@
         </div>
     </div>
 
-    @if (($metadata['issued_by'] ?? null) && ($metadata['issued_at'] ?? null))
-        <div class="issued-meta">
-            Émise par {{ $metadata['issued_by'] }} {{ $metadata['issued_at'] }}
-        </div>
-    @endif
+    
 
 </div>
 
