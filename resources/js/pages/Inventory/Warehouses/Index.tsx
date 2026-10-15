@@ -2,14 +2,14 @@ import { Button, ButtonLink } from '@/components/ui/Button';
 import EmptyState from '@/components/ui/EmptyState';
 import PageHeader from '@/components/ui/PageHeader';
 import InventoryLayout from '@/layouts/InventoryLayout';
-import { formatQuantity } from '@/utils/format';
+import { formatEditableNumber, formatQuantity } from '@/utils/format';
 import { Head, router, useForm, usePage } from '@inertiajs/react';
 import type { FormEvent } from 'react';
 
 function ReplenishmentForm({ warehouse }: { warehouse: { id: number; replenishment: { auto_replenish: boolean; default_minimum_quantity: string } } }) {
     const form = useForm({
         auto_replenish: warehouse.replenishment.auto_replenish,
-        default_minimum_quantity: warehouse.replenishment.default_minimum_quantity,
+        default_minimum_quantity: formatEditableNumber(warehouse.replenishment.default_minimum_quantity),
     });
 
     return (

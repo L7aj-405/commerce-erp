@@ -2,6 +2,7 @@ import ProductImage from '@/components/catalog/ProductImage';
 import { Money, NumericInput, Quantity, SegmentedControl } from '@/components/pos/primitives';
 import { Button } from '@/components/ui/Button';
 import { InlineLoader, Spinner } from '@/components/ui/Spinner';
+import { formatEditableNumber } from '@/utils/format';
 import { useEffect, useRef, useState } from 'react';
 import type { PosPending } from './pos-shared';
 import PosProcurementPanel, { type ProcurementSubmit } from './PosProcurementPanel';
@@ -32,7 +33,8 @@ type Props = {
 type DiscountUnit = 'percentage' | 'fixed';
 
 function LineDiscount({ line, pending, onChange }: { line: CartLine; pending: boolean; onChange: (type: CartLine['discount_type'], value: string) => void }) {
-    const serverValue = line.discount_value === '0.0000' ? '' : line.discount_value;
+    const formattedValue = formatEditableNumber(line.discount_value);
+    const serverValue = Number(formattedValue) === 0 ? '' : formattedValue;
     const [unit, setUnit] = useState<DiscountUnit>(line.discount_type === 'fixed' ? 'fixed' : 'percentage');
     const [raw, setRaw] = useState(serverValue);
 
@@ -75,7 +77,8 @@ function LineDiscount({ line, pending, onChange }: { line: CartLine; pending: bo
 }
 
 function GlobalDiscount({ sale, pending, onChange }: { sale: ActiveSale; pending: boolean; onChange: (type: 'none' | 'fixed' | 'percentage', value: string) => void }) {
-    const serverValue = sale.checkout.global_discount_value === '0.0000' ? '' : sale.checkout.global_discount_value;
+    const formattedValue = formatEditableNumber(sale.checkout.global_discount_value);
+    const serverValue = Number(formattedValue) === 0 ? '' : formattedValue;
     const [unit, setUnit] = useState<DiscountUnit>(sale.checkout.global_discount_type === 'fixed' ? 'fixed' : 'percentage');
     const [raw, setRaw] = useState(serverValue);
 

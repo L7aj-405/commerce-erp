@@ -1,3 +1,5 @@
+import { Button } from '@/components/ui/Button';
+import EmptyState from '@/components/ui/EmptyState';
 import PageHeader from '@/components/ui/PageHeader';
 import Pagination from '@/components/ui/Pagination';
 import SearchInput from '@/components/ui/SearchInput';
@@ -40,12 +42,12 @@ const REASON_LABEL: Record<string, string> = {
 };
 const statusClass = (s: string) =>
     s === 'received'
-        ? 'bg-emerald-50 text-emerald-700'
+        ? 'bg-success-soft text-success'
         : s === 'cancelled'
-          ? 'bg-slate-100 text-slate-500'
+          ? 'bg-raised text-ink-muted'
           : s === 'shipped'
-            ? 'bg-indigo-50 text-indigo-700'
-            : 'bg-amber-50 text-amber-700';
+            ? 'bg-sage text-primary'
+            : 'bg-warning-soft text-warning';
 
 export default function TransferRequestIndex({ requests, filters, warehouses, can }: Props) {
     const [search, setSearch] = useState(filters.search ?? '');
@@ -73,82 +75,94 @@ export default function TransferRequestIndex({ requests, filters, warehouses, ca
             <Head title="Demandes de transfert" />
             <PageHeader
                 title="Demandes de transfert"
-                description="Instructions logistiques internes : demandée → en préparation → expédiée → réceptionnée. Le mouvement de stock n’a lieu qu’à la réception."
+                description="Pilotez les demandes internes, de la préparation à la réception. Le stock ne bouge réellement qu’à la réception."
             />
 
-            <div className="mb-6 flex flex-wrap items-center gap-2">
-                <SearchInput value={search} onChange={setSearch} searching={searching} placeholder="N°, commande, entrepôt" />
-                <select
-                    value={filters.status ?? ''}
-                    onChange={(e) => visit({ search: filters.search, status: e.target.value || undefined, page: undefined })}
-                    className="rounded-lg border px-3 py-2 text-sm"
-                >
-                    <option value="">Tous statuts</option>
-                    {Object.entries(STATUS_LABEL).map(([v, l]) => (
-                        <option key={v} value={v}>
-                            {l}
-                        </option>
-                    ))}
-                </select>
+            <section className="mb-5 rounded-card border border-line bg-surface p-4 shadow-soft">
+                <div className="grid gap-3 lg:grid-cols-[minmax(280px,1fr)_220px]">
+                    <div className="block">
+                        <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-ink-faint">Recherche</span>
+                        <SearchInput value={search} onChange={setSearch} searching={searching} placeholder="N°, commande ou entrepôt" />
+                    </div>
+                    <label className="block">
+                        <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-ink-faint">Statut</span>
+                        <select
+                            value={filters.status ?? ''}
+                            onChange={(e) => visit({ search: search || undefined, status: e.target.value || undefined, page: undefined })}
+                            className="h-10 w-full rounded-field border border-line-strong bg-surface px-3 text-sm text-ink outline-none focus:border-primary"
+                        >
+                            <option value="">Tous les statuts</option>
+                            {Object.entries(STATUS_LABEL).map(([v, l]) => (
+                                <option key={v} value={v}>{l}</option>
+                            ))}
+                        </select>
+                    </label>
+                </div>
                 {can.manage && warehouses.length > 0 && (
                     <form
                         onSubmit={(e) => {
                             e.preventDefault();
                             replenish.post('/inventory/transfer-requests/replenish', { preserveScroll: true });
                         }}
-                        className="ml-auto flex items-center gap-2"
+                        className="mt-4 flex flex-col gap-3 border-t border-line pt-4 sm:flex-row sm:items-end"
                     >
-                        <select
-                            value={replenish.data.warehouse_id}
-                            onChange={(e) => replenish.setData('warehouse_id', Number(e.target.value))}
-                            className="rounded-lg border px-3 py-2 text-sm"
-                        >
-                            {warehouses.map((w) => (
-                                <option key={w.id} value={w.id}>
-                                    {w.name}
-                                </option>
-                            ))}
-                        </select>
-                        <button className="rounded-lg border px-3 py-2 text-sm font-medium hover:bg-slate-50" disabled={replenish.processing}>
+                        <label className="min-w-0 flex-1 sm:max-w-sm">
+                            <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-ink-faint">Entrepôt à évaluer</span>
+                            <select
+                                value={replenish.data.warehouse_id}
+                                onChange={(e) => replenish.setData('warehouse_id', Number(e.target.value))}
+                                className="h-10 w-full rounded-field border border-line-strong bg-surface px-3 text-sm text-ink outline-none focus:border-primary"
+                            >
+                                {warehouses.map((w) => <option key={w.id} value={w.id}>{w.name} · {w.code}</option>)}
+                            </select>
+                        </label>
+                        <Button type="submit" variant="secondary" loading={replenish.processing} loadingText="Évaluation…">
                             Évaluer le réassort
-                        </button>
+                        </Button>
                     </form>
                 )}
-            </div>
+            </section>
 
             {requests.data.length === 0 ? (
-                <div className="rounded-2xl border border-dashed bg-slate-50 p-8 text-center text-sm text-slate-500">
-                    Aucune demande de transfert.
-                </div>
+                <EmptyState title="Aucune demande de transfert" description="Les demandes de réassort ou de préparation apparaîtront ici dès qu’elles seront créées." />
             ) : (
                 <>
                     {/* Desktop/tablet: table */}
-                    <div className="hidden overflow-x-auto rounded-2xl border bg-white md:block">
+                    <div className="hidden overflow-hidden rounded-card border border-line bg-surface shadow-soft md:block">
+                        <div className="flex items-center justify-between border-b border-line px-4 py-3">
+                            <div>
+                                <h2 className="text-sm font-semibold text-ink">Suivi logistique</h2>
+                                <p className="mt-0.5 text-xs text-ink-muted">Ouvrez une demande pour consulter les articles et effectuer l’étape suivante.</p>
+                            </div>
+                            <span className="rounded-full bg-raised px-2.5 py-1 text-xs font-medium text-ink-muted">{requests.data.length} affichée(s)</span>
+                        </div>
+                        <div className="overflow-x-auto">
                         <table className="w-full min-w-[880px] text-left text-sm">
-                            <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                            <thead className="bg-raised text-[11px] uppercase tracking-wide text-ink-faint">
                                 <tr>
-                                    <th className="p-3">N°</th>
-                                    <th className="p-3">De</th>
-                                    <th className="p-3">Vers</th>
-                                    <th className="p-3">Motif</th>
-                                    <th className="p-3">Commande</th>
-                                    <th className="p-3 text-right">Unités</th>
-                                    <th className="p-3">Statut</th>
-                                    <th className="p-3">Créée le</th>
+                                    <th className="px-4 py-3">N°</th>
+                                    <th className="px-4 py-3">Trajet</th>
+                                    <th className="px-4 py-3">Motif</th>
+                                    <th className="px-4 py-3">Commande</th>
+                                    <th className="px-4 py-3 text-right">Unités</th>
+                                    <th className="px-4 py-3">Statut</th>
+                                    <th className="px-4 py-3">Créée le</th>
                                 </tr>
                             </thead>
-                            <tbody>
+                            <tbody className="divide-y divide-line">
                                 {requests.data.map((r) => (
-                                    <tr key={r.id} className="border-t">
-                                        <td className="p-3 font-semibold">
-                                            <Link href={`/inventory/transfer-requests/${r.id}`} className="hover:underline">
+                                    <tr key={r.id} className="transition-soft hover:bg-raised/70">
+                                        <td className="px-4 py-3 font-semibold">
+                                            <Link href={`/inventory/transfer-requests/${r.id}`} className="text-ink hover:underline">
                                                 {r.request_number}
                                             </Link>
                                         </td>
-                                        <td className="p-3">{r.source?.name ?? '—'}</td>
-                                        <td className="p-3">{r.destination?.name ?? '—'}</td>
-                                        <td className="p-3">{r.reasons.map((x) => REASON_LABEL[x] ?? x).join(' + ')}</td>
-                                        <td className="p-3">
+                                        <td className="px-4 py-3">
+                                            <p className="font-medium text-ink">{r.source?.name ?? '—'} → {r.destination?.name ?? '—'}</p>
+                                            <p className="mt-0.5 text-xs text-ink-faint">{r.source?.code ?? '—'} → {r.destination?.code ?? '—'}</p>
+                                        </td>
+                                        <td className="px-4 py-3 text-ink-muted">{r.reasons.map((x) => REASON_LABEL[x] ?? x).join(' + ')}</td>
+                                        <td className="px-4 py-3">
                                             {r.sales_order ? (
                                                 <Link href={`/sales/orders/${r.sales_order.id}`} className="hover:underline">
                                                     {r.sales_order.order_number}
@@ -157,29 +171,30 @@ export default function TransferRequestIndex({ requests, filters, warehouses, ca
                                                 '—'
                                             )}
                                         </td>
-                                        <td className="p-3 text-right tabular-nums">{formatQuantity(r.unit_count)}</td>
-                                        <td className="p-3">
-                                            <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${statusClass(r.status)}`}>
+                                        <td className="px-4 py-3 text-right font-semibold tabular-nums text-ink">{formatQuantity(r.unit_count)}</td>
+                                        <td className="px-4 py-3">
+                                            <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${statusClass(r.status)}`}>
                                                 {STATUS_LABEL[r.status] ?? r.status}
                                             </span>
                                         </td>
-                                        <td className="p-3 text-slate-500">{r.created_at ? formatDate(r.created_at) : '—'}</td>
+                                        <td className="px-4 py-3 text-ink-muted">{r.created_at ? formatDate(r.created_at) : '—'}</td>
                                     </tr>
                                 ))}
                             </tbody>
                         </table>
+                        </div>
                     </div>
 
                     {/* Mobile: stacked cards */}
                     <ul className="space-y-3 md:hidden">
                         {requests.data.map((r) => (
-                            <li key={r.id} className="rounded-2xl border bg-white p-4">
+                            <li key={r.id} className="rounded-card border border-line bg-surface p-4 shadow-soft">
                                 <div className="flex items-start justify-between gap-3">
                                     <div className="min-w-0">
                                         <Link href={`/inventory/transfer-requests/${r.id}`} className="block truncate text-sm font-semibold hover:underline">
                                             {r.request_number}
                                         </Link>
-                                        <p className="truncate text-[13px] text-slate-500">
+                                        <p className="truncate text-[13px] text-ink-muted">
                                             {r.source?.name ?? '—'} → {r.destination?.name ?? '—'}
                                         </p>
                                     </div>
@@ -189,11 +204,11 @@ export default function TransferRequestIndex({ requests, filters, warehouses, ca
                                 </div>
                                 <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1.5 text-[13px]">
                                     <div className="min-w-0">
-                                        <dt className="text-slate-400">Motif</dt>
+                                        <dt className="text-ink-faint">Motif</dt>
                                         <dd className="truncate">{r.reasons.map((x) => REASON_LABEL[x] ?? x).join(' + ') || '—'}</dd>
                                     </div>
                                     <div className="min-w-0">
-                                        <dt className="text-slate-400">Commande</dt>
+                                        <dt className="text-ink-faint">Commande</dt>
                                         <dd className="truncate">
                                             {r.sales_order ? (
                                                 <Link href={`/sales/orders/${r.sales_order.id}`} className="hover:underline">
@@ -205,17 +220,17 @@ export default function TransferRequestIndex({ requests, filters, warehouses, ca
                                         </dd>
                                     </div>
                                     <div className="min-w-0">
-                                        <dt className="text-slate-400">Unités</dt>
+                                        <dt className="text-ink-faint">Unités</dt>
                                         <dd className="tabular-nums">{formatQuantity(r.unit_count)}</dd>
                                     </div>
                                     <div className="min-w-0">
-                                        <dt className="text-slate-400">Créée le</dt>
-                                        <dd className="text-slate-500">{r.created_at ? formatDate(r.created_at) : '—'}</dd>
+                                        <dt className="text-ink-faint">Créée le</dt>
+                                        <dd className="text-ink-muted">{r.created_at ? formatDate(r.created_at) : '—'}</dd>
                                     </div>
                                 </dl>
                                 <Link
                                     href={`/inventory/transfer-requests/${r.id}`}
-                                    className="mt-3 inline-flex min-h-9 items-center justify-center rounded-lg border px-3 text-[13px] font-medium hover:bg-slate-50"
+                                    className="mt-4 inline-flex min-h-9 items-center justify-center rounded-field border border-line-strong px-3 text-[13px] font-medium text-ink transition-soft hover:bg-sage"
                                 >
                                     Voir
                                 </Link>

@@ -22,6 +22,24 @@ export function formatQuantity(value: number | string | null | undefined): strin
     return frenchQuantity.format(numeric);
 }
 
+/**
+ * Keep exact decimal input values while removing database scale that is not
+ * meaningful to the person editing the field (for example 5.0000 -> 5).
+ */
+export function formatEditableNumber(value: number | string | null | undefined): string {
+    if (value === null || value === undefined || value === '') {
+        return '';
+    }
+
+    const raw = String(value).trim();
+
+    if (!/^-?\d+(?:\.\d+)?$/.test(raw)) {
+        return raw;
+    }
+
+    return raw.replace(/(\.\d*?[1-9])0+$/, '$1').replace(/\.0+$/, '');
+}
+
 export function formatSignedQuantity(value: number | string | null | undefined): string {
     const numeric = Number(value ?? 0);
 
