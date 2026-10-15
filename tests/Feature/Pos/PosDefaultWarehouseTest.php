@@ -72,16 +72,34 @@ class PosDefaultWarehouseTest extends PosTestCase
             ->has('warehouses', 2));
     }
 
-    public function test_active_draft_warehouse_is_not_overridden_by_the_default(): void
+    public function test_empty_draft_is_reinitialized_to_the_member_default_warehouse(): void
     {
         [$owner, $organization, $mainStore, , , $main, $sp] = $this->showrooms();
         $this->setDefault($organization, $owner, $main);
-        $this->createPosDraft($owner, $organization, $mainStore, $sp);
+        $draft = $this->createPosDraft($owner, $organization, $mainStore, $sp);
+
+        $this->actingAs($owner)->get(route('pos.index'))->assertInertia(fn (Assert $page) => $page
+            ->where('defaultWarehouseId', $main->id)
+            ->where('memberDefaultWarehouseId', $main->id)
+            ->where('activeSale.warehouse.id', $main->id));
+        $this->assertSame($main->id, $draft->fresh()->pos_warehouse_id);
+    }
+
+    public function test_draft_with_sale_lines_preserves_its_warehouse_over_the_member_default(): void
+    {
+        [$owner, $organization, $mainStore, , , $main, $sp] = $this->showrooms();
+        $this->setDefault($organization, $owner, $main);
+        $variant = $this->createProduct($organization, 'Meaningful cart', 'CART-1', ['default_sale_price' => '100.0000'])->variants->first();
+        $this->openStock($owner, $organization, $sp, $variant, '5.0000');
+        $draft = $this->createPosDraft($owner, $organization, $mainStore, $sp);
+        $this->addCatalogLine($owner, $draft, $variant, $sp);
 
         $this->actingAs($owner)->get(route('pos.index'))->assertInertia(fn (Assert $page) => $page
             ->where('defaultWarehouseId', $sp->id)
             ->where('memberDefaultWarehouseId', $main->id)
-            ->where('activeSale.warehouse.id', $sp->id));
+            ->where('activeSale.warehouse.id', $sp->id)
+            ->has('activeSale.lines', 1));
+        $this->assertSame($sp->id, $draft->fresh()->pos_warehouse_id);
     }
 
     public function test_user_can_still_manually_sell_from_another_warehouse(): void
@@ -91,14 +109,74 @@ class PosDefaultWarehouseTest extends PosTestCase
         $this->addDefaultSalesEmployee($organization, $mainStore, $asma);
         $this->setDefault($organization, $asma, $main);
 
-        $this->actingAs($asma)->postJson(route('pos.drafts.store'), ['warehouse_id' => $sp->id])
+        $variant = $this->createProduct($organization, 'Manual warehouse item', 'MANUAL-1', ['default_sale_price' => '100.0000'])->variants->first();
+        $this->openStock($owner, $organization, $sp, $variant, '5.0000');
+        $response = $this->actingAs($asma)->postJson(route('pos.drafts.store'), ['warehouse_id' => $main->id])
+            ->assertOk()
+            ->assertJsonPath('active_sale.warehouse.id', $main->id);
+        $draft = SalesOrder::query()->findOrFail($response->json('active_sale.id'));
+        $this->actingAs($asma)->patchJson(route('pos.drafts.update', $draft), ['warehouse_id' => $sp->id])
             ->assertOk()
             ->assertJsonPath('active_sale.warehouse.id', $sp->id);
+        $this->actingAs($asma)->postJson(route('pos.drafts.lines.store', $draft), [
+            'line_type' => 'catalog', 'product_variant_id' => $variant->id,
+            'warehouse_id' => $sp->id, 'quantity' => '1',
+            'discount_type' => 'none', 'discount_value' => '0',
+        ])->assertOk();
 
-        // The explicit choice persists through the active draft on the next visit.
+        // Once the explicit choice owns a meaningful cart it survives reloads.
         $this->actingAs($asma)->get(route('pos.index'))->assertInertia(fn (Assert $page) => $page
             ->where('defaultWarehouseId', $sp->id)
             ->where('activeSale.warehouse.id', $sp->id));
+    }
+
+    public function test_completed_sale_is_followed_by_the_member_default_warehouse(): void
+    {
+        [$owner, $organization, $mainStore, , , $main, $sp] = $this->showrooms();
+        $this->setDefault($organization, $owner, $main);
+        $variant = $this->createProduct($organization, 'Completed sale item', 'DONE-1', ['default_sale_price' => '100.0000'])->variants->first();
+        $this->openStock($owner, $organization, $sp, $variant, '5.0000');
+        $draft = $this->createPosDraft($owner, $organization, $mainStore, $sp);
+        $this->addCatalogLine($owner, $draft, $variant, $sp);
+
+        $this->actingAs($owner)->post(route('pos.sales.store'), $this->posDraftCheckoutPayload($draft, []))
+            ->assertRedirect(route('pos.index'));
+
+        $this->actingAs($owner)->get(route('pos.index'))->assertInertia(fn (Assert $page) => $page
+            ->where('defaultWarehouseId', $main->id)
+            ->where('memberDefaultWarehouseId', $main->id)
+            ->where('activeSale', null)
+            ->where('completedOrder.id', $draft->id));
+    }
+
+    public function test_hard_reload_keeps_reinitializing_an_empty_draft_to_the_configured_default(): void
+    {
+        [$owner, $organization, $mainStore, , , $main, $sp] = $this->showrooms();
+        $this->setDefault($organization, $owner, $main);
+        $draft = $this->createPosDraft($owner, $organization, $mainStore, $sp);
+
+        foreach (range(1, 2) as $_) {
+            $this->actingAs($owner)->get(route('pos.index'))->assertInertia(fn (Assert $page) => $page
+                ->where('defaultWarehouseId', $main->id)
+                ->where('activeSale.warehouse.id', $main->id));
+        }
+
+        $this->assertSame($main->id, $draft->fresh()->pos_warehouse_id);
+    }
+
+    public function test_inactive_member_default_reinitializes_empty_draft_with_existing_fallback(): void
+    {
+        [$owner, $organization, $mainStore, , $central, $main, $sp] = $this->showrooms();
+        $this->setDefault($organization, $owner, $main);
+        $main->status = 'inactive';
+        $main->save();
+        $draft = $this->createPosDraft($owner, $organization, $mainStore, $sp);
+
+        $this->actingAs($owner)->get(route('pos.index'))->assertInertia(fn (Assert $page) => $page
+            ->where('memberDefaultWarehouseId', null)
+            ->where('defaultWarehouseId', $central->id)
+            ->where('activeSale.warehouse.id', $central->id));
+        $this->assertSame($central->id, $draft->fresh()->pos_warehouse_id);
     }
 
     public function test_hold_and_start_new_sale_without_explicit_warehouse_uses_member_default(): void

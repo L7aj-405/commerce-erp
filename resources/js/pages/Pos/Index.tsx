@@ -114,9 +114,9 @@ export default function PosIndex({
     // Product ids showing a brief "added" pulse on their catalogue card.
     const [addedFlash, setAddedFlash] = useState<Record<number, number>>({});
 
-    // Warehouse the cashier explicitly picked on this page. Survives Inertia
-    // prop refreshes (e.g. after completing a sale) so the default never
-    // overrides a deliberate choice; a full reload starts from the default again.
+    // Warehouse the cashier explicitly picked for the current sale. It survives
+    // ordinary Inertia prop refreshes, but completion starts a new sale context
+    // and therefore returns to the server-resolved member default.
     const manualWarehouseRef = useRef<number | null>(null);
     const activeSaleRef = useRef<ActiveSale | null>(initialActiveSale);
     const ensureDraftRef = useRef<Promise<ActiveSale> | null>(null);
@@ -126,11 +126,12 @@ export default function PosIndex({
     useEffect(() => {
         setActiveSale(initialActiveSale);
         setHeldSales(initialHeldSales);
-        const manual = manualWarehouseRef.current;
+        if (completedOrder) manualWarehouseRef.current = null;
+        const manual = completedOrder ? null : manualWarehouseRef.current;
         const manualStillAvailable = manual !== null && warehouses.some((warehouse) => warehouse.id === manual) ? manual : null;
         setWarehouseId(initialActiveSale?.warehouse?.id ?? manualStillAvailable ?? defaultWarehouseId ?? null);
         setOptimisticQty({});
-    }, [initialActiveSale, initialHeldSales, defaultWarehouseId, warehouses]);
+    }, [initialActiveSale, initialHeldSales, defaultWarehouseId, warehouses, completedOrder]);
 
     // On completion the server redirects back with `completedOrder`; reset the panel
     // and honour a pending "print" request from "Valider & imprimer".
@@ -381,6 +382,31 @@ export default function PosIndex({
         });
     }
 
+    function selectWarehouse(next: number | null) {
+        const sale = activeSaleRef.current;
+        if (sale?.lines.length) return;
+
+        const previous = sale?.warehouse?.id ?? warehouseId;
+        manualWarehouseRef.current = next;
+        setWarehouseId(next);
+        if (!sale || !next) return;
+
+        void (async () => {
+            const saved = await perform('warehouse:change', async () => {
+                const payload = await posJson<DraftStatePayload>(`/pos/drafts/${sale.id}`, {
+                    method: 'PATCH',
+                    body: { warehouse_id: next },
+                });
+                sync(payload);
+                manualWarehouseRef.current = payload.active_sale?.warehouse?.id ?? next;
+            });
+            if (!saved) {
+                manualWarehouseRef.current = previous;
+                setWarehouseId(previous);
+            }
+        })();
+    }
+
     function resumeHeldSale(sale: HeldSale) {
         void perform(
             `sale:resume:${sale.id}`,
@@ -530,9 +556,9 @@ export default function PosIndex({
                             value={warehouseId ?? ''}
                             onChange={(event) => {
                                 const next = event.target.value ? Number(event.target.value) : null;
-                                manualWarehouseRef.current = next;
-                                setWarehouseId(next);
+                                selectWarehouse(next);
                             }}
+                            disabled={Boolean(activeSale?.lines.length) || pending.isPending('warehouse:change')}
                             className="h-9 rounded-field border border-line-strong bg-surface px-2 text-[13px] text-ink outline-none focus:border-primary lg:h-8"
                         >
                             <option value="">Sélectionner…</option>

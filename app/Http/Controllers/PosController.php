@@ -40,6 +40,7 @@ use App\Support\Decimal;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
@@ -72,6 +73,15 @@ class PosController extends Controller
             ->latest('updated_at')
             ->first() : null;
 
+        $initialWarehouseId = $memberDefaultWarehouseId ?? $warehouses->first()?->id;
+        if (
+            $activeSaleModel
+            && $initialWarehouseId
+            && $request->user()->hasPermission($organization, 'sales_orders.update')
+        ) {
+            $activeSaleModel = $this->initializeEmptyDraftWarehouse($activeSaleModel, (int) $initialWarehouseId);
+        }
+
         $heldSaleModels = $store ? $this->heldDraftQuery($organization, $store)
             ->with(['customer:id,display_name', 'posWarehouse:id,name,code', 'lines'])
             ->latest('pos_held_at')
@@ -102,9 +112,9 @@ class PosController extends Controller
             'store' => $store?->only(['id', 'name', 'code']),
             'warehouses' => $warehouses,
             'currencyCode' => config('platform.currency_code', 'MAD'),
-            // An in-progress sale keeps its warehouse; otherwise the member's
-            // own default (if still active in this org), then the first active one.
-            'defaultWarehouseId' => $activeSaleModel?->pos_warehouse_id ?? $memberDefaultWarehouseId ?? $warehouses->first()?->id,
+            // A line-bearing sale keeps its warehouse. An empty draft is safely
+            // reinitialized to the member default, then the legacy fallback.
+            'defaultWarehouseId' => $activeSaleModel?->pos_warehouse_id ?? $initialWarehouseId,
             'memberDefaultWarehouseId' => $memberDefaultWarehouseId,
             'activeSale' => $activeSaleModel ? $this->draftPayload($activeSaleModel, $posSummary) : null,
             'heldSales' => $heldSaleModels->map(fn (SalesOrder $order) => $this->heldSalePayload($order))->values(),
@@ -742,6 +752,34 @@ class PosController extends Controller
             ->all();
 
         return (int) ($this->memberDefaultWarehouseId($user, $organization, $activeWarehouseIds) ?? $activeWarehouseIds[0] ?? 0);
+    }
+
+    private function initializeEmptyDraftWarehouse(SalesOrder $draft, int $warehouseId): SalesOrder
+    {
+        if ((int) $draft->pos_warehouse_id === $warehouseId || $draft->lines->isNotEmpty()) {
+            return $draft;
+        }
+
+        return DB::transaction(function () use ($draft, $warehouseId) {
+            $locked = SalesOrder::query()
+                ->where('organization_id', $draft->organization_id)
+                ->where('store_id', $draft->store_id)
+                ->where('source', SalesOrderSource::Pos->value)
+                ->where('status', SalesOrderStatus::Draft->value)
+                ->whereNull('pos_held_at')
+                ->whereKey($draft->getKey())
+                ->lockForUpdate()
+                ->first();
+
+            if (! $locked || $locked->lines()->exists()) {
+                return $draft->fresh($this->draftRelations()) ?? $draft;
+            }
+
+            $locked->pos_warehouse_id = $warehouseId;
+            $locked->save();
+
+            return $locked->load($this->draftRelations());
+        });
     }
 
     /**
