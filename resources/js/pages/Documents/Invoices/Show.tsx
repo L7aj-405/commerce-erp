@@ -5,7 +5,7 @@ import StampDocumentAction from '@/components/documents/StampDocumentAction';
 import SalesLayout from '@/layouts/SalesLayout';
 import { formatDate, formatDateTime, formatMoney, formatQuantity } from '@/utils/format';
 import { invoiceStatusLabel, invoiceStatusTone, label } from '@/utils/labels';
-import { toWhatsAppDigits } from '@/utils/phone';
+import { whatsappLink, type WhatsAppDestination } from '@/utils/whatsapp';
 import { Head, Link, useForm } from '@inertiajs/react';
 import type { FormEvent, ReactNode } from 'react';
 import { useState } from 'react';
@@ -84,7 +84,7 @@ type Sharing = {
     pdfUrl: string;
     email: string | null;
     phone: string | null;
-    whatsappPhone: string | null;
+    whatsappDestination: WhatsAppDestination;
     whatsappMessage: string;
     defaultSubject: string;
     attachmentName: string;
@@ -785,13 +785,14 @@ function ShareCard({
     const [emailModalOpen, setEmailModalOpen] = useState(false);
 
     const openWhatsApp = () => {
-        const digits = toWhatsAppDigits(waPhone);
-        const base = digits ? `https://wa.me/${digits}` : 'https://wa.me/';
-        window.open(`${base}?text=${encodeURIComponent(waMessage)}`, '_blank', 'noopener,noreferrer');
+        const link = whatsappLink(sharing.whatsappDestination, waMessage, waPhone);
+        if (!link) return;
+        window.open(link, '_blank', 'noopener,noreferrer');
         setWaOpened(true);
     };
 
-    const noPhone = !toWhatsAppDigits(waPhone);
+    const usesUsername = sharing.whatsappDestination.type === 'username';
+    const unavailable = !whatsappLink(sharing.whatsappDestination, waMessage, waPhone);
 
     return (
         <section className="rounded-card border border-line bg-surface p-5">
@@ -855,22 +856,24 @@ function ShareCard({
 
             {tab === 'whatsapp' && (
                 <div className="mt-3 space-y-2 text-sm">
-                    <Field label="Téléphone">
-                        <input
-                            value={waPhone}
-                            onChange={(e) => {
-                                setWaPhone(e.target.value);
-                                setWaOpened(false);
-                            }}
-                            placeholder="+212 6 12 34 56 78"
-                            className="w-full rounded-field border border-line-strong px-3 py-2"
-                        />
-                    </Field>
-                    {noPhone && (
-                        <p className="text-xs text-ink-muted">
-                            Aucun numéro de téléphone enregistré. Saisissez un numéro, ou ouvrez WhatsApp et choisissez le contact.
-                        </p>
+                    {usesUsername ? (
+                        <Field label="Nom d’utilisateur WhatsApp">
+                            <div className="rounded-field border border-line bg-raised px-3 py-2 text-ink">@{sharing.whatsappDestination.destination}</div>
+                        </Field>
+                    ) : (
+                        <Field label="Téléphone">
+                            <input
+                                value={waPhone}
+                                onChange={(e) => {
+                                    setWaPhone(e.target.value);
+                                    setWaOpened(false);
+                                }}
+                                placeholder="+212 6 12 34 56 78"
+                                className="w-full rounded-field border border-line-strong px-3 py-2"
+                            />
+                        </Field>
                     )}
+                    {unavailable && <p className="text-xs text-ink-muted">Aucun contact WhatsApp disponible.</p>}
                     <Field label="Message">
                         <textarea
                             rows={5}
@@ -886,7 +889,7 @@ function ShareCard({
                         Le lien PDF ci-dessus est temporaire et sécurisé. WhatsApp n’attache pas le fichier automatiquement — le
                         message s’ouvre, vous l’envoyez depuis WhatsApp.
                     </p>
-                    <Button type="button" variant="secondary" onClick={openWhatsApp}>
+                    <Button type="button" variant="secondary" disabled={unavailable} onClick={openWhatsApp}>
                         Ouvrir dans WhatsApp
                     </Button>
                     {waOpened && <p className="text-sm text-success">WhatsApp ouvert. Envoyez le message depuis WhatsApp.</p>}

@@ -8,7 +8,9 @@ use App\Http\Controllers\Controller;
 use App\Models\Customer;
 use App\Models\OrganizationContact;
 use App\Models\Supplier;
+use App\Rules\ValidWhatsAppUsername;
 use App\Services\ActiveTenantContext;
+use App\Services\WhatsAppContactLinkResolver;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -36,7 +38,8 @@ class OrganizationContactController extends Controller
                 ->orWhere('company_name', 'like', "%{$search}%")
                 ->orWhere('email', 'like', "%{$search}%")
                 ->orWhere('phone', 'like', "%{$search}%")
-                ->orWhere('whatsapp', 'like', "%{$search}%")))
+                ->orWhere('whatsapp', 'like', "%{$search}%")
+                ->orWhere('whatsapp_username', 'like', "%{$search}%")))
             ->when($filters['contact_type'] ?? null, fn ($query, string $type) => $query->where('contact_type', $type))
             ->when(isset($filters['active']), fn ($query) => $query->where('active', (bool) $filters['active']))
             ->with(['customer:id,display_name', 'supplier:id,name'])
@@ -79,7 +82,7 @@ class OrganizationContactController extends Controller
         return redirect()->route('contacts.show', $contact)->with('success', 'Contact enregistré.');
     }
 
-    public function show(OrganizationContact $contact): Response
+    public function show(OrganizationContact $contact, WhatsAppContactLinkResolver $whatsapp): Response
     {
         $this->authorize('view', $contact);
 
@@ -94,6 +97,7 @@ class OrganizationContactController extends Controller
 
         return Inertia::render('Contacts/Show', [
             'contact' => $this->serialize($contact->load(['customer:id,display_name', 'supplier:id,name'])),
+            'whatsappDestination' => $whatsapp->forContact($contact),
             'duplicates' => $duplicates,
             'can' => [
                 'update' => request()->user()->can('update', $contact),
@@ -160,6 +164,7 @@ class OrganizationContactController extends Controller
             'email' => ['nullable', 'email:rfc', 'max:254'],
             'phone' => ['nullable', 'string', 'max:64'],
             'whatsapp' => ['nullable', 'string', 'max:64'],
+            'whatsapp_username' => ['nullable', 'string', new ValidWhatsAppUsername],
             'contact_type' => ['required', Rule::in($this->types())],
             'customer_id' => ['nullable', Rule::exists('customers', 'id')->where('organization_id', $organizationId)],
             'supplier_id' => ['nullable', Rule::exists('suppliers', 'id')->where('organization_id', $organizationId)],
@@ -190,6 +195,7 @@ class OrganizationContactController extends Controller
             'email' => $contact->email,
             'phone' => $contact->phone,
             'whatsapp' => $contact->whatsapp,
+            'whatsapp_username' => $contact->whatsapp_username,
             'contact_type' => $contact->contact_type,
             'notes' => $contact->notes,
             'active' => $contact->active,

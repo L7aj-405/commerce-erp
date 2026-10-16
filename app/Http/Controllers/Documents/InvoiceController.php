@@ -20,8 +20,8 @@ use App\Services\DocumentStampRenderer;
 use App\Services\DocumentValueFormatter;
 use App\Services\OrganizationOutboundMailService;
 use App\Services\SalesOrderPaymentCalculator;
+use App\Services\WhatsAppContactLinkResolver;
 use App\Support\Decimal;
-use App\Support\PhoneNumber;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\URL;
@@ -90,6 +90,7 @@ class InvoiceController extends Controller
         DocumentValueFormatter $formatter,
         OrganizationOutboundMailService $mail,
         DocumentStampRenderer $stampRenderer,
+        WhatsAppContactLinkResolver $whatsapp,
     ): Response
     {
         $this->authorize('view', $invoice);
@@ -184,6 +185,12 @@ class InvoiceController extends Controller
         if (Decimal::compare($receivable, '0.0000') < 0) $receivable = '0.0000';
         if (Decimal::compare($refundObligation, '0.0000') < 0) $refundObligation = '0.0000';
         $stampRenderable = $stampRenderer->isRenderable($invoice->stampApposition);
+        $whatsappMessage = $this->whatsappMessage($invoice, $formatter, $sharePdfUrl);
+        $whatsappDestination = $whatsapp->resolve(
+            $invoice->customer_whatsapp_username,
+            $invoice->customer_phone,
+            $whatsappMessage,
+        );
 
         return Inertia::render('Documents/Invoices/Show', [
             'invoice' => $invoice,
@@ -199,8 +206,9 @@ class InvoiceController extends Controller
                 'pdfUrl' => $sharePdfUrl,
                 'email' => $invoice->customer_email,
                 'phone' => $invoice->customer_phone,
-                'whatsappPhone' => PhoneNumber::forWhatsApp($invoice->customer_phone),
-                'whatsappMessage' => $this->whatsappMessage($invoice, $formatter, $sharePdfUrl),
+                'whatsappPhone' => $whatsappDestination['type'] === 'phone' ? $whatsappDestination['destination'] : null,
+                'whatsappMessage' => $whatsappMessage,
+                'whatsappDestination' => $whatsappDestination,
                 'defaultSubject' => "Facture {$invoice->invoice_number} — ".($seller['trade_name'] ?: $seller['legal_name'] ?? $invoice->organization->name),
                 'attachmentName' => "Facture-{$invoice->invoice_number}-V{$invoice->version}.pdf",
             ] : null,

@@ -24,6 +24,7 @@ use App\Services\DocumentStampRenderer;
 use App\Services\OrganizationOutboundMailService;
 use App\Services\ProductPriceResolver;
 use App\Services\QuotationDocumentSettings;
+use App\Services\WhatsAppContactLinkResolver;
 use App\Support\Decimal;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -151,6 +152,7 @@ class QuotationController extends Controller
         Quotation $quotation,
         OrganizationOutboundMailService $mail,
         DocumentStampRenderer $stampRenderer,
+        WhatsAppContactLinkResolver $whatsapp,
     ): Response
     {
         $this->authorize('view', $quotation);
@@ -190,6 +192,12 @@ class QuotationController extends Controller
                 now()->addDays((int) config('documents.share_link_ttl_days', 14)),
                 $quotation,
             ) : null;
+        $whatsappMessage = $this->whatsappMessage($quotation);
+        $whatsappDestination = $whatsapp->resolve(
+            $quotation->customer_whatsapp_username,
+            $quotation->customer_phone,
+            $sharePdfUrl ? $whatsappMessage."\nPDF : {$sharePdfUrl}" : $whatsappMessage,
+        );
 
         return Inertia::render('Quotations/Show', [
             'quotation' => $quotation,
@@ -211,7 +219,8 @@ class QuotationController extends Controller
                 'pdfUrl' => $sharePdfUrl,
                 'email' => $quotation->customer_email,
                 'phone' => $quotation->customer_phone,
-                'whatsappMessage' => $this->whatsappMessage($quotation),
+                'whatsappMessage' => $whatsappMessage,
+                'whatsappDestination' => $whatsappDestination,
                 'defaultSubject' => "Devis {$quotation->quotation_number} — ".($seller['trade_name'] ?: $seller['legal_name'] ?? $quotation->organization->name),
                 'attachmentName' => "Devis-{$quotation->quotation_number}.pdf",
             ] : null,

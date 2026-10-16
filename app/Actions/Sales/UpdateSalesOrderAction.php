@@ -59,6 +59,7 @@ class UpdateSalesOrderAction
             $order->customer_company = $customer?->company_name;
             $order->customer_email = $customer?->email;
             $order->customer_phone = $customer?->phone;
+            $order->customer_whatsapp_username = $customer?->whatsapp_username;
             $order->sale_date = $data['sale_date'];
             $order->currency_code = strtoupper($data['currency_code']);
             $order->notes = $data['notes'] ?? null;

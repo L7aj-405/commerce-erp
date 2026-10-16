@@ -6,6 +6,7 @@ use App\Models\OrganizationContact;
 use App\Models\Supplier;
 use App\Models\User;
 use Tests\Support\SalesTestCase;
+use Inertia\Testing\AssertableInertia as Assert;
 
 class OrganizationContactTest extends SalesTestCase
 {
@@ -98,5 +99,57 @@ class OrganizationContactTest extends SalesTestCase
         $contact->refresh();
         $this->assertFalse($contact->active);
         $this->assertNotNull($contact->archived_at);
+    }
+
+    public function test_whatsapp_username_is_normalized_can_be_cleared_and_drives_contact_link(): void
+    {
+        $owner = User::factory()->create();
+        $organization = $this->createOrganization($owner);
+        $store = $this->createStore($organization, $owner);
+        $this->activate($owner, $organization, $store);
+
+        $this->actingAs($owner)->post(route('contacts.store'), [
+            'full_name' => 'Client Username',
+            'phone' => '0600000000',
+            'whatsapp_username' => '  @client.test  ',
+            'contact_type' => 'client',
+            'active' => true,
+        ])->assertRedirect();
+
+        $contact = OrganizationContact::query()->where('organization_id', $organization->id)->firstOrFail();
+        $this->assertSame('client.test', $contact->whatsapp_username);
+        $this->actingAs($owner)->get(route('contacts.show', $contact))->assertInertia(fn (Assert $page) => $page
+            ->where('contact.whatsapp_username', 'client.test')
+            ->where('whatsappDestination.type', 'username')
+            ->where('whatsappDestination.link', 'https://wa.me/client.test'));
+
+        $this->actingAs($owner)->patch(route('contacts.update', $contact), [
+            'full_name' => 'Client Username',
+            'whatsapp_username' => '',
+            'contact_type' => 'client',
+            'active' => true,
+        ])->assertRedirect();
+
+        $this->assertNull($contact->fresh()->whatsapp_username);
+    }
+
+    public function test_whatsapp_username_rejects_whitespace_control_characters_urls_and_numeric_only_values(): void
+    {
+        $owner = User::factory()->create();
+        $organization = $this->createOrganization($owner);
+        $this->activate($owner, $organization);
+
+        foreach (['client test', "client\ntest", 'https://wa.me/client.test', '123456'] as $invalid) {
+            $this->actingAs($owner)->post(route('contacts.store'), [
+                'full_name' => 'Invalid Username',
+                'whatsapp_username' => $invalid,
+                'contact_type' => 'client',
+            ])->assertSessionHasErrors('whatsapp_username');
+        }
+
+        $this->assertDatabaseMissing('organization_contacts', [
+            'organization_id' => $organization->id,
+            'full_name' => 'Invalid Username',
+        ]);
     }
 }

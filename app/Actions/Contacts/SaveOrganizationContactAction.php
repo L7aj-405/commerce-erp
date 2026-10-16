@@ -6,6 +6,7 @@ use App\Models\Organization;
 use App\Models\OrganizationContact;
 use App\Models\User;
 use App\Services\AuditLogger;
+use App\Support\WhatsAppUsername;
 
 class SaveOrganizationContactAction
 {
@@ -26,6 +27,7 @@ class SaveOrganizationContactAction
         $contact->email = filled($data['email'] ?? null) ? mb_strtolower(trim((string) $data['email'])) : null;
         $contact->phone = filled($data['phone'] ?? null) ? trim((string) $data['phone']) : null;
         $contact->whatsapp = filled($data['whatsapp'] ?? null) ? trim((string) $data['whatsapp']) : null;
+        $contact->whatsapp_username = WhatsAppUsername::normalize($data['whatsapp_username'] ?? null);
         $contact->contact_type = (string) ($data['contact_type'] ?? OrganizationContact::TYPE_OTHER);
         $contact->notes = filled($data['notes'] ?? null) ? trim((string) $data['notes']) : null;
         $contact->active = (bool) ($data['active'] ?? true);
@@ -42,6 +44,7 @@ class SaveOrganizationContactAction
             newValues: [
                 'full_name' => $contact->full_name,
                 'email' => $contact->email,
+                'whatsapp_username' => $contact->whatsapp_username,
                 'contact_type' => $contact->contact_type,
                 'active' => $contact->active,
             ],

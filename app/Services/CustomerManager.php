@@ -6,6 +6,7 @@ use App\Enums\CustomerStatus;
 use App\Models\Customer;
 use App\Models\Organization;
 use App\Models\User;
+use App\Support\WhatsAppUsername;
 use Illuminate\Support\Facades\DB;
 
 class CustomerManager
@@ -20,7 +21,7 @@ class CustomerManager
             $customer->organization_id = $organization->getKey();
             $this->apply($customer, $data);
             $customer->save();
-            $this->audit->record('customer.created', $actor, $organization, auditable: $customer, newValues: $customer->only(['type', 'display_name', 'company_name', 'status']));
+            $this->audit->record('customer.created', $actor, $organization, auditable: $customer, newValues: $customer->only(['type', 'display_name', 'company_name', 'whatsapp_username', 'status']));
 
             return $customer;
         });
@@ -30,10 +31,10 @@ class CustomerManager
     public function update(User $actor, Customer $customer, array $data): Customer
     {
         return DB::transaction(function () use ($actor, $customer, $data) {
-            $old = $customer->only(['type', 'display_name', 'company_name', 'status']);
+            $old = $customer->only(['type', 'display_name', 'company_name', 'whatsapp_username', 'status']);
             $this->apply($customer, $data);
             $customer->save();
-            $this->audit->record('customer.updated', $actor, $customer->organization, auditable: $customer, oldValues: $old, newValues: $customer->only(['type', 'display_name', 'company_name', 'status']));
+            $this->audit->record('customer.updated', $actor, $customer->organization, auditable: $customer, oldValues: $old, newValues: $customer->only(['type', 'display_name', 'company_name', 'whatsapp_username', 'status']));
 
             return $customer;
         });
@@ -47,6 +48,9 @@ class CustomerManager
         $customer->company_name = $data['company_name'] ?? null;
         $customer->email = $data['email'] ?? null;
         $customer->phone = $data['phone'] ?? null;
+        if (array_key_exists('whatsapp_username', $data) || ! $customer->exists) {
+            $customer->whatsapp_username = WhatsAppUsername::normalize($data['whatsapp_username'] ?? null);
+        }
         $customer->tax_identifier = $data['tax_identifier'] ?? null;
         $customer->billing_address = $data['billing_address'] ?? null;
         $customer->notes = $data['notes'] ?? null;

@@ -311,6 +311,22 @@ class QuotationLifecycleTest extends QuotationTestCase
             ->assertInertia(fn ($page) => $page->where('sharing.pdfUrl', fn ($u) => str_contains((string) $u, "/quotations/{$issued->id}/shared-pdf")));
     }
 
+    public function test_username_only_quotation_exposes_official_whatsapp_destination(): void
+    {
+        [$owner, $organization, $store, $variant] = $this->base();
+        $customer = $this->createCustomer($organization, 'Client Username', ['whatsapp_username' => 'client.test']);
+        $quotation = $this->createQuotation($owner, $organization, $store, ['customer_id' => $customer->id]);
+        $this->addCatalogQuotationLine($owner, $quotation, $variant);
+        $issued = $this->issueQuotation($owner, $quotation);
+
+        $this->actingAs($owner)->get(route('quotations.show', $issued))->assertInertia(fn ($page) => $page
+            ->where('sharing.phone', null)
+            ->where('sharing.whatsappDestination.available', true)
+            ->where('sharing.whatsappDestination.type', 'username')
+            ->where('sharing.whatsappDestination.destination', 'client.test')
+            ->where('sharing.whatsappDestination.base_url', 'https://wa.me/client.test'));
+    }
+
     public function test_tenant_isolation_and_unauthorized_role_on_quotation_endpoints(): void
     {
         [$owner, $organization, $store, $variant] = $this->base();

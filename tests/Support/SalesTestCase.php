@@ -47,6 +47,7 @@ abstract class SalesTestCase extends InventoryTestCase
         $customer->company_name = $attributes['company_name'] ?? null;
         $customer->email = $attributes['email'] ?? null;
         $customer->phone = $attributes['phone'] ?? null;
+        $customer->whatsapp_username = $attributes['whatsapp_username'] ?? null;
         $customer->tax_identifier = $attributes['tax_identifier'] ?? null;
         $customer->billing_address = $attributes['billing_address'] ?? null;
         $customer->notes = $attributes['notes'] ?? null;

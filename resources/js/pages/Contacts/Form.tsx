@@ -12,6 +12,7 @@ type Contact = {
     email: string | null;
     phone: string | null;
     whatsapp: string | null;
+    whatsapp_username: string | null;
     contact_type: string;
     notes: string | null;
     active: boolean;
@@ -21,7 +22,7 @@ type Contact = {
 type Props = { contact: Contact; linkedOptions: { customers: LinkedOption[]; suppliers: LinkedOption[] } };
 
 const input = 'w-full rounded-field border border-line-strong bg-surface px-3 py-2 text-sm text-ink outline-none transition-soft focus:border-primary';
-const blank = { full_name: '', company_name: '', job_title: '', email: '', phone: '', whatsapp: '', contact_type: 'client', customer_id: '', supplier_id: '', notes: '', active: true };
+const blank = { full_name: '', company_name: '', job_title: '', email: '', phone: '', whatsapp: '', whatsapp_username: '', contact_type: 'client', customer_id: '', supplier_id: '', notes: '', active: true };
 
 export default function ContactForm({ contact, linkedOptions }: Props) {
     const form = useForm({
@@ -31,6 +32,7 @@ export default function ContactForm({ contact, linkedOptions }: Props) {
         email: contact?.email ?? blank.email,
         phone: contact?.phone ?? blank.phone,
         whatsapp: contact?.whatsapp ?? blank.whatsapp,
+        whatsapp_username: contact?.whatsapp_username ?? blank.whatsapp_username,
         contact_type: contact?.contact_type ?? blank.contact_type,
         customer_id: contact?.customer?.id?.toString() ?? '',
         supplier_id: contact?.supplier?.id?.toString() ?? '',
@@ -68,6 +70,10 @@ export default function ContactForm({ contact, linkedOptions }: Props) {
                     <Field label="Email" error={form.errors.email}><input type="email" value={form.data.email} onChange={(e) => form.setData('email', e.target.value)} className={input} /></Field>
                     <Field label="Téléphone" error={form.errors.phone}><input value={form.data.phone} onChange={(e) => form.setData('phone', e.target.value)} className={input} /></Field>
                     <Field label="WhatsApp" error={form.errors.whatsapp}><input value={form.data.whatsapp} onChange={(e) => form.setData('whatsapp', e.target.value)} className={input} /></Field>
+                    <Field label="Nom d’utilisateur WhatsApp" error={form.errors.whatsapp_username}>
+                        <input value={form.data.whatsapp_username} onChange={(e) => form.setData('whatsapp_username', e.target.value)} placeholder="monentreprise" className={input} />
+                        <span className="mt-1 block text-xs text-ink-faint">Optionnel — sans le @</span>
+                    </Field>
                     <Field label="Client lié" error={form.errors.customer_id}>
                         <select value={form.data.customer_id} onChange={(e) => form.setData('customer_id', e.target.value)} className={input}>
                             <option value="">Aucun</option>

@@ -18,6 +18,7 @@ import {
 } from '@/utils/labels';
 import { Head, Link } from '@inertiajs/react';
 import type { ReactNode } from 'react';
+import type { WhatsAppDestination } from '@/utils/whatsapp';
 
 type Customer = {
     id: number;
@@ -26,6 +27,7 @@ type Customer = {
     company_name: string | null;
     email: string | null;
     phone: string | null;
+    whatsapp_username: string | null;
     tax_identifier: string | null;
     billing_address: string | null;
     status: string;
@@ -50,6 +52,7 @@ type Props = {
     deliveryNotes: DeliveryNoteRow[];
     deliveryNotesCount: number;
     can: { update: boolean };
+    whatsappDestination: WhatsAppDestination;
 };
 
 function SummaryTile({ label: title, value, tone = 'neutral' }: { label: string; value: ReactNode; tone?: 'neutral' | 'warning' }) {
@@ -75,7 +78,7 @@ function Section({ id, title, count, children }: { id: string; title: string; co
 
 const DASH_LABEL: Record<string, string> = { commandes: 'Commandes', factures: 'Factures', paiements: 'Paiements', devis: 'Devis', 'bons-de-livraison': 'Bons de livraison' };
 
-export default function CustomerShow({ customer, summary, orders, ordersCount, invoices, invoicesCount, payments, paymentsCount, quotations, quotationsCount, deliveryNotes, deliveryNotesCount, can }: Props) {
+export default function CustomerShow({ customer, summary, orders, ordersCount, invoices, invoicesCount, payments, paymentsCount, quotations, quotationsCount, deliveryNotes, deliveryNotesCount, can, whatsappDestination }: Props) {
     const title = customer.type === 'company' ? (customer.company_name || customer.display_name) : customer.display_name;
 
     return (
@@ -93,19 +96,23 @@ export default function CustomerShow({ customer, summary, orders, ordersCount, i
                         <span className="text-[12px] text-ink-faint">{customer.type === 'company' ? 'Entreprise' : 'Particulier'}</span>
                     </div>
                     <p className="mt-1.5 text-sm text-ink-muted">
-                        {[customer.phone, customer.email].filter(Boolean).join(' · ') || 'Aucun contact renseigné'}
+                        {[customer.phone, customer.whatsapp_username ? `@${customer.whatsapp_username}` : null, customer.email].filter(Boolean).join(' · ') || 'Aucun contact renseigné'}
                     </p>
                     {customer.billing_address && <p className="mt-0.5 text-sm text-ink-muted">{customer.billing_address}</p>}
                     {customer.tax_identifier && <p className="mt-0.5 text-[12px] text-ink-faint">ICE : {customer.tax_identifier}</p>}
                 </div>
-                {can.update && (
-                    <Link
-                        href={`/sales/customers/${customer.id}/edit`}
-                        className="inline-flex min-h-10 items-center rounded-field border border-line-strong bg-surface px-4 text-sm text-ink transition-soft hover:bg-raised"
-                    >
-                        Modifier la fiche
-                    </Link>
-                )}
+                <div className="flex flex-wrap gap-2">
+                    {whatsappDestination.available && whatsappDestination.link && (
+                        <a href={whatsappDestination.link} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-10 items-center rounded-field border border-line-strong bg-surface px-4 text-sm text-ink transition-soft hover:bg-raised">
+                            Ouvrir dans WhatsApp
+                        </a>
+                    )}
+                    {can.update && (
+                        <Link href={`/sales/customers/${customer.id}/edit`} className="inline-flex min-h-10 items-center rounded-field border border-line-strong bg-surface px-4 text-sm text-ink transition-soft hover:bg-raised">
+                            Modifier la fiche
+                        </Link>
+                    )}
+                </div>
             </div>
 
             <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">

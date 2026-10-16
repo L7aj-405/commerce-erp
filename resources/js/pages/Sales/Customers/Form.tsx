@@ -10,6 +10,7 @@ type Customer = {
     company_name: string | null;
     email: string | null;
     phone: string | null;
+    whatsapp_username: string | null;
     tax_identifier: string | null;
     billing_address: string | null;
     notes: string | null;
@@ -26,6 +27,7 @@ export default function CustomerForm({ customer }: { customer: Customer | null }
         company_name: customer?.company_name ?? '',
         email: customer?.email ?? '',
         phone: customer?.phone ?? '',
+        whatsapp_username: customer?.whatsapp_username ?? '',
         tax_identifier: customer?.tax_identifier ?? '',
         billing_address: customer?.billing_address ?? '',
         notes: customer?.notes ?? '',
@@ -80,6 +82,11 @@ export default function CustomerForm({ customer }: { customer: Customer | null }
                     <label className={labelClass}>
                         Téléphone
                         <input value={form.data.phone} onChange={(e) => form.setData('phone', e.target.value)} className={fieldClass} />
+                    </label>
+                    <label className={labelClass}>
+                        Nom d’utilisateur WhatsApp
+                        <input value={form.data.whatsapp_username} onChange={(e) => form.setData('whatsapp_username', e.target.value)} placeholder="monentreprise" className={fieldClass} />
+                        <span className="mt-1 block text-xs font-normal text-ink-faint">Optionnel — sans le @</span>
                     </label>
                     <label className={labelClass}>
                         ICE / identifiant fiscal

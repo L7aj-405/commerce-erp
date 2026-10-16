@@ -15,6 +15,7 @@ type Contact = {
     email: string | null;
     phone: string | null;
     whatsapp: string | null;
+    whatsapp_username: string | null;
     contact_type: string;
     active: boolean;
 };
@@ -87,7 +88,7 @@ export default function ContactsIndex({ contacts, filters, can }: Props) {
                                         <td className="px-4 py-2.5 text-ink-muted">{contact.company_name ?? '—'}</td>
                                         <td className="px-4 py-2.5 text-ink-muted">{typeLabels[contact.contact_type] ?? contact.contact_type}</td>
                                         <td className="px-4 py-2.5 text-ink-muted">{contact.email ?? '—'}</td>
-                                        <td className="px-4 py-2.5 text-ink-muted">{contact.phone ?? contact.whatsapp ?? '—'}</td>
+                                        <td className="px-4 py-2.5 text-ink-muted">{contact.phone ?? contact.whatsapp ?? (contact.whatsapp_username ? `@${contact.whatsapp_username}` : '—')}</td>
                                         <td className="px-4 py-2.5"><DocBadge tone={contact.active ? 'positive' : 'neutral'}>{contact.active ? 'Actif' : 'Archivé'}</DocBadge></td>
                                     </tr>
                                 ))}
@@ -106,7 +107,7 @@ export default function ContactsIndex({ contacts, filters, can }: Props) {
                                 </div>
                                 <div className="mt-3 text-[13px] text-ink-muted">
                                     <p>{typeLabels[contact.contact_type] ?? contact.contact_type}</p>
-                                    <p>{contact.phone ?? contact.whatsapp ?? '—'}</p>
+                                    <p>{contact.phone ?? contact.whatsapp ?? (contact.whatsapp_username ? `@${contact.whatsapp_username}` : '—')}</p>
                                 </div>
                             </li>
                         ))}

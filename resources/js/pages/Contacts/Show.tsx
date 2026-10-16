@@ -2,6 +2,7 @@ import DocBadge from '@/components/ui/DocBadge';
 import PageHeader from '@/components/ui/PageHeader';
 import SalesLayout from '@/layouts/SalesLayout';
 import { Head, Link, router } from '@inertiajs/react';
+import type { WhatsAppDestination } from '@/utils/whatsapp';
 
 type Contact = {
     id: number;
@@ -11,16 +12,17 @@ type Contact = {
     email: string | null;
     phone: string | null;
     whatsapp: string | null;
+    whatsapp_username: string | null;
     contact_type: string;
     notes: string | null;
     active: boolean;
     customer: { id: number; name: string } | null;
     supplier: { id: number; name: string } | null;
 };
-type Props = { contact: Contact; duplicates: Contact[]; can: { update: boolean; archive: boolean } };
+type Props = { contact: Contact; whatsappDestination: WhatsAppDestination; duplicates: Contact[]; can: { update: boolean; archive: boolean } };
 const typeLabels: Record<string, string> = { client: 'Client', supplier: 'Fournisseur', internal: 'Interne', other: 'Autre' };
 
-export default function ContactShow({ contact, duplicates, can }: Props) {
+export default function ContactShow({ contact, whatsappDestination, duplicates, can }: Props) {
     const archive = () => {
         if (window.confirm(`Archiver ${contact.full_name} ?`)) router.delete(`/contacts/${contact.id}`);
     };
@@ -40,11 +42,18 @@ export default function ContactShow({ contact, duplicates, can }: Props) {
                         <Info label="Email" value={contact.email} href={contact.email ? `mailto:${contact.email}` : undefined} />
                         <Info label="Téléphone" value={contact.phone} href={contact.phone ? `tel:${contact.phone}` : undefined} />
                         <Info label="WhatsApp" value={contact.whatsapp} />
+                        <Info label="Nom d’utilisateur WhatsApp" value={contact.whatsapp_username ? `@${contact.whatsapp_username}` : null} />
                         <Info label="Société" value={contact.company_name} />
                         <Info label="Client lié" value={contact.customer?.name} />
                         <Info label="Fournisseur lié" value={contact.supplier?.name} />
                     </dl>
                     {contact.notes && <div className="mt-5 rounded-field bg-raised p-4 text-sm text-ink-muted whitespace-pre-wrap">{contact.notes}</div>}
+                    {whatsappDestination.available && whatsappDestination.link && (
+                        <a href={whatsappDestination.link} target="_blank" rel="noopener noreferrer" className="mt-5 inline-flex min-h-10 items-center rounded-field border border-line-strong px-4 text-sm font-medium text-ink hover:bg-sage">
+                            Ouvrir dans WhatsApp
+                        </a>
+                    )}
+                    {!whatsappDestination.available && <p className="mt-5 text-sm text-ink-muted">Aucun contact WhatsApp disponible.</p>}
                 </section>
                 <aside className="space-y-4">
                     {duplicates.length > 0 && (

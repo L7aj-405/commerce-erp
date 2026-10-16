@@ -14,14 +14,16 @@ class CustomerTest extends SalesTestCase
         $organization = $this->createOrganization($owner);
         $this->actingAs($owner)->post(route('sales.customers.store'), [
             'type' => 'company', 'display_name' => 'ACME Buyer', 'company_name' => 'ACME',
-            'email' => 'buyer@example.test', 'phone' => '100', 'status' => 'active',
+            'email' => 'buyer@example.test', 'phone' => '100', 'whatsapp_username' => '@acme.buyer', 'status' => 'active',
         ])->assertRedirect();
         $customer = $organization->customers()->firstOrFail();
+        $this->assertSame('acme.buyer', $customer->whatsapp_username);
         $this->actingAs($owner)->patch(route('sales.customers.update', $customer), [
             'type' => 'company', 'display_name' => 'ACME Updated', 'company_name' => 'ACME',
-            'email' => 'new@example.test', 'phone' => '200', 'status' => 'inactive',
+            'email' => 'new@example.test', 'phone' => '200', 'whatsapp_username' => '', 'status' => 'inactive',
         ])->assertRedirect();
         $this->assertDatabaseHas('customers', ['id' => $customer->id, 'organization_id' => $organization->id, 'display_name' => 'ACME Updated', 'status' => 'inactive']);
+        $this->assertNull($customer->fresh()->whatsapp_username);
     }
 
     public function test_forged_organization_id_is_ignored_on_customer_creation(): void

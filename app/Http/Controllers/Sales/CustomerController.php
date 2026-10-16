@@ -14,8 +14,10 @@ use App\Models\Invoice;
 use App\Models\Payment;
 use App\Models\Quotation;
 use App\Models\SalesOrder;
+use App\Rules\ValidWhatsAppUsername;
 use App\Services\ActiveTenantContext;
 use App\Services\CustomerManager;
+use App\Services\WhatsAppContactLinkResolver;
 use App\Support\Decimal;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -34,7 +36,8 @@ class CustomerController extends Controller
         $customers = Customer::query()->where('organization_id', $organization->getKey())
             ->when($filters['search'] ?? null, fn ($query, string $search) => $query->where(fn ($query) => $query
                 ->where('display_name', 'like', "%{$search}%")->orWhere('company_name', 'like', "%{$search}%")
-                ->orWhere('email', 'like', "%{$search}%")->orWhere('phone', 'like', "%{$search}%")))
+                ->orWhere('email', 'like', "%{$search}%")->orWhere('phone', 'like', "%{$search}%")
+                ->orWhere('whatsapp_username', 'like', "%{$search}%")))
             ->when($filters['status'] ?? null, fn ($query, string $status) => $query->where('status', $status))
             ->orderBy('display_name')->paginate(20)->withQueryString();
 
@@ -50,7 +53,7 @@ class CustomerController extends Controller
      * over payment_allocations, the same pattern FinanceReceivablesService
      * already uses for the exact same "paid so far" question.
      */
-    public function show(Customer $customer): Response
+    public function show(Customer $customer, WhatsAppContactLinkResolver $whatsapp): Response
     {
         $this->authorize('view', $customer);
         $organizationId = $customer->organization_id;
@@ -89,6 +92,7 @@ class CustomerController extends Controller
 
         return Inertia::render('Sales/Customers/Show', [
             'customer' => $customer,
+            'whatsappDestination' => $whatsapp->resolve($customer->whatsapp_username, $customer->phone),
             'summary' => [
                 'sales_total' => $salesTotal,
                 'invoiced_total' => $invoicedTotal,
@@ -174,6 +178,7 @@ class CustomerController extends Controller
             'type' => ['required', Rule::enum(CustomerType::class)], 'display_name' => ['required', 'string', 'max:255'],
             'company_name' => ['nullable', 'string', 'max:255'], 'email' => ['nullable', 'email', 'max:255'],
             'phone' => ['nullable', 'string', 'max:64'], 'tax_identifier' => ['nullable', 'string', 'max:128'],
+            'whatsapp_username' => ['nullable', 'string', new ValidWhatsAppUsername],
             'billing_address' => ['nullable', 'string', 'max:5000'], 'notes' => ['nullable', 'string', 'max:5000'],
             'status' => ['required', Rule::enum(CustomerStatus::class)],
         ];

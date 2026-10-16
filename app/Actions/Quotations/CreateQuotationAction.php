@@ -56,6 +56,7 @@ class CreateQuotationAction
             $quotation->customer_company = $data['customer_company'] ?? $customer?->company_name;
             $quotation->customer_email = $data['customer_email'] ?? $customer?->email;
             $quotation->customer_phone = $data['customer_phone'] ?? $customer?->phone;
+            $quotation->customer_whatsapp_username = $customer?->whatsapp_username;
             $quotation->customer_tax_identifier = $data['customer_tax_identifier'] ?? $customer?->tax_identifier;
             $quotation->billing_address = $data['billing_address'] ?? $customer?->billing_address;
             $quotation->representative_name = $data['representative_name'] ?? $actor->name;

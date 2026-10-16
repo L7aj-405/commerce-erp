@@ -117,6 +117,7 @@ class CreateFullInvoiceFromSalesOrderAction
             $invoice->customer_company = $order->customer_company;
             $invoice->customer_email = $order->customer_email;
             $invoice->customer_phone = $order->customer_phone;
+            $invoice->customer_whatsapp_username = $order->customer_whatsapp_username;
             $invoice->customer_tax_identifier = $order->customer?->tax_identifier;
             $invoice->billing_address = $order->customer?->billing_address;
             $invoice->representative_name = $data['representative_name'] ?? $order->createdBy?->name;

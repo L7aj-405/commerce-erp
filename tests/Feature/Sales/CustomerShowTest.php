@@ -51,6 +51,24 @@ class CustomerShowTest extends DocumentTestCase
         $this->actingAs($ownerA)->get(route('sales.customers.show', $customerB))->assertNotFound();
     }
 
+    public function test_username_only_customer_exposes_the_whatsapp_destination(): void
+    {
+        [$owner, $organization, , , $customer] = $this->documentFixture();
+        $customer->whatsapp_username = 'client.test';
+        $customer->phone = null;
+        $customer->save();
+
+        $this->activate($owner, $organization);
+        $this->actingAs($owner)->get(route('sales.customers.show', $customer))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('customer.whatsapp_username', 'client.test')
+                ->where('whatsappDestination.available', true)
+                ->where('whatsappDestination.type', 'username')
+                ->where('whatsappDestination.destination', 'client.test')
+                ->where('whatsappDestination.link', 'https://wa.me/client.test'));
+    }
+
     public function test_summary_queries_are_bounded_regardless_of_document_count(): void
     {
         [$owner, $organization, $store, , $customer] = $this->documentFixture();

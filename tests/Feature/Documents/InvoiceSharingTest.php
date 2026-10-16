@@ -16,6 +16,8 @@ class InvoiceSharingTest extends DocumentTestCase
             ->where('sharing.email', 'billing@example.test')
             ->where('sharing.phone', '0600000000')
             ->where('sharing.whatsappPhone', '212600000000')
+            ->where('sharing.whatsappDestination.type', 'phone')
+            ->where('sharing.whatsappDestination.destination', '212600000000')
             ->where('sharing.whatsappMessage', fn ($message) => str_contains($message, 'Bonjour')
                 && str_contains($message, $invoice->invoice_number)
                 && str_contains($message, 'Montant :')
@@ -48,6 +50,30 @@ class InvoiceSharingTest extends DocumentTestCase
         $this->actingAs($owner)->get(route('invoices.show', $invoice))->assertInertia(fn (AssertableJson $page) => $page
             ->where('sharing.phone', null)
             ->where('sharing.whatsappPhone', null)
+            ->where('sharing.whatsappDestination.available', false)
             ->where('sharing.email', 'x@example.test'));
+    }
+
+    public function test_username_only_customer_keeps_invoice_whatsapp_sharing_available(): void
+    {
+        $owner = \App\Models\User::factory()->create();
+        $organization = $this->createOrganization($owner);
+        $store = $this->createStore($organization, $owner);
+        $customer = $this->createCustomer($organization, 'Username Client', [
+            'email' => 'username@example.test',
+            'whatsapp_username' => 'client.test',
+        ]);
+        $order = $this->createDraftOrder($owner, $organization, $store, $customer);
+        $this->addCustomLine($owner, $order);
+        $order = app(\App\Actions\Sales\ConfirmSalesOrderAction::class)->execute($owner, $order)->fresh();
+        $invoice = $this->issueInvoice($owner, $this->createInvoice($owner, $order));
+
+        $this->actingAs($owner)->get(route('invoices.show', $invoice))->assertInertia(fn (AssertableJson $page) => $page
+            ->where('sharing.phone', null)
+            ->where('sharing.whatsappPhone', null)
+            ->where('sharing.whatsappDestination.available', true)
+            ->where('sharing.whatsappDestination.type', 'username')
+            ->where('sharing.whatsappDestination.destination', 'client.test')
+            ->where('sharing.whatsappDestination.base_url', 'https://wa.me/client.test'));
     }
 }

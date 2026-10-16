@@ -110,5 +110,6 @@ class CreateSalesOrderAction
         $order->customer_company = $customer?->company_name;
         $order->customer_email = $customer?->email;
         $order->customer_phone = $customer?->phone;
+        $order->customer_whatsapp_username = $customer?->whatsapp_username;
     }
 }
