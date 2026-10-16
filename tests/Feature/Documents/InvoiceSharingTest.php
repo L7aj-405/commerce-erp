@@ -76,4 +76,26 @@ class InvoiceSharingTest extends DocumentTestCase
             ->where('sharing.whatsappDestination.destination', 'client.test')
             ->where('sharing.whatsappDestination.base_url', 'https://wa.me/client.test'));
     }
+
+    public function test_legacy_at_username_in_invoice_phone_snapshot_remains_shareable(): void
+    {
+        $owner = \App\Models\User::factory()->create();
+        $organization = $this->createOrganization($owner);
+        $store = $this->createStore($organization, $owner);
+        $customer = $this->createCustomer($organization, 'Legacy Username Client', [
+            'phone' => '@agday_mohamed',
+        ]);
+        $order = $this->createDraftOrder($owner, $organization, $store, $customer);
+        $this->addCustomLine($owner, $order);
+        $order = app(\App\Actions\Sales\ConfirmSalesOrderAction::class)->execute($owner, $order)->fresh();
+        $invoice = $this->issueInvoice($owner, $this->createInvoice($owner, $order));
+
+        $this->actingAs($owner)->get(route('invoices.show', $invoice))->assertInertia(fn (AssertableJson $page) => $page
+            ->where('sharing.phone', '@agday_mohamed')
+            ->where('sharing.whatsappPhone', null)
+            ->where('sharing.whatsappDestination.available', true)
+            ->where('sharing.whatsappDestination.type', 'username')
+            ->where('sharing.whatsappDestination.destination', 'agday_mohamed')
+            ->where('sharing.whatsappDestination.base_url', 'https://wa.me/agday_mohamed'));
+    }
 }

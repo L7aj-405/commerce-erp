@@ -28,6 +28,23 @@ class WhatsAppContactLinkResolverTest extends TestCase
         $this->assertSame('https://wa.me/212600000000', $result['link']);
     }
 
+    public function test_explicit_legacy_username_in_phone_slot_remains_usable(): void
+    {
+        $result = (new WhatsAppContactLinkResolver)->resolve(null, '  @agday_mohamed  ', 'Bonjour');
+
+        $this->assertTrue($result['available']);
+        $this->assertSame('username', $result['type']);
+        $this->assertSame('agday_mohamed', $result['destination']);
+        $this->assertSame('https://wa.me/agday_mohamed?text=Bonjour', $result['link']);
+    }
+
+    public function test_unmarked_non_phone_text_is_not_reinterpreted_as_a_username(): void
+    {
+        $result = (new WhatsAppContactLinkResolver)->resolve(null, 'agday_mohamed');
+
+        $this->assertFalse($result['available']);
+    }
+
     public function test_no_destination_is_unavailable(): void
     {
         $this->assertSame([

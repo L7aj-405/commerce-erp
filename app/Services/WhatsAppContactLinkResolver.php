@@ -16,6 +16,18 @@ class WhatsAppContactLinkResolver
             return $this->result('username', $normalizedUsername, $message);
         }
 
+        // Compatibility for historical customer/document snapshots where a
+        // WhatsApp username was entered in the phone field before the
+        // dedicated username column existed. Require the explicit "@" marker
+        // so ordinary non-phone text is never reinterpreted as a username.
+        $legacyDestination = trim((string) $phone);
+        if (str_starts_with($legacyDestination, '@')) {
+            $legacyUsername = WhatsAppUsername::normalize($legacyDestination);
+            if (WhatsAppUsername::isValid($legacyUsername)) {
+                return $this->result('username', $legacyUsername, $message);
+            }
+        }
+
         $normalizedPhone = PhoneNumber::forWhatsApp($phone);
         if ($normalizedPhone !== null) {
             return $this->result('phone', $normalizedPhone, $message);
