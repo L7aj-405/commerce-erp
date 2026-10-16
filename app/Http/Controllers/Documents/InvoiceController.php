@@ -16,6 +16,7 @@ use App\Models\CreditNote;
 use App\Models\SalesOrder;
 use App\Services\ActiveTenantContext;
 use App\Services\DocumentSellerProfile;
+use App\Services\DocumentStampRenderer;
 use App\Services\DocumentValueFormatter;
 use App\Services\OrganizationOutboundMailService;
 use App\Services\SalesOrderPaymentCalculator;
@@ -82,7 +83,14 @@ class InvoiceController extends Controller
         return redirect()->route('invoices.show', $invoice);
     }
 
-    public function show(Request $request, Invoice $invoice, SalesOrderPaymentCalculator $payments, DocumentValueFormatter $formatter, OrganizationOutboundMailService $mail): Response
+    public function show(
+        Request $request,
+        Invoice $invoice,
+        SalesOrderPaymentCalculator $payments,
+        DocumentValueFormatter $formatter,
+        OrganizationOutboundMailService $mail,
+        DocumentStampRenderer $stampRenderer,
+    ): Response
     {
         $this->authorize('view', $invoice);
         $invoice->load([
@@ -175,6 +183,7 @@ class InvoiceController extends Controller
         $refundObligation = Decimal::subtract($paymentSummary['net'], $netAfterCredits);
         if (Decimal::compare($receivable, '0.0000') < 0) $receivable = '0.0000';
         if (Decimal::compare($refundObligation, '0.0000') < 0) $refundObligation = '0.0000';
+        $stampRenderable = $stampRenderer->isRenderable($invoice->stampApposition);
 
         return Inertia::render('Documents/Invoices/Show', [
             'invoice' => $invoice,
@@ -203,8 +212,9 @@ class InvoiceController extends Controller
             'creditSummary' => ['credited' => $credited, 'net' => $netAfterCredits, 'receivable' => $receivable, 'refund_obligation' => $refundObligation, 'state' => Decimal::compare($credited, '0') === 0 ? 'none' : (Decimal::compare($credited, $invoice->total_incl_tax) >= 0 ? 'full' : 'partial')],
             'mailConfigured' => $mail->isConfigured($invoice->organization),
             'stamp' => [
-                'applied' => $invoice->stampApposition !== null,
+                'applied' => $stampRenderable,
                 'appliedAt' => $invoice->stampApposition?->applied_at?->toIso8601String(),
+                'unavailable' => $invoice->stampApposition !== null && ! $stampRenderable,
             ],
             'can' => [
                 'updateDraft' => $request->user()->can('updateDraft', $invoice),

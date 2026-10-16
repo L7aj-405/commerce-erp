@@ -7,6 +7,7 @@ type Props = {
     applied: boolean;
     appliedAt: string | null;
     canStamp: boolean;
+    unavailable?: boolean;
 };
 
 /**
@@ -15,7 +16,7 @@ type Props = {
  * never stamps a document by itself; this is the only thing that does, and
  * it is a one-way action per document in V1 (no "un-stamp").
  */
-export default function StampDocumentAction({ postUrl, applied, appliedAt, canStamp }: Props) {
+export default function StampDocumentAction({ postUrl, applied, appliedAt, canStamp, unavailable = false }: Props) {
     const [confirmOpen, setConfirmOpen] = useState(false);
     const form = useForm({});
     const errors = form.errors as Record<string, string>;
@@ -25,6 +26,14 @@ export default function StampDocumentAction({ postUrl, applied, appliedAt, canSt
             <span className="inline-flex items-center gap-1.5 rounded-full bg-success-soft px-2.5 py-1 text-xs font-medium text-success">
                 Cacheté
                 {appliedAt && <span className="font-normal text-success/80">· {new Date(appliedAt).toLocaleDateString('fr-FR')}</span>}
+            </span>
+        );
+    }
+
+    if (unavailable) {
+        return (
+            <span className="inline-flex items-center rounded-full bg-warning-soft px-2.5 py-1 text-xs font-medium text-warning">
+                Cachet indisponible
             </span>
         );
     }

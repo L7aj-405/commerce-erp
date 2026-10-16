@@ -20,6 +20,7 @@ use App\Models\ProductVariant;
 use App\Models\Quotation;
 use App\Models\TaxRate;
 use App\Services\ActiveTenantContext;
+use App\Services\DocumentStampRenderer;
 use App\Services\OrganizationOutboundMailService;
 use App\Services\ProductPriceResolver;
 use App\Services\QuotationDocumentSettings;
@@ -145,7 +146,12 @@ class QuotationController extends Controller
         return redirect()->route('quotations.show', $quotation);
     }
 
-    public function show(Request $request, Quotation $quotation, OrganizationOutboundMailService $mail): Response
+    public function show(
+        Request $request,
+        Quotation $quotation,
+        OrganizationOutboundMailService $mail,
+        DocumentStampRenderer $stampRenderer,
+    ): Response
     {
         $this->authorize('view', $quotation);
         $quotation->load([
@@ -161,6 +167,7 @@ class QuotationController extends Controller
         $hasLogo = ! empty($seller['logo']);
         unset($seller['logo']);
         $quotation->setAttribute('seller_snapshot', $seller);
+        $stampRenderable = $stampRenderer->isRenderable($quotation->stampApposition);
 
         $isOfficial = $quotation->status->isOfficial();
         $hasDiscount = Decimal::compare($quotation->discount_total, '0') !== 0
@@ -210,8 +217,9 @@ class QuotationController extends Controller
             ] : null,
             'mailConfigured' => $mail->isConfigured($quotation->organization),
             'stamp' => [
-                'applied' => $quotation->stampApposition !== null,
+                'applied' => $stampRenderable,
                 'appliedAt' => $quotation->stampApposition?->applied_at?->toIso8601String(),
+                'unavailable' => $quotation->stampApposition !== null && ! $stampRenderable,
             ],
             'can' => [
                 'update' => $request->user()->can('update', $quotation),

@@ -157,7 +157,9 @@ abstract class PlatformTestCase extends TestCase
     /**
      * Gives an organization an active stamp version directly (bypassing the
      * upload HTTP endpoint), for tests about apposition/rendering rather than
-     * the upload flow itself. Call Storage::fake('local') first.
+     * upload HTTP endpoint). It defaults to the legacy local disk so existing
+     * apposition tests also cover backward compatibility; pass
+     * `storage_disk => public` to exercise the persistent upload path.
      *
      * @param  array<string, mixed>  $overrides
      */
@@ -166,9 +168,10 @@ abstract class PlatformTestCase extends TestCase
         $willBeActive = $overrides['active'] ?? true;
         $current = $willBeActive ? $organization->activeDocumentStamp()->first() : null;
         $path = $overrides['image_path'] ?? 'organization-stamps/'.$organization->getKey().'/'.Str::random(12).'.png';
+        $disk = $overrides['storage_disk'] ?? 'local';
         // A valid 1x1 PNG — same fixture pixel used by InvoicePdfPaginationTest
         // for the seller-logo snapshot tests.
-        Storage::disk('local')->put(
+        Storage::disk($disk)->put(
             $path,
             base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='),
         );
@@ -176,6 +179,7 @@ abstract class PlatformTestCase extends TestCase
         $stamp = new OrganizationDocumentStamp;
         $stamp->organization_id = $organization->getKey();
         $stamp->image_path = $path;
+        $stamp->storage_disk = $disk;
         $stamp->original_filename = $overrides['original_filename'] ?? 'cachet.png';
         $stamp->mime_type = $overrides['mime_type'] ?? 'image/png';
         $stamp->image_width = $overrides['image_width'] ?? 200;

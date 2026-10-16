@@ -121,14 +121,26 @@ as a Closure with captured variables from an outer scope, re-verify.
 ## 7. Persistent storage (must survive redeploys)
 
 - `storage/app/public/document-profiles/` — organization logo uploads
-  (`DocumentProfileController`), served via the `public` disk. **Requires**
+  (`DocumentProfileController`), served via the `public` disk.
+- `storage/app/public/organization-stamps/` — organization company-stamp
+  uploads. Settings serves these through an authenticated controller and PDF
+  rendering embeds local bytes as a data URI; Dompdf never fetches a remote
+  URL. New official stamp appositions also freeze that data URI in the
+  database so historical issued documents do not depend on a later file.
+- In the current Coolify Nixpacks layout, create one persistent-volume mount
+  with destination **`/app/storage/app/public`** (mounting `/app/storage/app`
+  is also valid if all application storage should persist). Do not mount over
+  `/app/storage` unless the volume is initialized with Laravel's required
+  framework subdirectories and permissions.
+- The public disk **requires**
   `php artisan storage:link` (confirmed NOT currently linked — `php artisan
   about` reports `public/storage .. NOT LINKED`) and a persistent volume
   mounted at `storage/app/public` (or `storage/app` entirely) in Coolify.
   Losing this directory only affects the *current/draft* org logo — already
   **issued** Invoices/Devis/Delivery Notes embed their logo as a base64 data
-  URI captured at issue time (`DocumentSellerProfile`), so historical PDFs
-  keep rendering correctly even if the upload is later lost or replaced.
+  URI captured at issue time (`DocumentSellerProfile`), and newly stamped
+  official documents embed their applied stamp image, so historical PDFs keep
+  rendering correctly even if the current upload is later lost or replaced.
 - `storage/logs/` — application log files. Persisting is optional (log
   shipping/rotation is an operational choice, not a functional requirement).
 - `storage/framework/{cache,sessions,views}` — must be writable but do **not**

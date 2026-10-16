@@ -7,7 +7,6 @@ use App\Models\Invoice;
 use App\Models\OrganizationDocumentStamp;
 use App\Models\Quotation;
 use App\Support\DocumentStampBoundary;
-use Illuminate\Support\Facades\Storage;
 
 /**
  * Turns a stamp apposition (or, for the settings preview, a live
@@ -27,6 +26,8 @@ use Illuminate\Support\Facades\Storage;
  */
 class DocumentStampRenderer
 {
+    public function __construct(private readonly DocumentStampStorage $storage) {}
+
     /** @return array{image:string,anchor:string,offset_x_mm:float,offset_y_mm:float,display_width_mm:float,rotation_deg:float}|null */
     public function forInvoice(Invoice $invoice): ?array
     {
@@ -55,7 +56,7 @@ class DocumentStampRenderer
         ?float $displayWidthMm = null,
         ?float $rotationDeg = null,
     ): ?array {
-        $image = $this->embed($stamp->image_path, $stamp->mime_type);
+        $image = $this->storage->dataUriForStamp($stamp);
         if ($image === null) {
             return null;
         }
@@ -77,7 +78,7 @@ class DocumentStampRenderer
             return null;
         }
 
-        $image = $this->embed($apposition->image_path, $apposition->mime_type);
+        $image = $this->storage->dataUriForApposition($apposition);
         if ($image === null) {
             return null;
         }
@@ -95,13 +96,8 @@ class DocumentStampRenderer
         ];
     }
 
-    private function embed(string $path, string $mimeType): ?string
+    public function isRenderable(?DocumentStampApposition $apposition): bool
     {
-        $disk = Storage::disk('local');
-        if (! $disk->exists($path)) {
-            return null;
-        }
-
-        return 'data:'.$mimeType.';base64,'.base64_encode($disk->get($path));
+        return $this->fromApposition($apposition) !== null;
     }
 }

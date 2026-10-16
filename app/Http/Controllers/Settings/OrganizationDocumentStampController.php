@@ -6,24 +6,25 @@ use App\Actions\Settings\DeactivateOrganizationDocumentStampAction;
 use App\Actions\Settings\SaveOrganizationDocumentStampAction;
 use App\Http\Controllers\Controller;
 use App\Services\ActiveTenantContext;
+use App\Services\DocumentStampStorage;
 use App\Services\OrganizationDocumentStampPreviewService;
 use App\Support\DocumentStampBoundary;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response as InertiaResponse;
 
 class OrganizationDocumentStampController extends Controller
 {
-    public function edit(Request $request, ActiveTenantContext $context): InertiaResponse
+    public function edit(Request $request, ActiveTenantContext $context, DocumentStampStorage $storage): InertiaResponse
     {
         $organization = $context->organizationOrFail();
         $this->authorize('viewSettings', $organization);
 
         $stamp = $organization->activeDocumentStamp()->first();
+        $available = $stamp ? $storage->exists($stamp) : false;
 
         return Inertia::render('Settings/DocumentStamp', [
             'organization' => $organization->only(['id', 'name']),
@@ -34,6 +35,7 @@ class OrganizationDocumentStampController extends Controller
                 'display_width_mm' => (float) $stamp->display_width_mm,
                 'rotation_deg' => (float) $stamp->rotation_deg,
                 'uploaded_at' => $stamp->created_at->toIso8601String(),
+                'available' => $available,
             ] : null,
             'bounds' => [
                 'anchors' => DocumentStampBoundary::ANCHORS,
@@ -48,12 +50,18 @@ class OrganizationDocumentStampController extends Controller
         ]);
     }
 
-    public function store(Request $request, ActiveTenantContext $context, SaveOrganizationDocumentStampAction $action): RedirectResponse
+    public function store(
+        Request $request,
+        ActiveTenantContext $context,
+        SaveOrganizationDocumentStampAction $action,
+        DocumentStampStorage $storage,
+    ): RedirectResponse
     {
         $organization = $context->organizationOrFail();
         $this->authorize('updateSettings', $organization);
 
-        $hasExisting = $organization->activeDocumentStamp()->exists();
+        $existing = $organization->activeDocumentStamp()->first();
+        $hasExisting = $existing !== null && $storage->exists($existing);
 
         $data = $request->validate([
             'image' => [
@@ -105,7 +113,7 @@ class OrganizationDocumentStampController extends Controller
      * URL: it requires an authenticated session with `viewSettings` on this
      * organization, same as the settings page itself.
      */
-    public function image(Request $request, ActiveTenantContext $context): Response
+    public function image(Request $request, ActiveTenantContext $context, DocumentStampStorage $storage): Response
     {
         $organization = $context->organizationOrFail();
         $this->authorize('viewSettings', $organization);
@@ -113,23 +121,29 @@ class OrganizationDocumentStampController extends Controller
         $stamp = $organization->activeDocumentStamp()->first();
         abort_unless($stamp, 404);
 
-        $disk = Storage::disk('local');
-        abort_unless($disk->exists($stamp->image_path), 404);
+        $bytes = $storage->bytesForStamp($stamp);
+        abort_unless($bytes !== null, 404, 'Le fichier du cachet est indisponible.');
 
-        return response($disk->get($stamp->image_path), 200, [
+        return response($bytes, 200, [
             'Content-Type' => $stamp->mime_type,
             'Cache-Control' => 'private, no-store, max-age=0',
             'X-Content-Type-Options' => 'nosniff',
         ]);
     }
 
-    public function preview(Request $request, ActiveTenantContext $context, OrganizationDocumentStampPreviewService $previewer): Response
+    public function preview(
+        Request $request,
+        ActiveTenantContext $context,
+        OrganizationDocumentStampPreviewService $previewer,
+        DocumentStampStorage $storage,
+    ): Response
     {
         $organization = $context->organizationOrFail();
         $this->authorize('viewSettings', $organization);
 
         $stamp = $organization->activeDocumentStamp()->first();
         abort_unless($stamp, 404, 'Aucun cachet configuré.');
+        abort_unless($storage->exists($stamp), 404, 'Le fichier du cachet est indisponible.');
 
         $data = $request->validate([
             'position_anchor' => ['nullable', Rule::in(DocumentStampBoundary::ANCHORS)],

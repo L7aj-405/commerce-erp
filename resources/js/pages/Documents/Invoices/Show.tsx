@@ -115,7 +115,7 @@ type Props = {
     creditSummary: { credited: string; net: string; receivable: string; refund_obligation: string; state: 'none' | 'partial' | 'full' };
     sharing: Sharing | null;
     mailConfigured: boolean;
-    stamp: { applied: boolean; appliedAt: string | null };
+    stamp: { applied: boolean; appliedAt: string | null; unavailable: boolean };
     can: {
         updateDraft: boolean;
         issue: boolean;
@@ -520,6 +520,7 @@ export default function InvoiceShow({
                                     applied={stamp.applied}
                                     appliedAt={stamp.appliedAt}
                                     canStamp={can.stamp}
+                                    unavailable={stamp.unavailable}
                                 />
                             </div>
                         </section>

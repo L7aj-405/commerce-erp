@@ -32,6 +32,10 @@ return [
      * renders identically regardless of viewport.
      */
     'stamp' => [
+        // Stamp files are private-by-route even though they live on the
+        // persistent public disk. PDFs always receive embedded bytes and
+        // never fetch the public URL.
+        'disk' => 'public',
         'default_anchor' => 'bottom_left',
         'default_offset_x_mm' => 0,
         'default_offset_y_mm' => 5,

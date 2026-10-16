@@ -8,6 +8,7 @@ type Stamp = {
     id: number;
     source: 'uploaded' | 'digitized';
     uploaded_at: string;
+    available: boolean;
 };
 
 type Props = {
@@ -54,10 +55,10 @@ export default function DocumentStamp({ stamp, canUpdate }: Props) {
                     </div>
                     <span
                         className={`inline-flex shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ${
-                            stamp ? 'bg-success-soft text-success' : 'bg-raised text-ink-muted'
+                            stamp?.available ? 'bg-success-soft text-success' : stamp ? 'bg-warning-soft text-warning' : 'bg-raised text-ink-muted'
                         }`}
                     >
-                        {stamp ? 'Configuré' : 'Non configuré'}
+                        {stamp?.available ? 'Configuré' : stamp ? 'Fichier indisponible' : 'Non configuré'}
                     </span>
                 </div>
 
@@ -76,7 +77,7 @@ export default function DocumentStamp({ stamp, canUpdate }: Props) {
                     </section>
                 )}
 
-                {stamp && (
+                {stamp?.available && (
                     <section className="mt-8 rounded-card border border-line bg-surface p-5">
                         <h2 className="mb-3 text-sm font-semibold text-ink">Aperçu du cachet</h2>
                         <div className="flex size-28 items-center justify-center overflow-hidden rounded-card border border-line bg-raised">
@@ -90,9 +91,18 @@ export default function DocumentStamp({ stamp, canUpdate }: Props) {
                     </section>
                 )}
 
+                {stamp && !stamp.available && (
+                    <section className="mt-8 rounded-card border border-warning/30 bg-warning-soft p-5">
+                        <h2 className="text-sm font-semibold text-warning">Fichier du cachet indisponible</h2>
+                        <p className="mt-1 text-sm text-warning">
+                            L’image enregistrée n’existe plus dans le stockage. Téléversez-la de nouveau avant de pouvoir apposer le cachet.
+                        </p>
+                    </section>
+                )}
+
                 <form onSubmit={submit} className="mt-4 space-y-4">
                     <fieldset disabled={!canUpdate} className="space-y-4">
-                        <Section title={stamp ? 'Remplacer l’image' : 'Ajouter un cachet'}>
+                        <Section title={stamp?.available ? 'Remplacer l’image' : 'Ajouter un cachet'}>
                             <input
                                 type="file"
                                 accept="image/png,image/jpeg,image/webp"

@@ -12,6 +12,13 @@ use Tests\Support\PlatformTestCase;
 
 class OrganizationDocumentStampTest extends PlatformTestCase
 {
+    protected function setUp(): void
+    {
+        parent::setUp();
+        Storage::fake('local');
+        Storage::fake('public');
+    }
+
     private function image(int $width = 200, int $height = 200): UploadedFile
     {
         return UploadedFile::fake()->image('cachet.png', $width, $height);
@@ -43,7 +50,8 @@ class OrganizationDocumentStampTest extends PlatformTestCase
         $this->assertSame('bottom_left', $stamp->position_anchor);
         $this->assertSame('0.00', (string) $stamp->rotation_deg);
         $this->assertTrue($stamp->active);
-        Storage::disk('local')->assertExists($stamp->image_path);
+        $this->assertSame('public', $stamp->storage_disk);
+        Storage::disk('public')->assertExists($stamp->image_path);
     }
 
     public function test_unauthorized_user_cannot_configure_the_stamp(): void
@@ -239,6 +247,26 @@ class OrganizationDocumentStampTest extends PlatformTestCase
         $this->actingAs($owner)->get(route('document-stamp.image'))->assertOk();
     }
 
+    public function test_missing_physical_file_is_reported_and_cannot_be_previewed_or_reused(): void
+    {
+        $owner = User::factory()->create();
+        $organization = $this->createOrganization($owner);
+        $stamp = $this->configureOrganizationStamp($organization, ['storage_disk' => 'public']);
+        Storage::disk('public')->delete($stamp->image_path);
+        $this->activate($owner, $organization);
+
+        $this->actingAs($owner)->get(route('document-stamp.edit'))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('stamp.id', $stamp->id)
+                ->where('stamp.available', false));
+
+        $this->actingAs($owner)->get(route('document-stamp.image'))->assertNotFound();
+        $this->actingAs($owner)->get(route('document-stamp.preview'))->assertNotFound();
+        $this->actingAs($owner)->post(route('document-stamp.store'), ['image' => null])
+            ->assertSessionHasErrors('image');
+    }
+
     public function test_replacing_the_stamp_creates_a_new_version_and_deactivates_the_previous_one(): void
     {
         Storage::fake('local');
@@ -260,6 +288,9 @@ class OrganizationDocumentStampTest extends PlatformTestCase
         $this->assertNotSame($first->id, $active->id);
         $this->assertSame('top_right', $active->position_anchor);
         $this->assertSame('-6.00', (string) $active->rotation_deg);
+        $this->assertSame('public', $active->storage_disk);
+        $this->assertStringStartsWith('organization-stamps/'.$organization->id.'/', $active->image_path);
+        Storage::disk('public')->assertExists($active->image_path);
         $this->assertDatabaseCount('organization_document_stamps', 2);
     }
 

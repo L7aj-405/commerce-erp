@@ -19,18 +19,14 @@ use App\Support\DocumentStampBoundary;
  */
 class DocumentStampApposer
 {
-    public function __construct(private readonly DocumentSellerProfile $sellerProfiles) {}
+    public function __construct(
+        private readonly DocumentSellerProfile $sellerProfiles,
+        private readonly DocumentStampStorage $storage,
+    ) {}
 
     /** @throws ValidationException */
     public function apply(Organization $organization, Model $stampable, int $actorUserId): DocumentStampApposition
     {
-        $activeStamp = $organization->activeDocumentStamp()->first();
-        if (! $activeStamp) {
-            throw ValidationException::withMessages([
-                'stamp' => "Aucun cachet configuré. Configurez le cachet de l'entreprise avant de l'apposer.",
-            ]);
-        }
-
         $presentation = $this->sellerProfiles->presentationSettings($organization);
         // Until the organization explicitly publishes Studio stamp settings,
         // preserve the existing active stamp version's dimensions/position.
@@ -39,7 +35,7 @@ class DocumentStampApposer
         $publishedStamp = data_get($organization->settings, 'document_profile.pdf_template.published.stamp');
         $style = is_array($publishedStamp) ? data_get($presentation, 'pdf_style.stamp', []) : [];
 
-        return DB::transaction(function () use ($organization, $stampable, $activeStamp, $actorUserId, $style) {
+        return DB::transaction(function () use ($organization, $stampable, $actorUserId, $style) {
             $alreadyStamped = DocumentStampApposition::query()
                 ->where('stampable_type', $stampable->getMorphClass())
                 ->where('stampable_id', $stampable->getKey())
@@ -49,13 +45,29 @@ class DocumentStampApposer
                 throw ValidationException::withMessages(['stamp' => 'Ce document est déjà cacheté.']);
             }
 
+            $activeStamp = $organization->activeDocumentStamp()->lockForUpdate()->first();
+            if (! $activeStamp) {
+                throw ValidationException::withMessages([
+                    'stamp' => "Aucun cachet configuré. Configurez le cachet de l'entreprise avant de l'apposer.",
+                ]);
+            }
+
+            $imageDataUri = $this->storage->dataUriForStamp($activeStamp);
+            if ($imageDataUri === null) {
+                throw ValidationException::withMessages([
+                    'stamp' => "Le fichier du cachet est indisponible. Téléversez-le de nouveau avant de l'apposer.",
+                ]);
+            }
+
             $apposition = new DocumentStampApposition;
             $apposition->organization_id = $organization->getKey();
             $apposition->stampable_type = $stampable->getMorphClass();
             $apposition->stampable_id = $stampable->getKey();
             $apposition->organization_document_stamp_id = $activeStamp->getKey();
             $apposition->image_path = $activeStamp->image_path;
+            $apposition->storage_disk = $activeStamp->storage_disk;
             $apposition->mime_type = $activeStamp->mime_type;
+            $apposition->image_data_uri = $imageDataUri;
             $apposition->position_anchor = $style['position_anchor'] ?? $activeStamp->position_anchor;
             $apposition->offset_x_mm = $style['offset_x_mm'] ?? $activeStamp->offset_x_mm;
             $apposition->offset_y_mm = $style['offset_y_mm'] ?? $activeStamp->offset_y_mm;

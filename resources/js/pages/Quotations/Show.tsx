@@ -67,7 +67,7 @@ type Props = {
     history: HistoryEntry[];
     sharing: Sharing | null;
     mailConfigured: boolean;
-    stamp: { applied: boolean; appliedAt: string | null };
+    stamp: { applied: boolean; appliedAt: string | null; unavailable: boolean };
     can: {
         update: boolean;
         issue: boolean;
@@ -531,6 +531,7 @@ export default function QuotationShow({
                                     applied={stamp.applied}
                                     appliedAt={stamp.appliedAt}
                                     canStamp={can.stamp}
+                                    unavailable={stamp.unavailable}
                                 />
                             </div>
                         </section>

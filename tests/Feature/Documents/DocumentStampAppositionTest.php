@@ -43,13 +43,107 @@ class DocumentStampAppositionTest extends QuotationTestCase
             ->where('stampable_id', $invoice->id)
             ->first();
         $this->assertNotNull($apposition);
+        $this->assertSame('local', $apposition->storage_disk);
         $this->assertSame('bottom_left', $apposition->position_anchor);
+        $this->assertStringStartsWith('data:image/png;base64,', $apposition->image_data_uri);
         $this->assertDatabaseHas('audit_logs', ['event' => 'invoice.stamped', 'auditable_id' => $invoice->id]);
 
         $html = app(InvoiceDocumentRenderer::class)->html($invoice->fresh());
+        $this->assertFalse((bool) config('documents.pdf.remote_enabled'));
         $this->assertStringContainsString('data:image/png;base64,', $html);
+        $this->assertStringNotContainsString(route('document-stamp.image'), $html);
         $this->assertStringContainsString('class="document-stamp-apposition document-stamp-repeat"', $html);
         $this->assertStringContainsString('position: fixed', $html);
+    }
+
+    public function test_stamp_on_persistent_public_disk_is_embedded_locally_in_invoice_pdf_html(): void
+    {
+        [$owner, $organization, , $order] = $this->documentFixture();
+        Storage::fake('public');
+        $this->configureOrganizationStamp($organization, ['storage_disk' => 'public']);
+        $invoice = $this->issueInvoice($owner, $this->createInvoice($owner, $order));
+
+        $this->actingAs($owner)->post(route('invoices.stamp', $invoice))->assertRedirect();
+
+        $apposition = $invoice->fresh()->stampApposition;
+        $this->assertSame('public', $apposition->storage_disk);
+        $this->assertStringContainsString('data:image/png;base64,', app(InvoiceDocumentRenderer::class)->html($invoice->fresh()));
+        $this->assertStringNotContainsString('/storage/organization-stamps/', app(InvoiceDocumentRenderer::class)->html($invoice->fresh()));
+    }
+
+    public function test_frozen_invoice_stamp_remains_renderable_after_its_source_file_is_lost(): void
+    {
+        [$owner, $organization, , $order] = $this->documentFixture();
+        Storage::fake('local');
+        $stamp = $this->configureOrganizationStamp($organization);
+        $invoice = $this->issueInvoice($owner, $this->createInvoice($owner, $order));
+        $this->actingAs($owner)->post(route('invoices.stamp', $invoice))->assertRedirect();
+
+        Storage::disk('local')->delete($stamp->image_path);
+
+        $html = app(InvoiceDocumentRenderer::class)->html($invoice->fresh());
+        $this->assertStringContainsString('data:image/png;base64,', $html);
+        $this->actingAs($owner)->get(route('invoices.show', $invoice))
+            ->assertInertia(fn ($page) => $page
+                ->where('stamp.applied', true)
+                ->where('stamp.unavailable', false));
+    }
+
+    public function test_missing_legacy_stamp_cannot_be_applied_and_does_not_create_a_false_cachete_state(): void
+    {
+        [$owner, $organization, , $order] = $this->documentFixture();
+        Storage::fake('local');
+        $stamp = $this->configureOrganizationStamp($organization);
+        Storage::disk('local')->delete($stamp->image_path);
+        $invoice = $this->issueInvoice($owner, $this->createInvoice($owner, $order));
+
+        $this->actingAs($owner)->post(route('invoices.stamp', $invoice))
+            ->assertSessionHasErrors('stamp');
+
+        $this->assertDatabaseCount('document_stamp_appositions', 0);
+        $this->assertStringNotContainsString('document-stamp-apposition', app(InvoiceDocumentRenderer::class)->html($invoice));
+    }
+
+    public function test_missing_legacy_apposition_is_reported_as_unavailable_not_cachete(): void
+    {
+        [$owner, $organization, , $order] = $this->documentFixture();
+        Storage::fake('local');
+        $stamp = $this->configureOrganizationStamp($organization);
+        $invoice = $this->issueInvoice($owner, $this->createInvoice($owner, $order));
+        $this->actingAs($owner)->post(route('invoices.stamp', $invoice))->assertRedirect();
+
+        $apposition = $invoice->fresh()->stampApposition;
+        $apposition->image_data_uri = null; // Simulate an apposition created before this migration.
+        $apposition->save();
+        Storage::disk('local')->delete($stamp->image_path);
+
+        $this->assertStringNotContainsString('document-stamp-apposition', app(InvoiceDocumentRenderer::class)->html($invoice->fresh()));
+        $this->actingAs($owner)->get(route('invoices.show', $invoice))
+            ->assertInertia(fn ($page) => $page
+                ->where('stamp.applied', false)
+                ->where('stamp.unavailable', true));
+    }
+
+    public function test_frozen_quotation_stamp_remains_renderable_after_its_source_file_is_lost(): void
+    {
+        [$owner, $organization, $store, $variant] = $this->quotationCatalogFixture();
+        Storage::fake('local');
+        $stamp = $this->configureOrganizationStamp($organization);
+        $quotation = $this->createQuotation($owner, $organization, $store);
+        $this->addCatalogQuotationLine($owner, $quotation, $variant);
+        $issued = $this->issueQuotation($owner, $quotation);
+        $this->actingAs($owner)->post(route('quotations.stamp', $issued))->assertRedirect();
+
+        Storage::disk('local')->delete($stamp->image_path);
+
+        $html = app(QuotationDocumentRenderer::class)->html($issued->fresh());
+        $this->assertFalse((bool) config('documents.pdf.remote_enabled'));
+        $this->assertStringContainsString('data:image/png;base64,', $html);
+        $this->assertStringNotContainsString(route('document-stamp.image'), $html);
+        $this->actingAs($owner)->get(route('quotations.show', $issued))
+            ->assertInertia(fn ($page) => $page
+                ->where('stamp.applied', true)
+                ->where('stamp.unavailable', false));
     }
 
     public function test_stamped_pdf_contains_the_frozen_rotation(): void

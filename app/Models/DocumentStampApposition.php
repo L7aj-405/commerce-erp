@@ -21,6 +21,8 @@ class DocumentStampApposition extends Model
 
     protected $guarded = ['*'];
 
+    protected $hidden = ['image_path', 'storage_disk', 'image_data_uri'];
+
     protected function casts(): array
     {
         return [
