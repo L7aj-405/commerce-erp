@@ -6,6 +6,7 @@ use App\Actions\Documents\CreateFullDeliveryNoteFromSalesOrderAction;
 use App\Actions\Documents\CreateFullInvoiceFromSalesOrderAction;
 use App\Actions\Documents\IssueDeliveryNoteAction;
 use App\Actions\Documents\IssueInvoiceAction;
+use App\Actions\Payments\ReversePaymentAction;
 use App\Actions\Sales\ConfirmSalesOrderAction;
 use App\Actions\Sales\FulfillSalesOrderAction;
 use App\Models\Customer;
@@ -15,6 +16,8 @@ use App\Models\Organization;
 use App\Models\SalesOrder;
 use App\Models\Store;
 use App\Models\User;
+use App\Services\SalesOrderPaymentCalculator;
+use App\Support\Decimal;
 
 abstract class DocumentTestCase extends PaymentTestCase
 {
@@ -48,9 +51,32 @@ abstract class DocumentTestCase extends PaymentTestCase
 
     protected function issueInvoice(User $actor, Invoice $invoice): Invoice
     {
-        return app(IssueInvoiceAction::class)
+        $order = $invoice->salesOrder;
+        $remaining = app(SalesOrderPaymentCalculator::class)->remainingAmount($order);
+        $temporaryPayment = null;
+
+        // Most document fixtures predate the fully-paid issuance invariant and
+        // are intentionally concerned with document behavior rather than the
+        // payment lifecycle. Make those fixtures valid at the instant of issue,
+        // then reverse the test-only payment so Finance-specific tests retain
+        // their deliberately arranged post-issuance balance state.
+        if (Decimal::compare($remaining, '0.0000') > 0) {
+            $account = $this->createFinancialAccount($invoice->organization, [
+                'name' => 'Invoice fixture clearing',
+                'code' => 'INV-FIX-'.$invoice->getKey(),
+            ]);
+            $temporaryPayment = $this->recordPayment($actor, $order, $account, $remaining);
+        }
+
+        $issued = app(IssueInvoiceAction::class)
             ->execute($actor, $invoice)
             ->fresh();
+
+        if ($temporaryPayment !== null) {
+            app(ReversePaymentAction::class)->execute($actor, $temporaryPayment, 'Test fixture cleanup');
+        }
+
+        return $issued;
     }
 
     protected function createDeliveryNote(User $actor, SalesOrder $order, array $data = []): DeliveryNote

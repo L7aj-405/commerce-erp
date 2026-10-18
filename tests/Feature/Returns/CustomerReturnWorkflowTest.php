@@ -198,22 +198,26 @@ class CustomerReturnWorkflowTest extends PosTestCase
 
     public function test_refund_obligation_is_bounded_by_actual_over_collection(): void
     {
-        // Invoice 1,000; paid 600; Avoir 400 => net invoice 600, no obligation.
-        [$ownerA, $orderA] = $this->fulfilledOrder([], ['quantity' => '10.0000'], '600.0000');
+        // Invoice 1,000 is issued after full collection. A 400 Avoir followed
+        // by a 400 refund leaves net collection 600 against net invoice 600.
+        [$ownerA, $orderA] = $this->fulfilledOrder([], ['quantity' => '10.0000']);
         app(IssueInvoiceAction::class)->execute($ownerA, app(CreateFullInvoiceFromSalesOrderAction::class)->execute($ownerA, $orderA));
         $returnA = $this->createReturn($ownerA, $orderA, '4.0000');
         app(ReceiveCustomerReturnAction::class)->execute($ownerA, $returnA);
+        $paymentA = Payment::query()->whereHas('allocations', fn ($query) => $query->where('sales_order_id', $orderA->id))->sole();
+        app(RefundCustomerReturnAction::class)->execute($ownerA, $returnA->fresh(), $paymentA, '400.0000', 'Remboursement intégral', (string) Str::uuid());
         $receivables = app(FinanceReceivablesService::class);
         $this->assertSame('0.0000', $receivables->totalAsOf($orderA->organization, now(), $orderA->store));
         $this->assertSame('0.0000', $receivables->refundObligationAsOf($orderA->organization, now(), $orderA->store));
 
-        // Invoice 1,000; paid 800; Avoir 400 => 200 over-collected.
-        [$ownerB, $orderB] = $this->fulfilledOrder([], ['quantity' => '10.0000'], '800.0000');
+        // Invoice 1,000; Avoir 400; only 200 refunded => 200 remains owed.
+        [$ownerB, $orderB] = $this->fulfilledOrder([], ['quantity' => '10.0000']);
         app(IssueInvoiceAction::class)->execute($ownerB, app(CreateFullInvoiceFromSalesOrderAction::class)->execute($ownerB, $orderB));
         $returnB = $this->createReturn($ownerB, $orderB, '4.0000');
         app(ReceiveCustomerReturnAction::class)->execute($ownerB, $returnB);
-        $this->assertSame('200.0000', $receivables->refundObligationAsOf($orderB->organization, now(), $orderB->store));
         $paymentB = Payment::query()->whereHas('allocations', fn ($query) => $query->where('sales_order_id', $orderB->id))->sole();
+        app(RefundCustomerReturnAction::class)->execute($ownerB, $returnB->fresh(), $paymentB, '200.0000', 'Remboursement initial', (string) Str::uuid());
+        $this->assertSame('200.0000', $receivables->refundObligationAsOf($orderB->organization, now(), $orderB->store));
         app(RefundCustomerReturnAction::class)->execute($ownerB, $returnB->fresh(), $paymentB, '150.0000', 'Remboursement partiel', (string) Str::uuid());
         $this->assertSame('50.0000', $receivables->refundObligationAsOf($orderB->organization, now(), $orderB->store));
 

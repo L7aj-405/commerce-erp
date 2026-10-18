@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use OpenSpout\Reader\XLSX\Reader;
 use Tests\Support\PaymentTestCase;
+use ZipArchive;
 
 class FinanceMonthReviewExportTest extends PaymentTestCase
 {
@@ -120,7 +121,27 @@ class FinanceMonthReviewExportTest extends PaymentTestCase
         app(ManageFinanceObligationAction::class)->create($owner, $organization, $this->obligation(['store_id'=>$store->id,'label'=>'Visible']));
         app(ManageFinanceObligationAction::class)->create($owner, $organization, $this->obligation(['store_id'=>$other->id,'label'=>'Masquée']));
         $response = $this->actingAs($owner)->get(route('finance.monthly-situation.export.xlsx', ['month'=>'2026-10','store_id'=>$store->id]))->assertOk();
-        $this->assertStringContainsString('attachment; filename="Situation-fin-de-mois-2026-10.xlsx"', $response->headers->get('Content-Disposition'));
+        $this->assertSame('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', $response->headers->get('Content-Type'));
+        $disposition = (string) $response->headers->get('Content-Disposition');
+        $this->assertStringContainsString('attachment', $disposition);
+        $this->assertStringContainsString('situation-fin-de-mois-2026-10.xlsx', $disposition);
+
+        $bytes = $response->streamedContent();
+        $this->assertSame("PK\x03\x04", substr($bytes, 0, 4));
+        $path = tempnam(sys_get_temp_dir(), 'monthly_download_').'.xlsx';
+        file_put_contents($path, $bytes);
+        try {
+            $zip = new ZipArchive;
+            $this->assertTrue($zip->open($path) === true);
+            $this->assertNotFalse($zip->locateName('[Content_Types].xml'));
+            $zip->close();
+            $this->assertSame(
+                ['Situation','Fournisseurs','Charges récurrentes','Échéances futures','Encaissements attendus'],
+                array_keys($this->readXlsx($path)),
+            );
+        } finally {
+            @unlink($path);
+        }
         $this->assertContains('finance_month_reviews', app(OrganizationBackupSchema::class)->tenantTables());
     }
 

@@ -53,31 +53,50 @@ class InvoiceLifecycleTest extends DocumentTestCase
         }
     }
 
-    public function test_unpaid_order_can_issue_invoice(): void
+    public function test_unpaid_order_cannot_issue_invoice_without_side_effects(): void
     {
-        [$owner, , , $order] = $this->documentFixture(total: '10000.0000');
+        [$owner, $organization, , $order] = $this->documentFixture(total: '10000.0000');
         $draft = $this->createInvoice($owner, $order);
+        $snapshot = $draft->seller_snapshot;
 
         $this->assertNull($draft->invoice_number);
         $this->assertSame('draft', $draft->status->value);
 
-        $issued = app(IssueInvoiceAction::class)->execute($owner, $draft)->fresh();
+        try {
+            app(IssueInvoiceAction::class)->execute($owner, $draft);
+            $this->fail('Expected unpaid invoice issuance to be rejected.');
+        } catch (ValidationException $exception) {
+            $this->assertSame(
+                ["La facture ne peut être émise qu'après le règlement intégral de la commande."],
+                $exception->errors()['invoice'] ?? [],
+            );
+        }
 
-        $this->assertSame('issued', $issued->status->value);
-        $this->assertNotNull($issued->invoice_number);
+        $draft = $draft->fresh();
+        $this->assertSame('draft', $draft->status->value);
+        $this->assertNull($draft->invoice_number);
+        $this->assertSame($snapshot, $draft->seller_snapshot);
+        $this->assertDatabaseMissing('invoice_sequences', ['organization_id' => $organization->id]);
+        $this->assertDatabaseMissing('audit_logs', ['event' => 'invoice.issued', 'auditable_id' => $draft->id]);
     }
 
-    public function test_partially_paid_order_can_issue_invoice(): void
+    public function test_partially_paid_order_cannot_issue_invoice_via_direct_http_request(): void
     {
         [$owner, $organization, , $order] = $this->documentFixture(total: '10000.0000');
         $draft = $this->createInvoice($owner, $order);
         $account = $this->createFinancialAccount($organization);
         $this->recordPayment($owner, $order, $account, '3000.0000');
 
-        $issued = app(IssueInvoiceAction::class)->execute($owner, $draft)->fresh();
+        $this->actingAs($owner)
+            ->post(route('invoices.issue', $draft))
+            ->assertSessionHasErrors([
+                'invoice' => "La facture ne peut être émise qu'après le règlement intégral de la commande.",
+            ]);
 
-        $this->assertSame('issued', $issued->status->value);
-        $this->assertNotNull($issued->invoice_number);
+        $this->assertSame('draft', $draft->fresh()->status->value);
+        $this->assertNull($draft->fresh()->invoice_number);
+        $this->assertDatabaseMissing('invoice_sequences', ['organization_id' => $organization->id]);
+        $this->assertDatabaseMissing('audit_logs', ['event' => 'invoice.issued', 'auditable_id' => $draft->id]);
     }
 
     public function test_fully_paid_order_can_issue_invoice(): void

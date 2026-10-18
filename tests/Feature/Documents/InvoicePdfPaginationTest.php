@@ -191,7 +191,7 @@ class InvoicePdfPaginationTest extends DocumentTestCase
             CreateFullInvoiceFromSalesOrderAction::class
         )->execute($owner, $order);
 
-        app(IssueInvoiceAction::class)->execute(
+        $this->issueInvoice(
             $owner,
             $replacement
         );

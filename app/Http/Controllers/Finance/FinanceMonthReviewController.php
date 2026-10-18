@@ -11,11 +11,11 @@ use App\Services\Finance\Export\FinanceMonthlySituationExcelExport;
 use App\Services\Security\FreshAuthentication;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class FinanceMonthReviewController extends Controller
 {
-    public function export(Request $request, ActiveTenantContext $context, FinanceAccessGuard $guard, FinanceMonthlySituationExcelExport $export): Response
+    public function export(Request $request, ActiveTenantContext $context, FinanceAccessGuard $guard, FinanceMonthlySituationExcelExport $export): StreamedResponse
     {
         $organization = $context->organizationOrFail();
         $guard->authorizeMonthlySituationExport($request->user(), $organization);
@@ -27,9 +27,11 @@ class FinanceMonthReviewController extends Controller
         $period = FinancePeriod::fromMonth($filters['month']);
         $store = $guard->resolveStore($organization, $filters['store_id'] ?? null);
         $bytes = $export->build($organization, $period, $store, $filters);
-        return response($bytes, 200, [
+
+        return response()->streamDownload(static function () use ($bytes): void {
+            echo $bytes;
+        }, 'situation-fin-de-mois-'.$period->month.'.xlsx', [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            'Content-Disposition' => 'attachment; filename="Situation-fin-de-mois-'.$period->month.'.xlsx"',
         ]);
     }
 

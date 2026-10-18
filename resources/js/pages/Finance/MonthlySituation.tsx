@@ -1,5 +1,5 @@
 import FinanceFilters, { type FinanceStore } from '@/components/finance/FinanceFilters';
-import { Button, ButtonLink } from '@/components/ui/Button';
+import { Button, ButtonLink, DownloadLink } from '@/components/ui/Button';
 import EmptyState from '@/components/ui/EmptyState';
 import PageHeader from '@/components/ui/PageHeader';
 import Pagination from '@/components/ui/Pagination';
@@ -130,7 +130,7 @@ export default function MonthlySituation(props: Props) {
     return (
         <ApplicationShell wide>
             <Head title="Situation fin de mois" />
-            <PageHeader title="Situation fin de mois" description={`${props.organization.name} · ${props.periodLabel} · Obligations, encaissements attendus et prévision de trésorerie`} actions={<><ButtonLink href="/finance/situation-fin-de-mois/echeanciers-fournisseurs" variant="secondary">Échéanciers fournisseurs</ButtonLink><ButtonLink href="/finance/situation-fin-de-mois/charges-recurrentes" variant="secondary">Charges récurrentes</ButtonLink>{can.export&&<ButtonLink href={`/finance/situation-fin-de-mois/export/xlsx?${exportQuery}`} variant="secondary">Exporter Excel</ButtonLink>}{can.manage&&<Button variant="secondary" onClick={()=>{expectedForm.reset();expectedForm.setData('expected_date',new Date().toISOString().slice(0,10));setExpectedCreating(true);}}>Planifier un encaissement</Button>}{can.manage && props.recurringTemplatesCount > 0 && <Button variant="secondary" loading={generationForm.processing} onClick={() => generationForm.post('/finance/situation-fin-de-mois/charges-recurrentes/generate', { preserveScroll: true })}>Générer ce mois</Button>}{can.manage && <Button onClick={openCreate}>Ajouter une obligation</Button>}</>} />
+            <PageHeader title="Situation fin de mois" description={`${props.organization.name} · ${props.periodLabel} · Obligations, encaissements attendus et prévision de trésorerie`} actions={<><ButtonLink href="/finance/situation-fin-de-mois/echeanciers-fournisseurs" variant="secondary">Échéanciers fournisseurs</ButtonLink><ButtonLink href="/finance/situation-fin-de-mois/charges-recurrentes" variant="secondary">Charges récurrentes</ButtonLink>{can.export&&<DownloadLink href={`/finance/situation-fin-de-mois/export/xlsx?${exportQuery}`} variant="secondary">Exporter Excel</DownloadLink>}{can.manage&&<Button variant="secondary" onClick={()=>{expectedForm.reset();expectedForm.setData('expected_date',new Date().toISOString().slice(0,10));setExpectedCreating(true);}}>Planifier un encaissement</Button>}{can.manage && props.recurringTemplatesCount > 0 && <Button variant="secondary" loading={generationForm.processing} onClick={() => generationForm.post('/finance/situation-fin-de-mois/charges-recurrentes/generate', { preserveScroll: true })}>Générer ce mois</Button>}{can.manage && <Button onClick={openCreate}>Ajouter une obligation</Button>}</>} />
 
             <FinanceFilters path="/finance/situation-fin-de-mois" period={period} storeId={storeId} stores={stores} extra={{ category: props.filters.category, status: props.filters.status, supplier_id: props.filters.supplier_id, search: props.filters.search }} />
 
