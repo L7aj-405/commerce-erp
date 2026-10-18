@@ -13,6 +13,8 @@ type Order = {
     total_incl_tax: string;
     returned_total: string;
     net_total: string;
+    paid_amount: string;
+    remaining_amount: string;
     payment_status: string;
 };
 type LinkData = { url: string | null; label: string; active: boolean };
@@ -51,6 +53,8 @@ export default function FinanceVentes({ organization, period, periodLabel, store
                                     <th className="px-4 py-2.5 text-right">Vente brute</th>
                                     <th className="px-4 py-2.5 text-right">Retours reçus</th>
                                     <th className="px-4 py-2.5 text-right">Net retenu</th>
+                                    <th className="px-4 py-2.5 text-right">Encaissé</th>
+                                    <th className="px-4 py-2.5 text-right">Reste à payer</th>
                                     <th className="px-4 py-2.5">Statut paiement</th>
                                 </tr>
                             </thead>
@@ -65,6 +69,8 @@ export default function FinanceVentes({ organization, period, periodLabel, store
                                         <td className="px-4 py-2.5 text-right">{formatMoney(order.total_incl_tax)}</td>
                                         <td className="px-4 py-2.5 text-right text-danger">-{formatMoney(order.returned_total)}</td>
                                         <td className="px-4 py-2.5 text-right font-medium">{formatMoney(order.net_total)}</td>
+                                        <td className="px-4 py-2.5 text-right text-ink-muted">{formatMoney(order.paid_amount)}</td>
+                                        <td className="px-4 py-2.5 text-right font-medium">{formatMoney(order.remaining_amount)}</td>
                                         <td className="px-4 py-2.5 text-ink-muted">{STATUS_LABELS[order.payment_status] ?? order.payment_status}</td>
                                     </tr>
                                 ))}
@@ -86,6 +92,14 @@ export default function FinanceVentes({ organization, period, periodLabel, store
                                     <div className="shrink-0 text-right"><p className="text-sm font-semibold text-ink">{formatMoney(order.net_total)}</p><p className="text-[11px] text-ink-muted">Brut {formatMoney(order.total_incl_tax)} · retours -{formatMoney(order.returned_total)}</p></div>
                                 </div>
                                 <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1.5 text-[13px]">
+                                    <div className="min-w-0">
+                                        <dt className="text-ink-faint">Encaissé</dt>
+                                        <dd className="font-medium text-ink">{formatMoney(order.paid_amount)}</dd>
+                                    </div>
+                                    <div className="min-w-0">
+                                        <dt className="text-ink-faint">Reste à payer</dt>
+                                        <dd className="font-medium text-ink">{formatMoney(order.remaining_amount)}</dd>
+                                    </div>
                                     <div className="min-w-0">
                                         <dt className="text-ink-faint">Date de vente</dt>
                                         <dd className="text-ink-muted">{order.sale_date}</dd>

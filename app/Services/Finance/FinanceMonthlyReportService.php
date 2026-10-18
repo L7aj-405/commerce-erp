@@ -11,6 +11,7 @@ use App\Models\Payment;
 use App\Models\PaymentRefund;
 use App\Models\SalesOrder;
 use App\Models\Store;
+use App\Services\SalesOrderPaymentCalculator;
 use App\Support\Decimal;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
@@ -29,7 +30,10 @@ use Illuminate\Support\LazyCollection;
  */
 class FinanceMonthlyReportService
 {
-    public function __construct(private readonly FinanceReceivablesService $receivables) {}
+    public function __construct(
+        private readonly FinanceReceivablesService $receivables,
+        private readonly SalesOrderPaymentCalculator $payments,
+    ) {}
 
     /**
      * The full Situation mensuelle payload for one period: the three headline
@@ -246,31 +250,32 @@ class FinanceMonthlyReportService
     /** Confirmed SalesOrders for the period (Ventes drill-down), paginated. */
     public function ventesBreakdown(Organization $organization, FinancePeriod $period, ?Store $store, int $perPage = 30): LengthAwarePaginator
     {
-        return SalesOrder::query()
+        $orders = SalesOrder::query()
             ->where('organization_id', $organization->getKey())
             ->when($store, fn($query) => $query->where('store_id', $store->getKey()))
             ->where('status', SalesOrderStatus::Confirmed->value)
             ->whereBetween('sale_date', [$period->start->toDateString(), $period->end->toDateString()])
-            ->withSum(['customerReturns as returned_total' => fn($query) => $query->where('status', 'received')], 'total_incl_tax')
             ->orderBy('sale_date')->orderBy('id')
-            ->paginate($perPage)
-            ->through(function (SalesOrder $order) {
-                $returned = Decimal::normalize((string) ($order->returned_total ?? '0.0000'));
-                $net = Decimal::subtract($order->total_incl_tax, $returned);
-                if (Decimal::compare($net, '0.0000') < 0) $net = '0.0000';
+            ->paginate($perPage);
+        $summaries = $this->payments->summaries($orders->getCollection());
 
-                return [
-                    'id' => $order->id,
-                    'order_number' => $order->order_number,
-                    'sale_date' => $order->sale_date->toDateString(),
-                    'customer' => trim($order->customer_company ?: $order->customer_name ?: '') ?: '—',
-                    'store_id' => $order->store_id,
-                    'total_incl_tax' => (string) $order->total_incl_tax,
-                    'returned_total' => $returned,
-                    'net_total' => $net,
-                    'payment_status' => $order->payment_status->value,
-                ];
-            });
+        return $orders->through(function (SalesOrder $order) use ($summaries) {
+            $payment = $summaries[$order->getKey()];
+
+            return [
+                'id' => $order->id,
+                'order_number' => $order->order_number,
+                'sale_date' => $order->sale_date->toDateString(),
+                'customer' => trim($order->customer_company ?: $order->customer_name ?: '') ?: '—',
+                'store_id' => $order->store_id,
+                'total_incl_tax' => (string) $order->total_incl_tax,
+                'returned_total' => $payment['returned'],
+                'net_total' => $payment['commercial_total'],
+                'paid_amount' => $payment['paid'],
+                'remaining_amount' => $payment['remaining'],
+                'payment_status' => $payment['status'],
+            ];
+        });
     }
 
     /** Posted Payments for the period (Encaissements drill-down), paginated. */
