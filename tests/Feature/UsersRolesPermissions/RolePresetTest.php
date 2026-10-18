@@ -40,6 +40,10 @@ class RolePresetTest extends PlatformTestCase
         $this->assertContains('finance.view', $permissions);
         $this->assertContains('finance.export', $permissions);
         $this->assertContains('finance.receivables.view', $permissions);
+        $this->assertContains('finance.monthly_situation.view', $permissions);
+        $this->assertContains('finance.monthly_situation.manage', $permissions);
+        $this->assertContains('finance.monthly_situation.export', $permissions);
+        $this->assertContains('finance.outgoing_payments.manage', $permissions);
         $this->assertContains('settings.view', $permissions);
     }
 
@@ -102,6 +106,11 @@ class RolePresetTest extends PlatformTestCase
             'contacts.view',
             'customers.view',
             'finance.export',
+            'finance.financial_accounts.manage_balance',
+            'finance.monthly_situation.export',
+            'finance.monthly_situation.manage',
+            'finance.monthly_situation.view',
+            'finance.outgoing_payments.manage',
             'finance.receivables.view',
             'finance.view',
             'invoices.view',

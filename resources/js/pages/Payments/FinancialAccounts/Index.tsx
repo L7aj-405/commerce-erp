@@ -21,8 +21,10 @@ type Props = {
     accounts: Account[];
     currencyCode: string;
     paymentMethods: PaymentMethodOption[];
-    can: { create: boolean; update: boolean };
+    positions: { as_of: string; complete: boolean; total: string | null; configured_count: number; unconfigured_count: number; accounts: AccountPosition[] };
+    can: { create: boolean; update: boolean; manageBalance: boolean };
 };
+type AccountPosition = { id:number; configured:boolean; effective_date:string|null; opening_amount:string|null; incoming:string|null; refunds:string|null; outgoing:string|null; balance:string|null; last_activity:string|null; currency_code:string };
 
 const TYPE_LABELS: Record<string, string> = {
     cash: 'Caisse',
@@ -158,8 +160,21 @@ function MethodBadges({ methods, paymentMethods }: { methods: string[]; paymentM
     );
 }
 
-export default function FinancialAccounts({ accounts, currencyCode, paymentMethods, can }: Props) {
+function OpeningPositionForm({ account, position, onDone }: { account:Account; position?:AccountPosition; onDone:()=>void }) {
+    const form = useForm({ effective_date: position?.effective_date ?? new Date().toISOString().slice(0,10), amount: position?.opening_amount ?? '', currency_code: account.currency_code, reference:'', notes:'' });
+    return <form onSubmit={(e)=>{e.preventDefault();form.put(`/financial-accounts/${account.id}/opening-position`,{preserveScroll:true,onSuccess:onDone});}} className="grid gap-4 rounded-field border border-line bg-surface p-4 sm:grid-cols-2">
+        <div className="sm:col-span-2"><h3 className="font-semibold">{position?.configured?'Corriger le solde d’ouverture':'Configurer le solde d’ouverture'}</h3><p className="mt-1 text-xs text-ink-muted">Le montant représente le solde réel au début de la date choisie. Les mouvements de cette date seront ensuite appliqués.</p></div>
+        <label className={labelClass}>Date de référence<input type="date" required value={form.data.effective_date} onChange={e=>form.setData('effective_date',e.target.value)} className={fieldClass}/>{form.errors.effective_date&&<p className={errorClass}>{form.errors.effective_date}</p>}</label>
+        <label className={labelClass}>Solde d’ouverture ({account.currency_code})<input type="number" step="0.0001" required value={form.data.amount} onChange={e=>form.setData('amount',e.target.value)} className={fieldClass}/>{form.errors.amount&&<p className={errorClass}>{form.errors.amount}</p>}</label>
+        <label className={labelClass}>Référence<input maxLength={255} value={form.data.reference} onChange={e=>form.setData('reference',e.target.value)} className={fieldClass}/></label>
+        <label className={labelClass}>Note<input maxLength={5000} value={form.data.notes} onChange={e=>form.setData('notes',e.target.value)} className={fieldClass}/></label>
+        <div className="flex gap-2 sm:col-span-2"><Button type="submit" loading={form.processing}>Enregistrer</Button><Button type="button" variant="secondary" onClick={onDone}>Annuler</Button></div>
+    </form>;
+}
+
+export default function FinancialAccounts({ accounts, currencyCode, paymentMethods, positions, can }: Props) {
     const [editing, setEditing] = useState<number | 'new' | null>(null);
+    const [opening, setOpening] = useState<number|null>(null);
 
     return (
         <PaymentsLayout>
@@ -169,6 +184,12 @@ export default function FinancialAccounts({ accounts, currencyCode, paymentMetho
                 description="Un compte peut recevoir plusieurs moyens de paiement — inutile de créer un compte par moyen d’encaissement."
                 actions={can.create && editing !== 'new' ? <Button size="sm" onClick={() => setEditing('new')}>+ Nouveau compte</Button> : undefined}
             />
+
+            <div className={`mb-5 rounded-card border p-4 ${positions.complete?'border-line bg-surface':'border-warning/30 bg-warning-soft'}`}>
+                <p className="text-xs font-semibold uppercase tracking-wide text-ink-faint">Position de trésorerie au {positions.as_of}</p>
+                <p className="mt-1 text-xl font-bold">{positions.complete ? `${Number(positions.total).toLocaleString('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2})} ${currencyCode}` : 'Solde non configuré'}</p>
+                <p className="mt-1 text-xs text-ink-muted">{positions.configured_count} compte(s) configuré(s) · {positions.unconfigured_count} non configuré(s)</p>
+            </div>
 
             {editing === 'new' && (
                 <div className="mb-6">
@@ -192,12 +213,14 @@ export default function FinancialAccounts({ accounts, currencyCode, paymentMetho
                                 <th className="px-4 py-2.5">Moyens acceptés</th>
                                 <th className="px-4 py-2.5">Devise</th>
                                 <th className="px-4 py-2.5">Statut</th>
+                                <th className="px-4 py-2.5">Solde actuel</th>
                                 <th className="px-4 py-2.5" />
                             </tr>
                         </thead>
                         <tbody>
                             {accounts.map((account) => (
                                 <Fragment key={account.id}>
+                                    {(() => { const position=positions.accounts.find(row=>row.id===account.id); return <>
                                     <tr className="border-t border-line align-top">
                                         <td className="px-4 py-3">
                                             <p className="font-medium text-ink">{account.name}</p>
@@ -211,7 +234,9 @@ export default function FinancialAccounts({ accounts, currencyCode, paymentMetho
                                                 {account.status === 'active' ? 'Actif' : 'Inactif'}
                                             </span>
                                         </td>
+                                        <td className="px-4 py-3"><p className="font-medium">{position?.configured ? `${Number(position.balance).toLocaleString('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2})} ${account.currency_code}` : 'Non configuré'}</p>{position?.effective_date&&<p className="text-xs text-ink-muted">Depuis le {position.effective_date}</p>}</td>
                                         <td className="px-4 py-3 text-right">
+                                            {can.manageBalance&&<button type="button" onClick={()=>setOpening(opening===account.id?null:account.id)} className="mr-3 text-[13px] font-medium text-ink-muted underline hover:text-ink">{position?.configured?'Solde initial':'Configurer le solde'}</button>}
                                             {can.update && (
                                                 <button
                                                     type="button"
@@ -225,11 +250,13 @@ export default function FinancialAccounts({ accounts, currencyCode, paymentMetho
                                     </tr>
                                     {editing === account.id && (
                                         <tr className="border-t border-line bg-raised">
-                                            <td colSpan={6} className="p-4">
+                                            <td colSpan={7} className="p-4">
                                                 <AccountForm account={account} currencyCode={currencyCode} paymentMethods={paymentMethods} onDone={() => setEditing(null)} />
                                             </td>
                                         </tr>
                                     )}
+                                    {opening===account.id&&<tr className="border-t border-line bg-raised"><td colSpan={7} className="p-4"><OpeningPositionForm account={account} position={position} onDone={()=>setOpening(null)}/></td></tr>}
+                                    </>; })()}
                                 </Fragment>
                             ))}
                         </tbody>

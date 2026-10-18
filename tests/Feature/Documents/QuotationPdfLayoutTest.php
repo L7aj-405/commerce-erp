@@ -10,7 +10,7 @@ use Tests\Support\QuotationTestCase;
 
 /**
  * Regression coverage for the shared lower-page layout (totals / amount in
- * words / issuer line / stamp / footer) on the Devis template — the same
+ * words / stamp / footer) on the Devis template — the same
  * structure as InvoicePdfPaginationTest, but asserting the Devis-specific
  * wording is used instead of the Invoice one.
  */
@@ -163,7 +163,7 @@ class QuotationPdfLayoutTest extends QuotationTestCase
         return (float) $matches[1];
     }
 
-    public function test_amount_in_words_and_issuer_metadata_are_present_and_positioned_after_totals(): void
+    public function test_amount_in_words_and_required_document_information_are_present_after_totals(): void
     {
         [$owner, $organization, $store, $variant] = $this->base();
 
@@ -198,14 +198,17 @@ class QuotationPdfLayoutTest extends QuotationTestCase
             strpos($html, 'class="items"')
         );
 
-        $this->assertStringContainsString(
-            'Émise par',
-            $html
-        );
+        $this->assertStringContainsString($issued->quotation_number, $html);
+        $this->assertStringContainsString('Date du devis', $html);
+        $this->assertStringContainsString('MIC-LAYOUT', $html);
+        $this->assertStringContainsString('Total TTC', $html);
+        $this->assertStringContainsString('Devis arrêté à la somme de :', $html);
+        $this->assertStringContainsString('DIRHAMS', $html);
+        $this->assertStringNotContainsString('Émise par', $html);
 
-        $this->assertMatchesRegularExpression(
-            '/Émise par .+ le \d{2}\/\d{2}\/\d{4} à \d{2}:\d{2}/',
-            $html
+        $this->assertTrue(
+            strpos($html, 'class="words words-box"') >
+            strpos($html, 'class="totals"')
         );
     }
 

@@ -34,6 +34,12 @@ use App\Http\Controllers\Documents\CreditNoteController;
 use App\Http\Controllers\Finance\FinanceDashboardController;
 use App\Http\Controllers\Finance\FinanceExportController;
 use App\Http\Controllers\Finance\FinanceJournalController;
+use App\Http\Controllers\Finance\FinanceMonthlySituationController;
+use App\Http\Controllers\Finance\FinanceMonthReviewController;
+use App\Http\Controllers\Finance\FinanceExpectedCollectionController;
+use App\Http\Controllers\Finance\FinanceRecurringObligationController;
+use App\Http\Controllers\Finance\FinanceSupplierInstallmentController;
+use App\Http\Controllers\Finance\FinancePaymentInstrumentController;
 use App\Http\Controllers\Finance\CommissionRuleController;
 use App\Http\Controllers\Finance\CommissionLedgerController;
 use App\Http\Controllers\Finance\CommissionDashboardController;
@@ -459,6 +465,7 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
     Route::get('/financial-accounts', [FinancialAccountController::class, 'index'])->name('financial-accounts.index');
     Route::post('/financial-accounts', [FinancialAccountController::class, 'store'])->name('financial-accounts.store');
     Route::patch('/financial-accounts/{financialAccount}', [FinancialAccountController::class, 'update'])->name('financial-accounts.update');
+    Route::put('/financial-accounts/{financialAccount}/opening-position', [FinancialAccountController::class, 'openingPosition'])->name('financial-accounts.opening-position');
 
     Route::prefix('payments')->name('payments.')->group(function () {
         Route::get('/', [PaymentController::class, 'index'])->name('index');
@@ -617,6 +624,39 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
         Route::get('/creances', [FinanceDashboardController::class, 'creances'])->name('creances');
         Route::get('/journal', [FinanceJournalController::class, 'index'])->name('journal');
         Route::get('/ca-encaisse', [FinanceDashboardController::class, 'caEncaisse'])->name('ca-encaisse');
+        Route::get('/situation-fin-de-mois', [FinanceMonthlySituationController::class, 'index'])->name('monthly-situation.index');
+        Route::get('/situation-fin-de-mois/export/xlsx', [FinanceMonthReviewController::class, 'export'])
+            ->middleware('throttle:10,1')->name('monthly-situation.export.xlsx');
+        Route::post('/situation-fin-de-mois/review', [FinanceMonthReviewController::class, 'review'])->name('monthly-situation.review');
+        Route::post('/situation-fin-de-mois/close', [FinanceMonthReviewController::class, 'close'])
+            ->middleware('throttle:10,1')->name('monthly-situation.close');
+        Route::post('/situation-fin-de-mois/reopen', [FinanceMonthReviewController::class, 'reopen'])
+            ->middleware('throttle:10,1')->name('monthly-situation.reopen');
+        Route::get('/situation-fin-de-mois/charges-recurrentes', [FinanceRecurringObligationController::class, 'index'])->name('monthly-situation.recurring.index');
+        Route::post('/situation-fin-de-mois/charges-recurrentes', [FinanceRecurringObligationController::class, 'store'])->name('monthly-situation.recurring.store');
+        Route::patch('/situation-fin-de-mois/charges-recurrentes/{recurringTemplate}', [FinanceRecurringObligationController::class, 'update'])->name('monthly-situation.recurring.update');
+        Route::post('/situation-fin-de-mois/charges-recurrentes/{recurringTemplate}/deactivate', [FinanceRecurringObligationController::class, 'deactivate'])->name('monthly-situation.recurring.deactivate');
+        Route::post('/situation-fin-de-mois/charges-recurrentes/{recurringTemplate}/reactivate', [FinanceRecurringObligationController::class, 'reactivate'])->name('monthly-situation.recurring.reactivate');
+        Route::post('/situation-fin-de-mois/charges-recurrentes/generate', [FinanceRecurringObligationController::class, 'generate'])->name('monthly-situation.recurring.generate');
+        Route::get('/situation-fin-de-mois/echeanciers-fournisseurs', [FinanceSupplierInstallmentController::class, 'index'])->name('monthly-situation.installments.index');
+        Route::post('/situation-fin-de-mois/echeanciers-fournisseurs', [FinanceSupplierInstallmentController::class, 'store'])->name('monthly-situation.installments.store');
+        Route::get('/situation-fin-de-mois/echeanciers-fournisseurs/{installmentPlan}', [FinanceSupplierInstallmentController::class, 'show'])->name('monthly-situation.installments.show');
+        Route::patch('/situation-fin-de-mois/echeanciers-fournisseurs/{installmentPlan}', [FinanceSupplierInstallmentController::class, 'update'])->name('monthly-situation.installments.update');
+        Route::post('/situation-fin-de-mois/obligations/{obligation}/instruments', [FinancePaymentInstrumentController::class, 'store'])->name('monthly-situation.instruments.store');
+        Route::post('/situation-fin-de-mois/instruments/{instrument}/present', [FinancePaymentInstrumentController::class, 'present'])->name('monthly-situation.instruments.present');
+        Route::post('/situation-fin-de-mois/instruments/{instrument}/cancel', [FinancePaymentInstrumentController::class, 'cancel'])->name('monthly-situation.instruments.cancel');
+        Route::post('/situation-fin-de-mois/instruments/{instrument}/clear', [FinancePaymentInstrumentController::class, 'clear'])->name('monthly-situation.instruments.clear');
+        Route::post('/situation-fin-de-mois/expected-collections', [FinanceExpectedCollectionController::class, 'store'])->name('monthly-situation.expected-collections.store');
+        Route::patch('/situation-fin-de-mois/expected-collections/{expectedCollection}', [FinanceExpectedCollectionController::class, 'update'])->name('monthly-situation.expected-collections.update');
+        Route::post('/situation-fin-de-mois/expected-collections/{expectedCollection}/cancel', [FinanceExpectedCollectionController::class, 'cancel'])->name('monthly-situation.expected-collections.cancel');
+        Route::post('/situation-fin-de-mois/expected-collections/{expectedCollection}/match', [FinanceExpectedCollectionController::class, 'match'])->name('monthly-situation.expected-collections.match');
+        Route::post('/situation-fin-de-mois/obligations', [FinanceMonthlySituationController::class, 'store'])->name('monthly-situation.obligations.store');
+        Route::patch('/situation-fin-de-mois/obligations/{obligation}', [FinanceMonthlySituationController::class, 'update'])->name('monthly-situation.obligations.update');
+        Route::post('/situation-fin-de-mois/obligations/{obligation}/cancel', [FinanceMonthlySituationController::class, 'cancel'])->name('monthly-situation.obligations.cancel');
+        Route::post('/situation-fin-de-mois/outgoing-payments', [FinanceMonthlySituationController::class, 'payment'])
+            ->middleware('throttle:20,1')->name('monthly-situation.payments.store');
+        Route::post('/situation-fin-de-mois/outgoing-payments/{outgoingPayment}/reverse', [FinanceMonthlySituationController::class, 'reverse'])
+            ->middleware('throttle:10,1')->name('monthly-situation.payments.reverse');
         Route::get('/commissions', [CommissionDashboardController::class, 'index'])->name('commissions.dashboard');
         Route::get('/commissions/salespeople/{salesperson}', [CommissionDashboardController::class, 'salesperson'])
             ->where('salesperson', '[0-9]+|unattributed')->name('commissions.salesperson');

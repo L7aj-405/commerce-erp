@@ -43,6 +43,26 @@ class FinanceAccessGuard
         abort_unless($user->hasPermission($organization, 'finance.export'), 403);
     }
 
+    public function authorizeMonthlySituation(User $user, Organization $organization): void
+    {
+        abort_unless($user->hasPermission($organization, 'finance.monthly_situation.view'), 403);
+    }
+
+    public function authorizeMonthlySituationManage(User $user, Organization $organization): void
+    {
+        abort_unless($user->hasPermission($organization, 'finance.monthly_situation.manage'), 403);
+    }
+
+    public function authorizeMonthlySituationExport(User $user, Organization $organization): void
+    {
+        abort_unless($user->hasPermission($organization, 'finance.monthly_situation.export'), 403);
+    }
+
+    public function authorizeOutgoingPaymentManage(User $user, Organization $organization): void
+    {
+        abort_unless($user->hasPermission($organization, 'finance.outgoing_payments.manage'), 403);
+    }
+
     /**
      * Resolve an optional `store_id` request input into a Store guaranteed to
      * belong to the given organization — never trusting the id alone. `null`

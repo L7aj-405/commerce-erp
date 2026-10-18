@@ -160,6 +160,29 @@ class Organization extends Model
         return $this->hasMany(Payment::class);
     }
 
+    public function financeObligations(): HasMany
+    {
+        return $this->hasMany(FinanceObligation::class);
+    }
+
+    public function financeOutgoingPayments(): HasMany
+    {
+        return $this->hasMany(FinanceOutgoingPayment::class);
+    }
+
+    public function financeRecurringObligationTemplates(): HasMany
+    {
+        return $this->hasMany(FinanceRecurringObligationTemplate::class);
+    }
+
+    public function financeSupplierInstallmentPlans(): HasMany { return $this->hasMany(FinanceSupplierInstallmentPlan::class); }
+
+    public function financialAccountOpeningPositions(): HasMany { return $this->hasMany(FinancialAccountOpeningPosition::class); }
+
+    public function financeExpectedCollections(): HasMany { return $this->hasMany(FinanceExpectedCollection::class); }
+    public function financeMonthReviews(): HasMany { return $this->hasMany(FinanceMonthReview::class); }
+    public function financePaymentInstruments(): HasMany { return $this->hasMany(FinancePaymentInstrument::class); }
+
     public function invoices(): HasMany
     {
         return $this->hasMany(Invoice::class);

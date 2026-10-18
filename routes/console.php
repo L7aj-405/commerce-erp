@@ -5,6 +5,8 @@ use App\Models\ProductImport;
 use App\Models\SystemHealthHeartbeat;
 use App\Models\TrustedTwoFactorDevice;
 use App\Models\UserNotification;
+use App\Models\Organization;
+use App\Actions\Finance\GenerateRecurringFinanceObligationsAction;
 use App\Services\Notifications\SystemHealthNotificationMonitor;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
@@ -61,10 +63,32 @@ Artisan::command('security:cleanup-trusted-devices', function () {
     $this->info("Deleted {$count} expired or revoked trusted device records.");
 })->purpose('Delete old expired or revoked trusted 2FA device records');
 
+Artisan::command('finance:generate-recurring-obligations {--organization=}', function () {
+    $month = now()->format('Y-m');
+    $created = $existing = $skipped = $failed = 0;
+    Organization::query()->where('status', 'active')
+        ->when($this->option('organization'), fn ($query, $id) => $query->whereKey($id))
+        ->orderBy('id')->chunkById(100, function ($organizations) use ($month, &$created, &$existing, &$skipped, &$failed): void {
+            foreach ($organizations as $organization) {
+                try {
+                    $result = app(GenerateRecurringFinanceObligationsAction::class)->execute($organization, $month);
+                    $created += $result['created']; $existing += $result['existing']; $skipped += $result['skipped'];
+                } catch (Throwable $exception) {
+                    $failed++;
+                    report($exception);
+                    $this->error("Organization {$organization->getKey()}: generation failed.");
+                }
+            }
+        });
+    $this->info("Recurring obligations: {$created} created, {$existing} existing, {$skipped} skipped, {$failed} organization(s) failed.");
+    return $failed === 0 ? self::SUCCESS : self::FAILURE;
+})->purpose('Generate the current month recurring Finance obligations idempotently');
+
 Schedule::command('catalog:cleanup-product-imports')->daily();
 Schedule::command('organization-backups:dispatch-due')->everyMinute()->withoutOverlapping();
 Schedule::command('organization-backups:cleanup-temporary-files')->hourly()->withoutOverlapping();
 Schedule::command('security:cleanup-trusted-devices')->daily()->withoutOverlapping();
+Schedule::command('finance:generate-recurring-obligations')->dailyAt('00:10')->withoutOverlapping();
 Schedule::call(fn () => SystemHealthHeartbeat::beat('scheduler'))
     ->name('system-health:scheduler-heartbeat')->everyMinute()->withoutOverlapping();
 Schedule::job(new RecordQueueWorkerHeartbeatJob)

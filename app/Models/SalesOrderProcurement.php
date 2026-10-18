@@ -7,6 +7,7 @@ use App\Enums\SupplierProcurementStatus;
 use App\Models\Concerns\ScopesToActiveOrganization;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
  * One supplier special-order requirement for one customer Sales Order line.
@@ -97,4 +98,7 @@ class SalesOrderProcurement extends Model
     {
         return $this->belongsTo(User::class, 'cancelled_by_user_id');
     }
+
+    public function financeObligations(): HasMany { return $this->hasMany(FinanceObligation::class); }
+    public function financeSupplierInstallmentPlans(): HasMany { return $this->hasMany(FinanceSupplierInstallmentPlan::class); }
 }

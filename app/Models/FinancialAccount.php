@@ -50,4 +50,21 @@ class FinancialAccount extends Model
     {
         return $this->hasMany(PaymentRefund::class);
     }
+
+    public function financeOutgoingPayments(): HasMany
+    {
+        return $this->hasMany(FinanceOutgoingPayment::class);
+    }
+
+    public function preferredFinanceRecurringObligationTemplates(): HasMany
+    {
+        return $this->hasMany(FinanceRecurringObligationTemplate::class, 'preferred_financial_account_id');
+    }
+
+    public function financePaymentInstruments(): HasMany { return $this->hasMany(FinancePaymentInstrument::class); }
+
+    public function openingPosition(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(FinancialAccountOpeningPosition::class);
+    }
 }

@@ -64,6 +64,23 @@ class Store extends Model
         return $this->hasMany(Payment::class);
     }
 
+    public function financeObligations(): HasMany
+    {
+        return $this->hasMany(FinanceObligation::class);
+    }
+
+    public function financeOutgoingPayments(): HasMany
+    {
+        return $this->hasMany(FinanceOutgoingPayment::class);
+    }
+
+    public function financeRecurringObligationTemplates(): HasMany
+    {
+        return $this->hasMany(FinanceRecurringObligationTemplate::class);
+    }
+
+    public function financePaymentInstruments(): HasMany { return $this->hasMany(FinancePaymentInstrument::class); }
+
     public function invoices(): HasMany
     {
         return $this->hasMany(Invoice::class);

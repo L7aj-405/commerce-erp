@@ -3,12 +3,15 @@
 namespace App\Http\Controllers\Payments;
 
 use App\Actions\Payments\ManageFinancialAccountAction;
+use App\Actions\Finance\SetFinancialAccountOpeningPositionAction;
 use App\Enums\FinancialAccountStatus;
 use App\Enums\FinancialAccountType;
 use App\Enums\PaymentMethod;
 use App\Http\Controllers\Controller;
 use App\Models\FinancialAccount;
 use App\Services\ActiveTenantContext;
+use App\Services\Finance\FinancialAccountBalanceService;
+use App\Services\Security\FreshAuthentication;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -17,7 +20,7 @@ use Inertia\Response;
 
 class FinancialAccountController extends Controller
 {
-    public function index(ActiveTenantContext $context): Response
+    public function index(ActiveTenantContext $context, FinancialAccountBalanceService $balances): Response
     {
         $organization = $context->organizationOrFail();
         $this->authorize('viewAny', [FinancialAccount::class, $organization]);
@@ -27,6 +30,7 @@ class FinancialAccountController extends Controller
                 ->where('organization_id', $organization->getKey())
                 ->orderBy('name')
                 ->get(['id', 'name', 'code', 'type', 'status', 'currency_code', 'notes', 'accepted_methods']),
+            'positions' => $balances->organizationPosition($organization, now()),
             'currencyCode' => config('platform.currency_code', 'MAD'),
             'paymentMethods' => array_map(fn (PaymentMethod $method) => [
                 'value' => $method->value,
@@ -35,8 +39,19 @@ class FinancialAccountController extends Controller
             'can' => [
                 'create' => request()->user()->can('create', [FinancialAccount::class, $organization]),
                 'update' => request()->user()->hasPermission($organization, 'financial_accounts.update'),
+                'manageBalance' => request()->user()->hasPermission($organization, 'finance.financial_accounts.manage_balance'),
             ],
         ]);
+    }
+
+    public function openingPosition(Request $request, FinancialAccount $financialAccount, FreshAuthentication $fresh, SetFinancialAccountOpeningPositionAction $action): RedirectResponse
+    {
+        abort_unless($request->user()->hasPermission($financialAccount->organization_id, 'finance.financial_accounts.manage_balance'), 403);
+        $fresh->ensure($request, FreshAuthentication::LEVEL_ACCOUNT);
+        $data = $request->validate(['effective_date' => ['required','date'], 'amount' => ['required','decimal:0,4'],
+            'currency_code' => ['required','string','size:3','uppercase'], 'reference' => ['nullable','string','max:255'], 'notes' => ['nullable','string','max:5000']]);
+        $action->execute($request->user(), $financialAccount, $data);
+        return back()->with('success', 'Solde d’ouverture enregistré.');
     }
 
     public function store(Request $request, ActiveTenantContext $context, ManageFinancialAccountAction $action): RedirectResponse

@@ -81,6 +81,11 @@ class SalesOrder extends Model
         return $this->hasMany(PaymentRefund::class);
     }
 
+    public function expectedCollections(): HasMany
+    {
+        return $this->hasMany(FinanceExpectedCollection::class);
+    }
+
     public function commissionEntries(): HasMany
     {
         return $this->hasMany(CommissionEntry::class);

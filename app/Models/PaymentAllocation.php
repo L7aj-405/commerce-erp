@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class PaymentAllocation extends Model
 {
@@ -27,5 +28,10 @@ class PaymentAllocation extends Model
     public function salesOrder(): BelongsTo
     {
         return $this->belongsTo(SalesOrder::class);
+    }
+
+    public function expectedCollectionMatches(): HasMany
+    {
+        return $this->hasMany(FinanceExpectedCollectionMatch::class);
     }
 }

@@ -7,7 +7,11 @@ import { useEffect, useState } from 'react';
 import type { PropsWithChildren, ReactNode } from 'react';
 
 type NavItem = { href: string; label: string; permission?: string | string[]; needsStore?: boolean; icon: ReactNode };
-type NavGroup = { key: string; label: string; icon: ReactNode; items: NavItem[] };
+type NavSection = { key: string; label: string; icon: ReactNode; items: NavItem[] };
+type NavEntry = NavItem | NavSection;
+type NavGroup = { key: string; label: string; icon: ReactNode; items: NavEntry[] };
+
+const isNavSection = (entry: NavEntry): entry is NavSection => 'items' in entry;
 
 const SIDEBAR_KEY = 'shell.sidebar.collapsed';
 
@@ -128,15 +132,44 @@ export default function ApplicationShell({ children, wide = false, flush = false
             // whole organization without the viewer's active store switcher.
             items: [
                 { href: '/finance', label: 'Vue d’ensemble', permission: 'finance.view', icon: <IconChart /> },
-                { href: '/finance/ventes', label: 'Ventes', permission: 'finance.view', icon: <IconTrending /> },
-                { href: '/finance/ca-encaisse', label: 'CA encaissé', permission: 'finance.view', icon: <IconBanknote /> },
-                { href: '/finance/creances', label: 'Créances', permission: 'finance.view', icon: <IconClockCoins /> },
-                { href: '/finance/encaissements', label: 'Encaissements', permission: 'finance.view', icon: <IconWallet /> },
-                { href: '/finance/facturation', label: 'Facturation', permission: 'finance.view', icon: <IconInvoice /> },
-                { href: '/finance/journal', label: 'Journal', permission: 'finance.view', icon: <IconList /> },
-                { href: '/finance/commissions', label: 'Commissions', permission: 'commissions.ledger.view', icon: <IconPercent /> },
-                { href: '/payments', label: 'Paiements', permission: 'payments.view', needsStore: true, icon: <IconWallet /> },
-                { href: '/financial-accounts', label: 'Comptes financiers', permission: 'financial_accounts.view', icon: <IconBank /> },
+                {
+                    key: 'finance-sales-cash',
+                    label: 'Ventes & Encaissements',
+                    icon: <IconTrending />,
+                    items: [
+                        { href: '/finance/ventes', label: 'Ventes', permission: 'finance.view', icon: <IconTrending /> },
+                        { href: '/finance/ca-encaisse', label: 'CA encaissé', permission: 'finance.view', icon: <IconBanknote /> },
+                        { href: '/finance/creances', label: 'Créances clients', permission: 'finance.view', icon: <IconClockCoins /> },
+                    ],
+                },
+                {
+                    href: '/finance/situation-fin-de-mois',
+                    label: 'Situation fin de mois',
+                    permission: 'finance.monthly_situation.view',
+                    icon: <IconClockCoins />,
+                },
+                {
+                    key: 'finance-commissions',
+                    label: 'Commissions',
+                    icon: <IconPercent />,
+                    items: [
+                        { href: '/finance/commissions', label: 'Tableau de bord', permission: 'commissions.ledger.view', icon: <IconChart /> },
+                        { href: '/finance/commissions/ledger', label: 'Registre', permission: 'commissions.ledger.view', icon: <IconList /> },
+                        { href: '/finance/commissions/rules', label: 'Règles', permission: 'commissions.rules.view', icon: <IconSettings /> },
+                    ],
+                },
+                { href: '/finance/facturation', label: 'Factures', permission: 'finance.view', icon: <IconInvoice /> },
+                {
+                    key: 'finance-treasury',
+                    label: 'Trésorerie',
+                    icon: <IconWallet />,
+                    items: [
+                        { href: '/finance/encaissements', label: 'Encaissements', permission: 'finance.view', icon: <IconBanknote /> },
+                        { href: '/payments', label: 'Paiements', permission: 'payments.view', needsStore: true, icon: <IconWallet /> },
+                        { href: '/financial-accounts', label: 'Comptes financiers', permission: 'financial_accounts.view', icon: <IconBank /> },
+                        { href: '/finance/journal', label: 'Journal', permission: 'finance.view', icon: <IconList /> },
+                    ],
+                },
             ],
         },
         {
@@ -216,16 +249,40 @@ export default function ApplicationShell({ children, wide = false, flush = false
     const hasPermission = (permission?: string | string[]) =>
         !permission || (Array.isArray(permission) ? permission.some((p) => tenant.permissions.includes(p)) : tenant.permissions.includes(permission));
     const allowed = (item: NavItem) => hasPermission(item.permission) && (!item.needsStore || tenant.store !== null);
-    const visibleGroups = groups
-        .map((group) => ({ ...group, items: group.items.filter(allowed) }))
+    const visibleGroups: NavGroup[] = groups
+        .map((group): NavGroup => {
+            const items: NavEntry[] = [];
+            group.items.forEach((entry) => {
+                if (!isNavSection(entry)) {
+                    if (allowed(entry)) items.push(entry);
+                    return;
+                }
+
+                const visibleItems = entry.items.filter(allowed);
+                if (visibleItems.length > 0) items.push({ ...entry, items: visibleItems });
+            });
+
+            return { ...group, items };
+        })
         .filter((group) => group.items.length > 0);
-    const activeMatch = visibleGroups
-        .flatMap((group) => group.items.map((item) => ({ groupKey: group.key, item })))
+    const activeCandidates: { groupKey: string; sectionKey: string | null; item: NavItem }[] = [];
+    visibleGroups.forEach((group) => {
+        group.items.forEach((entry) => {
+            if (isNavSection(entry)) {
+                entry.items.forEach((item) => activeCandidates.push({ groupKey: group.key, sectionKey: entry.key, item }));
+            } else {
+                activeCandidates.push({ groupKey: group.key, sectionKey: null, item: entry });
+            }
+        });
+    });
+    const activeMatch = activeCandidates
         .filter(({ item }) => currentPath === item.href || currentPath.startsWith(`${item.href}/`))
         .sort((a, b) => b.item.href.length - a.item.href.length)[0];
     const activeHref = activeMatch?.item.href;
     const activeGroupKey = activeMatch?.groupKey;
+    const activeSectionKey = activeMatch?.sectionKey;
     const [openGroup, setOpenGroup] = useState<string>('');
+    const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
 
     useEffect(() => {
         if (activeGroupKey) {
@@ -237,6 +294,11 @@ export default function ApplicationShell({ children, wide = false, flush = false
         // not re-run this after local accordion clicks; otherwise manual opens
         // are immediately overwritten by the still-active route group.
     }, [currentPath, activeGroupKey]);
+
+    useEffect(() => {
+        if (!activeSectionKey) return;
+        setOpenSections((current) => ({ ...current, [activeSectionKey]: true }));
+    }, [currentPath, activeSectionKey]);
 
     const orgStoreSwitcher = (
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
@@ -270,12 +332,13 @@ export default function ApplicationShell({ children, wide = false, flush = false
         </div>
     );
 
-    const navigation = (dense: boolean) => (
+    const navigation = (dense: boolean, scope: 'desktop' | 'mobile') => (
         <nav className={dense ? 'space-y-1.5' : 'space-y-1'}>
             {visibleGroups.map((group) => {
                 const open = openGroup === group.key;
                 const groupActive = activeGroupKey === group.key;
-                const firstItem = group.items[0];
+                const firstEntry = group.items[0]!;
+                const firstItem = isNavSection(firstEntry) ? firstEntry.items[0] : firstEntry;
 
                 if (dense) {
                     return (
@@ -300,6 +363,7 @@ export default function ApplicationShell({ children, wide = false, flush = false
                             type="button"
                             onClick={() => setOpenGroup(open ? '' : group.key)}
                             aria-expanded={open}
+                            aria-controls={`${scope}-sidebar-group-${group.key}`}
                             className={`group flex w-full items-center gap-2.5 rounded-field px-3 py-2.5 text-left text-sm transition-soft ${
                                 groupActive || open ? 'bg-sage/80 font-medium text-ink' : 'text-ink-muted hover:bg-sage/60 hover:text-ink'
                             }`}
@@ -311,16 +375,66 @@ export default function ApplicationShell({ children, wide = false, flush = false
                             </span>
                         </button>
                         {open && (
-                            <div className="mt-1 space-y-0.5 border-l border-line/80 pl-3 ml-5">
-                                {group.items.map((item) => {
+                            <div id={`${scope}-sidebar-group-${group.key}`} className="mt-1 ml-5 space-y-0.5 border-l border-line/80 pl-3">
+                                {group.items.map((entry) => {
+                                    if (isNavSection(entry)) {
+                                        const sectionOpen = openSections[entry.key] ?? false;
+                                        const sectionActive = activeSectionKey === entry.key;
+
+                                        return (
+                                            <div key={entry.key}>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setOpenSections((current) => ({ ...current, [entry.key]: !sectionOpen }))}
+                                                    aria-expanded={sectionOpen}
+                                                    aria-controls={`${scope}-sidebar-section-${entry.key}`}
+                                                    className={`group flex min-h-10 w-full items-center gap-2 rounded-field px-3 py-2 text-left text-[13px] transition-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${
+                                                        sectionActive || sectionOpen
+                                                            ? 'bg-sage/60 font-medium text-ink'
+                                                            : 'text-ink-muted hover:bg-sage/60 hover:text-ink'
+                                                    }`}
+                                                >
+                                                    <span className={sectionActive || sectionOpen ? 'text-primary' : 'text-ink-faint group-hover:text-ink-muted'}>{entry.icon}</span>
+                                                    <span className="min-w-0 flex-1 truncate">{entry.label}</span>
+                                                    <span className={`shrink-0 text-ink-faint transition-transform ${sectionOpen ? 'rotate-90' : ''}`}>
+                                                        <IconChevron />
+                                                    </span>
+                                                </button>
+                                                {sectionOpen && (
+                                                    <div id={`${scope}-sidebar-section-${entry.key}`} className="mt-0.5 ml-4 space-y-0.5 border-l border-line/70 pl-2">
+                                                        {entry.items.map((item) => {
+                                                            const active = activeHref === item.href;
+                                                            return (
+                                                                <Link
+                                                                    key={item.href}
+                                                                    href={item.href}
+                                                                    aria-current={active ? 'page' : undefined}
+                                                                    className={`group relative flex min-h-10 items-center gap-2 rounded-field px-3 py-2 text-[13px] transition-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${
+                                                                        active
+                                                                            ? 'bg-sage font-medium text-ink'
+                                                                            : 'text-ink-muted hover:bg-sage/60 hover:text-ink'
+                                                                    }`}
+                                                                >
+                                                                    {active && <span className="absolute left-0 top-2 bottom-2 w-0.5 rounded-full bg-primary" />}
+                                                                    <span className={active ? 'text-primary' : 'text-ink-faint group-hover:text-ink-muted'}>{item.icon}</span>
+                                                                    <span className="min-w-0 truncate">{item.label}</span>
+                                                                </Link>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    }
+
+                                    const item = entry;
                                     const active = activeHref === item.href;
                                     return (
                                         <Link
                                             key={item.href}
                                             href={item.href}
-                                            onClick={(event) => event.stopPropagation()}
                                             aria-current={active ? 'page' : undefined}
-                                            className={`group relative flex items-center gap-2 rounded-field px-3 py-2 text-[13px] transition-soft ${
+                                            className={`group relative flex min-h-10 items-center gap-2 rounded-field px-3 py-2 text-[13px] transition-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${
                                                 active
                                                     ? 'bg-sage font-medium text-ink'
                                                     : 'text-ink-muted hover:bg-sage/60 hover:text-ink'
@@ -328,7 +442,7 @@ export default function ApplicationShell({ children, wide = false, flush = false
                                         >
                                             {active && <span className="absolute left-0 top-2 bottom-2 w-0.5 rounded-full bg-primary" />}
                                             <span className={active ? 'text-primary' : 'text-ink-faint group-hover:text-ink-muted'}>{item.icon}</span>
-                                            <span className="truncate">{item.label}</span>
+                                            <span className="min-w-0 truncate">{item.label}</span>
                                         </Link>
                                     );
                                 })}
@@ -353,7 +467,7 @@ export default function ApplicationShell({ children, wide = false, flush = false
                         {collapsed ? <BrandMark /> : <BrandLockup />}
                     </Link>
                 </div>
-                <div className={`flex-1 overflow-y-auto py-4 ${collapsed ? 'px-3' : 'px-3'}`}>{navigation(collapsed)}</div>
+                <div className={`flex-1 overflow-y-auto py-4 ${collapsed ? 'px-3' : 'px-3'}`}>{navigation(collapsed, 'desktop')}</div>
                 <div className="border-t border-line p-3">
                     <button
                         type="button"
@@ -478,7 +592,7 @@ export default function ApplicationShell({ children, wide = false, flush = false
                                 </button>
                             </div>
                             <div className="shrink-0 border-b border-line p-3 sm:hidden">{orgStoreSwitcher}</div>
-                            <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4">{navigation(false)}</div>
+                            <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4">{navigation(false, 'mobile')}</div>
                         </aside>
                     </div>
                 )}
