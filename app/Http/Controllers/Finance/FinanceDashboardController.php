@@ -129,6 +129,7 @@ class FinanceDashboardController extends Controller
         $guard->authorizeReceivables($request->user(), $organization);
         $period = $this->period($request);
         $store = $guard->resolveStore($organization, $request->query('store_id'));
+        $receivableData = $receivables->salesOrderReceivablesAsOf($organization, $period->end, $store);
 
         return Inertia::render('Finance/Creances', [
             'organization' => $organization->only(['id', 'name']),
@@ -137,8 +138,8 @@ class FinanceDashboardController extends Controller
             'asOf' => $period->end->toDateString(),
             'storeId' => $store?->id,
             'stores' => $this->stores($organization),
-            'total' => $receivables->totalAsOf($organization, $period->end, $store),
-            'invoices' => $receivables->breakdownAsOf($organization, $period->end, $store),
+            'total' => $receivableData['total'],
+            'orders' => $receivableData['orders'],
         ]);
     }
 

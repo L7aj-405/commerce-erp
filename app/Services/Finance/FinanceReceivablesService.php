@@ -4,8 +4,11 @@ namespace App\Services\Finance;
 
 use App\Enums\InvoiceStatus;
 use App\Enums\PaymentStatus;
+use App\Enums\SalesOrderStatus;
 use App\Models\Organization;
+use App\Models\SalesOrder;
 use App\Models\Store;
+use App\Services\SalesOrderPaymentCalculator;
 use App\Support\Decimal;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
@@ -26,6 +29,70 @@ use Illuminate\Support\LazyCollection;
  */
 class FinanceReceivablesService
 {
+    public function __construct(private readonly SalesOrderPaymentCalculator $payments) {}
+
+    /**
+     * The Créances clients page is SalesOrder-based: confirmed orders whose
+     * authoritative balance was still positive at the selected month end.
+     *
+     * @return array{total: string, orders: LengthAwarePaginator}
+     */
+    public function salesOrderReceivablesAsOf(Organization $organization, Carbon $asOf, ?Store $store, int $perPage = 30): array
+    {
+        $rows = collect();
+        $total = '0.0000';
+
+        SalesOrder::query()
+            ->withoutGlobalScopes()
+            ->where('organization_id', $organization->getKey())
+            ->where('status', SalesOrderStatus::Confirmed->value)
+            ->whereDate('sale_date', '<=', $asOf->toDateString())
+            ->when($store, fn ($query) => $query->where('store_id', $store->getKey()))
+            ->select([
+                'id', 'organization_id', 'store_id', 'order_number', 'sale_date',
+                'customer_name', 'customer_company', 'total_incl_tax', 'currency_code', 'status',
+            ])
+            ->chunkById(500, function ($orders) use ($asOf, $rows, &$total) {
+                $summaries = $this->payments->summaries($orders, $asOf);
+
+                foreach ($orders as $order) {
+                    $summary = $summaries[$order->getKey()];
+                    if (Decimal::compare($summary['remaining'], '0.0000') <= 0) {
+                        continue;
+                    }
+
+                    $total = Decimal::add($total, $summary['remaining']);
+                    $rows->push([
+                        'id' => $order->getKey(),
+                        'order_number' => $order->order_number,
+                        'sale_date' => $order->sale_date->toDateString(),
+                        'customer' => trim($order->customer_company ?: $order->customer_name ?: '') ?: '—',
+                        'store_id' => $order->store_id,
+                        'total_incl_tax' => $summary['commercial_total'],
+                        'paid_amount' => $summary['paid'],
+                        'outstanding' => $summary['remaining'],
+                        'payment_status' => $summary['status'],
+                        'last_payment_date' => $summary['last_payment_date'],
+                    ]);
+                }
+            });
+
+        $rows = $rows->sort(function (array $left, array $right) {
+            return [$left['sale_date'], $left['id']] <=> [$right['sale_date'], $right['id']];
+        })->values();
+        $page = LengthAwarePaginator::resolveCurrentPage();
+        $paginator = new LengthAwarePaginator(
+            $rows->forPage($page, $perPage)->values(),
+            $rows->count(),
+            $perPage,
+            $page,
+            ['path' => LengthAwarePaginator::resolveCurrentPath()],
+        );
+        $paginator->withQueryString();
+
+        return ['total' => $total, 'orders' => $paginator];
+    }
+
     /** The organization-wide (or one-store) outstanding total as of a date — a single aggregate query. */
     public function totalAsOf(Organization $organization, Carbon $asOf, ?Store $store): string
     {

@@ -10,6 +10,7 @@ use App\Models\PaymentAllocation;
 use App\Models\PaymentRefund;
 use App\Models\SalesOrder;
 use App\Support\Decimal;
+use Illuminate\Support\Carbon;
 use LogicException;
 
 class SalesOrderPaymentCalculator
@@ -67,7 +68,7 @@ class SalesOrderPaymentCalculator
         return $this->nonNegative(Decimal::subtract($this->commercialTotal($order), $this->paidAmount($order)));
     }
 
-    /** @return array{paid: string, collected: string, refunded: string, net: string, returned: string, commercial_total: string, remaining: string, status: string} */
+    /** @return array{paid: string, collected: string, refunded: string, net: string, returned: string, commercial_total: string, remaining: string, status: string, last_payment_date: ?string} */
     public function summary(SalesOrder $order): array
     {
         $collected = $this->collectedAmount($order);
@@ -82,27 +83,35 @@ class SalesOrderPaymentCalculator
      * authoritative payment/return rules without introducing an N+1 query.
      *
      * @param iterable<int, SalesOrder> $orders
-     * @return array<int, array{paid: string, collected: string, refunded: string, net: string, returned: string, commercial_total: string, remaining: string, status: string}>
+     * @return array<int, array{paid: string, collected: string, refunded: string, net: string, returned: string, commercial_total: string, remaining: string, status: string, last_payment_date: ?string}>
      */
-    public function summaries(iterable $orders): array
+    public function summaries(iterable $orders, ?Carbon $asOf = null): array
     {
         $orders = collect($orders)->values();
         $summaries = [];
 
         foreach ($orders->groupBy('organization_id') as $organizationId => $tenantOrders) {
             $orderIds = $tenantOrders->pluck('id')->all();
-            $collected = PaymentAllocation::query()
-                ->where('organization_id', $organizationId)
-                ->whereIn('sales_order_id', $orderIds)
-                ->whereHas('payment', fn ($query) => $query->where('status', PaymentStatus::Posted->value))
-                ->select('sales_order_id')
-                ->selectRaw('SUM(amount) as aggregate')
-                ->groupBy('sales_order_id')
-                ->pluck('aggregate', 'sales_order_id');
+            $collectedRows = PaymentAllocation::query()
+                ->join('payments', function ($join) {
+                    $join->on('payments.id', '=', 'payment_allocations.payment_id')
+                        ->on('payments.organization_id', '=', 'payment_allocations.organization_id');
+                })
+                ->where('payment_allocations.organization_id', $organizationId)
+                ->whereIn('payment_allocations.sales_order_id', $orderIds)
+                ->where('payments.status', PaymentStatus::Posted->value)
+                ->when($asOf, fn ($query) => $query->whereDate('payments.payment_date', '<=', $asOf->toDateString()))
+                ->select('payment_allocations.sales_order_id')
+                ->selectRaw('SUM(payment_allocations.amount) as aggregate')
+                ->selectRaw('MAX(payments.payment_date) as last_payment_date')
+                ->groupBy('payment_allocations.sales_order_id')
+                ->get()
+                ->keyBy('sales_order_id');
             $refunded = PaymentRefund::query()
                 ->where('organization_id', $organizationId)
                 ->whereIn('sales_order_id', $orderIds)
                 ->where('status', 'posted')
+                ->when($asOf, fn ($query) => $query->whereDate('refund_date', '<=', $asOf->toDateString()))
                 ->select('sales_order_id')
                 ->selectRaw('SUM(amount) as aggregate')
                 ->groupBy('sales_order_id')
@@ -111,17 +120,22 @@ class SalesOrderPaymentCalculator
                 ->where('organization_id', $organizationId)
                 ->whereIn('sales_order_id', $orderIds)
                 ->where('status', 'received')
+                ->when($asOf, fn ($query) => $query->whereDate('received_at', '<=', $asOf->toDateString()))
                 ->select('sales_order_id')
                 ->selectRaw('SUM(total_incl_tax) as aggregate')
                 ->groupBy('sales_order_id')
                 ->pluck('aggregate', 'sales_order_id');
 
             foreach ($tenantOrders as $order) {
+                $collection = $collectedRows->get($order->getKey());
                 $summaries[$order->getKey()] = $this->summaryFromAmounts(
                     $order,
-                    (string) ($collected[$order->getKey()] ?? '0.0000'),
+                    (string) ($collection?->aggregate ?? '0.0000'),
                     (string) ($refunded[$order->getKey()] ?? '0.0000'),
                     (string) ($returned[$order->getKey()] ?? '0.0000'),
+                    $collection?->last_payment_date !== null
+                        ? Carbon::parse((string) $collection->last_payment_date)->toDateString()
+                        : null,
                 );
             }
         }
@@ -129,8 +143,8 @@ class SalesOrderPaymentCalculator
         return $summaries;
     }
 
-    /** @return array{paid: string, collected: string, refunded: string, net: string, returned: string, commercial_total: string, remaining: string, status: string} */
-    private function summaryFromAmounts(SalesOrder $order, string $collected, string $refunded, string $returned): array
+    /** @return array{paid: string, collected: string, refunded: string, net: string, returned: string, commercial_total: string, remaining: string, status: string, last_payment_date: ?string} */
+    private function summaryFromAmounts(SalesOrder $order, string $collected, string $refunded, string $returned, ?string $lastPaymentDate = null): array
     {
         $collected = Decimal::normalize($collected);
         $refunded = Decimal::normalize($refunded);
@@ -153,6 +167,7 @@ class SalesOrderPaymentCalculator
             'commercial_total' => $commercialTotal,
             'remaining' => $remaining,
             'status' => $this->status($commercialTotal, $paid)->value,
+            'last_payment_date' => $lastPaymentDate,
         ];
     }
 
