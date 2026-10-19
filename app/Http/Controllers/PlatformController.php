@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\Organization;
 use App\Services\ActiveTenantContext;
+use App\Services\Dashboards\ExecutiveDashboardService;
+use App\Services\Finance\FinancePeriod;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
@@ -11,7 +13,7 @@ use Inertia\Response;
 
 class PlatformController extends Controller
 {
-    public function __invoke(Request $request, ActiveTenantContext $context): Response
+    public function __invoke(Request $request, ActiveTenantContext $context, ExecutiveDashboardService $executiveDashboard): Response
     {
         $user = $request->user();
         $organization = $context->organization();
@@ -41,6 +43,11 @@ class PlatformController extends Controller
         $canViewPayments = $organization && $store && $user->hasPermission($organization, 'payments.view');
         $canViewWooStockTasks = $organization && $user->hasPermission($organization, 'integrations.woocommerce.stock_tasks.view');
         $canViewOutOfStockArticles = $organization && $user->hasPermission($organization, 'procurement.view');
+        $canViewExecutiveDashboard = $organization
+            && $user->hasPermission($organization, 'sales_orders.view')
+            && $user->hasPermission($organization, 'payments.view')
+            && $user->hasPermission($organization, 'finance.view');
+        $period = FinancePeriod::fromMonth((string) $request->query('month', now()->format('Y-m')));
 
         $productCount = $canViewProducts
             ? DB::table('products')->where('organization_id', $organizationId)->count()
@@ -102,6 +109,9 @@ class PlatformController extends Controller
                 'woo_stock_tasks_pending' => $wooStockTasksPending,
                 'out_of_stock_articles_pending' => $outOfStockArticlesPending,
             ],
+            'executiveDashboard' => $canViewExecutiveDashboard
+                ? $executiveDashboard->main($organization, $period, $store)
+                : null,
             'onboarding' => [
                 'organization' => $organization !== null,
                 'store' => $store !== null,

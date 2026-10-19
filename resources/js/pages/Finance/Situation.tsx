@@ -1,4 +1,5 @@
 import { DownloadLink } from '@/components/ui/Button';
+import { CashFlowChart, RankedMoneyChart, SalesCollectionsChart } from '@/components/dashboard/DashboardCharts';
 import FinanceFilters, { type FinanceStore } from '@/components/finance/FinanceFilters';
 import PageHeader from '@/components/ui/PageHeader';
 import ApplicationShell from '@/layouts/ApplicationShell';
@@ -33,10 +34,21 @@ type Props = {
     storeId: number | null;
     stores: FinanceStore[];
     situation: Situation;
+    dashboard: {
+        primary: { net_collections: string; receivables: string; treasury_balance: string | null; treasury_projected: string | null };
+        secondary: { net_sales: string; net_billing: string; refunds: string; remaining_obligations: string; expected_collections: string; overdue: string; shortage: string | null };
+        charts: {
+            sales_vs_collections: Array<{ label: string; sales: string; collections: string }>;
+            cash_flow: Array<{ label: string; incoming: string; outgoing: string }>;
+            receivables: { counts: { unpaid: number; partially_paid: number }; amounts: { unpaid: string; partially_paid: string } };
+            obligations: Array<{ category: string; label: string; amount: string }>;
+        };
+        treasury: { mode: 'historical' | 'current' | 'future'; balance: { complete: boolean; reason: string | null }; expected: string; remaining_outflows: string; overdue: string; projected: string | null; shortage: string | null };
+    };
     can: { receivables: boolean; export: boolean };
 };
 
-export default function FinanceSituation({ organization, period, storeId, stores, situation, can }: Props) {
+export default function FinanceSituation({ organization, period, storeId, stores, situation, dashboard, can }: Props) {
     const q = (extra: Record<string, string | number | undefined> = {}) => ({ month: period, store_id: storeId ?? '', ...extra });
 
     const hasVariance = situation.customer_position.variance !== '0.0000' && Number(situation.customer_position.variance) !== 0;
@@ -63,41 +75,46 @@ export default function FinanceSituation({ organization, period, storeId, stores
 
             <FinanceFilters path="/finance" period={period} storeId={storeId} stores={stores} />
 
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                <MetricCard
-                    label="Ventes brutes"
-                    sublabel="Commandes confirmées (sale_date), avant avoirs"
-                    value={situation.ventes}
-                    href={`/finance/ventes?${new URLSearchParams(q() as Record<string, string>).toString()}`}
-                />
-                <MetricCard label="Ventes nettes" sublabel="Ventes brutes − avoirs émis dans la période" value={situation.ventes_nettes} />
-                <MetricCard
-                    label="Facturation brute"
-                    sublabel="Factures émises (invoice_date)"
-                    value={situation.facturation_brute}
-                    href={`/finance/facturation?${new URLSearchParams(q() as Record<string, string>).toString()}`}
-                />
-                <MetricCard label="Avoirs émis" sublabel="Avoirs émis (credit_note_date)" value={situation.avoirs} />
-                <MetricCard label="Facturation nette" sublabel="Factures − avoirs" value={situation.facturation} />
-                <MetricCard
-                    label="Encaissements"
-                    sublabel="Encaissements bruts (payment_date)"
-                    value={situation.encaissements}
-                    href={`/finance/encaissements?${new URLSearchParams(q() as Record<string, string>).toString()}`}
-                />
-                <MetricCard label="Remboursements" sublabel="Sorties enregistrées (refund_date)" value={situation.remboursements} />
-                <MetricCard label="Net encaissé" sublabel="Encaissements − remboursements" value={situation.net_encaisse} />
-                <MetricCard label="À rembourser" sublabel="Excédent client après avoirs" value={situation.obligations_remboursement} />
-                {can.receivables ? (
-                    <MetricCard
-                        label="Créances"
-                        sublabel="Solde en fin de période"
-                        value={situation.creances_fin}
-                        href={`/finance/creances?${new URLSearchParams(q() as Record<string, string>).toString()}`}
-                    />
-                ) : (
-                    <MetricCard label="Créances" sublabel="Accès non autorisé" value={null} />
-                )}
+            <section aria-label="Indicateurs financiers principaux" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                <PrimaryMetric label="Net encaissé" value={dashboard.primary.net_collections} detail="Encaissements − remboursements" href={`/finance/ca-encaisse?${new URLSearchParams(q() as Record<string, string>).toString()}`} />
+                <PrimaryMetric label="Créances clients" value={can.receivables ? dashboard.primary.receivables : null} detail={can.receivables ? 'Commandes confirmées restant à payer' : 'Accès non autorisé'} href={can.receivables ? `/finance/creances?${new URLSearchParams(q() as Record<string, string>).toString()}` : undefined} />
+                <PrimaryMetric label="Solde de trésorerie" value={dashboard.primary.treasury_balance} detail={dashboard.primary.treasury_balance === null ? 'Solde non configuré · organisation entière' : 'Comptes financiers · organisation entière'} />
+                <PrimaryMetric label="Prévision fin de mois" value={dashboard.primary.treasury_projected} detail={dashboard.primary.treasury_projected === null ? 'Prévision indisponible' : 'Solde + encaissements attendus − obligations'} />
+            </section>
+
+            <section aria-label="Indicateurs financiers secondaires" className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
+                <SecondaryMetric label="Ventes nettes" value={dashboard.secondary.net_sales} />
+                <SecondaryMetric label="Facturation nette" value={dashboard.secondary.net_billing} />
+                <SecondaryMetric label="Remboursements" value={dashboard.secondary.refunds} />
+                <SecondaryMetric label="Obligations restantes" value={dashboard.secondary.remaining_obligations} />
+                <SecondaryMetric label="Encaissements attendus" value={dashboard.secondary.expected_collections} />
+                <SecondaryMetric label="En retard" value={dashboard.secondary.overdue} />
+                <SecondaryMetric label="Manque de trésorerie" value={dashboard.secondary.shortage} />
+            </section>
+
+            <div className="mt-6"><SalesCollectionsChart points={dashboard.charts.sales_vs_collections} /></div>
+
+            <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1.5fr)_minmax(320px,1fr)]">
+                <CashFlowChart points={dashboard.charts.cash_flow} />
+                <RankedMoneyChart title="Créances clients" description={`${dashboard.charts.receivables.counts.unpaid} non payée(s) · ${dashboard.charts.receivables.counts.partially_paid} partiellement payée(s)`} points={[
+                    { label: 'Non payées', value: dashboard.charts.receivables.amounts.unpaid },
+                    { label: 'Partiellement payées', value: dashboard.charts.receivables.amounts.partially_paid },
+                ]} emptyLabel="Aucune créance client ouverte." />
+            </div>
+
+            <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1.4fr)_minmax(320px,1fr)]">
+                <RankedMoneyChart title="Obligations à payer" description="Reste dû par catégorie à la fin de la période" points={dashboard.charts.obligations.map((row) => ({ label: row.label, value: row.amount }))} emptyLabel="Aucune obligation restante." />
+                <section className="rounded-card border border-line bg-surface p-5 shadow-card">
+                    <h2 className="font-semibold text-ink">Prévision de trésorerie</h2>
+                    <p className="mt-1 text-[13px] text-ink-muted">Synthèse fondée uniquement sur les échéances connues.</p>
+                    <dl className="mt-5 space-y-3 text-sm">
+                        <ForecastRow label="Solde actuel" value={dashboard.primary.treasury_balance} unavailable="Solde non configuré" />
+                        <ForecastRow label="Encaissements attendus" value={dashboard.treasury.expected} />
+                        <ForecastRow label="Sorties restantes" value={dashboard.treasury.remaining_outflows} negative />
+                        <ForecastRow label="Dont en retard" value={dashboard.treasury.overdue} negative />
+                        <div className="border-t border-line-strong pt-3"><ForecastRow label="Position projetée" value={dashboard.treasury.projected} unavailable="Prévision indisponible" strong /></div>
+                    </dl>
+                </section>
             </div>
 
             <section className="mt-8 rounded-card border border-line bg-surface p-5">
@@ -128,16 +145,24 @@ export default function FinanceSituation({ organization, period, storeId, stores
     );
 }
 
-function MetricCard({ label, sublabel, value, href }: { label: string; sublabel: string; value: string | null; href?: string }) {
+function PrimaryMetric({ label, value, detail, href }: { label: string; value: string | null; detail: string; href?: string }) {
     const content = (
-        <div className="rounded-card border border-line bg-surface p-5 transition-soft hover:border-line-strong">
+        <div className="h-full rounded-card border border-line bg-surface p-5 shadow-card transition-soft hover:border-line-strong">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-faint">{label}</p>
-            <p className="mt-2 text-2xl font-semibold text-ink">{value === null ? '—' : formatMoney(value)}</p>
-            <p className="mt-1 text-[12px] text-ink-muted">{sublabel}</p>
+            <p className="mt-3 text-3xl font-semibold tracking-tight text-ink">{value === null ? '—' : formatMoney(value)}</p>
+            <p className="mt-2 text-[12px] text-ink-muted">{detail}</p>
         </div>
     );
 
     return href ? <Link href={href}>{content}</Link> : content;
+}
+
+function SecondaryMetric({ label, value }: { label: string; value: string | null }) {
+    return <div className="rounded-card border border-line bg-raised px-4 py-3"><p className="text-[10px] font-semibold uppercase tracking-wide text-ink-faint">{label}</p><p className="mt-1.5 font-semibold tabular-nums text-ink">{value === null ? '—' : formatMoney(value)}</p></div>;
+}
+
+function ForecastRow({ label, value, unavailable = 'Indisponible', negative = false, strong = false }: { label: string; value: string | null; unavailable?: string; negative?: boolean; strong?: boolean }) {
+    return <div className={`flex items-center justify-between gap-4 ${strong ? 'font-semibold' : ''}`}><dt className="text-ink-muted">{label}</dt><dd className="tabular-nums text-ink">{value === null ? unavailable : `${negative ? '− ' : ''}${formatMoney(value)}`}</dd></div>;
 }
 
 function ReconciliationRow({ label, value }: { label: string; value: string }): ReactNode {

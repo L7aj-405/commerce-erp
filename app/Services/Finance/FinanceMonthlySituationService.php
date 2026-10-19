@@ -2,6 +2,8 @@
 
 namespace App\Services\Finance;
 
+use App\Enums\FinanceObligationCategory;
+use App\Enums\FinancePaymentInstrumentState;
 use App\Models\FinanceObligation;
 use App\Models\FinanceOutgoingPaymentAllocation;
 use App\Models\Organization;
@@ -10,7 +12,6 @@ use App\Support\Decimal;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\LazyCollection;
 
 class FinanceMonthlySituationService
@@ -101,7 +102,9 @@ class FinanceMonthlySituationService
             ->when($store, fn (Builder $query) => $query->where('store_id', $store->id))
             ->whereRaw(self::PAID_SQL.' < planned_amount')->with(['supplier:id,name', 'procurement:id,procurement_number'])
             ->select('finance_obligations.*')->selectRaw(self::PAID_SQL.' as paid_amount')->orderBy('due_date');
-        if ($limit !== null) $query->limit($limit);
+        if ($limit !== null) {
+            $query->limit($limit);
+        }
 
         return $query->get()
             ->map(fn (FinanceObligation $row) => ['id' => $row->id, 'number' => $row->obligation_number,
@@ -139,6 +142,26 @@ class FinanceMonthlySituationService
             'count' => (int) (clone $selected)->count(),
             'overdue_count' => (int) $overdue->aggregate_count,
         ];
+    }
+
+    /** @return array<int,array{category:string,label:string,amount:string}> */
+    public function remainingByCategory(Organization $organization, FinancePeriod $period, ?Store $store): array
+    {
+        return FinanceObligation::query()->withoutGlobalScopes()
+            ->where('organization_id', $organization->getKey())
+            ->whereNull('cancelled_at')
+            ->whereDate('due_date', '<=', $period->end->toDateString())
+            ->when($store, fn (Builder $query) => $query->where('store_id', $store->getKey()))
+            ->whereRaw(self::PAID_SQL.' < planned_amount')
+            ->groupBy('category')
+            ->select('category')
+            ->selectRaw('SUM(planned_amount - '.self::PAID_SQL.') as amount')
+            ->orderByDesc('amount')->get()
+            ->map(fn ($row) => [
+                'category' => (string) $row->getRawOriginal('category'),
+                'label' => FinanceObligationCategory::from((string) $row->getRawOriginal('category'))->label(),
+                'amount' => Decimal::normalize((string) $row->amount),
+            ])->all();
     }
 
     /** @return array<int,array<string,mixed>> */
@@ -183,6 +206,7 @@ class FinanceMonthlySituationService
     private function cutoff(FinancePeriod $period): Carbon
     {
         $today = now()->startOfDay();
+
         return $today->lt($period->end) ? $today : $period->end->copy()->startOfDay();
     }
 
@@ -203,12 +227,20 @@ class FinanceMonthlySituationService
         $planned = Decimal::normalize((string) $obligation->planned_amount);
         $paid = Decimal::normalize((string) ($obligation->getAttribute('paid_amount') ?? '0'));
         $remaining = Decimal::subtract($planned, $paid);
-        if (Decimal::compare($remaining, '0.0000') < 0) $remaining = '0.0000';
-        if ($obligation->cancelled_at) [$status, $label] = ['cancelled', 'Annulée'];
-        elseif (Decimal::compare($remaining, '0.0000') === 0) [$status, $label] = ['paid', 'Payée'];
-        elseif ($obligation->due_date->lt($cutoff)) [$status, $label] = ['overdue', 'En retard'];
-        elseif (Decimal::compare($paid, '0.0000') > 0) [$status, $label] = ['partial', 'Partiellement payée'];
-        else [$status, $label] = ['upcoming', 'À venir'];
+        if (Decimal::compare($remaining, '0.0000') < 0) {
+            $remaining = '0.0000';
+        }
+        if ($obligation->cancelled_at) {
+            [$status, $label] = ['cancelled', 'Annulée'];
+        } elseif (Decimal::compare($remaining, '0.0000') === 0) {
+            [$status, $label] = ['paid', 'Payée'];
+        } elseif ($obligation->due_date->lt($cutoff)) {
+            [$status, $label] = ['overdue', 'En retard'];
+        } elseif (Decimal::compare($paid, '0.0000') > 0) {
+            [$status, $label] = ['partial', 'Partiellement payée'];
+        } else {
+            [$status, $label] = ['upcoming', 'À venir'];
+        }
 
         return [
             'id' => $obligation->id,
@@ -253,15 +285,16 @@ class FinanceMonthlySituationService
                 'payment_id' => $allocation->outgoingPayment->id,
                 'reversal_reason' => $allocation->outgoingPayment->reversal_reason,
             ])->values()->all(),
-            'committed_amount' => $obligation->paymentInstruments->whereIn('state', [\App\Enums\FinancePaymentInstrumentState::Issued, \App\Enums\FinancePaymentInstrumentState::Presented])->reduce(fn (string $sum, $row) => Decimal::add($sum, (string) $row->amount), '0.0000'),
+            'committed_amount' => $obligation->paymentInstruments->whereIn('state', [FinancePaymentInstrumentState::Issued, FinancePaymentInstrumentState::Presented])->reduce(fn (string $sum, $row) => Decimal::add($sum, (string) $row->amount), '0.0000'),
             'instruments' => $obligation->paymentInstruments->map(function ($instrument) use ($cutoff) {
                 $status = match ($instrument->state) {
-                    \App\Enums\FinancePaymentInstrumentState::Cleared => ['cleared', 'Payé / Compensé'],
-                    \App\Enums\FinancePaymentInstrumentState::Cancelled => ['cancelled', 'Annulé'],
-                    \App\Enums\FinancePaymentInstrumentState::Returned => ['returned', 'Retourné'],
-                    \App\Enums\FinancePaymentInstrumentState::Presented => ['presented', 'Présenté'],
+                    FinancePaymentInstrumentState::Cleared => ['cleared', 'Payé / Compensé'],
+                    FinancePaymentInstrumentState::Cancelled => ['cancelled', 'Annulé'],
+                    FinancePaymentInstrumentState::Returned => ['returned', 'Retourné'],
+                    FinancePaymentInstrumentState::Presented => ['presented', 'Présenté'],
                     default => $instrument->maturity_date->lt($cutoff) ? ['overdue', 'En retard'] : ($instrument->maturity_date->isSameDay($cutoff) ? ['due', 'À échéance'] : ['upcoming', 'À venir']),
                 };
+
                 return ['id' => $instrument->id, 'number' => $instrument->instrument_number, 'type' => $instrument->type->value,
                     'external_reference' => $instrument->external_reference, 'amount' => (string) $instrument->amount,
                     'issue_date' => $instrument->issue_date->toDateString(), 'maturity_date' => $instrument->maturity_date->toDateString(),
@@ -277,7 +310,9 @@ class FinanceMonthlySituationService
         $planned = Decimal::normalize((string) $row->planned_amount);
         $paid = Decimal::normalize((string) ($row->getAttribute('paid_amount') ?? '0'));
         $remaining = Decimal::subtract($planned, $paid);
-        if (Decimal::compare($remaining, '0.0000') < 0) $remaining = '0.0000';
+        if (Decimal::compare($remaining, '0.0000') < 0) {
+            $remaining = '0.0000';
+        }
         $status = $row->cancelled_at ? 'Annulée' : (Decimal::compare($remaining, '0.0000') === 0 ? 'Payée'
             : ($row->due_date->lt($cutoff) ? 'En retard' : (Decimal::compare($paid, '0.0000') > 0 ? 'Partiellement payée' : 'À venir')));
 

@@ -1,8 +1,10 @@
 import { Button, ButtonLink } from '@/components/ui/Button';
+import { OrderStatesChart, RankedMoneyChart, SalesCollectionsChart } from '@/components/dashboard/DashboardCharts';
 import { TextField } from '@/components/ui/form';
 import ApplicationShell from '@/layouts/ApplicationShell';
 import type { SharedPageProps, TenantOrganization, TenantStore } from '@/types/app';
-import { Head, Link, useForm, usePage } from '@inertiajs/react';
+import { formatInteger, formatMoney } from '@/utils/format';
+import { Head, Link, router, useForm, usePage } from '@inertiajs/react';
 import type { FormEvent } from 'react';
 
 type Props = {
@@ -17,6 +19,25 @@ type Props = {
         out_of_stock_articles_pending: number | null;
     };
     onboarding: { organization: boolean; store: boolean; products: boolean; stock: boolean; first_sale: boolean };
+    executiveDashboard: null | {
+        period: { month: string; label: string };
+        primary: {
+            net_sales: { value: string; variation: string | null };
+            net_collections: { value: string; variation: string | null };
+            orders: { value: number; variation: string | null };
+            receivables: { value: string; variation: null };
+        };
+        secondary: {
+            average_basket: string; partial_orders: number; unpaid_orders: number; refunds: string;
+            returns: { count: number; amount: string }; out_of_stock: number;
+        };
+        charts: {
+            sales_vs_collections: Array<{ label: string; sales: string; collections: string }>;
+            order_states: { paid: number; partially_paid: number; unpaid: number };
+            top_products: Array<{ label: string; value: string; quantity: string }>;
+        };
+        attention: Array<{ label: string; value: string | number; kind: 'money' | 'count'; href: string }>;
+    };
 };
 
 const checklist = [
@@ -27,7 +48,7 @@ const checklist = [
     ['first_sale', 'Réaliser votre première vente'],
 ] as const;
 
-export default function PlatformIndex({ organizations, stores, dashboard, onboarding }: Props) {
+export default function PlatformIndex({ organizations, stores, dashboard, onboarding, executiveDashboard }: Props) {
     const page = usePage<SharedPageProps>();
     const { tenant, auth } = page.props;
     const organizationForm = useForm({ name: '' });
@@ -154,7 +175,7 @@ export default function PlatformIndex({ organizations, stores, dashboard, onboar
                     )}
                 </div>
             ) : (
-                <div className="space-y-7">
+                <div className="space-y-6">
                     <header className="flex flex-wrap items-start justify-between gap-4">
                         <div>
                             <h1 className="text-2xl font-semibold tracking-tight text-ink">Bonjour {firstName}</h1>
@@ -163,43 +184,71 @@ export default function PlatformIndex({ organizations, stores, dashboard, onboar
                                 {tenant.store ? ` · ${tenant.store.name}` : ''}
                             </p>
                         </div>
-                        {tenant.store && can('pos.access') && <ButtonLink href="/pos" size="lg">Nouvelle vente</ButtonLink>}
+                        <div className="flex flex-wrap items-end gap-3">
+                            {executiveDashboard && (
+                                <label className="block">
+                                    <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-ink-faint">Période</span>
+                                    <input type="month" value={executiveDashboard.period.month} onChange={(event) => event.target.value && router.get('/platform', { month: event.target.value }, { preserveState: true, preserveScroll: true })} className="h-10 rounded-field border border-line-strong bg-surface px-3 text-sm text-ink" />
+                                </label>
+                            )}
+                            {tenant.store && can('pos.access') && <ButtonLink href="/pos" size="lg">Nouvelle vente</ButtonLink>}
+                        </div>
                     </header>
 
-                    {quickEntries.length > 0 && (
-                        <section>
-                            <h2 className="mb-3 text-[13px] font-semibold uppercase tracking-wider text-ink-faint">Accès rapide</h2>
-                            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                                {quickEntries.map((entry) => (
-                                    <Link
-                                        key={entry.href}
-                                        href={entry.href}
-                                        className="rounded-card border border-line bg-surface p-4 text-sm font-medium text-ink shadow-card transition-soft hover:border-line-strong hover:bg-raised"
-                                    >
-                                        {entry.label}
-                                    </Link>
+                    {executiveDashboard ? (
+                        <>
+                            <section aria-labelledby="executive-kpis">
+                                <div className="mb-3 flex items-end justify-between gap-3">
+                                    <div><h2 id="executive-kpis" className="text-[13px] font-semibold uppercase tracking-wider text-ink-faint">Vue d’ensemble</h2><p className="mt-1 text-sm text-ink-muted">{executiveDashboard.period.label}</p></div>
+                                    <span className="text-xs text-ink-faint">{tenant.store ? tenant.store.name : 'Organisation entière'}</span>
+                                </div>
+                                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                                    <ExecutiveKpi label="Ventes nettes" value={formatMoney(executiveDashboard.primary.net_sales.value)} variation={executiveDashboard.primary.net_sales.variation} href="/finance/ventes" />
+                                    <ExecutiveKpi label="Encaissements nets" value={formatMoney(executiveDashboard.primary.net_collections.value)} variation={executiveDashboard.primary.net_collections.variation} href="/finance/ca-encaisse" />
+                                    <ExecutiveKpi label="Commandes" value={formatInteger(executiveDashboard.primary.orders.value)} variation={executiveDashboard.primary.orders.variation} href="/sales/orders" />
+                                    <ExecutiveKpi label="Créances clients" value={formatMoney(executiveDashboard.primary.receivables.value)} variation={null} href="/finance/creances" />
+                                </div>
+                            </section>
+
+                            <div className="grid gap-5 xl:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]">
+                                <SalesCollectionsChart points={executiveDashboard.charts.sales_vs_collections} />
+                                <OrderStatesChart states={executiveDashboard.charts.order_states} />
+                            </div>
+
+                            <section aria-label="Indicateurs secondaires" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+                                <CompactMetric label="Panier moyen" value={formatMoney(executiveDashboard.secondary.average_basket)} />
+                                <CompactMetric label="Partiellement payées" value={formatInteger(executiveDashboard.secondary.partial_orders)} />
+                                <CompactMetric label="Non payées" value={formatInteger(executiveDashboard.secondary.unpaid_orders)} />
+                                <CompactMetric label="Remboursements" value={formatMoney(executiveDashboard.secondary.refunds)} />
+                                <CompactMetric label="Retours reçus" value={`${formatInteger(executiveDashboard.secondary.returns.count)} · ${formatMoney(executiveDashboard.secondary.returns.amount)}`} />
+                                <CompactMetric label="Articles à cataloguer" value={formatInteger(executiveDashboard.secondary.out_of_stock)} />
+                            </section>
+
+                            <div className="grid gap-5 lg:grid-cols-[minmax(0,1.4fr)_minmax(300px,.8fr)]">
+                                <RankedMoneyChart title="Top produits" description="Top 5 par chiffre d’affaires TTC des lignes vendues" points={executiveDashboard.charts.top_products} emptyLabel="Aucune vente produit sur cette période." />
+                                <section className="rounded-card border border-line bg-surface p-5 shadow-card">
+                                    <h2 className="font-semibold text-ink">À surveiller</h2>
+                                    <p className="mt-1 text-[13px] text-ink-muted">Points opérationnels nécessitant une attention.</p>
+                                    <div className="mt-4 divide-y divide-line">
+                                        {executiveDashboard.attention.map((item) => <Link key={item.label} href={item.href} className="flex items-center justify-between gap-4 py-3 text-sm hover:text-primary"><span className="text-ink-muted">{item.label}</span><strong className="tabular-nums text-ink">{item.kind === 'money' ? formatMoney(item.value) : formatInteger(Number(item.value))}</strong></Link>)}
+                                    </div>
+                                </section>
+                            </div>
+                        </>
+                    ) : (
+                        <section aria-labelledby="activity-title">
+                            <h2 id="activity-title" className="mb-3 text-[13px] font-semibold uppercase tracking-wider text-ink-faint">Votre activité</h2>
+                            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                                {metrics.filter((metric) => can(metric.permission) && (!metric.needsStore || tenant.store)).map((metric) => (
+                                    <Link key={metric.label} href={metric.href} className="rounded-card border border-line bg-surface p-5 shadow-card transition-soft hover:border-line-strong"><p className="text-sm text-ink-muted">{metric.label}</p><p className="mt-2 text-3xl font-semibold tabular-nums text-ink">{metric.value ?? '—'}</p></Link>
                                 ))}
                             </div>
                         </section>
                     )}
 
-                    <section aria-labelledby="activity-title">
-                        <h2 id="activity-title" className="mb-3 text-[13px] font-semibold uppercase tracking-wider text-ink-faint">Votre activité</h2>
-                        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                            {metrics
-                                .filter((metric) => can(metric.permission) && (!metric.needsStore || tenant.store))
-                                .map((metric) => (
-                                    <Link
-                                        key={metric.label}
-                                        href={metric.href}
-                                        className="rounded-card border border-line bg-surface p-5 shadow-card transition-soft hover:border-line-strong"
-                                    >
-                                        <p className="text-sm text-ink-muted">{metric.label}</p>
-                                        <p className="mt-2 text-3xl font-semibold tabular-nums text-ink">{metric.value ?? '—'}</p>
-                                    </Link>
-                                ))}
-                        </div>
-                    </section>
+                    {quickEntries.length > 0 && (
+                        <section><h2 className="mb-3 text-[13px] font-semibold uppercase tracking-wider text-ink-faint">Accès rapide</h2><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{quickEntries.map((entry) => <Link key={entry.href} href={entry.href} className="rounded-card border border-line bg-surface p-4 text-sm font-medium text-ink transition-soft hover:border-line-strong hover:bg-raised">{entry.label}</Link>)}</div></section>
+                    )}
 
                     <div className="grid gap-6 lg:grid-cols-[1.25fr_1fr]">
                         <section className="rounded-card border border-line bg-surface p-6 shadow-card">
@@ -237,6 +286,23 @@ export default function PlatformIndex({ organizations, stores, dashboard, onboar
             )}
         </ApplicationShell>
     );
+}
+
+function ExecutiveKpi({ label, value, variation, href }: { label: string; value: string; variation: string | null; href: string }) {
+    const numericVariation = variation === null ? null : Number(variation);
+    return (
+        <Link href={href} className="rounded-card border border-line bg-surface p-5 shadow-card transition-soft hover:border-line-strong">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-faint">{label}</p>
+            <p className="mt-3 text-3xl font-semibold tabular-nums tracking-tight text-ink">{value}</p>
+            <p className={`mt-2 text-xs font-medium ${numericVariation === null ? 'text-ink-faint' : numericVariation >= 0 ? 'text-success' : 'text-danger'}`}>
+                {numericVariation === null ? 'Comparaison indisponible' : `${numericVariation >= 0 ? '+' : ''}${numericVariation.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} % vs mois précédent`}
+            </p>
+        </Link>
+    );
+}
+
+function CompactMetric({ label, value }: { label: string; value: string }) {
+    return <div className="rounded-card border border-line bg-raised px-4 py-3"><p className="text-[11px] uppercase tracking-wide text-ink-faint">{label}</p><p className="mt-1.5 font-semibold tabular-nums text-ink">{value}</p></div>;
 }
 
 function Step({ index, label, state }: { index: number; label: string; state: 'todo' | 'current' | 'done' }) {

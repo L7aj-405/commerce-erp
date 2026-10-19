@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Organization;
 use App\Models\Store;
 use App\Services\ActiveTenantContext;
+use App\Services\Dashboards\ExecutiveDashboardService;
 use App\Services\Finance\FinanceAccessGuard;
 use App\Services\Finance\FinanceCaEncaisseService;
 use App\Services\Finance\FinanceInvoiceReadModel;
@@ -33,20 +34,22 @@ class FinanceDashboardController extends Controller
         Request $request,
         ActiveTenantContext $context,
         FinanceAccessGuard $guard,
-        FinanceMonthlyReportService $report,
+        ExecutiveDashboardService $dashboard,
     ): Response {
         $organization = $context->organizationOrFail();
         $guard->authorizeView($request->user(), $organization);
 
         $period = $this->period($request);
         $store = $guard->resolveStore($organization, $request->query('store_id'));
+        $analytics = $dashboard->finance($organization, $period, $store);
 
         return Inertia::render('Finance/Situation', [
             'organization' => $organization->only(['id', 'name']),
             'period' => $period->month,
             'storeId' => $store?->id,
             'stores' => $this->stores($organization),
-            'situation' => $report->situation($organization, $period, $store),
+            'situation' => $analytics['situation'],
+            'dashboard' => $analytics,
             'can' => [
                 'receivables' => $request->user()->hasPermission($organization, 'finance.receivables.view')
                     || $request->user()->hasPermission($organization, 'finance.view'),

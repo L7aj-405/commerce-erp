@@ -35,12 +35,14 @@ class FinanceReceivablesService
      * The Créances clients page is SalesOrder-based: confirmed orders whose
      * authoritative balance was still positive at the selected month end.
      *
-     * @return array{total: string, orders: LengthAwarePaginator}
+     * @return array{total: string, orders: LengthAwarePaginator, status_counts: array{unpaid:int,partially_paid:int}, status_amounts: array{unpaid:string,partially_paid:string}}
      */
     public function salesOrderReceivablesAsOf(Organization $organization, Carbon $asOf, ?Store $store, int $perPage = 30): array
     {
         $rows = collect();
         $total = '0.0000';
+        $statusCounts = ['unpaid' => 0, 'partially_paid' => 0];
+        $statusAmounts = ['unpaid' => '0.0000', 'partially_paid' => '0.0000'];
 
         SalesOrder::query()
             ->withoutGlobalScopes()
@@ -52,7 +54,7 @@ class FinanceReceivablesService
                 'id', 'organization_id', 'store_id', 'order_number', 'sale_date',
                 'customer_name', 'customer_company', 'total_incl_tax', 'currency_code', 'status',
             ])
-            ->chunkById(500, function ($orders) use ($asOf, $rows, &$total) {
+            ->chunkById(500, function ($orders) use ($asOf, $rows, &$total, &$statusCounts, &$statusAmounts) {
                 $summaries = $this->payments->summaries($orders, $asOf);
 
                 foreach ($orders as $order) {
@@ -62,6 +64,9 @@ class FinanceReceivablesService
                     }
 
                     $total = Decimal::add($total, $summary['remaining']);
+                    $status = $summary['status'] === 'partially_paid' ? 'partially_paid' : 'unpaid';
+                    $statusCounts[$status]++;
+                    $statusAmounts[$status] = Decimal::add($statusAmounts[$status], $summary['remaining']);
                     $rows->push([
                         'id' => $order->getKey(),
                         'order_number' => $order->order_number,
@@ -90,7 +95,12 @@ class FinanceReceivablesService
         );
         $paginator->withQueryString();
 
-        return ['total' => $total, 'orders' => $paginator];
+        return [
+            'total' => $total,
+            'orders' => $paginator,
+            'status_counts' => $statusCounts,
+            'status_amounts' => $statusAmounts,
+        ];
     }
 
     /** The organization-wide (or one-store) outstanding total as of a date — a single aggregate query. */
