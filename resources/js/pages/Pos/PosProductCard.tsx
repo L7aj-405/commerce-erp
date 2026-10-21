@@ -2,6 +2,7 @@ import ProductImage from '@/components/catalog/ProductImage';
 import { Money, Quantity } from '@/components/pos/primitives';
 import type { PosCardSize } from '@/components/pos/usePosPreferences';
 import { Spinner } from '@/components/ui/Spinner';
+import { useI18n } from '@/i18n';
 import type { ProductResult } from './types';
 
 type Props = {
@@ -24,6 +25,7 @@ const sizeConfig: Record<PosCardSize, { pad: string; aspect: string; name: strin
 };
 
 export default function PosProductCard({ product, onAdd, pending = false, added = false, size = 'normal', showImage = true, showLocalStock = true, showCompanyStock = true }: Props) {
+    const { t } = useI18n();
     const local = Number(product.stock.available);
     const total = Number(product.stock.total_available);
     const taxMissing = product.tax_config_missing === true;
@@ -41,8 +43,8 @@ export default function PosProductCard({ product, onAdd, pending = false, added 
             onClick={() => sellable && !pending && onAdd(product)}
             disabled={!sellable || pending}
             aria-busy={pending || undefined}
-            title={taxMissing ? 'Aucune taxe par défaut n’est configurée pour ce magasin.' : undefined}
-            className={`group relative flex h-full flex-col rounded-card border bg-surface ${c.pad} text-left transition-soft hover:shadow-card focus-visible:outline-2 disabled:cursor-not-allowed ${
+            title={taxMissing ? t('pos.taxMissing') : undefined}
+            className={`group relative flex h-full flex-col rounded-card border bg-surface ${c.pad} text-start transition-soft hover:shadow-card focus-visible:outline-2 disabled:cursor-not-allowed ${
                 added ? 'border-success ring-2 ring-success/25' : 'border-line hover:border-line-strong'
             } ${!sellable && !pending ? 'opacity-55' : ''}`}
         >
@@ -51,12 +53,12 @@ export default function PosProductCard({ product, onAdd, pending = false, added 
                 <span className="absolute inset-0 z-20 grid place-items-center rounded-card bg-surface/70">
                     {pending ? (
                         <span className="inline-flex items-center gap-1.5 rounded-full bg-surface px-2.5 py-1 text-[11px] font-medium text-ink-muted shadow-card">
-                            <Spinner size="xs" /> Ajout…
+                            <Spinner size="xs" /> {t('pos.adding')}
                         </span>
                     ) : (
                         <span className="inline-flex items-center gap-1.5 rounded-full bg-success-soft px-2.5 py-1 text-[11px] font-semibold text-success shadow-card">
                             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" aria-hidden="true"><path d="m5 13 4 4L19 7" /></svg>
-                            Ajouté
+                            {t('pos.added')}
                         </span>
                     )}
                 </span>
@@ -64,11 +66,11 @@ export default function PosProductCard({ product, onAdd, pending = false, added 
 
             {(taxMissing || remote || low || backorder) && (
                 <span
-                    className={`absolute right-2 top-2 z-10 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
+                    className={`absolute end-2 top-2 z-10 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
                         taxMissing ? 'bg-danger-soft text-danger' : backorder ? 'bg-warning-soft text-warning' : remote ? 'bg-warning-soft text-warning' : 'bg-sage text-ink-muted'
                     }`}
                 >
-                    {taxMissing ? 'Taxe ?' : backorder ? 'Sur commande' : remote ? 'Interne' : 'Dernier'}
+                    {taxMissing ? t('pos.taxUnknown') : backorder ? t('pos.backorder') : remote ? t('pos.internal') : t('pos.last')}
                 </span>
             )}
 
@@ -81,16 +83,16 @@ export default function PosProductCard({ product, onAdd, pending = false, added 
             <div className={`flex flex-1 flex-col ${showImage ? 'mt-2' : ''}`}>
                 <p className={`line-clamp-2 font-semibold text-ink ${c.name}`}>{product.product_name}</p>
                 {size !== 'compact' && product.variant_name && <p className="text-[11px] text-ink-muted">{product.variant_name}</p>}
-                <p className={`mt-1 font-semibold text-ink ${c.price}`}><Money value={product.unit_price_incl_tax} /> <span className="text-[10px] font-normal text-ink-faint">TTC</span></p>
+                <p className={`mt-1 font-semibold text-ink ${c.price}`}><Money value={product.unit_price_incl_tax} /> <span className="text-[10px] font-normal text-ink-faint">{t('pos.vatIncluded')}</span></p>
                 {(showLocalStock || showCompanyStock) && (
                     <p className={`mt-0.5 text-[11px] ${backorder ? 'text-warning' : 'text-ink-muted'}`}>
                         {backorder ? (
-                            'Stock société : 0 · Sur commande fournisseur'
+                            t('pos.companyBackorder')
                         ) : (
                             <>
-                                {showLocalStock && <><Quantity value={product.stock.available} /> ici</>}
+                                {showLocalStock && <><Quantity value={product.stock.available} /> {t('pos.here')}</>}
                                 {showLocalStock && showCompanyStock && ' · '}
-                                {showCompanyStock && <><Quantity value={product.stock.total_available} /> société</>}
+                                {showCompanyStock && <><Quantity value={product.stock.total_available} /> {t('pos.companyShort')}</>}
                             </>
                         )}
                     </p>

@@ -4,6 +4,7 @@ import { useToast } from '@/components/ui/toast';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { usePendingKeys } from '@/hooks/usePendingKeys';
 import { useSerializedByKey } from '@/hooks/useSerializedByKey';
+import { useI18n } from '@/i18n';
 import PosLayout from '@/layouts/PosLayout';
 import { Head, Link, router } from '@inertiajs/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -89,6 +90,7 @@ export default function PosIndex({
     financialAccounts,
     completedOrder,
 }: Props) {
+    const { t } = useI18n();
     const toast = useToast();
     const pending = usePendingKeys();
     const serialized = useSerializedByKey();
@@ -153,11 +155,11 @@ export default function PosIndex({
             /* storage unavailable */
         }
         if (printed) {
-            toast.info('Préparation du reçu…', { duration: 1400 });
+            toast.info(t('pos.prepareReceipt'), { duration: 1400 });
             window.setTimeout(() => window.print(), 150);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [completedOrder]);
+    }, [completedOrder, t, toast]);
 
     const sync = useCallback((payload: DraftStatePayload) => {
         activeSaleRef.current = payload.active_sale;
@@ -174,24 +176,24 @@ export default function PosIndex({
                     if (options.success) toast.success(options.success);
                     return true;
                 } catch (error) {
-                    toast.error(posErrorMessage(error));
+                    toast.error(posErrorMessage(error, t('pos.operationFailed')));
                     return false;
                 }
             });
             return outcome === true;
         },
-        [pending, toast],
+        [pending, t, toast],
     );
 
     async function ensureDraft(): Promise<ActiveSale> {
         if (activeSaleRef.current) return activeSaleRef.current;
         if (ensureDraftRef.current) return ensureDraftRef.current;
-        if (!warehouseId) throw new Error('Sélectionnez un entrepôt opérationnel.');
+        if (!warehouseId) throw new Error(t('pos.selectOperationalWarehouse'));
 
         const creation = (async () => {
             const payload = await posJson<DraftStatePayload>('/pos/drafts', { method: 'POST', body: { warehouse_id: warehouseId } });
             sync(payload);
-            if (!payload.active_sale) throw new Error('Impossible d’ouvrir une nouvelle vente.');
+            if (!payload.active_sale) throw new Error(t('pos.openSaleFailed'));
             return payload.active_sale;
         })();
         ensureDraftRef.current = creation;
@@ -256,7 +258,7 @@ export default function PosIndex({
                 }
             } catch (error) {
                 setOptimisticQty((current) => omitKey(current, lineId));
-                toast.error(posErrorMessage(error));
+                toast.error(posErrorMessage(error, t('pos.operationFailed')));
             } finally {
                 pending.stop(key);
             }
@@ -338,7 +340,7 @@ export default function PosIndex({
 
                 await refreshDraft();
             },
-            { success: 'Approvisionnement fournisseur enregistré' },
+            { success: t('pos.procurementSaved') },
         );
     }
 
@@ -349,7 +351,7 @@ export default function PosIndex({
             try {
                 await updateDraftFields({ global_discount_type: type, global_discount_value: type === 'none' ? '0' : value });
             } catch (error) {
-                toast.error(posErrorMessage(error));
+                toast.error(posErrorMessage(error, t('pos.operationFailed')));
             } finally {
                 pending.stop(key);
             }
@@ -365,13 +367,13 @@ export default function PosIndex({
                 setPanelMode('cart');
                 setOptimisticQty({});
             },
-            { success: 'Vente mise en attente' },
+            { success: t('pos.saleHeld') },
         );
     }
 
     function createNewSale() {
         if (activeSaleRef.current && activeSaleRef.current.lines.length > 0) {
-            if (!window.confirm('La vente active contient des articles. La mettre en attente et démarrer une nouvelle vente ?')) return;
+            if (!window.confirm(t('pos.holdConfirm'))) return;
             holdCurrent(true);
             return;
         }
@@ -416,12 +418,12 @@ export default function PosIndex({
                 setPanelMode('cart');
                 setOptimisticQty({});
             },
-            { success: `Vente ${sale.order_number} reprise` },
+            { success: t('pos.saleResumed').replace('{order}', sale.order_number) },
         );
     }
 
     function deleteHeldSale(sale: HeldSale) {
-        if (!window.confirm(`Supprimer la vente en attente ${sale.order_number} ?`)) return;
+        if (!window.confirm(t('pos.deleteHeldConfirm').replace('{order}', sale.order_number))) return;
         void perform(`sale:delete:${sale.id}`, async () => {
             sync(await posJson<DraftStatePayload>(`/pos/drafts/${sale.id}`, { method: 'DELETE' }));
         });
@@ -432,7 +434,7 @@ export default function PosIndex({
             try {
                 await ensureDraft();
             } catch (error) {
-                toast.error(posErrorMessage(error));
+                toast.error(posErrorMessage(error, t('pos.operationFailed')));
                 return;
             }
         }
@@ -500,7 +502,7 @@ export default function PosIndex({
                         /* noop */
                     }
                     const messages = Object.values(pageErrors).flatMap((value) => (Array.isArray(value) ? value : [value]));
-                    setReviewError(messages[0] ?? 'La vente n’a pas pu être enregistrée.');
+                    setReviewError(messages[0] ?? t('pos.saleFailed'));
                 },
             },
         );
@@ -529,13 +531,13 @@ export default function PosIndex({
     if (!store) {
         return (
             <PosLayout>
-                <Head title="Point de vente" />
+                <Head title={t('pos.pointOfSale')} />
                 <div className="flex h-full items-center justify-center p-6">
                     <div className="max-w-md rounded-card border border-line bg-surface p-6 shadow-card">
-                        <h2 className="text-lg font-semibold text-ink">Sélectionnez un magasin actif</h2>
-                        <p className="mt-2 text-sm text-ink-muted">Choisissez une organisation et un magasin depuis la barre supérieure pour ouvrir le point de vente.</p>
+                        <h2 className="text-lg font-semibold text-ink">{t('pos.selectActiveStore')}</h2>
+                        <p className="mt-2 text-sm text-ink-muted">{t('pos.selectActiveStoreHelp')}</p>
                         <Link href="/platform" className="mt-4 inline-flex rounded-field bg-primary px-4 py-2 text-sm font-medium text-primary-fg">
-                            Retour au tableau de bord
+                            {t('pos.backDashboard')}
                         </Link>
                     </div>
                 </div>
@@ -545,13 +547,13 @@ export default function PosIndex({
 
     return (
         <PosLayout>
-            <Head title="Point de vente" />
+            <Head title={t('pos.pointOfSale')} />
 
             <div className="flex h-full min-h-0 flex-col gap-2 p-3">
                 {/* Slim workspace strip */}
                 <div className="flex shrink-0 flex-wrap items-center gap-2">
                     <label className="flex items-center gap-2 text-[12px] text-ink-muted">
-                        Entrepôt
+                        {t('pos.warehouse')}
                         <select
                             value={warehouseId ?? ''}
                             onChange={(event) => {
@@ -561,11 +563,11 @@ export default function PosIndex({
                             disabled={Boolean(activeSale?.lines.length) || pending.isPending('warehouse:change')}
                             className="h-9 rounded-field border border-line-strong bg-surface px-2 text-[13px] text-ink outline-none focus:border-primary lg:h-8"
                         >
-                            <option value="">Sélectionner…</option>
+                            <option value="">{t('pos.select')}</option>
                             {warehouses.map((warehouse) => (
                                 <option key={warehouse.id} value={warehouse.id}>
                                     {warehouse.name} · {warehouse.code}
-                                    {warehouse.id === memberDefaultWarehouseId ? ' (par défaut)' : ''}
+                                    {warehouse.id === memberDefaultWarehouseId ? ` (${t('pos.default')})` : ''}
                                 </option>
                             ))}
                         </select>
@@ -577,8 +579,8 @@ export default function PosIndex({
                             className="relative flex h-9 items-center gap-1.5 rounded-field border border-line-strong bg-surface px-3 text-[13px] font-medium text-ink-muted transition-soft hover:text-ink"
                         >
                             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M4 6h16M7 12h10M10 18h4" /></svg>
-                            Filtres
-                            {filtersActive(filters) && <span className="absolute -right-1 -top-1 size-2.5 rounded-full bg-primary" />}
+                            {t('pos.filters')}
+                            {filtersActive(filters) && <span className="absolute -end-1 -top-1 size-2.5 rounded-full bg-primary" />}
                         </button>
                     )}
                 </div>
@@ -659,7 +661,7 @@ export default function PosIndex({
                             >
                                 <span className="flex items-center gap-2 text-sm font-semibold">
                                     <span className="grid size-6 shrink-0 place-items-center rounded-full bg-primary-fg/20 text-[12px]">{mobileCartCount}</span>
-                                    Voir le panier
+                                    {t('pos.viewCart')}
                                 </span>
                                 <span className="text-sm font-semibold">
                                     <Money value={decoratedSale?.summary?.total ?? '0'} currency={currencyCode} />
@@ -723,7 +725,7 @@ export default function PosIndex({
                         onClick={() => setMobileFiltersOpen(false)}
                         className="flex min-h-11 w-full items-center justify-center rounded-field bg-primary px-4 text-sm font-semibold text-primary-fg transition-soft hover:bg-primary-hover"
                     >
-                        Voir les résultats
+                        {t('pos.viewResults')}
                     </button>
                 }
             >
@@ -806,11 +808,11 @@ function omitKey<T extends Record<number, unknown>>(source: T, key: number): T {
     return next;
 }
 
-function posErrorMessage(error: unknown): string {
+function posErrorMessage(error: unknown, fallback: string): string {
     if (error && typeof error === 'object' && 'errors' in error) {
         const values = Object.values((error as { errors?: Record<string, string[]> }).errors ?? {}).flat();
         if (values.length > 0) return values[0];
     }
     if (error instanceof Error && error.message) return error.message;
-    return 'L’opération POS a échoué.';
+    return fallback;
 }

@@ -6,6 +6,7 @@ import PageHeader from '@/components/ui/PageHeader';
 import Pagination from '@/components/ui/Pagination';
 import SearchInput from '@/components/ui/SearchInput';
 import InventoryLayout from '@/layouts/InventoryLayout';
+import { useI18n } from '@/i18n';
 import { formatInteger, formatQuantity } from '@/utils/format';
 import { Head, Link, router, useForm } from '@inertiajs/react';
 import type { FormEvent } from 'react';
@@ -36,6 +37,7 @@ type Props = {
 };
 
 export default function StockIndex({ balances, filters, warehouses, brands, categories, variants, can }: Props) {
+    const { t } = useI18n();
     const [search, setSearch] = useState(filters.search ?? '');
     const [searching, setSearching] = useState(false);
     const opening = useForm({ warehouse_id: String(filters.warehouse ?? ''), product_variant_id: '', quantity: '', reason: '', reference: '' });
@@ -63,8 +65,8 @@ export default function StockIndex({ balances, filters, warehouses, brands, cate
     const totalReserved = balances.data.reduce((carry, row) => carry + Number(row.summary.reserved), 0);
     const outOfStockCount = balances.data.filter((row) => Number(row.summary.available) <= 0).length;
     const stockState = (row: StockRow) => Number(row.summary.available) > 0
-        ? { label: 'En stock', className: 'bg-success-soft text-success' }
-        : { label: 'Rupture', className: 'bg-danger-soft text-danger' };
+        ? { label: t('inventory.stock.inStock'), className: 'bg-success-soft text-success' }
+        : { label: t('inventory.stock.outOfStock'), className: 'bg-danger-soft text-danger' };
 
     function resetFilters() {
         setSearch('');
@@ -89,67 +91,67 @@ export default function StockIndex({ balances, filters, warehouses, brands, cate
 
     return (
         <InventoryLayout wide>
-            <Head title="État du stock" />
+            <Head title={t('inventory.stock.title')} />
             <PageHeader
-                title="État du stock"
-                description="Vue actuelle des disponibilités par produit et entrepôt."
-                actions={can.transfer ? <ButtonLink href="/inventory/transfers/create">Nouveau transfert</ButtonLink> : undefined}
+                title={t('inventory.stock.title')}
+                description={t('inventory.stock.description')}
+                actions={can.transfer ? <ButtonLink href="/inventory/transfers/create">{t('inventory.stock.newTransfer')}</ButtonLink> : undefined}
             />
 
             {warehouses.length === 0 ? (
                 <EmptyState
-                    title="Aucun entrepôt de stock."
-                    description="Créez votre premier entrepôt pour commencer à gérer le stock."
-                    actions={<ButtonLink href="/inventory/warehouses">+ Ajouter un entrepôt</ButtonLink>}
+                    title={t('inventory.stock.noWarehouse')}
+                    description={t('inventory.stock.noWarehouseHelp')}
+                    actions={<ButtonLink href="/inventory/warehouses">{t('inventory.stock.addWarehouse')}</ButtonLink>}
                 />
             ) : (
                 <>
                     <section className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                        <MetricCard label="Produits / Variantes" value={formatInteger(productCount)} />
-                        <MetricCard label="Disponible" value={formatQuantity(totalAvailable)} />
-                        <MetricCard label="Réservé" value={formatQuantity(totalReserved)} />
-                        <MetricCard label="Ruptures visibles" value={formatInteger(outOfStockCount)} tone={outOfStockCount > 0 ? 'danger' : 'neutral'} />
+                        <MetricCard label={t('inventory.stock.productsVariants')} value={formatInteger(productCount)} />
+                        <MetricCard label={t('inventory.stock.available')} value={formatQuantity(totalAvailable)} />
+                        <MetricCard label={t('inventory.stock.reserved')} value={formatQuantity(totalReserved)} />
+                        <MetricCard label={t('inventory.stock.visibleOutages')} value={formatInteger(outOfStockCount)} tone={outOfStockCount > 0 ? 'danger' : 'neutral'} />
                     </section>
 
                     <section className="mb-6 rounded-card border border-line bg-surface p-4 shadow-soft">
                         <div className="grid gap-2 xl:grid-cols-[minmax(260px,1fr)_190px_180px_190px_190px_auto]">
-                            <SearchInput value={search} onChange={setSearch} searching={searching} placeholder="Produit, SKU, référence, code-barres ou marque" />
-                            <FilterSelect aria-label="Entrepôt" value={filters.warehouse ?? ''} onChange={event => visit({ ...filters, search: search || undefined, warehouse: event.target.value ? Number(event.target.value) : undefined, page: undefined })}>
-                                <option value="">Tous les entrepôts</option>
+                            <SearchInput value={search} onChange={setSearch} searching={searching} placeholder={t('inventory.stock.searchPlaceholder')} />
+                            <FilterSelect aria-label={t('inventory.stock.warehouse')} value={filters.warehouse ?? ''} onChange={event => visit({ ...filters, search: search || undefined, warehouse: event.target.value ? Number(event.target.value) : undefined, page: undefined })}>
+                                <option value="">{t('inventory.stock.allWarehouses')}</option>
                                 {warehouses.map(warehouse => <option key={warehouse.id} value={warehouse.id}>{warehouse.name}</option>)}
                             </FilterSelect>
-                            <FilterSelect aria-label="Marque" value={filters.brand ?? ''} onChange={event => visit({ ...filters, search: search || undefined, brand: event.target.value ? Number(event.target.value) : undefined, page: undefined })}>
-                                <option value="">Toutes les marques</option>
+                            <FilterSelect aria-label={t('inventory.stock.brand')} value={filters.brand ?? ''} onChange={event => visit({ ...filters, search: search || undefined, brand: event.target.value ? Number(event.target.value) : undefined, page: undefined })}>
+                                <option value="">{t('inventory.stock.allBrands')}</option>
                                 {brands.map(brand => <option key={brand.id} value={brand.id}>{brand.name}</option>)}
                             </FilterSelect>
-                            <FilterSelect aria-label="Catégorie" value={filters.category ?? ''} onChange={event => visit({ ...filters, search: search || undefined, category: event.target.value ? Number(event.target.value) : undefined, page: undefined })}>
-                                <option value="">Toutes les catégories</option>
+                            <FilterSelect aria-label={t('inventory.stock.category')} value={filters.category ?? ''} onChange={event => visit({ ...filters, search: search || undefined, category: event.target.value ? Number(event.target.value) : undefined, page: undefined })}>
+                                <option value="">{t('inventory.stock.allCategories')}</option>
                                 {categories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}
                             </FilterSelect>
-                            <FilterSelect aria-label="Disponibilité" value={filters.availability ?? ''} onChange={event => visit({ ...filters, search: search || undefined, availability: event.target.value || undefined, page: undefined })}>
-                                <option value="">Toute disponibilité</option>
-                                <option value="in_stock">En stock</option>
-                                <option value="out_of_stock">Rupture</option>
-                                <option value="low_stock">Stock faible</option>
+                            <FilterSelect aria-label={t('inventory.stock.availability')} value={filters.availability ?? ''} onChange={event => visit({ ...filters, search: search || undefined, availability: event.target.value || undefined, page: undefined })}>
+                                <option value="">{t('inventory.stock.allAvailability')}</option>
+                                <option value="in_stock">{t('inventory.stock.inStock')}</option>
+                                <option value="out_of_stock">{t('inventory.stock.outOfStock')}</option>
+                                <option value="low_stock">{t('inventory.stock.lowStock')}</option>
                             </FilterSelect>
-                            {hasFilters && <button type="button" onClick={resetFilters} className="min-h-10 rounded-field px-3 text-sm font-medium text-ink-muted transition-soft hover:bg-sage hover:text-ink">Réinitialiser</button>}
+                            {hasFilters && <button type="button" onClick={resetFilters} className="min-h-10 rounded-field px-3 text-sm font-medium text-ink-muted transition-soft hover:bg-sage hover:text-ink">{t('common.reset')}</button>}
                         </div>
                     </section>
 
                     {activeWarehouse && (
                         <div className="mb-4 rounded-card border border-line bg-sage px-4 py-3 text-sm text-ink-muted">
-                            Entrepôt actif : <strong className="text-ink">{activeWarehouse.name}</strong>. Les disponibilités ci-dessous correspondent à cet entrepôt.
+                            {t('inventory.stock.activeWarehouse').replace('{warehouse}', activeWarehouse.name)}
                         </div>
                     )}
 
                     {balances.data.length === 0 ? (
                         <EmptyState
-                            title={filters.warehouse ? 'Aucun produit disponible dans cet entrepôt.' : 'Aucun stock à afficher'}
-                            description={filters.warehouse ? 'Essayez un autre entrepôt, ajoutez un stock initial ou réinitialisez les filtres.' : 'Ajoutez un stock initial ou modifiez vos filtres pour commencer.'}
+                            title={filters.warehouse ? t('inventory.stock.noProductWarehouse') : t('inventory.stock.noStock')}
+                            description={filters.warehouse ? t('inventory.stock.noProductWarehouseHelp') : t('inventory.stock.noStockHelp')}
                             actions={
                                 <>
-                                    <ButtonLink href="/inventory/warehouses" variant="secondary">Voir les entrepôts</ButtonLink>
-                                    {can.transfer && warehouses.length > 1 && <ButtonLink href="/inventory/transfers/create">Créer un transfert</ButtonLink>}
+                                    <ButtonLink href="/inventory/warehouses" variant="secondary">{t('inventory.stock.viewWarehouses')}</ButtonLink>
+                                    {can.transfer && warehouses.length > 1 && <ButtonLink href="/inventory/transfers/create">{t('inventory.stock.createTransfer')}</ButtonLink>}
                                 </>
                             }
                         />
@@ -157,18 +159,18 @@ export default function StockIndex({ balances, filters, warehouses, brands, cate
                         <>
                             <div className="overflow-hidden rounded-card border border-line bg-surface shadow-soft">
                                 <div className="hidden overflow-x-auto lg:block">
-                                    <table className="w-full min-w-[1120px] text-left text-sm">
+                                    <table className="w-full min-w-[1120px] text-start text-sm">
                                         <thead className="bg-raised text-[11px] uppercase tracking-wide text-ink-faint">
                                             <tr>
-                                                <th className="px-4 py-3">Produit</th>
-                                                <th className="px-4 py-3">Référence / SKU</th>
-                                                <th className="px-4 py-3">Variante</th>
-                                                {!filters.warehouse && <th className="px-4 py-3">Entrepôts</th>}
-                                                <th className="px-4 py-3 text-right">En stock</th>
-                                                <th className="px-4 py-3 text-right">Réservé</th>
-                                                <th className="px-4 py-3 text-right">Disponible</th>
-                                                <th className="px-4 py-3">État</th>
-                                                <th className="px-4 py-3 text-right"><span className="sr-only">Actions</span></th>
+                                                <th className="px-4 py-3">{t('inventory.stock.product')}</th>
+                                                <th className="px-4 py-3">{t('inventory.stock.referenceSku')}</th>
+                                                <th className="px-4 py-3">{t('inventory.stock.variant')}</th>
+                                                {!filters.warehouse && <th className="px-4 py-3">{t('inventory.stock.warehouses')}</th>}
+                                                <th className="px-4 py-3 text-end">{t('inventory.stock.onHand')}</th>
+                                                <th className="px-4 py-3 text-end">{t('inventory.stock.reserved')}</th>
+                                                <th className="px-4 py-3 text-end">{t('inventory.stock.available')}</th>
+                                                <th className="px-4 py-3">{t('inventory.stock.state')}</th>
+                                                <th className="px-4 py-3 text-end"><span className="sr-only">{t('common.actions')}</span></th>
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-line">
@@ -182,16 +184,16 @@ export default function StockIndex({ balances, filters, warehouses, brands, cate
                                                                 <ProductImage name={row.product.name} imageUrl={row.image_url ?? row.product.image_url} className="h-12 w-12 border border-line" />
                                                                 <div className="min-w-0">
                                                                     <Link href={`/catalog/products/${row.product.id}`} className="font-semibold text-ink hover:underline">{row.product.name}</Link>
-                                                                    <p className="text-xs text-ink-faint">{row.product.brand?.name ?? 'Sans marque'}</p>
+                                                                    <p className="text-xs text-ink-faint">{row.product.brand?.name ?? t('inventory.stock.noBrand')}</p>
                                                                 </div>
                                                             </div>
                                                         </td>
                                                         <td className="px-4 py-3">
-                                                            <p className="font-medium text-ink">{row.sku}</p>
-                                                            <p className="text-xs text-ink-faint">{row.reference ?? row.barcode ?? 'Sans référence'}</p>
+                                                            <bdi className="font-medium text-ink">{row.sku}</bdi>
+                                                            <bdi className="block text-xs text-ink-faint">{row.reference ?? row.barcode ?? t('inventory.stock.noReference')}</bdi>
                                                         </td>
                                                         <td className="px-4 py-3">
-                                                            <span className="inline-flex rounded-full bg-raised px-2.5 py-1 text-xs font-medium text-ink-muted">{row.label ?? 'Variante principale'}</span>
+                                                            <span className="inline-flex rounded-full bg-raised px-2.5 py-1 text-xs font-medium text-ink-muted">{row.label ?? t('inventory.stock.mainVariant')}</span>
                                                         </td>
                                                         {!filters.warehouse && (
                                                             <td className="px-4 py-3">
@@ -205,14 +207,14 @@ export default function StockIndex({ balances, filters, warehouses, brands, cate
                                                                 </div>
                                                             </td>
                                                         )}
-                                                        <td className="px-4 py-3 text-right font-medium tabular-nums text-ink">{formatQuantity(row.summary.on_hand)}</td>
-                                                        <td className="px-4 py-3 text-right tabular-nums text-ink-muted">{formatQuantity(row.summary.reserved)}</td>
-                                                        <td className="px-4 py-3 text-right font-semibold tabular-nums text-ink">{formatQuantity(row.summary.available)}</td>
+                                                        <td className="px-4 py-3 text-end font-medium tabular-nums text-ink">{formatQuantity(row.summary.on_hand)}</td>
+                                                        <td className="px-4 py-3 text-end tabular-nums text-ink-muted">{formatQuantity(row.summary.reserved)}</td>
+                                                        <td className="px-4 py-3 text-end font-semibold tabular-nums text-ink">{formatQuantity(row.summary.available)}</td>
                                                         <td className="px-4 py-3"><span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${state.className}`}>{state.label}</span></td>
-                                                        <td className="px-4 py-3 text-right">
-                                                            <div className="flex justify-end gap-2">
-                                                                {can.transfer && <Link href={`/inventory/transfers/create?variant_id=${row.id}`} className="rounded-field px-3 py-2 text-sm font-medium text-ink transition-soft hover:bg-sage">Transférer</Link>}
-                                                                <Link href={`/catalog/products/${row.product.id}`} className="rounded-field px-3 py-2 text-sm text-ink-muted transition-soft hover:bg-sage hover:text-ink">Produit</Link>
+                                                        <td className="px-4 py-3 text-end">
+                                                            <div className="flex justify-end gap-2 rtl:justify-start">
+                                                                {can.transfer && <Link href={`/inventory/transfers/create?variant_id=${row.id}`} className="rounded-field px-3 py-2 text-sm font-medium text-ink transition-soft hover:bg-sage">{t('inventory.stock.transfer')}</Link>}
+                                                                <Link href={`/catalog/products/${row.product.id}`} className="rounded-field px-3 py-2 text-sm text-ink-muted transition-soft hover:bg-sage hover:text-ink">{t('inventory.stock.product')}</Link>
                                                             </div>
                                                         </td>
                                                     </tr>
@@ -233,22 +235,22 @@ export default function StockIndex({ balances, filters, warehouses, brands, cate
                                                         <ProductImage name={row.product.name} imageUrl={row.image_url ?? row.product.image_url} className="h-12 w-12 shrink-0 border border-line" />
                                                         <div className="min-w-0">
                                                             <Link href={`/catalog/products/${row.product.id}`} className="font-semibold text-ink hover:underline">{row.product.name}</Link>
-                                                            <p className="text-sm text-ink-muted">{row.sku} · {row.label ?? 'Variante principale'}</p>
+                                                            <p className="text-sm text-ink-muted"><bdi>{row.sku}</bdi> · {row.label ?? t('inventory.stock.mainVariant')}</p>
                                                         </div>
                                                     </div>
                                                     <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${state.className}`}>{state.label}</span>
                                                 </div>
                                                 <dl className="mt-4 grid grid-cols-3 gap-3 rounded-field bg-raised p-3 text-sm">
                                                     <div>
-                                                        <dt className="text-xs text-ink-faint">En stock</dt>
+                                                        <dt className="text-xs text-ink-faint">{t('inventory.stock.onHand')}</dt>
                                                         <dd className="mt-1 font-semibold tabular-nums text-ink">{formatQuantity(row.summary.on_hand)}</dd>
                                                     </div>
                                                     <div>
-                                                        <dt className="text-xs text-ink-faint">Réservé</dt>
+                                                        <dt className="text-xs text-ink-faint">{t('inventory.stock.reserved')}</dt>
                                                         <dd className="mt-1 font-semibold tabular-nums text-ink">{formatQuantity(row.summary.reserved)}</dd>
                                                     </div>
                                                     <div>
-                                                        <dt className="text-xs text-ink-faint">Disponible</dt>
+                                                        <dt className="text-xs text-ink-faint">{t('inventory.stock.available')}</dt>
                                                         <dd className="mt-1 font-semibold tabular-nums text-ink">{formatQuantity(row.summary.available)}</dd>
                                                     </div>
                                                 </dl>
@@ -261,8 +263,8 @@ export default function StockIndex({ balances, filters, warehouses, brands, cate
                                                     ))}
                                                 </div>
                                                 <div className="mt-4 flex gap-3 text-sm">
-                                                    {can.transfer && <Link href={`/inventory/transfers/create?variant_id=${row.id}`} className="font-medium text-ink hover:underline">Transférer</Link>}
-                                                    <Link href={`/catalog/products/${row.product.id}`} className="text-ink-muted hover:text-ink hover:underline">Voir le produit</Link>
+                                                    {can.transfer && <Link href={`/inventory/transfers/create?variant_id=${row.id}`} className="font-medium text-ink hover:underline">{t('inventory.stock.transfer')}</Link>}
+                                                    <Link href={`/catalog/products/${row.product.id}`} className="text-ink-muted hover:text-ink hover:underline">{t('inventory.stock.viewProduct')}</Link>
                                                 </div>
                                             </article>
                                         );
@@ -277,43 +279,43 @@ export default function StockIndex({ balances, filters, warehouses, brands, cate
                         <section className="mt-8 grid gap-6 lg:grid-cols-2">
                             {can.opening && (
                                 <form onSubmit={submitOpening} className="space-y-3 rounded-card border border-line bg-surface p-5 shadow-soft">
-                                    <h2 className="font-semibold text-ink">Stock initial</h2>
+                                    <h2 className="font-semibold text-ink">{t('inventory.stock.opening')}</h2>
                                     <select required value={opening.data.warehouse_id} onChange={event => opening.setData('warehouse_id', event.target.value)} className="w-full rounded-field border border-line-strong bg-surface px-3 py-2 text-sm">
-                                        <option value="">Sélectionner un entrepôt</option>
+                                        <option value="">{t('inventory.stock.selectWarehouse')}</option>
                                         {warehouses.map(warehouse => <option key={warehouse.id} value={warehouse.id}>{warehouse.name}</option>)}
                                     </select>
                                     <select required value={opening.data.product_variant_id} onChange={event => opening.setData('product_variant_id', event.target.value)} className="w-full rounded-field border border-line-strong bg-surface px-3 py-2 text-sm">
-                                        <option value="">Sélectionner un produit</option>
-                                        {variants.map(variant => <option key={variant.id} value={variant.id}>{variant.product.name} · {variant.label ?? 'Principale'} · {variant.sku}</option>)}
+                                        <option value="">{t('inventory.stock.selectProduct')}</option>
+                                        {variants.map(variant => <option key={variant.id} value={variant.id}>{variant.product.name} · {variant.label ?? t('inventory.stock.main')} · {variant.sku}</option>)}
                                     </select>
-                                    <input required inputMode="decimal" value={opening.data.quantity} onChange={event => opening.setData('quantity', event.target.value)} placeholder="Quantité" className="w-full rounded-field border border-line-strong bg-surface px-3 py-2 text-sm" />
-                                    <input value={opening.data.reason} onChange={event => opening.setData('reason', event.target.value)} placeholder="Motif (optionnel)" className="w-full rounded-field border border-line-strong bg-surface px-3 py-2 text-sm" />
-                                    <input value={opening.data.reference} onChange={event => opening.setData('reference', event.target.value)} placeholder="Référence (optionnelle)" className="w-full rounded-field border border-line-strong bg-surface px-3 py-2 text-sm" />
+                                    <input required inputMode="decimal" value={opening.data.quantity} onChange={event => opening.setData('quantity', event.target.value)} placeholder={t('inventory.stock.quantity')} className="w-full rounded-field border border-line-strong bg-surface px-3 py-2 text-sm" />
+                                    <input value={opening.data.reason} onChange={event => opening.setData('reason', event.target.value)} placeholder={t('inventory.stock.reasonOptional')} className="w-full rounded-field border border-line-strong bg-surface px-3 py-2 text-sm" />
+                                    <input value={opening.data.reference} onChange={event => opening.setData('reference', event.target.value)} placeholder={t('inventory.stock.referenceOptional')} className="w-full rounded-field border border-line-strong bg-surface px-3 py-2 text-sm" />
                                     {Object.values(opening.errors).map((error, index) => <p key={index} className="text-sm text-danger">{error}</p>)}
-                                    <Button type="submit" loading={opening.processing} loadingText="Enregistrement...">Ajouter le stock initial</Button>
+                                    <Button type="submit" loading={opening.processing} loadingText={t('inventory.stock.recording')}>{t('inventory.stock.addOpening')}</Button>
                                 </form>
                             )}
 
                             {can.adjust && (
                                 <form onSubmit={submitAdjustment} className="space-y-3 rounded-card border border-line bg-surface p-5 shadow-soft">
-                                    <h2 className="font-semibold text-ink">Ajustement de stock</h2>
+                                    <h2 className="font-semibold text-ink">{t('inventory.stock.adjustment')}</h2>
                                     <select required value={adjustment.data.warehouse_id} onChange={event => adjustment.setData('warehouse_id', event.target.value)} className="w-full rounded-field border border-line-strong bg-surface px-3 py-2 text-sm">
-                                        <option value="">Sélectionner un entrepôt</option>
+                                        <option value="">{t('inventory.stock.selectWarehouse')}</option>
                                         {warehouses.map(warehouse => <option key={warehouse.id} value={warehouse.id}>{warehouse.name}</option>)}
                                     </select>
                                     <select required value={adjustment.data.product_variant_id} onChange={event => adjustment.setData('product_variant_id', event.target.value)} className="w-full rounded-field border border-line-strong bg-surface px-3 py-2 text-sm">
-                                        <option value="">Sélectionner un produit</option>
-                                        {variants.map(variant => <option key={variant.id} value={variant.id}>{variant.product.name} · {variant.label ?? 'Principale'} · {variant.sku}</option>)}
+                                        <option value="">{t('inventory.stock.selectProduct')}</option>
+                                        {variants.map(variant => <option key={variant.id} value={variant.id}>{variant.product.name} · {variant.label ?? t('inventory.stock.main')} · {variant.sku}</option>)}
                                     </select>
                                     <select value={adjustment.data.type} onChange={event => adjustment.setData('type', event.target.value)} className="w-full rounded-field border border-line-strong bg-surface px-3 py-2 text-sm">
-                                        <option value="adjustment_in">Entrée</option>
-                                        <option value="adjustment_out">Sortie</option>
+                                        <option value="adjustment_in">{t('inventory.stock.adjustmentIn')}</option>
+                                        <option value="adjustment_out">{t('inventory.stock.adjustmentOut')}</option>
                                     </select>
-                                    <input required inputMode="decimal" value={adjustment.data.quantity} onChange={event => adjustment.setData('quantity', event.target.value)} placeholder="Quantité" className="w-full rounded-field border border-line-strong bg-surface px-3 py-2 text-sm" />
-                                    <input required value={adjustment.data.reason} onChange={event => adjustment.setData('reason', event.target.value)} placeholder="Motif" className="w-full rounded-field border border-line-strong bg-surface px-3 py-2 text-sm" />
-                                    <input value={adjustment.data.reference} onChange={event => adjustment.setData('reference', event.target.value)} placeholder="Référence (optionnelle)" className="w-full rounded-field border border-line-strong bg-surface px-3 py-2 text-sm" />
+                                    <input required inputMode="decimal" value={adjustment.data.quantity} onChange={event => adjustment.setData('quantity', event.target.value)} placeholder={t('inventory.stock.quantity')} className="w-full rounded-field border border-line-strong bg-surface px-3 py-2 text-sm" />
+                                    <input required value={adjustment.data.reason} onChange={event => adjustment.setData('reason', event.target.value)} placeholder={t('inventory.stock.reason')} className="w-full rounded-field border border-line-strong bg-surface px-3 py-2 text-sm" />
+                                    <input value={adjustment.data.reference} onChange={event => adjustment.setData('reference', event.target.value)} placeholder={t('inventory.stock.referenceOptional')} className="w-full rounded-field border border-line-strong bg-surface px-3 py-2 text-sm" />
                                     {Object.values(adjustment.errors).map((error, index) => <p key={index} className="text-sm text-danger">{error}</p>)}
-                                    <Button type="submit" loading={adjustment.processing} loadingText="Ajustement...">Appliquer l’ajustement</Button>
+                                    <Button type="submit" loading={adjustment.processing} loadingText={t('inventory.stock.adjusting')}>{t('inventory.stock.applyAdjustment')}</Button>
                                 </form>
                             )}
                         </section>

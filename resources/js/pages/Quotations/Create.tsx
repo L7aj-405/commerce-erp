@@ -1,5 +1,6 @@
 import { Button } from '@/components/ui/Button';
 import PageHeader from '@/components/ui/PageHeader';
+import { useI18n } from '@/i18n';
 import SalesLayout from '@/layouts/SalesLayout';
 import { Head, Link, useForm } from '@inertiajs/react';
 import type { FormEvent, ReactNode } from 'react';
@@ -27,6 +28,7 @@ function addDays(days: number): string {
 }
 
 export default function QuotationCreate({ defaults, currencyCode, can }: Props) {
+    const { direction, t } = useI18n();
     const today = new Date().toISOString().slice(0, 10);
     const form = useForm({
         customer_id: null as number | null,
@@ -95,16 +97,16 @@ export default function QuotationCreate({ defaults, currencyCode, can }: Props) 
 
     return (
         <SalesLayout>
-            <Head title="Nouveau devis" />
+            <Head title={t('quotations.new')} />
             <div className="mx-auto max-w-3xl">
                 <Link href="/quotations" className="text-sm text-ink-muted">
-                    ← Devis
+                    {direction === 'rtl' ? '→' : '←'} {t('quotations.title')}
                 </Link>
-                <PageHeader title="Nouveau devis" description="Le devis s’ouvre ensuite en édition : ajoutez les articles ligne par ligne." />
+                <PageHeader title={t('quotations.new')} description={t('quotations.newHelp')} />
 
                 <form onSubmit={submit} className="space-y-6">
                     <section className="rounded-card border border-line bg-surface p-5">
-                        <h2 className="mb-3 text-sm font-semibold text-ink">Client</h2>
+                        <h2 className="mb-3 text-sm font-semibold text-ink">{t('common.customer')}</h2>
                         {picked ? (
                             <div className="flex items-center justify-between rounded-field border border-line bg-raised px-3 py-2 text-sm">
                                 <span>
@@ -112,7 +114,7 @@ export default function QuotationCreate({ defaults, currencyCode, can }: Props) 
                                     {picked.company_name && <span className="text-ink-muted"> · {picked.display_name}</span>}
                                 </span>
                                 <button type="button" onClick={clearCustomer} className="text-xs text-ink-muted hover:underline">
-                                    Changer
+                                    {t('quotations.changeCustomer')}
                                 </button>
                             </div>
                         ) : (
@@ -120,14 +122,14 @@ export default function QuotationCreate({ defaults, currencyCode, can }: Props) 
                                 <input
                                     value={query}
                                     onChange={(e) => setQuery(e.target.value)}
-                                    placeholder="Rechercher un client (nom, société, téléphone…)"
-                                    className="w-full rounded-field border border-line-strong px-3 py-2 text-sm"
+                                    placeholder={t('quotations.searchCustomer')}
+                                    className="control-input w-full"
                                 />
                                 {results.length > 0 && (
                                     <ul className="absolute z-10 mt-1 max-h-56 w-full overflow-y-auto rounded-field border border-line-strong bg-surface text-sm shadow-lg">
                                         {results.map((c) => (
                                             <li key={c.id}>
-                                                <button type="button" onClick={() => choose(c)} className="block w-full px-3 py-2 text-left hover:bg-raised">
+                                                <button type="button" onClick={() => choose(c)} className="block w-full px-3 py-2 text-start hover:bg-raised">
                                                     <span className="font-medium text-ink">{c.company_name || c.display_name}</span>
                                                     {c.phone && <span className="block text-xs text-ink-faint">{c.phone}</span>}
                                                 </button>
@@ -136,10 +138,10 @@ export default function QuotationCreate({ defaults, currencyCode, can }: Props) 
                                     </ul>
                                 )}
                                 <p className="mt-1 text-xs text-ink-faint">
-                                    Ou laissez vide et saisissez un client libre ci-dessous.{' '}
+                                    {t('quotations.freeCustomerHelp')}{' '}
                                     {can.createCustomer && (
                                         <Link href="/sales/customers/create" className="underline">
-                                            Créer une fiche client
+                                            {t('quotations.createCustomer')}
                                         </Link>
                                     )}
                                 </p>
@@ -147,46 +149,46 @@ export default function QuotationCreate({ defaults, currencyCode, can }: Props) 
                         )}
 
                         <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-                            <Field label="Nom / raison sociale">
+                            <Field label={t('quotations.nameCompany')}>
                                 <input value={form.data.customer_name} onChange={(e) => form.setData('customer_name', e.target.value)} className={input} />
                             </Field>
-                            <Field label="Société">
+                            <Field label={t('quotations.company')}>
                                 <input value={form.data.customer_company} onChange={(e) => form.setData('customer_company', e.target.value)} className={input} />
                             </Field>
-                            <Field label="Téléphone">
+                            <Field label={t('quotations.phone')}>
                                 <input value={form.data.customer_phone} onChange={(e) => form.setData('customer_phone', e.target.value)} className={input} />
                             </Field>
-                            <Field label="Email">
+                            <Field label={t('quotations.email')}>
                                 <input type="email" value={form.data.customer_email} onChange={(e) => form.setData('customer_email', e.target.value)} className={input} />
                             </Field>
-                            <Field label="ICE">
+                            <Field label={t('quotations.taxId')}>
                                 <input value={form.data.customer_tax_identifier} onChange={(e) => form.setData('customer_tax_identifier', e.target.value)} className={input} />
                             </Field>
-                            <Field label="Adresse de facturation">
+                            <Field label={t('quotations.billingAddress')}>
                                 <input value={form.data.billing_address} onChange={(e) => form.setData('billing_address', e.target.value)} className={input} />
                             </Field>
                         </div>
                     </section>
 
                     <section className="rounded-card border border-line bg-surface p-5">
-                        <h2 className="mb-3 text-sm font-semibold text-ink">Dates</h2>
+                        <h2 className="mb-3 text-sm font-semibold text-ink">{t('quotations.dates')}</h2>
                         <div className="grid grid-cols-2 gap-3 text-sm">
-                            <Field label="Date du devis">
+                            <Field label={t('quotations.date')}>
                                 <input type="date" value={form.data.quotation_date} onChange={(e) => form.setData('quotation_date', e.target.value)} className={input} />
                             </Field>
-                            <Field label="Valable jusqu’au">
+                            <Field label={t('quotations.validUntil')}>
                                 <input type="date" value={form.data.valid_until} onChange={(e) => form.setData('valid_until', e.target.value)} className={input} />
                             </Field>
                         </div>
                     </section>
 
                     <section className="rounded-card border border-line bg-surface p-5">
-                        <h2 className="mb-3 text-sm font-semibold text-ink">Notes / Conditions</h2>
+                        <h2 className="mb-3 text-sm font-semibold text-ink">{t('quotations.notesTerms')}</h2>
                         <div className="space-y-3 text-sm">
-                            <Field label="Notes">
+                            <Field label={t('quotations.notes')}>
                                 <textarea value={form.data.notes} onChange={(e) => form.setData('notes', e.target.value)} className={input} rows={2} />
                             </Field>
-                            <Field label="Conditions">
+                            <Field label={t('quotations.terms')}>
                                 <textarea value={form.data.terms} onChange={(e) => form.setData('terms', e.target.value)} className={input} rows={2} />
                             </Field>
                         </div>
@@ -195,11 +197,11 @@ export default function QuotationCreate({ defaults, currencyCode, can }: Props) 
                     {Object.values(form.errors).map((err) => err && <p key={err} className="text-sm text-danger">{err}</p>)}
 
                     <div className="flex gap-2">
-                        <Button type="submit" loading={form.processing} loadingText="Création…">
-                            Créer le devis
+                        <Button type="submit" loading={form.processing} loadingText={t('auth.creating')}>
+                            {t('quotations.create')}
                         </Button>
                         <Link href="/quotations" className="inline-flex min-h-10 items-center rounded-field px-4 text-sm text-ink-muted">
-                            Annuler
+                            {t('common.cancel')}
                         </Link>
                     </div>
                 </form>
@@ -208,7 +210,7 @@ export default function QuotationCreate({ defaults, currencyCode, can }: Props) 
     );
 }
 
-const input = 'w-full rounded-field border border-line-strong px-3 py-2';
+const input = 'control-input w-full';
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
     return (

@@ -1,5 +1,6 @@
 import { Button } from '@/components/ui/Button';
 import ApplicationShell from '@/layouts/ApplicationShell';
+import { useI18n } from '@/i18n';
 import { Head, useForm } from '@inertiajs/react';
 import type { FormEvent, ReactNode } from 'react';
 import { useState } from 'react';
@@ -30,12 +31,6 @@ type Props = {
     canUpdate: boolean;
 };
 
-const STATUS_LABEL: Record<Status, string> = {
-    not_configured: 'Non configuré',
-    configured: 'Configuré',
-    verified: 'Vérifié',
-};
-
 const STATUS_STYLE: Record<Status, string> = {
     not_configured: 'bg-raised text-ink-muted',
     configured: 'bg-warning-soft text-warning',
@@ -43,6 +38,8 @@ const STATUS_STYLE: Record<Status, string> = {
 };
 
 export default function EmailConfiguration({ organization, setting, status, canUpdate }: Props) {
+    const { t } = useI18n();
+    const statusLabels: Record<Status, string> = { not_configured: t('emailSettings.notConfigured'), configured: t('emailSettings.configured'), verified: t('emailSettings.verified') };
     const form = useForm({
         sender_name: setting?.sender_name ?? organization.name,
         sender_email: setting?.sender_email ?? '',
@@ -85,7 +82,7 @@ export default function EmailConfiguration({ organization, setting, status, canU
             });
             setTestResult((await response.json()) as { ok: boolean; message: string });
         } catch {
-            setTestResult({ ok: false, message: "Échec de l'envoi. Vérifiez votre configuration e-mail." });
+            setTestResult({ ok: false, message: t('emailSettings.sendFailure') });
         } finally {
             setTesting(false);
         }
@@ -93,49 +90,46 @@ export default function EmailConfiguration({ organization, setting, status, canU
 
     return (
         <ApplicationShell>
-            <Head title="Configuration e-mail" />
+            <Head title={t('emailSettings.title')} />
             <main className="mx-auto max-w-3xl">
                 <div className="flex items-center justify-between gap-3">
                     <div>
-                        <h1 className="text-2xl font-semibold tracking-tight text-ink">Configuration e-mail</h1>
-                        <p className="mt-1 text-sm text-ink-muted">
-                            Le compte SMTP utilisé pour envoyer les factures, devis et autres documents de votre organisation par e-mail.
-                        </p>
+                        <h1 className="text-2xl font-semibold tracking-tight text-ink">{t('emailSettings.title')}</h1>
+                        <p className="mt-1 text-sm text-ink-muted">{t('emailSettings.help')}</p>
                     </div>
                     <span className={`inline-flex shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ${STATUS_STYLE[status]}`}>
-                        {STATUS_LABEL[status]}
+                        {statusLabels[status]}
                     </span>
                 </div>
 
                 {!canUpdate && (
                     <p className="mt-4 rounded-field border border-line bg-raised px-3 py-2 text-xs text-ink-muted">
-                        Lecture seule — vous n’avez pas la permission de modifier la configuration e-mail.
+                        {t('emailSettings.readOnly')}
                     </p>
                 )}
 
                 <form onSubmit={submit} className="mt-8 space-y-4">
                     <fieldset disabled={!canUpdate} className="space-y-4">
-                        <Section title="Identité de l'expéditeur">
+                        <Section title={t('emailSettings.senderIdentity')}>
                             <Grid>
-                                <TextField form={form} name="sender_name" label="Nom de l'expéditeur" required />
-                                <TextField form={form} name="sender_email" label="Adresse d'expédition" type="email" required />
+                                <TextField form={form} name="sender_name" label={t('emailSettings.senderName')} required />
+                                <TextField form={form} name="sender_email" label={t('emailSettings.senderAddress')} type="email" required />
                             </Grid>
                             <p className="text-xs text-ink-faint">
-                                De nombreux fournisseurs SMTP exigent que l’adresse d’expédition corresponde à la boîte authentifiée
-                                (ou à un alias autorisé) — utiliser une autre adresse n’est pas garanti de fonctionner.
+                                {t('emailSettings.senderHelp')}
                             </p>
                         </Section>
 
-                        <Section title="Serveur SMTP">
+                        <Section title={t('emailSettings.server')}>
                             <Grid>
-                                <TextField form={form} name="smtp_host" label="Hôte SMTP" required placeholder="smtp.example.com" />
-                                <TextField form={form} name="smtp_port" label="Port SMTP" type="number" required />
+                                <TextField form={form} name="smtp_host" label={t('emailSettings.host')} required placeholder="smtp.example.com" />
+                                <TextField form={form} name="smtp_port" label={t('emailSettings.port')} type="number" required />
                             </Grid>
                             <Grid>
-                                <TextField form={form} name="smtp_username" label="Nom d'utilisateur" required />
+                                <TextField form={form} name="smtp_username" label={t('emailSettings.username')} required />
                                 <label className="block">
                                     <span className="mb-1 block text-xs font-medium text-ink-muted">
-                                        Mot de passe {setting?.has_password && <span className="text-ink-faint">(laisser vide pour conserver)</span>}
+                                        {t('emailSettings.password')} {setting?.has_password && <span className="text-ink-faint">({t('emailSettings.keepPassword')})</span>}
                                     </span>
                                     <input
                                         type="password"
@@ -149,23 +143,23 @@ export default function EmailConfiguration({ organization, setting, status, canU
                                 </label>
                             </Grid>
                             <label className="block">
-                                <span className="mb-1 block text-xs font-medium text-ink-muted">Sécurité / Chiffrement</span>
+                                <span className="mb-1 block text-xs font-medium text-ink-muted">{t('emailSettings.encryption')}</span>
                                 <select
                                     value={form.data.smtp_encryption}
                                     onChange={(e) => form.setData('smtp_encryption', e.target.value as 'tls' | 'ssl' | 'none')}
-                                    className="w-full rounded-field border border-line-strong px-3 py-2 text-sm sm:w-56"
+                                    className="control-select sm:w-56"
                                 >
                                     <option value="tls">TLS</option>
                                     <option value="ssl">SSL</option>
-                                    <option value="none">Aucun</option>
+                                    <option value="none">{t('emailSettings.none')}</option>
                                 </select>
                             </label>
                         </Section>
 
-                        <Section title="Réponse (optionnel)">
+                        <Section title={t('emailSettings.replyOptional')}>
                             <Grid>
-                                <TextField form={form} name="reply_to_email" label="E-mail de réponse" type="email" />
-                                <TextField form={form} name="reply_to_name" label="Nom de réponse" />
+                                <TextField form={form} name="reply_to_email" label={t('emailSettings.replyEmail')} type="email" />
+                                <TextField form={form} name="reply_to_name" label={t('emailSettings.replyName')} />
                             </Grid>
                         </Section>
 
@@ -175,26 +169,24 @@ export default function EmailConfiguration({ organization, setting, status, canU
                                 checked={form.data.is_enabled}
                                 onChange={(e) => form.setData('is_enabled', e.target.checked)}
                             />
-                            Configuration active
+                            {t('emailSettings.active')}
                         </label>
 
-                        <Button type="submit" loading={form.processing} loadingText="Enregistrement…">
-                            Enregistrer la configuration
+                        <Button type="submit" loading={form.processing} loadingText={t('common.saving')}>
+                            {t('emailSettings.save')}
                         </Button>
                     </fieldset>
                 </form>
 
                 <section className="mt-8 rounded-card border border-line bg-surface p-5">
-                    <h2 className="text-sm font-semibold text-ink">Envoyer un e-mail de test</h2>
-                    <p className="mt-1 text-xs text-ink-muted">
-                        Envoie un e-mail réel via le compte SMTP configuré ci-dessus pour vérifier qu’il fonctionne.
-                    </p>
+                    <h2 className="text-sm font-semibold text-ink">{t('emailSettings.testTitle')}</h2>
+                    <p className="mt-1 text-xs text-ink-muted">{t('emailSettings.testHelp')}</p>
                     {!setting && (
-                        <p className="mt-3 text-xs text-ink-faint">Enregistrez d’abord une configuration avant de lancer un test.</p>
+                        <p className="mt-3 text-xs text-ink-faint">{t('emailSettings.saveBeforeTest')}</p>
                     )}
                     <div className="mt-3 flex flex-wrap items-end gap-2">
                         <label className="block">
-                            <span className="mb-1 block text-xs font-medium text-ink-muted">Adresse de destination</span>
+                            <span className="mb-1 block text-xs font-medium text-ink-muted">{t('emailSettings.destination')}</span>
                             <input
                                 type="email"
                                 value={testEmail}
@@ -208,11 +200,11 @@ export default function EmailConfiguration({ organization, setting, status, canU
                             type="button"
                             variant="secondary"
                             loading={testing}
-                            loadingText="Envoi…"
+                            loadingText={t('profile.sending')}
                             disabled={!canUpdate || !setting || !testEmail}
                             onClick={runTest}
                         >
-                            Envoyer un e-mail de test
+                            {t('emailSettings.sendTest')}
                         </Button>
                     </div>
                     {testResult && (
@@ -221,7 +213,7 @@ export default function EmailConfiguration({ organization, setting, status, canU
                         </p>
                     )}
                     {!testResult && setting?.last_test_message && (
-                        <p className="mt-3 text-xs text-ink-faint">Dernier test : {setting.last_test_message}</p>
+                        <p className="mt-3 text-xs text-ink-faint">{t('emailSettings.lastTest')} : {setting.last_test_message}</p>
                     )}
                 </section>
             </main>

@@ -3,6 +3,8 @@ import EmptyState from '@/components/ui/EmptyState';
 import PageHeader from '@/components/ui/PageHeader';
 import Pagination from '@/components/ui/Pagination';
 import SearchInput from '@/components/ui/SearchInput';
+import StatusBadge from '@/components/ui/StatusBadge';
+import { useI18n } from '@/i18n';
 import InventoryLayout from '@/layouts/InventoryLayout';
 import { formatDate, formatInteger, formatQuantity } from '@/utils/format';
 import { Head, Link, router } from '@inertiajs/react';
@@ -27,6 +29,7 @@ type Props = {
 };
 
 export default function TransferIndex({ transfers, filters, can }: Props) {
+    const { direction, t } = useI18n();
     const [search, setSearch] = useState(filters.search ?? '');
     const [searching, setSearching] = useState(false);
     const visit = (next: Record<string, string | undefined>) => router.get('/inventory/transfers', next, {
@@ -46,23 +49,23 @@ export default function TransferIndex({ transfers, filters, can }: Props) {
 
     return (
         <InventoryLayout>
-            <Head title="Transferts" />
+            <Head title={t('inventory.transfers.title')} />
             <PageHeader
-                title="Transferts de stock"
-                description="Consultez les mouvements effectués entre vos emplacements et créez un nouveau transfert."
-                actions={can.create ? <ButtonLink href="/inventory/transfers/create"><IconPlus /> Nouveau transfert</ButtonLink> : undefined}
+                title={t('inventory.transfers.title')}
+                description={t('inventory.transfers.description')}
+                actions={can.create ? <ButtonLink href="/inventory/transfers/create"><IconPlus /> {t('inventory.transfers.new')}</ButtonLink> : undefined}
             />
 
             <section className="mb-5 rounded-card border border-line bg-surface p-4 shadow-soft">
-                <label className="mb-2 block text-[11px] font-semibold uppercase tracking-wide text-ink-faint">Rechercher un transfert</label>
-                <SearchInput value={search} onChange={setSearch} searching={searching} placeholder="Référence, emplacement source ou destination" />
+                <label className="mb-2 block text-[11px] font-semibold uppercase tracking-wide text-ink-faint">{t('inventory.transfers.search')}</label>
+                <SearchInput value={search} onChange={setSearch} searching={searching} placeholder={t('inventory.transfers.searchPlaceholder')} />
             </section>
 
             {transfers.data.length === 0 ? (
                 <EmptyState
-                    title="Aucun transfert enregistré"
-                    description="Les transferts apparaîtront ici dès que vous commencerez à déplacer du stock entre vos emplacements."
-                    actions={can.create ? <ButtonLink href="/inventory/transfers/create">Créer le premier transfert</ButtonLink> : undefined}
+                    title={t('inventory.transfers.empty')}
+                    description={t('inventory.transfers.emptyHelp')}
+                    actions={can.create ? <ButtonLink href="/inventory/transfers/create">{t('inventory.transfers.createFirst')}</ButtonLink> : undefined}
                 />
             ) : (
                 <>
@@ -70,22 +73,20 @@ export default function TransferIndex({ transfers, filters, can }: Props) {
                     <div className="hidden overflow-hidden rounded-card border border-line bg-surface shadow-soft md:block">
                         <div className="flex items-center justify-between border-b border-line px-4 py-3">
                             <div>
-                                <h2 className="text-sm font-semibold text-ink">Historique des transferts</h2>
-                                <p className="mt-0.5 text-xs text-ink-muted">Chaque transfert validé correspond à un mouvement réel de stock.</p>
+                                <h2 className="text-sm font-semibold text-ink">{t('inventory.transfers.history')}</h2>
+                                <p className="mt-0.5 text-xs text-ink-muted">{t('inventory.transfers.historyHelp')}</p>
                             </div>
-                            <span className="rounded-full bg-raised px-2.5 py-1 text-xs font-medium text-ink-muted">{formatInteger(transfers.data.length)} affiché(s)</span>
+                            <span className="rounded-full bg-raised px-2.5 py-1 text-xs font-medium text-ink-muted">{formatInteger(transfers.data.length)} {t('inventory.transfers.shown')}</span>
                         </div>
                         <div className="overflow-x-auto">
-                        <table className="w-full min-w-[820px] text-left text-sm">
+                        <table className="erp-table w-full min-w-[820px] text-start text-sm">
                             <thead className="bg-raised text-[11px] uppercase tracking-wide text-ink-faint">
                                 <tr>
-                                    <th className="px-4 py-3">Référence</th>
-                                    <th className="px-4 py-3">Date</th>
-                                    <th className="px-4 py-3">Trajet</th>
-                                    <th className="px-4 py-3 text-right">Produits</th>
-                                    <th className="px-4 py-3 text-right">Unités</th>
-                                    <th className="px-4 py-3">Effectué par</th>
-                                    <th className="px-4 py-3">Statut</th>
+                                    <th className="px-4 py-3">{t('common.reference')}</th><th className="px-4 py-3">{t('common.date')}</th>
+                                    <th className="px-4 py-3">{t('inventory.transfers.route')}</th>
+                                    <th className="px-4 py-3 text-end">{t('inventory.transfers.products')}</th>
+                                    <th className="px-4 py-3 text-end">{t('inventory.transfers.units')}</th>
+                                    <th className="px-4 py-3">{t('inventory.transfers.performedBy')}</th><th className="px-4 py-3">{t('common.status')}</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-line">
@@ -95,14 +96,14 @@ export default function TransferIndex({ transfers, filters, can }: Props) {
                                         <td className="px-4 py-3 text-ink-muted">{formatDate(transfer.transferred_at)}</td>
                                         <td className="px-4 py-3">
                                             <div className="flex items-center gap-2 font-medium text-ink">
-                                                <span>{transfer.source_warehouse.name}</span><IconArrow /><span>{transfer.destination_warehouse.name}</span>
+                                                <span>{transfer.source_warehouse.name}</span><IconArrow rtl={direction === 'rtl'} /><span>{transfer.destination_warehouse.name}</span>
                                             </div>
                                             <p className="mt-0.5 text-xs text-ink-faint">{transfer.source_warehouse.code} → {transfer.destination_warehouse.code}</p>
                                         </td>
-                                        <td className="px-4 py-3 text-right tabular-nums text-ink-muted">{formatInteger(transfer.product_count)}</td>
-                                        <td className="px-4 py-3 text-right font-semibold tabular-nums text-ink">{formatQuantity(transfer.unit_count)}</td>
-                                        <td className="px-4 py-3 text-ink-muted">{transfer.performed_by?.name ?? 'Système'}</td>
-                                        <td className="px-4 py-3"><span className="rounded-full bg-success-soft px-2.5 py-1 text-xs font-semibold text-success">Effectué</span></td>
+                                        <td className="px-4 py-3 text-end tabular-nums text-ink-muted">{formatInteger(transfer.product_count)}</td>
+                                        <td className="px-4 py-3 text-end font-semibold tabular-nums text-ink">{formatQuantity(transfer.unit_count)}</td>
+                                        <td className="px-4 py-3 text-ink-muted">{transfer.performed_by?.name ?? t('inventory.system')}</td>
+                                        <td className="px-4 py-3"><StatusBadge status="completed">{t('inventory.transfers.completed')}</StatusBadge></td>
                                     </tr>
                                 ))}
                             </tbody>
@@ -123,23 +124,23 @@ export default function TransferIndex({ transfers, filters, can }: Props) {
                                             {transfer.source_warehouse.name} → {transfer.destination_warehouse.name}
                                         </p>
                                     </div>
-                                    <span className="shrink-0 rounded-full bg-success-soft px-2.5 py-1 text-xs font-semibold text-success">Effectué</span>
+                                    <StatusBadge status="completed">{t('inventory.transfers.completed')}</StatusBadge>
                                 </div>
                                 <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1.5 text-[13px]">
                                     <div className="min-w-0">
-                                        <dt className="text-ink-faint">Date</dt>
+                                        <dt className="text-ink-faint">{t('common.date')}</dt>
                                         <dd>{formatDate(transfer.transferred_at)}</dd>
                                     </div>
                                     <div className="min-w-0">
-                                        <dt className="text-ink-faint">Effectué par</dt>
-                                        <dd className="truncate">{transfer.performed_by?.name ?? 'Système'}</dd>
+                                        <dt className="text-ink-faint">{t('inventory.transfers.performedBy')}</dt>
+                                        <dd className="truncate">{transfer.performed_by?.name ?? t('inventory.system')}</dd>
                                     </div>
                                     <div className="min-w-0">
-                                        <dt className="text-ink-faint">Produits</dt>
+                                        <dt className="text-ink-faint">{t('inventory.transfers.products')}</dt>
                                         <dd>{formatInteger(transfer.product_count)}</dd>
                                     </div>
                                     <div className="min-w-0">
-                                        <dt className="text-ink-faint">Unités</dt>
+                                        <dt className="text-ink-faint">{t('inventory.transfers.units')}</dt>
                                         <dd className="tabular-nums">{formatQuantity(transfer.unit_count)}</dd>
                                     </div>
                                 </dl>
@@ -147,7 +148,7 @@ export default function TransferIndex({ transfers, filters, can }: Props) {
                                     href={`/inventory/transfers/${transfer.id}`}
                                     className="mt-4 inline-flex min-h-9 items-center justify-center rounded-field border border-line-strong px-3 text-[13px] font-medium text-ink transition-soft hover:bg-sage"
                                 >
-                                    Voir
+                                    {t('common.view')}
                                 </Link>
                             </li>
                         ))}
@@ -161,4 +162,4 @@ export default function TransferIndex({ transfers, filters, can }: Props) {
 }
 
 function IconPlus() { return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14" /></svg>; }
-function IconArrow() { return <svg className="shrink-0 text-ink-faint" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12h14m-5-5 5 5-5 5" /></svg>; }
+function IconArrow({ rtl }: { rtl: boolean }) { return <svg className={`shrink-0 text-ink-faint ${rtl ? 'rotate-180' : ''}`} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12h14m-5-5 5 5-5 5" /></svg>; }

@@ -1,8 +1,9 @@
-import { Money, NumericInput, Quantity, SegmentedControl } from '@/components/pos/primitives';
+import { Money, NumericInput, SegmentedControl } from '@/components/pos/primitives';
 import { useDebouncedValue } from '@/components/pos/useDebouncedValue';
 import { Button } from '@/components/ui/Button';
 import { Spinner } from '@/components/ui/Spinner';
 import { useToast } from '@/components/ui/toast';
+import { useI18n } from '@/i18n';
 import { Link } from '@inertiajs/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
@@ -23,10 +24,7 @@ import {
     customerTypeFor,
     firstCompatibleAccountId,
     normalizeAmount,
-    paymentLabels,
     positiveAmount,
-    referenceLabels,
-    settlementLabels,
 } from './pos-shared';
 import type { ActiveSale, Customer } from './types';
 
@@ -78,6 +76,16 @@ export default function PosCheckoutPanel({
     onReview,
 }: Props) {
     const toast = useToast();
+    const { direction, t } = useI18n();
+    const paymentLabels: Record<PaymentMethod, string> = {
+        cash: t('pos.cash'), card: t('pos.card'), bank_transfer: t('pos.bankTransfer'), cheque: t('pos.cheque'),
+    };
+    const referenceLabels: Record<PaymentMethod, string> = {
+        cash: '', card: t('pos.cardReference'), bank_transfer: t('pos.transferReference'), cheque: t('pos.chequeNumber'),
+    };
+    const settlementLabels: Record<SettlementMode, string> = {
+        full: t('pos.fullPayment'), partial: t('pos.partialPayment'), deferred: t('pos.deferredPayment'),
+    };
     const [checkoutState, setCheckoutState] = useState<CheckoutState>({
         fulfillment_mode: sale.checkout.fulfillment_mode,
         shipping_fee: sale.checkout.shipping_fee,
@@ -130,11 +138,11 @@ export default function PosCheckoutPanel({
                 setSearched(true);
             })
             .catch((reason: Error) => {
-                if (reason.name !== 'AbortError') setError('La recherche client a échoué.');
+                if (reason.name !== 'AbortError') setError(t('pos.customerSearchFailed'));
             })
             .finally(() => setSearching(false));
         return () => controller.abort();
-    }, [debouncedSearch]);
+    }, [debouncedSearch, t]);
 
     // Authoritative merchandise TTC (net HT + VAT, after item + global discounts), from the server.
     const merchandiseNetTtc = Number(sale.summary.net_excl_tax) + Number(sale.summary.tax_total);
@@ -148,8 +156,8 @@ export default function PosCheckoutPanel({
     const cashErrors = payments
         .map((payment, index) => {
             if (payment.method !== 'cash' || positiveAmount(payment.amount) <= 0) return null;
-            if (!payment.cash_received) return `Paiement ${index + 1} (espèces) : renseignez le montant reçu.`;
-            if (positiveAmount(payment.cash_received) < positiveAmount(payment.amount)) return `Paiement ${index + 1} (espèces) : le montant reçu doit être ≥ au montant payé.`;
+            if (!payment.cash_received) return t('pos.cashReceivedRequired').replace('{number}', String(index + 1));
+            if (positiveAmount(payment.cash_received) < positiveAmount(payment.amount)) return t('pos.cashReceivedTooLow').replace('{number}', String(index + 1));
             return null;
         })
         .filter((message): message is string => message !== null);
@@ -157,8 +165,8 @@ export default function PosCheckoutPanel({
         .map((payment, index) => {
             if (!payment.method) return null;
             const compatible = compatibleAccounts(payment.method, financialAccounts);
-            if (compatible.length === 0) return `Paiement ${index + 1} : aucun compte de réception configuré pour ${paymentLabels[payment.method]}.`;
-            if (compatible.length > 1 && payment.financial_account_id === '') return `Paiement ${index + 1} : sélectionnez un compte de réception.`;
+            if (compatible.length === 0) return t('pos.accountMissingForMethod').replace('{number}', String(index + 1)).replace('{method}', paymentLabels[payment.method]);
+            if (compatible.length > 1 && payment.financial_account_id === '') return t('pos.selectReceiptAccount').replace('{number}', String(index + 1));
             return null;
         })
         .filter((message): message is string => message !== null);
@@ -175,7 +183,7 @@ export default function PosCheckoutPanel({
                 delivery_notes: next.fulfillment_mode === 'delivery' ? next.delivery_notes : '',
             });
         } catch {
-            setError('La mise à jour du mode de remise a échoué.');
+            setError(t('pos.fulfillmentUpdateFailed'));
         } finally {
             setSavingState(false);
         }
@@ -234,9 +242,9 @@ export default function PosCheckoutPanel({
             await onCustomerSelected(payload.data);
             setCustomerMode('idle');
             setSearch('');
-            toast.success('Client enregistré');
+            toast.success(t('pos.customerSaved'));
         } catch (reason) {
-            setError(reason instanceof Error ? reason.message : 'La création du client a échoué.');
+            setError(reason instanceof Error ? reason.message : t('pos.customerCreateFailed'));
         } finally {
             setCustomerBusy(false);
         }
@@ -250,9 +258,9 @@ export default function PosCheckoutPanel({
             const payload = await posJson<{ data: Customer }>(`/pos/customers/${selectedCustomer.id}`, { method: 'PATCH', body: { type: customerType, ...customerForm } });
             await onCustomerUpdated(payload.data);
             setCustomerMode('idle');
-            toast.success('Client mis à jour');
+            toast.success(t('pos.customerUpdated'));
         } catch (reason) {
-            setError(reason instanceof Error ? reason.message : 'La mise à jour du client a échoué.');
+            setError(reason instanceof Error ? reason.message : t('pos.customerUpdateFailed'));
         } finally {
             setCustomerBusy(false);
         }
@@ -266,15 +274,15 @@ export default function PosCheckoutPanel({
                 return;
             }
             if (paid <= 0) {
-                setError('Sélectionnez un moyen de paiement et un montant.');
+                setError(t('pos.selectPayment'));
                 return;
             }
             if (settlementMode === 'full' && Math.abs(Number(currentTotal) - paid) > 0.00005) {
-                setError('Le paiement comptant doit couvrir la totalité du montant de la commande.');
+                setError(t('pos.fullPaymentRequired'));
                 return;
             }
             if (settlementMode === 'partial' && paid >= Number(currentTotal)) {
-                setError('Un paiement partiel doit rester inférieur au total de la commande.');
+                setError(t('pos.partialMustBeLower'));
                 return;
             }
         }
@@ -326,40 +334,40 @@ export default function PosCheckoutPanel({
             <div className="mt-2 space-y-2">
                 <SegmentedControl
                     size="sm"
-                    ariaLabel="Type de client"
+                    ariaLabel={t('pos.customerType')}
                     value={customerType}
                     onChange={setCustomerType}
                     options={[
-                        { value: 'individual', label: 'Particulier' },
-                        { value: 'company', label: 'Entreprise' },
+                        { value: 'individual', label: t('pos.individual') },
+                        { value: 'company', label: t('pos.companyCustomerType') },
                     ]}
                 />
                 {customerType === 'individual' ? (
-                    <input value={customerForm.display_name} onChange={(event) => set('display_name', event.target.value)} placeholder="Nom complet *" className={fieldClass} />
+                    <input value={customerForm.display_name} onChange={(event) => set('display_name', event.target.value)} placeholder={t('pos.fullName')} className={fieldClass} />
                 ) : (
                     <>
-                        <input value={customerForm.company_name} onChange={(event) => set('company_name', event.target.value)} placeholder="Raison sociale *" className={fieldClass} />
-                        <input value={customerForm.contact_name} onChange={(event) => set('contact_name', event.target.value)} placeholder="Contact" className={fieldClass} />
+                        <input value={customerForm.company_name} onChange={(event) => set('company_name', event.target.value)} placeholder={t('pos.companyName')} className={fieldClass} />
+                        <input value={customerForm.contact_name} onChange={(event) => set('contact_name', event.target.value)} placeholder={t('pos.contact')} className={fieldClass} />
                     </>
                 )}
-                <input value={customerForm.phone} onChange={(event) => set('phone', event.target.value)} placeholder="Téléphone" className={fieldClass} />
-                <input value={customerForm.email} onChange={(event) => set('email', event.target.value)} placeholder="Email" className={fieldClass} />
+                <input value={customerForm.phone} onChange={(event) => set('phone', event.target.value)} placeholder={t('pos.phone')} className={fieldClass} />
+                <input value={customerForm.email} onChange={(event) => set('email', event.target.value)} placeholder={t('pos.email')} className={fieldClass} />
                 {customerType === 'company' && (
-                    <input value={customerForm.tax_identifier} onChange={(event) => set('tax_identifier', event.target.value)} placeholder="ICE / IF / RC" className={fieldClass} />
+                    <input value={customerForm.tax_identifier} onChange={(event) => set('tax_identifier', event.target.value)} placeholder={t('pos.taxIdentifiers')} className={fieldClass} />
                 )}
                 <div className="flex gap-2">
                     <Button
                         type="button"
                         size="sm"
                         loading={customerBusy}
-                        loadingText="Enregistrement…"
+                        loadingText={t('pos.saving')}
                         onClick={() => void (isCreate ? createCustomer() : updateCustomer())}
                         className="px-3 py-2 text-[13px]"
                     >
-                        {isCreate ? 'Créer le client' : 'Enregistrer'}
+                        {isCreate ? t('pos.createCustomer') : t('pos.save')}
                     </Button>
                     <button type="button" disabled={customerBusy} onClick={() => setCustomerMode('idle')} className="rounded-field border border-line-strong px-3 py-2 text-[13px] font-medium text-ink-muted disabled:opacity-50">
-                        Annuler
+                        {t('pos.cancel')}
                     </button>
                 </div>
             </div>
@@ -371,10 +379,10 @@ export default function PosCheckoutPanel({
             {/* Header */}
             <div className="flex shrink-0 items-center gap-2 border-b border-line px-4 py-3">
                 <button type="button" onClick={onBack} className="flex items-center gap-1 rounded-field px-2 py-1 text-[13px] font-medium text-ink-muted transition-soft hover:bg-sage hover:text-ink">
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 6 8 12l6 6" /></svg>
-                    Retour
+                    <svg className={direction === 'rtl' ? 'rotate-180' : undefined} width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 6 8 12l6 6" /></svg>
+                    {t('pos.back')}
                 </button>
-                <h2 className="text-sm font-semibold text-ink">Paiement</h2>
+                <h2 className="text-sm font-semibold text-ink">{t('pos.payment')}</h2>
             </div>
 
             {/* Body (scroll) */}
@@ -382,50 +390,50 @@ export default function PosCheckoutPanel({
                 {error && <p className="mx-4 mt-3 rounded-field bg-danger-soft px-3 py-2 text-[12px] text-danger">{error}</p>}
 
                 {/* Totals */}
-                <Section title="Récapitulatif">
+                <Section title={t('pos.summary')}>
                     <dl className="space-y-1 text-[13px]">
-                        <div className="flex justify-between"><dt className="text-ink-muted">Total brut HT</dt><dd><Money value={sale.summary.subtotal_excl_tax} currency={currencyCode} /></dd></div>
+                        <div className="flex justify-between"><dt className="text-ink-muted">{t('pos.grossExcl')}</dt><dd><Money value={sale.summary.subtotal_excl_tax} currency={currencyCode} /></dd></div>
                         {discountTotal > 0 && (
-                            <div className="flex justify-between"><dt className="text-ink-muted">Remise HT</dt><dd className="text-success">- <Money value={discountTotal.toFixed(4)} currency={currencyCode} /></dd></div>
+                            <div className="flex justify-between"><dt className="text-ink-muted">{t('pos.discountExcl')}</dt><dd className="text-success">- <Money value={discountTotal.toFixed(4)} currency={currencyCode} /></dd></div>
                         )}
                         {discountTotal > 0 && (
-                            <div className="flex justify-between"><dt className="text-ink-muted">Net HT</dt><dd><Money value={sale.summary.net_excl_tax} currency={currencyCode} /></dd></div>
+                            <div className="flex justify-between"><dt className="text-ink-muted">{t('pos.netExcl')}</dt><dd><Money value={sale.summary.net_excl_tax} currency={currencyCode} /></dd></div>
                         )}
-                        <div className="flex justify-between"><dt className="text-ink-muted">TVA</dt><dd><Money value={sale.summary.tax_total} currency={currencyCode} /></dd></div>
+                        <div className="flex justify-between"><dt className="text-ink-muted">{t('pos.vat')}</dt><dd><Money value={sale.summary.tax_total} currency={currencyCode} /></dd></div>
                         {shippingNumeric > 0 && (
-                            <div className="flex justify-between"><dt className="text-ink-muted">Livraison</dt><dd><Money value={shippingNumeric.toFixed(4)} currency={currencyCode} /></dd></div>
+                            <div className="flex justify-between"><dt className="text-ink-muted">{t('pos.shipping')}</dt><dd><Money value={shippingNumeric.toFixed(4)} currency={currencyCode} /></dd></div>
                         )}
-                        <div className="flex items-baseline justify-between border-t border-line pt-1.5"><dt className="text-sm font-semibold text-ink">Total TTC</dt><dd className="text-base font-semibold text-ink"><Money value={currentTotal} currency={currencyCode} /></dd></div>
+                        <div className="flex items-baseline justify-between border-t border-line pt-1.5"><dt className="text-sm font-semibold text-ink">{t('pos.totalIncl')}</dt><dd className="text-base font-semibold text-ink"><Money value={currentTotal} currency={currencyCode} /></dd></div>
                     </dl>
                 </Section>
 
                 {/* Pickup / Delivery */}
                 <Section
-                    title="Remise au client"
+                    title={t('pos.customerDiscount')}
                     action={(savingState || savingCheckout) ? <Spinner size="xs" className="text-ink-faint" /> : undefined}
                 >
                     <div className="grid grid-cols-2 gap-2">
                         <button
                             type="button"
                             onClick={() => setFulfillment('pickup')}
-                            className={`rounded-field border p-2.5 text-left transition-soft ${checkoutState.fulfillment_mode === 'pickup' ? 'border-primary bg-sage' : 'border-line-strong hover:bg-raised'}`}
+                            className={`rounded-field border p-2.5 text-start transition-soft ${checkoutState.fulfillment_mode === 'pickup' ? 'border-primary bg-sage' : 'border-line-strong hover:bg-raised'}`}
                         >
-                            <span className="text-[13px] font-semibold text-ink">⚡ Retrait immédiat</span>
-                            <span className="mt-0.5 block text-[11px] text-ink-muted">Le client prend maintenant</span>
+                            <span className="text-[13px] font-semibold text-ink">⚡ {t('pos.pickupNow')}</span>
+                            <span className="mt-0.5 block text-[11px] text-ink-muted">{t('pos.pickupHelp')}</span>
                         </button>
                         <button
                             type="button"
                             onClick={() => setFulfillment('delivery')}
-                            className={`rounded-field border p-2.5 text-left transition-soft ${checkoutState.fulfillment_mode === 'delivery' ? 'border-primary bg-sage' : 'border-line-strong hover:bg-raised'}`}
+                            className={`rounded-field border p-2.5 text-start transition-soft ${checkoutState.fulfillment_mode === 'delivery' ? 'border-primary bg-sage' : 'border-line-strong hover:bg-raised'}`}
                         >
-                            <span className="text-[13px] font-semibold text-ink">🚚 Livraison / plus tard</span>
-                            <span className="mt-0.5 block text-[11px] text-ink-muted">Préparer / livrer</span>
+                            <span className="text-[13px] font-semibold text-ink">🚚 {t('pos.deliveryLater')}</span>
+                            <span className="mt-0.5 block text-[11px] text-ink-muted">{t('pos.prepareDeliver')}</span>
                         </button>
                     </div>
 
                     {checkoutState.fulfillment_mode === 'pickup' && sale.requires_replenishment && (
                         <p className="mt-2 rounded-field bg-warning-soft px-3 py-2 text-[12px] text-warning">
-                            <Quantity value={sale.remote_required} /> unité(s) nécessitent une préparation depuis un autre emplacement.
+                            {t('pos.remoteUnitsHelp').replace('{count}', String(sale.remote_required))}
                         </p>
                     )}
 
@@ -436,18 +444,18 @@ export default function PosCheckoutPanel({
                                 onChange={(event) => setCheckoutState((current) => ({ ...current, delivery_address: event.target.value }))}
                                 onBlur={() => void saveCheckoutState()}
                                 rows={2}
-                                placeholder="Adresse de livraison"
+                                placeholder={t('pos.deliveryAddress')}
                                 className="w-full rounded-field border border-line-strong bg-surface px-2.5 py-2 text-[13px] outline-none focus:border-primary"
                             />
                             <input
                                 value={checkoutState.delivery_phone}
                                 onChange={(event) => setCheckoutState((current) => ({ ...current, delivery_phone: event.target.value }))}
                                 onBlur={() => void saveCheckoutState()}
-                                placeholder="Téléphone"
+                                placeholder={t('pos.phone')}
                                 className={fieldClass}
                             />
                             <label className="flex items-center gap-2 text-[13px] text-ink-muted">
-                                Frais de livraison
+                                {t('pos.shippingFee')}
                                 <NumericInput
                                     value={checkoutState.shipping_fee === '0.0000' || checkoutState.shipping_fee === '0' ? '' : checkoutState.shipping_fee}
                                     onValueChange={(next) => setCheckoutState((current) => ({ ...current, shipping_fee: next || '0' }))}
@@ -462,7 +470,7 @@ export default function PosCheckoutPanel({
                                 onChange={(event) => setCheckoutState((current) => ({ ...current, delivery_notes: event.target.value }))}
                                 onBlur={() => void saveCheckoutState()}
                                 rows={2}
-                                placeholder="Notes"
+                                placeholder={t('pos.notes')}
                                 className="w-full rounded-field border border-line-strong bg-surface px-2.5 py-2 text-[13px] outline-none focus:border-primary"
                             />
                         </div>
@@ -471,18 +479,18 @@ export default function PosCheckoutPanel({
 
                 {/* Payment */}
                 <Section
-                    title="Paiement"
+                    title={t('pos.payment')}
                     action={
                         settlementMode !== 'deferred' ? (
                             <button type="button" onClick={() => setPayments((current) => [...current, buildEmptyPayment()])} className="text-[12px] font-medium text-ink-muted transition-soft hover:text-ink">
-                                + Ajouter un moyen
+                                {t('pos.addMethod')}
                             </button>
                         ) : undefined
                     }
                 >
                     <SegmentedControl
                         size="sm"
-                        ariaLabel="Mode de règlement"
+                        ariaLabel={t('pos.settlementMode')}
                         value={settlementMode}
                         onChange={setSettlement}
                         options={(['full', 'partial', 'deferred'] as SettlementMode[]).map((mode) => ({ value: mode, label: settlementLabels[mode] }))}
@@ -490,7 +498,7 @@ export default function PosCheckoutPanel({
 
                     {settlementMode === 'deferred' ? (
                         <p className="mt-2.5 rounded-field bg-raised px-3 py-2 text-[12px] text-ink-muted">
-                            Le client règlera plus tard, après réception de la facture. Aucun mouvement de caisse ne sera enregistré maintenant.
+                            {t('pos.deferredDetailedHelp')}
                         </p>
                     ) : (
                     <div className="mt-2.5 space-y-2.5">
@@ -500,7 +508,7 @@ export default function PosCheckoutPanel({
                                 <div key={index} className="rounded-field border border-line p-2.5">
                                     <div className="flex items-center gap-2">
                                         <select value={payment.method} onChange={(event) => assignMethod(index, event.target.value as PaymentMethod | '')} className={`${fieldClass} flex-1`}>
-                                            <option value="">Méthode…</option>
+                                            <option value="">{t('pos.method')}</option>
                                             {(Object.keys(paymentLabels) as PaymentMethod[]).map((method) => (
                                                 <option key={method} value={method}>{paymentLabels[method]}</option>
                                             ))}
@@ -514,11 +522,11 @@ export default function PosCheckoutPanel({
                                                     cash_received: payment.method === 'cash' && !payment.cashReceivedTouched ? next : payment.cash_received,
                                                 })
                                             }
-                                            placeholder="Montant"
+                                            placeholder={t('pos.amount')}
                                             className={`${fieldClass} w-24`}
                                         />
                                         {payments.length > 1 && (
-                                            <button type="button" onClick={() => setPayments((current) => current.filter((_, itemIndex) => itemIndex !== index))} aria-label="Supprimer" className="shrink-0 text-ink-faint transition-soft hover:text-danger">
+                                            <button type="button" onClick={() => setPayments((current) => current.filter((_, itemIndex) => itemIndex !== index))} aria-label={t('pos.deletePayment')} className="shrink-0 text-ink-faint transition-soft hover:text-danger">
                                                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12" /></svg>
                                             </button>
                                         )}
@@ -526,7 +534,7 @@ export default function PosCheckoutPanel({
 
                                     {payment.method === 'cash' && (
                                         <div className="mt-2 flex items-center gap-2">
-                                            <span className="text-[12px] text-ink-muted">Reçu</span>
+                                            <span className="text-[12px] text-ink-muted">{t('pos.receipt')}</span>
                                             <NumericInput
                                                 value={payment.cash_received}
                                                 onValueChange={(next) => patchPayment(index, { cash_received: next, cashReceivedTouched: true })}
@@ -534,7 +542,7 @@ export default function PosCheckoutPanel({
                                                 className={`${fieldClass} w-24`}
                                             />
                                             <span className="text-[12px] text-ink-muted">
-                                                Monnaie <strong className="text-ink"><Money value={Math.max(0, (Number(payment.cash_received) || 0) - positiveAmount(payment.amount)).toFixed(4)} currency={currencyCode} /></strong>
+                                                {t('pos.change')} <strong className="text-ink"><Money value={Math.max(0, (Number(payment.cash_received) || 0) - positiveAmount(payment.amount)).toFixed(4)} currency={currencyCode} /></strong>
                                             </span>
                                         </div>
                                     )}
@@ -554,7 +562,7 @@ export default function PosCheckoutPanel({
                                             onChange={(event) => patchPayment(index, { financial_account_id: event.target.value ? Number(event.target.value) : '' })}
                                             className={`${fieldClass} mt-2`}
                                         >
-                                            <option value="">Compte de réception…</option>
+                                            <option value="">{t('pos.receiptAccount')}</option>
                                             {compatible.map((account) => (
                                                 <option key={account.id} value={account.id}>{account.code} · {account.name}</option>
                                             ))}
@@ -563,7 +571,7 @@ export default function PosCheckoutPanel({
 
                                     {payment.method && compatible.length === 0 && (
                                         <p className="mt-2 rounded-field bg-warning-soft px-2.5 py-1.5 text-[12px] text-warning">
-                                            Aucun compte configuré. <Link href="/financial-accounts" className="underline">Configurer</Link>
+                                            {t('pos.noAccount')} <Link href="/financial-accounts" className="underline">{t('pos.configure')}</Link>
                                         </p>
                                     )}
                                 </div>
@@ -573,26 +581,26 @@ export default function PosCheckoutPanel({
                     )}
 
                     <div className="mt-2.5 space-y-1 rounded-field bg-raised px-3 py-2 text-[13px]">
-                        <div className="flex justify-between"><span className="text-ink-muted">Total commande</span><strong><Money value={currentTotal} currency={currencyCode} /></strong></div>
+                        <div className="flex justify-between"><span className="text-ink-muted">{t('pos.orderTotal')}</span><strong><Money value={currentTotal} currency={currencyCode} /></strong></div>
                         <div className="flex justify-between">
-                            <span className="text-ink-muted">{settlementMode === 'deferred' ? 'À encaisser maintenant' : 'Montant encaissé maintenant'}</span>
+                            <span className="text-ink-muted">{settlementMode === 'deferred' ? t('pos.collectNow') : t('pos.receivedNow')}</span>
                             <strong><Money value={paid.toFixed(4)} currency={currencyCode} /></strong>
                         </div>
-                        <div className="flex justify-between"><span className="text-ink-muted">Reste à payer</span><strong className={Number(remaining) > 0 ? 'text-warning' : 'text-ink'}><Money value={remaining} currency={currencyCode} /></strong></div>
+                        <div className="flex justify-between"><span className="text-ink-muted">{t('pos.remaining')}</span><strong className={Number(remaining) > 0 ? 'text-warning' : 'text-ink'}><Money value={remaining} currency={currencyCode} /></strong></div>
                     </div>
                 </Section>
 
                 {/* Customer */}
-                <Section title="Client">
+                <Section title={t('common.customer')}>
                     {selectedCustomer ? (
                         <div className="rounded-field border border-line bg-raised p-2.5">
                             <p className="text-[13px] font-semibold text-ink">{selectedCustomer.display_name}</p>
                             <p className="text-[12px] text-ink-muted">
-                                {[selectedCustomer.company_name, selectedCustomer.phone, selectedCustomer.email].filter(Boolean).join(' · ') || 'Client comptoir'}
+                                {[selectedCustomer.company_name, selectedCustomer.phone, selectedCustomer.email].filter(Boolean).join(' · ') || t('pos.counterCustomerFallback')}
                             </p>
                             <div className="mt-2 flex gap-2">
                                 <button type="button" onClick={() => { setSearch(''); setResults([]); setCustomerMode('idle'); onCustomerDetach(); }} className="text-[12px] font-medium text-ink-muted underline">
-                                    Changer
+                                    {t('pos.changeCustomer')}
                                 </button>
                                 {canUpdateCustomer && (
                                     <button
@@ -604,7 +612,7 @@ export default function PosCheckoutPanel({
                                         }}
                                         className="text-[12px] font-medium text-ink-muted underline"
                                     >
-                                        Modifier
+                                        {t('pos.edit')}
                                     </button>
                                 )}
                             </div>
@@ -613,9 +621,9 @@ export default function PosCheckoutPanel({
                     ) : (
                         <>
                             <div className="relative">
-                                <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Rechercher un client…" className={fieldClass} aria-busy={searching || undefined} />
+                                <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t('pos.searchCustomer')} className={fieldClass} aria-busy={searching || undefined} />
                                 {searching && (
-                                    <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-ink-faint">
+                                    <span className="absolute end-2.5 top-1/2 -translate-y-1/2 text-ink-faint">
                                         <Spinner size="xs" />
                                     </span>
                                 )}
@@ -627,7 +635,7 @@ export default function PosCheckoutPanel({
                                             <button
                                                 type="button"
                                                 onClick={() => void onCustomerSelected(customer).then(() => { setSearch(''); setResults([]); })}
-                                                className="w-full rounded-field border border-line px-2.5 py-1.5 text-left transition-soft hover:bg-raised"
+                                                className="w-full rounded-field border border-line px-2.5 py-1.5 text-start transition-soft hover:bg-raised"
                                             >
                                                 <span className="block text-[13px] font-medium text-ink">{customer.display_name}</span>
                                                 <span className="block text-[11px] text-ink-muted">{[customer.company_name, customer.phone, customer.email].filter(Boolean).join(' · ') || '—'}</span>
@@ -636,7 +644,7 @@ export default function PosCheckoutPanel({
                                     ))}
                                 </ul>
                             )}
-                            {searched && !searching && results.length === 0 && <p className="mt-2 text-[12px] text-ink-muted">Aucun client trouvé.</p>}
+                            {searched && !searching && results.length === 0 && <p className="mt-2 text-[12px] text-ink-muted">{t('pos.noCustomerFound')}</p>}
                             {canCreateCustomer && customerMode !== 'create' && (
                                 <button
                                     type="button"
@@ -647,7 +655,7 @@ export default function PosCheckoutPanel({
                                     }}
                                     className="mt-2 text-[12px] font-medium text-ink-muted underline"
                                 >
-                                    + Nouveau client
+                                    {t('pos.newCustomer')}
                                 </button>
                             )}
                             {customerMode === 'create' && renderCustomerForm('create')}
@@ -660,13 +668,12 @@ export default function PosCheckoutPanel({
             <div className="shrink-0 border-t border-line bg-raised p-3.5">
                 {sale.procurement_deficit && (
                     <p className="mb-2 rounded-field border border-warning/30 bg-warning-soft/40 px-3 py-2 text-[12px] text-warning">
-                        Des articles sont en rupture. Revenez au panier et utilisez « Approvisionner auprès d’un fournisseur »,
-                        faites confirmer la disponibilité, puis finalisez.
+                        {t('pos.stockOutCheckoutHelp')}
                     </p>
                 )}
                 <div className="grid grid-cols-[auto_1fr] gap-2">
                     <button type="button" onClick={onBack} className="rounded-field border border-line-strong bg-surface px-3 py-2.5 text-[13px] font-medium text-ink transition-soft hover:bg-sage">
-                        Annuler
+                        {t('pos.cancel')}
                     </button>
                     <button
                         type="button"
@@ -675,7 +682,7 @@ export default function PosCheckoutPanel({
                         className="inline-flex items-center justify-center gap-2 rounded-field bg-primary px-4 py-2.5 text-sm font-semibold text-primary-fg transition-soft hover:bg-primary-hover disabled:opacity-50"
                     >
                         {(savingCheckout || savingState) && <Spinner size="sm" />}
-                        Vérifier la commande →
+                        {t('pos.reviewOrder')} <span aria-hidden="true">{direction === 'rtl' ? '←' : '→'}</span>
                     </button>
                 </div>
             </div>

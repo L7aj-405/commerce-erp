@@ -1,5 +1,6 @@
 import { Money } from '@/components/pos/primitives';
 import { Link } from '@inertiajs/react';
+import { useI18n } from '@/i18n';
 
 type Props = {
     order: {
@@ -18,6 +19,7 @@ type Props = {
 };
 
 export default function PosSuccessToast({ order, onPrint, onNewSale, onDismiss }: Props) {
+    const { t } = useI18n();
     const hasRemaining = Number(order.remaining) > 0.00005;
 
     return (
@@ -29,33 +31,32 @@ export default function PosSuccessToast({ order, onPrint, onNewSale, onDismiss }
                             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="m5 13 4 4L19 7" /></svg>
                         </span>
                         <div>
-                            <p className="text-[13px] font-semibold text-ink">Vente {order.order_number} enregistrée</p>
+                            <p className="text-[13px] font-semibold text-ink">{t('pos.saleRecorded').replace('{order}', order.order_number)}</p>
                             <p className="text-[12px] text-ink-muted">
-                                Total <Money value={order.total_incl_tax} currency={order.currency_code} /> · Payé <Money value={order.paid} currency={order.currency_code} />
-                                {hasRemaining && <> · Reste <Money value={order.remaining} currency={order.currency_code} /></>}
+                                {t('pos.total')} <Money value={order.total_incl_tax} currency={order.currency_code} /> · {t('pos.paid')} <Money value={order.paid} currency={order.currency_code} />{hasRemaining && <> · {t('pos.remainingShort')} <Money value={order.remaining} currency={order.currency_code} /></>}
                             </p>
                         </div>
                     </div>
-                    <button type="button" onClick={onDismiss} aria-label="Fermer" className="shrink-0 text-ink-faint transition-soft hover:text-ink">
+                    <button type="button" onClick={onDismiss} aria-label={t('pos.close')} className="shrink-0 text-ink-faint transition-soft hover:text-ink">
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12" /></svg>
                     </button>
                 </div>
 
                 {order.requires_replenishment && (
                     <p className="mt-2 rounded-field bg-warning-soft px-2.5 py-1.5 text-[12px] text-warning">
-                        Préparation requise pour {Number(order.remote_required)} unité(s).
+                        {t('pos.preparationRequired').replace('{count}', String(Number(order.remote_required)))}
                     </p>
                 )}
 
                 <div className="mt-3 flex flex-wrap gap-2">
                     <button type="button" onClick={onPrint} className="rounded-field border border-line-strong bg-surface px-3 py-1.5 text-[12px] font-medium text-ink transition-soft hover:bg-sage">
-                        Imprimer le reçu
+                        {t('pos.printReceipt')}
                     </button>
                     <Link href={`/sales/orders/${order.id}`} className="rounded-field border border-line-strong bg-surface px-3 py-1.5 text-[12px] font-medium text-ink transition-soft hover:bg-sage">
-                        Voir la commande
+                        {t('pos.viewOrder')}
                     </Link>
                     <button type="button" onClick={onNewSale} className="rounded-field bg-primary px-3 py-1.5 text-[12px] font-semibold text-primary-fg transition-soft hover:bg-primary-hover">
-                        Nouvelle vente
+                        {t('pos.newSale')}
                     </button>
                 </div>
             </div>

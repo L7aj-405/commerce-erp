@@ -2,6 +2,7 @@ import DocBadge from '@/components/ui/DocBadge';
 import { Button } from '@/components/ui/Button';
 import { Popover } from '@/components/pos/primitives';
 import SalesLayout from '@/layouts/SalesLayout';
+import { useI18n } from '@/i18n';
 import { formatDate, formatDateTime, formatMoney, formatQuantity } from '@/utils/format';
 import {
     deliveryNoteStatusLabel,
@@ -232,15 +233,8 @@ function Card({ label: l, children }: { label: string; children: ReactNode }) {
     );
 }
 
-const TR_STATUS_LABEL: Record<string, string> = {
-    requested: 'Demandée',
-    preparing: 'En préparation',
-    shipped: 'Expédiée',
-    received: 'Réceptionnée',
-    cancelled: 'Annulée',
-};
-
 export default function ShowOrder({ order, paymentSummary, payments, refunds, financialAccounts, documents, awaitingReplenishment, procurement, transferRequests, revisions, activeCorrection, pendingReplacementInvoice, invoiceStaleAfterCompletion, addenda, customerReturns, customerExchanges, returnPolicy, commercialSummary, marginSummary, salespersons, completionEligibility, can }: Props) {
+    const { t } = useI18n();
     const [confirmCancel, setConfirmCancel] = useState(false);
     const cancellation = useForm({ reason: '' });
     const createInvoice = useForm({});
@@ -298,7 +292,7 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
             <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
                 <div>
                     <Link href="/sales/orders" className="text-sm text-ink-muted">
-                        ← Commandes
+                        ← {t('orders.show.back')}
                     </Link>
                     <h1 className="mt-1 text-2xl font-semibold tracking-tight text-ink">{order.order_number}</h1>
                     <p className="text-sm text-ink-muted">
@@ -311,22 +305,22 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
                             href={`/sales/orders/${order.id}/edit`}
                             className="inline-flex min-h-10 items-center rounded-field bg-primary px-4 text-sm font-medium text-primary-fg hover:bg-primary-hover"
                         >
-                            Continuer la correction
+                            {t('orders.show.continueCorrection')}
                         </Link>
                     ) : order.status === 'draft' && can.update ? (
                         <Link
                             href={`/sales/orders/${order.id}/edit`}
                             className="inline-flex min-h-10 items-center rounded-field border border-line-strong bg-surface px-4 text-sm text-ink hover:bg-raised"
                         >
-                            Modifier
+                            {t('common.edit')}
                         </Link>
                     ) : null}
                     {order.status === 'draft' && !activeCorrection && can.confirm && (
-                        <Button onClick={() => router.post(`/sales/orders/${order.id}/confirm`)}>Confirmer</Button>
+                        <Button onClick={() => router.post(`/sales/orders/${order.id}/confirm`)}>{t('common.confirm')}</Button>
                     )}
 
                     {order.status === 'confirmed' && order.fulfillment_status === 'unfulfilled' && can.correct && (
-                        <Button variant="secondary" onClick={() => setShowCorrection(true)}>Corriger la commande</Button>
+                        <Button variant="secondary" onClick={() => setShowCorrection(true)}>{t('orders.show.correctOrder')}</Button>
                     )}
 
                     {can.completePos && (
@@ -334,7 +328,7 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
                             href={`/sales/orders/${order.id}/completion`}
                             className="inline-flex min-h-10 items-center rounded-field bg-primary px-4 text-sm font-medium text-primary-fg hover:bg-primary-hover"
                         >
-                            Compléter la commande
+                            {t('orders.show.completeOrder')}
                         </Link>
                     )}
                     {!can.completePos && order.source === 'pos' && completionEligibility.code !== 'missing_permission' && (
@@ -345,7 +339,7 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
                                 title={completionEligibility.reason ?? undefined}
                                 className="inline-flex min-h-10 cursor-not-allowed items-center rounded-field border border-line bg-raised px-4 text-sm font-medium text-ink-faint opacity-70"
                             >
-                                Compléter la commande
+                                {t('orders.show.completeOrder')}
                             </button>
                             {completionEligibility.reason && (
                                 <span className="max-w-xs text-xs text-ink-muted">{completionEligibility.reason}</span>
@@ -354,22 +348,22 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
                     )}
                     {can.createReturn && (
                         <Link href={`/sales/orders/${order.id}/returns/create`} className="inline-flex min-h-10 items-center rounded-field border border-line-strong bg-surface px-4 text-sm font-medium text-ink hover:bg-raised">
-                            Retourner des articles
+                            {t('orders.show.returnItems')}
                         </Link>
                     )}
                     {can.createExchange && (
                         <Link href={`/sales/orders/${order.id}/exchanges/create`} className="inline-flex min-h-10 items-center rounded-field border border-line-strong bg-surface px-4 text-sm font-medium text-ink hover:bg-raised">
-                            Échanger des articles
+                            {t('orders.show.exchangeItems')}
                         </Link>
                     )}
 
                     {order.status === 'confirmed' && (!activeInvoice || pendingReplacementInvoice) && can.createInvoice && (
                         <Button
                             loading={createInvoice.processing}
-                            loadingText="Création…"
+                            loadingText={t('common.creating')}
                             onClick={() => createInvoice.post(`/sales/orders/${order.id}/invoices`)}
                         >
-                            {pendingReplacementInvoice ? 'Générer la nouvelle facture' : 'Créer facture'}
+                            {pendingReplacementInvoice ? t('orders.show.generateNewInvoice') : t('orders.show.createInvoice')}
                         </Button>
                     )}
                     {activeInvoice && activeInvoice.status === 'draft' && (
@@ -377,7 +371,7 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
                             href={`/invoices/${activeInvoice.id}`}
                             className="inline-flex min-h-10 items-center rounded-field bg-primary px-4 text-sm font-medium text-primary-fg hover:bg-primary-hover"
                         >
-                            Continuer la facture
+                            {t('orders.show.continueInvoice')}
                         </Link>
                     )}
                     {activeInvoice && activeInvoice.status === 'issued' && !activeCorrection && !pendingReplacementInvoice && (
@@ -386,7 +380,7 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
                                 href={`/invoices/${activeInvoice.id}`}
                                 className="inline-flex min-h-10 items-center rounded-field border border-line-strong bg-surface px-4 text-sm text-ink hover:bg-raised"
                             >
-                                Facture {activeInvoice.invoice_number}
+                                {t('orders.show.invoice')} <bdi>{activeInvoice.invoice_number}</bdi>
                             </Link>
                             <a
                                 href={`/invoices/${activeInvoice.id}/pdf`}
@@ -405,7 +399,7 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
                                 onClick={() => router.post(`/sales/orders/${order.id}/delivery-notes`)}
                                 className="inline-flex min-h-10 items-center rounded-field border border-line-strong bg-surface px-4 text-sm text-ink hover:bg-raised"
                             >
-                                Créer bon de livraison
+                                {t('orders.show.createDeliveryNote')}
                             </button>
                     )}
                 </div>
@@ -421,26 +415,26 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
                         className="w-full max-w-lg space-y-4 rounded-card border border-line bg-surface p-5 shadow-xl"
                     >
                         <div>
-                            <h2 id="correction-title" className="text-lg font-semibold text-ink">Corriger la commande</h2>
-                            <p className="mt-1 text-sm text-ink-muted">Indiquez le motif de la correction avant de modifier la commande.</p>
+                            <h2 id="correction-title" className="text-lg font-semibold text-ink">{t('orders.show.correctOrder')}</h2>
+                            <p className="mt-1 text-sm text-ink-muted">{t('orders.show.correctionHelp')}</p>
                         </div>
                         <div>
-                            <label htmlFor="correction-reason" className="mb-1 block text-sm font-medium text-ink">Motif de la correction</label>
+                            <label htmlFor="correction-reason" className="mb-1 block text-sm font-medium text-ink">{t('orders.show.correctionReason')}</label>
                             <textarea
                                 id="correction-reason"
                                 required
                                 autoFocus
                                 value={correctionForm.data.reason}
                                 onChange={(event) => correctionForm.setData('reason', event.target.value)}
-                                placeholder="Ex. Ajout d’un article demandé par le client"
+                                placeholder={t('orders.show.correctionPlaceholder')}
                                 className="min-h-28 w-full rounded-field border border-line-strong bg-surface px-3 py-2 text-sm"
                             />
                         </div>
                         {correctionForm.errors.reason && <p className="text-sm text-danger">{correctionForm.errors.reason}</p>}
                         {correctionOrderError && <p className="text-sm text-danger">{correctionOrderError}</p>}
                         <div className="flex flex-wrap justify-end gap-2">
-                            <Button type="button" variant="secondary" onClick={() => setShowCorrection(false)}>Annuler</Button>
-                            <Button type="submit" loading={correctionForm.processing} loadingText="Ouverture…">Démarrer la correction</Button>
+                            <Button type="button" variant="secondary" onClick={() => setShowCorrection(false)}>{t('common.cancel')}</Button>
+                            <Button type="submit" loading={correctionForm.processing} loadingText={t('common.opening')}>{t('orders.show.startCorrection')}</Button>
                         </div>
                     </form>
                 </div>
@@ -450,24 +444,24 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="presentation">
                     <form onSubmit={reassignSalesperson} role="dialog" aria-modal="true" aria-labelledby="salesperson-title" className="w-full max-w-lg space-y-4 rounded-card border border-line bg-surface p-5 shadow-xl">
                         <div>
-                            <h2 id="salesperson-title" className="text-lg font-semibold text-ink">Réattribuer le commercial</h2>
-                            <p className="mt-1 text-sm text-ink-muted">Cette correction modifie l’attribution historique et sera auditée.</p>
+                            <h2 id="salesperson-title" className="text-lg font-semibold text-ink">{t('orders.show.reassignSalesperson')}</h2>
+                            <p className="mt-1 text-sm text-ink-muted">{t('orders.show.reassignHelp')}</p>
                         </div>
                         <label className="block text-sm">
-                            <span className="mb-1 block font-medium text-ink">Commercial</span>
+                            <span className="mb-1 block font-medium text-ink">{t('orders.show.salesperson')}</span>
                             <select value={salespersonForm.data.salesperson_id ?? ''} onChange={(e) => salespersonForm.setData('salesperson_id', e.target.value ? Number(e.target.value) : null)} className="w-full rounded-field border border-line-strong px-3 py-2">
-                                <option value="">Non attribuée</option>
+                                <option value="">{t('orders.show.unassigned')}</option>
                                 {salespersons.map((salesperson) => <option key={salesperson.id} value={salesperson.id}>{salesperson.name}</option>)}
                             </select>
                         </label>
                         <label className="block text-sm">
-                            <span className="mb-1 block font-medium text-ink">Motif</span>
+                            <span className="mb-1 block font-medium text-ink">{t('common.reason')}</span>
                             <textarea required value={salespersonForm.data.reason} onChange={(e) => salespersonForm.setData('reason', e.target.value)} className="min-h-24 w-full rounded-field border border-line-strong px-3 py-2" />
                         </label>
                         {Object.values(salespersonForm.errors).map((error) => error && <p key={error} className="text-sm text-danger">{error}</p>)}
                         <div className="flex justify-end gap-2">
-                            <Button type="button" variant="secondary" onClick={() => setShowSalespersonCorrection(false)}>Annuler</Button>
-                            <Button type="submit" loading={salespersonForm.processing}>Confirmer la réattribution</Button>
+                            <Button type="button" variant="secondary" onClick={() => setShowSalespersonCorrection(false)}>{t('common.cancel')}</Button>
+                            <Button type="submit" loading={salespersonForm.processing}>{t('orders.show.confirmReassignment')}</Button>
                         </div>
                     </form>
                 </div>
@@ -475,59 +469,59 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
 
             {order.status === 'confirmed' && order.fulfillment_status === 'fulfilled' && (
                 <div className="mb-6 rounded-field border border-line bg-raised/60 px-4 py-3 text-sm text-ink-muted">
-                    Les articles déjà remis sont verrouillés. Vous pouvez uniquement ajouter un nouveau complément POS local ; toute réduction ou suppression relève d’un retour ou d’un avoir.
+                    {t('orders.show.fulfilledLockHelp')}
                 </div>
             )}
 
             {order.status === 'cancelled' && (
                 <section className="mb-6 rounded-card border border-danger/30 bg-danger-soft/40 p-5">
-                    <h2 className="font-semibold text-danger">Commande annulée</h2>
+                    <h2 className="font-semibold text-danger">{t('orders.show.cancelledOrder')}</h2>
                     <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-3">
-                        <div><dt className="text-ink-faint">Motif</dt><dd className="text-ink">{order.cancellation_reason ?? '—'}</dd></div>
-                        <div><dt className="text-ink-faint">Annulée par</dt><dd className="text-ink">{order.cancelled_by?.name ?? 'Utilisateur supprimé'}</dd></div>
-                        <div><dt className="text-ink-faint">Date d’annulation</dt><dd className="text-ink">{order.cancelled_at ? formatDate(order.cancelled_at) : '—'}</dd></div>
+                        <div><dt className="text-ink-faint">{t('common.reason')}</dt><dd className="text-ink">{order.cancellation_reason ?? '—'}</dd></div>
+                        <div><dt className="text-ink-faint">{t('orders.show.cancelledBy')}</dt><dd className="text-ink">{order.cancelled_by?.name ?? t('orders.show.deletedUser')}</dd></div>
+                        <div><dt className="text-ink-faint">{t('orders.show.cancellationDate')}</dt><dd className="text-ink">{order.cancelled_at ? formatDate(order.cancelled_at) : '—'}</dd></div>
                     </dl>
                     <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                        <Card label="Encaissé">{formatMoney(paymentSummary.collected, order.currency_code)}</Card>
-                        <Card label="Remboursé">{formatMoney(paymentSummary.refunded, order.currency_code)}</Card>
-                        <Card label="Net encaissé">{formatMoney(paymentSummary.net, order.currency_code)}</Card>
+                        <Card label={t('orders.show.collected')}>{formatMoney(paymentSummary.collected, order.currency_code)}</Card>
+                        <Card label={t('orders.show.refunded')}>{formatMoney(paymentSummary.refunded, order.currency_code)}</Card>
+                        <Card label={t('orders.show.netCollected')}>{formatMoney(paymentSummary.net, order.currency_code)}</Card>
                     </div>
                 </section>
             )}
 
             {customerReturns.length > 0 && (
                 <section className="mb-6 rounded-card border border-line bg-surface p-5">
-                    <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="font-semibold">Retours</h2>{commercialSummary.state !== 'none' && <span className={`rounded-full px-3 py-1 text-xs font-semibold ${commercialSummary.fully_returned ? 'bg-danger-soft text-danger' : 'bg-warning-soft text-warning'}`}>{commercialSummary.fully_returned ? 'Retournée intégralement' : 'Retour partiel'}</span>}</div>
-                    <div className="mt-3 grid gap-3 sm:grid-cols-3"><Card label="Vente initiale">{formatMoney(commercialSummary.gross, order.currency_code)}</Card><Card label="Retours">-{formatMoney(commercialSummary.returns, order.currency_code)}</Card><Card label="Net commercial">{formatMoney(commercialSummary.net, order.currency_code)}</Card></div>
+                    <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="font-semibold">{t('orders.show.returns')}</h2>{commercialSummary.state !== 'none' && <span className={`rounded-full px-3 py-1 text-xs font-semibold ${commercialSummary.fully_returned ? 'bg-danger-soft text-danger' : 'bg-warning-soft text-warning'}`}>{commercialSummary.fully_returned ? t('orders.show.fullyReturned') : t('orders.show.partialReturn')}</span>}</div>
+                    <div className="mt-3 grid gap-3 sm:grid-cols-3"><Card label={t('orders.show.initialSale')}>{formatMoney(commercialSummary.gross, order.currency_code)}</Card><Card label={t('orders.show.returns')}>-{formatMoney(commercialSummary.returns, order.currency_code)}</Card><Card label={t('orders.show.commercialNet')}>{formatMoney(commercialSummary.net, order.currency_code)}</Card></div>
                     <div className="mt-3 divide-y divide-line">{customerReturns.map((item) => <Link key={item.id} href={`/sales/returns/${item.id}`} className="flex justify-between py-2 text-sm"><span>{item.return_number} · {item.status}</span><span>-{formatMoney(item.total_incl_tax, order.currency_code)}</span></Link>)}</div>
-                    {returnPolicy && <p className="mt-3 text-xs text-ink-muted">{returnPolicy.within_policy ? 'Retour encore autorisé' : 'Délai de retour dépassé'} · échéance {returnPolicy.deadline ? formatDateTime(returnPolicy.deadline) : '—'}</p>}
+                    {returnPolicy && <p className="mt-3 text-xs text-ink-muted">{returnPolicy.within_policy ? t('orders.show.returnAllowed') : t('orders.show.returnExpired')} · {t('orders.show.deadline')} {returnPolicy.deadline ? formatDateTime(returnPolicy.deadline) : '—'}</p>}
                 </section>
             )}
 
             <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
-                <Card label="Client">
+                <Card label={t('common.customer')}>
                     {isCompany
-                        ? order.customer_company ?? order.customer?.company_name ?? order.customer_name ?? 'Client comptoir'
-                        : order.customer_name ?? 'Client comptoir'}
+                        ? order.customer_company ?? order.customer?.company_name ?? order.customer_name ?? t('common.counterCustomer')
+                        : order.customer_name ?? t('common.counterCustomer')}
                 </Card>
-                <Card label="Commande">
+                <Card label={t('orders.show.order')}>
                     <DocBadge tone={orderStatusTone(order.status)}>{label(orderStatusLabel, order.status)}</DocBadge>
                 </Card>
-                <Card label="Préparation">
+                <Card label={t('orders.show.fulfillment')}>
                     <DocBadge tone={fulfillmentTone(order.fulfillment_status)}>
                         {label(fulfillmentLabel, order.fulfillment_status)}
                     </DocBadge>
                 </Card>
-                <Card label="Paiement">
+                <Card label={t('common.payment')}>
                     <DocBadge tone={paymentStatusTone(paymentSummary.status)}>
                         {label(paymentStatusLabel, paymentSummary.status)}
                     </DocBadge>
                 </Card>
-                <Card label="Commercial">
-                    <span>{order.salesperson_name_snapshot ?? order.salesperson?.name ?? 'Non attribuée'}</span>
+                <Card label={t('orders.show.salesperson')}>
+                    <span>{order.salesperson_name_snapshot ?? order.salesperson?.name ?? t('orders.show.unassigned')}</span>
                     {can.reassignSalesperson && order.status === 'confirmed' && (
                         <button type="button" onClick={() => setShowSalespersonCorrection(true)} className="ml-2 text-xs font-medium text-primary underline">
-                            Réattribuer
+                            {t('orders.show.reassign')}
                         </button>
                     )}
                 </Card>
@@ -536,17 +530,17 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
             <div className="mb-6 grid gap-4 lg:grid-cols-3">
                 {/* Customer */}
                 <section className="rounded-card border border-line bg-surface p-5 lg:col-span-1">
-                    <h2 className="text-sm font-semibold text-ink">Client</h2>
+                    <h2 className="text-sm font-semibold text-ink">{t('common.customer')}</h2>
                     <div className="mt-2 space-y-0.5 text-sm text-ink-muted">
                         <p className="font-medium text-ink">
                             {isCompany
                                 ? order.customer?.company_name ?? order.customer_company ?? order.customer_name
-                                : order.customer_name ?? 'Client comptoir'}
+                                : order.customer_name ?? t('common.counterCustomer')}
                         </p>
-                        {isCompany && order.customer_name && <p>Contact : {order.customer_name}</p>}
+                        {isCompany && order.customer_name && <p>{t('orders.show.contact')} : {order.customer_name}</p>}
                         {(order.customer?.tax_identifier ?? null) && <p>ICE : {order.customer?.tax_identifier}</p>}
                         {(order.customer?.phone ?? order.customer_phone) && (
-                            <p>Tél : {order.customer?.phone ?? order.customer_phone}</p>
+                            <p>{t('orders.show.phone')} : <bdi>{order.customer?.phone ?? order.customer_phone}</bdi></p>
                         )}
                         {(order.customer?.email ?? order.customer_email) && (
                             <p>{order.customer?.email ?? order.customer_email}</p>
@@ -559,16 +553,16 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
 
                 {/* Financial summary */}
                 <section className="rounded-card border border-line bg-surface p-5 lg:col-span-2">
-                    <h2 className="text-sm font-semibold text-ink">Récapitulatif</h2>
+                    <h2 className="text-sm font-semibold text-ink">{t('orders.show.summary')}</h2>
                     <dl className="mt-3 space-y-1.5 text-sm">
-                        <Row term="Total brut HT" value={formatMoney(order.subtotal_excl_tax, order.currency_code)} />
+                        <Row term={t('orders.show.grossExclTax')} value={formatMoney(order.subtotal_excl_tax, order.currency_code)} />
                         {hasDiscount && (
-                            <Row term="Remise HT" value={`- ${formatMoney(order.discount_total, order.currency_code)}`} />
+                            <Row term={t('orders.show.discountExclTax')} value={`- ${formatMoney(order.discount_total, order.currency_code)}`} />
                         )}
-                        {hasDiscount && <Row term="Total HT" value={formatMoney(net, order.currency_code)} />}
-                        <Row term="TVA" value={formatMoney(order.tax_total, order.currency_code)} />
+                        {hasDiscount && <Row term={t('orders.show.totalExclTax')} value={formatMoney(net, order.currency_code)} />}
+                        <Row term={t('orders.show.tax')} value={formatMoney(order.tax_total, order.currency_code)} />
                         {hasShipping && (
-                            <Row term="Livraison" value={formatMoney(order.pos_shipping_fee, order.currency_code)} />
+                            <Row term={t('orders.show.delivery')} value={formatMoney(order.pos_shipping_fee, order.currency_code)} />
                         )}
                         <div className="mt-2 flex justify-between border-t border-line pt-2 text-base font-semibold text-ink">
                             <dt>TOTAL TTC</dt>
@@ -577,11 +571,11 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
                     </dl>
                     <div className="mt-4 grid grid-cols-2 gap-3 border-t border-line pt-3 text-sm">
                         <div>
-                            <p className="text-ink-muted">Payé</p>
+                            <p className="text-ink-muted">{t('orders.show.paid')}</p>
                             <p className="font-semibold text-ink">{formatMoney(paymentSummary.paid, order.currency_code)}</p>
                         </div>
                         <div>
-                            <p className="text-ink-muted">Reste</p>
+                            <p className="text-ink-muted">{t('orders.show.remaining')}</p>
                             <p className="font-semibold text-ink">
                                 {formatMoney(paymentSummary.remaining, order.currency_code)}
                             </p>
@@ -591,18 +585,18 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
                 {can.viewMargin && marginSummary && (
                     <section className="rounded-card border border-line bg-surface p-5 lg:col-span-2">
                         <div className="flex items-center justify-between gap-3">
-                            <h2 className="text-sm font-semibold text-ink">Marge brute HT</h2>
+                            <h2 className="text-sm font-semibold text-ink">{t('orders.show.grossMargin')}</h2>
                             {marginSummary.missing_cost_line_count > 0 && (
                                 <span className="rounded-full bg-warning-soft px-2.5 py-1 text-xs font-medium text-warning">
-                                    {marginSummary.missing_cost_line_count} coût(s) indisponible(s)
+                                    {t('orders.show.missingCosts').replace('{count}', String(marginSummary.missing_cost_line_count))}
                                 </span>
                             )}
                         </div>
                         <dl className="mt-3 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
-                            <Row term="CA net HT couvert" value={formatMoney(marginSummary.covered_revenue_excl_tax, order.currency_code)} />
-                            <Row term="Coût d’achat HT" value={formatMoney(marginSummary.cost_total, order.currency_code)} />
-                            <Row term="Marge brute" value={formatMoney(marginSummary.gross_margin_amount, order.currency_code)} />
-                            <Row term="Taux de marge" value={marginSummary.gross_margin_rate === null ? '—' : `${formatQuantity(marginSummary.gross_margin_rate)}%`} />
+                            <Row term={t('orders.show.coveredRevenue')} value={formatMoney(marginSummary.covered_revenue_excl_tax, order.currency_code)} />
+                            <Row term={t('orders.show.purchaseCost')} value={formatMoney(marginSummary.cost_total, order.currency_code)} />
+                            <Row term={t('orders.show.grossMarginShort')} value={formatMoney(marginSummary.gross_margin_amount, order.currency_code)} />
+                            <Row term={t('orders.show.marginRate')} value={marginSummary.gross_margin_rate === null ? '—' : `${formatQuantity(marginSummary.gross_margin_rate)}%`} />
                         </dl>
                     </section>
                 )}
@@ -613,13 +607,13 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
                 <table className="w-full min-w-[760px] text-left text-sm">
                     <thead className="border-b border-line bg-raised text-xs uppercase tracking-wide text-ink-muted">
                         <tr>
-                            <th className="px-4 py-3 font-medium">Produit</th>
-                            <th className="px-4 py-3 text-right font-medium">Qté</th>
-                            <th className="px-4 py-3 text-right font-medium">PU HT</th>
-                            <th className="px-4 py-3 text-right font-medium">Remise HT</th>
-                            <th className="px-4 py-3 text-right font-medium">TVA</th>
-                            <th className="px-4 py-3 text-right font-medium">Total TTC</th>
-                            {can.viewMargin && <th className="px-4 py-3 text-right font-medium">Marge HT</th>}
+                            <th className="px-4 py-3 font-medium">{t('common.product')}</th>
+                            <th className="px-4 py-3 text-right font-medium">{t('common.quantityShort')}</th>
+                            <th className="px-4 py-3 text-right font-medium">{t('orders.show.unitPriceExclTax')}</th>
+                            <th className="px-4 py-3 text-right font-medium">{t('orders.show.discountExclTax')}</th>
+                            <th className="px-4 py-3 text-right font-medium">{t('orders.show.tax')}</th>
+                            <th className="px-4 py-3 text-right font-medium">{t('orders.show.totalInclTax')}</th>
+                            {can.viewMargin && <th className="px-4 py-3 text-right font-medium">{t('orders.show.marginExclTax')}</th>}
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-line">
@@ -631,7 +625,9 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
                                         {[line.variant_name, line.reference ?? line.sku].filter(Boolean).join(' · ')}
                                     </div>
                                     <div className="mt-0.5 text-xs text-ink-faint">
-                                        {line.addendum ? `Complément #${line.addendum.sequence} · remis` : 'Commande initiale · déjà remis'}
+                                        {line.addendum
+                                            ? t('orders.show.addendumDelivered').replace('{sequence}', String(line.addendum.sequence))
+                                            : t('orders.show.initialDelivered')}
                                     </div>
                                     {line.allocations.length > 0 && (
                                         <div className="mt-0.5 text-xs text-ink-faint">
@@ -660,7 +656,7 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
                                     <td className="px-4 py-3 text-right tabular-nums">
                                         {line.cost_status === 'available' && line.margin_amount_snapshot !== null
                                             ? formatMoney(line.margin_amount_snapshot, order.currency_code)
-                                            : <span className="text-warning">Indisponible</span>}
+                                            : <span className="text-warning">{t('common.unavailable')}</span>}
                                     </td>
                                 )}
                             </tr>
@@ -673,9 +669,9 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
             {transferRequests.length > 0 && (
                 <section className="mb-6 rounded-card border border-line bg-surface p-5">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                        <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Approvisionnement</h2>
+                        <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">{t('orders.show.replenishment')}</h2>
                         {awaitingReplenishment && (
-                            <span className="rounded-full bg-warning-soft px-2.5 py-1 text-xs font-medium text-warning">À approvisionner</span>
+                            <span className="rounded-full bg-warning-soft px-2.5 py-1 text-xs font-medium text-warning">{t('orders.show.toReplenish')}</span>
                         )}
                     </div>
                     <ul className="mt-3 space-y-1.5 text-sm">
@@ -687,13 +683,13 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
                                 <span className="text-ink-muted">
                                     {r.source} → {r.destination} · {formatQuantity(r.unit_count)} u.
                                 </span>
-                                <span className="text-ink-muted">{TR_STATUS_LABEL[r.status] ?? r.status}</span>
+                                <span className="text-ink-muted">{t((`transferRequests.status.${r.status}`) as Parameters<typeof t>[0])}</span>
                             </li>
                         ))}
                     </ul>
                     {awaitingReplenishment && (
                         <p className="mt-2 text-xs text-ink-faint">
-                            La remise au client sera possible une fois le transfert interne réceptionné au showroom.
+                            {t('orders.show.replenishmentHelp')}
                         </p>
                     )}
                 </section>
@@ -711,17 +707,17 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
 
             {revisions.length > 0 && (
                 <section className="mb-6 rounded-card border border-line bg-surface p-5">
-                    <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Historique des corrections commerciales</h2>
+                    <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">{t('orders.show.correctionHistory')}</h2>
                     <div className="mt-3 space-y-3">
                         {revisions.map((revision) => (
                             <div key={revision.revision_number} className="rounded-field border border-line bg-raised/50 p-3 text-sm">
                                 <div className="flex flex-wrap items-center justify-between gap-2">
-                                    <span className="font-medium text-ink">Correction {revision.revision_number}</span>
-                                    <span className="text-ink-muted">{revision.initiated_by ?? 'Utilisateur'} · {revision.initiated_at ? formatDate(revision.initiated_at) : '—'}</span>
+                                    <span className="font-medium text-ink">{t('orders.show.correction')} {revision.revision_number}</span>
+                                    <span className="text-ink-muted">{revision.initiated_by ?? t('common.user')} · {revision.initiated_at ? formatDate(revision.initiated_at) : '—'}</span>
                                 </div>
                                 <p className="mt-1 text-ink-muted">{revision.reason}</p>
                                 <p className="mt-1 text-xs text-ink-faint">
-                                    {formatMoney(revision.before_total, order.currency_code)} → {revision.after_total ? formatMoney(revision.after_total, order.currency_code) : 'en cours'}
+                                    {formatMoney(revision.before_total, order.currency_code)} → {revision.after_total ? formatMoney(revision.after_total, order.currency_code) : t('common.inProgress')}
                                 </p>
                             </div>
                         ))}
@@ -731,16 +727,16 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
 
             {addenda.length > 0 && (
                 <section className="mb-6 rounded-card border border-line bg-surface p-5">
-                    <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Historique des compléments POS</h2>
+                    <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">{t('orders.show.addendumHistory')}</h2>
                     <div className="mt-3 space-y-3">
                         <div className="rounded-field border border-line bg-raised/50 p-3 text-sm">
-                            <span className="font-medium text-ink">Commande initiale</span>
+                            <span className="font-medium text-ink">{t('orders.show.initialOrder')}</span>
                         </div>
                         {addenda.map((addendum) => (
                             <div key={addendum.id} className="rounded-field border border-line bg-raised/50 p-3 text-sm">
                                 <div className="flex flex-wrap items-center justify-between gap-2">
-                                    <span className="font-medium text-ink">Complément #{addendum.sequence}</span>
-                                    <span className="text-ink-muted">{addendum.created_by ?? 'Utilisateur'} · {addendum.fulfilled_at ? formatDate(addendum.fulfilled_at) : '—'}</span>
+                                    <span className="font-medium text-ink">{t('orders.show.addendum')} #{addendum.sequence}</span>
+                                    <span className="text-ink-muted">{addendum.created_by ?? t('common.user')} · {addendum.fulfilled_at ? formatDate(addendum.fulfilled_at) : '—'}</span>
                                 </div>
                                 <p className="mt-1 text-ink-muted">
                                     {addendum.lines.map((line) => `${line.product_name} × ${formatQuantity(line.quantity)}`).join(' · ')}
@@ -756,18 +752,18 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
 
             {customerExchanges.length > 0 && (
                 <section className="mb-6 rounded-card border border-line bg-surface p-5">
-                    <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Historique des échanges</h2>
+                    <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">{t('orders.show.exchangeHistory')}</h2>
                     <div className="mt-3 divide-y divide-line">
                         {customerExchanges.map((exchange) => (
                             <Link key={exchange.id} href={`/sales/exchanges/${exchange.id}`} className="grid gap-2 py-3 text-sm sm:grid-cols-[1fr_auto]">
                                 <div>
                                     <p className="font-medium text-ink">{exchange.exchange_number} · {exchange.status}</p>
-                                    <p className="text-xs text-ink-muted">Retour {exchange.return_number ?? '—'}{exchange.addendum_sequence ? ` · Complément #${exchange.addendum_sequence}` : ''}</p>
+                                    <p className="text-xs text-ink-muted">{t('orders.show.return')} <bdi>{exchange.return_number ?? '—'}</bdi>{exchange.addendum_sequence ? ` · ${t('orders.show.addendum')} #${exchange.addendum_sequence}` : ''}</p>
                                 </div>
                                 <div className="text-right text-xs text-ink-muted">
-                                    <p>Retour : {formatMoney(exchange.returned_total, order.currency_code)}</p>
-                                    <p>Nouveaux : {formatMoney(exchange.new_items_total, order.currency_code)}</p>
-                                    <p className="font-semibold text-ink">Différence : {formatMoney(Math.abs(Number(exchange.difference_amount)), order.currency_code)}</p>
+                                    <p>{t('orders.show.return')} : {formatMoney(exchange.returned_total, order.currency_code)}</p>
+                                    <p>{t('orders.show.newItems')} : {formatMoney(exchange.new_items_total, order.currency_code)}</p>
+                                    <p className="font-semibold text-ink">{t('orders.show.difference')} : {formatMoney(Math.abs(Number(exchange.difference_amount)), order.currency_code)}</p>
                                 </div>
                             </Link>
                         ))}
@@ -777,30 +773,30 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
 
             {/* Invoice history */}
             <section className="mb-6 rounded-card border border-line bg-surface p-5">
-                <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Factures liées</h2>
+                <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">{t('orders.show.relatedInvoices')}</h2>
                 {pendingReplacementInvoice && (
                     <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-field border border-warning/30 bg-warning-soft/50 p-4">
                         <div>
-                            <p className="font-semibold text-ink">{invoiceStaleAfterCompletion ? 'Commande complétée après cette facture' : 'Commande corrigée — nouvelle facture à générer'}</p>
-                            <p className="mt-1 text-sm text-ink-muted">La facture émise précédemment reste l’état commercial historique jusqu’à l’émission de sa remplaçante.</p>
+                            <p className="font-semibold text-ink">{invoiceStaleAfterCompletion ? t('orders.show.completedAfterInvoice') : t('orders.show.correctedNeedsInvoice')}</p>
+                            <p className="mt-1 text-sm text-ink-muted">{t('orders.show.historicalInvoiceHelp')}</p>
                         </div>
                         {order.status === 'confirmed' && can.createInvoice && (
                             <Button
                                 loading={createInvoice.processing}
-                                loadingText="Création…"
+                                loadingText={t('common.creating')}
                                 onClick={() => createInvoice.post(`/sales/orders/${order.id}/invoices`)}
                             >
-                                Générer la nouvelle version
+                                {t('orders.show.generateNewVersion')}
                             </Button>
                         )}
                     </div>
                 )}
                 {documents.invoices.length === 0 && !pendingReplacementInvoice && (
                     <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-                        <p className="text-sm text-ink-muted">Aucune facture créée.</p>
+                        <p className="text-sm text-ink-muted">{t('orders.show.noInvoice')}</p>
                         {order.status === 'confirmed' && can.createInvoice && (
-                            <Button loading={createInvoice.processing} loadingText="Création…" onClick={() => createInvoice.post(`/sales/orders/${order.id}/invoices`)}>
-                                Créer une facture
+                            <Button loading={createInvoice.processing} loadingText={t('common.creating')} onClick={() => createInvoice.post(`/sales/orders/${order.id}/invoices`)}>
+                                {t('orders.show.createAnInvoice')}
                             </Button>
                         )}
                     </div>
@@ -823,19 +819,19 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
                                     <div>
                                         <div className="flex flex-wrap items-center gap-2">
                                             <Link href={`/invoices/${invoice.id}`} className="font-medium text-ink underline">
-                                                {invoice.invoice_number ? `Facture ${invoice.invoice_number}` : 'Facture brouillon'}
+                                                {invoice.invoice_number ? <>{t('orders.show.invoice')} <bdi>{invoice.invoice_number}</bdi></> : t('orders.show.draftInvoice')}
                                             </Link>
                                             <DocBadge tone={invoiceStatusTone(invoice.status)}>{label(invoiceStatusLabel, invoice.status)}</DocBadge>
                                         </div>
-                                        <p className="mt-1 text-xs font-medium text-ink-muted">Version {invoice.version}</p>
-                                        {(isPreviousCommercialState || isPreCompletionVersion) && <p className="mt-1 text-xs text-warning">Commande complétée après cette facture</p>}
-                                        {invoice.status === 'issued' && !isPreviousCommercialState && !isPreCompletionVersion && <p className="mt-1 text-xs text-ink-muted">Facture actuelle</p>}
-                                        {isCurrentRevisionDraft && <p className="mt-1 text-xs text-ink-muted">Nouvelle facture à vérifier avant émission</p>}
+                                        <p className="mt-1 text-xs font-medium text-ink-muted">{t('orders.show.version')} {invoice.version}</p>
+                                        {(isPreviousCommercialState || isPreCompletionVersion) && <p className="mt-1 text-xs text-warning">{t('orders.show.completedAfterInvoice')}</p>}
+                                        {invoice.status === 'issued' && !isPreviousCommercialState && !isPreCompletionVersion && <p className="mt-1 text-xs text-ink-muted">{t('orders.show.currentInvoice')}</p>}
+                                        {isCurrentRevisionDraft && <p className="mt-1 text-xs text-ink-muted">{t('orders.show.reviewInvoiceBeforeIssue')}</p>}
                                     </div>
                                     <div className="flex items-center gap-3">
                                         <span className="tabular-nums text-ink-muted">{formatMoney(invoice.total_incl_tax, order.currency_code)}</span>
                                         <Link href={`/invoices/${invoice.id}`} className="inline-flex min-h-9 items-center rounded-field border border-line-strong bg-surface px-3 text-ink hover:bg-raised">
-                                            {invoice.status === 'draft' ? 'Continuer' : 'Voir'}
+                                            {invoice.status === 'draft' ? t('common.continue') : t('common.view')}
                                         </Link>
                                     </div>
                                 </li>
@@ -847,17 +843,17 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
 
             {/* Payment history */}
             <section className="mb-6">
-                <h2 className="mb-2 text-sm font-semibold text-ink">Historique des paiements</h2>
+                <h2 className="mb-2 text-sm font-semibold text-ink">{t('orders.show.paymentHistory')}</h2>
                 <div className="overflow-x-auto rounded-card border border-line bg-surface">
                     <table className="w-full min-w-[720px] text-left text-sm">
                         <thead className="border-b border-line bg-raised text-xs uppercase tracking-wide text-ink-muted">
                             <tr>
-                                <th className="px-4 py-3 font-medium">Date</th>
-                                <th className="px-4 py-3 font-medium">Moyen</th>
-                                <th className="px-4 py-3 font-medium">Compte</th>
-                                <th className="px-4 py-3 font-medium">Référence</th>
-                                <th className="px-4 py-3 text-right font-medium">Montant</th>
-                                <th className="px-4 py-3 font-medium">Statut</th>
+                                <th className="px-4 py-3 font-medium">{t('common.date')}</th>
+                                <th className="px-4 py-3 font-medium">{t('orders.show.method')}</th>
+                                <th className="px-4 py-3 font-medium">{t('orders.show.account')}</th>
+                                <th className="px-4 py-3 font-medium">{t('common.reference')}</th>
+                                <th className="px-4 py-3 text-right font-medium">{t('common.amount')}</th>
+                                <th className="px-4 py-3 font-medium">{t('common.status')}</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-line">
@@ -882,7 +878,7 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
                             {payments.length === 0 && (
                                 <tr>
                                     <td colSpan={6} className="px-4 py-8 text-center text-ink-muted">
-                                        Aucun paiement enregistré.
+                                        {t('orders.show.noPayment')}
                                     </td>
                                 </tr>
                             )}
@@ -893,17 +889,17 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
 
             {refunds.length > 0 && (
                 <section className="mb-6">
-                    <h2 className="mb-2 text-sm font-semibold text-ink">Historique des remboursements</h2>
+                    <h2 className="mb-2 text-sm font-semibold text-ink">{t('orders.show.refundHistory')}</h2>
                     <div className="overflow-x-auto rounded-card border border-line bg-surface">
                         <table className="w-full min-w-[760px] text-left text-sm">
                             <thead className="border-b border-line bg-raised text-xs uppercase tracking-wide text-ink-muted">
                                 <tr>
-                                    <th className="px-4 py-3 font-medium">Date</th>
-                                    <th className="px-4 py-3 font-medium">Remboursement</th>
-                                    <th className="px-4 py-3 font-medium">Paiement original</th>
-                                    <th className="px-4 py-3 font-medium">Moyen / compte</th>
-                                    <th className="px-4 py-3 font-medium">Motif</th>
-                                    <th className="px-4 py-3 text-right font-medium">Sortie</th>
+                                    <th className="px-4 py-3 font-medium">{t('common.date')}</th>
+                                    <th className="px-4 py-3 font-medium">{t('orders.show.refund')}</th>
+                                    <th className="px-4 py-3 font-medium">{t('orders.show.originalPayment')}</th>
+                                    <th className="px-4 py-3 font-medium">{t('orders.show.methodAccount')}</th>
+                                    <th className="px-4 py-3 font-medium">{t('common.reason')}</th>
+                                    <th className="px-4 py-3 text-right font-medium">{t('orders.show.outflow')}</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-line">
@@ -926,12 +922,12 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
             {/* Record payment (kept, secondary) */}
             {can.recordPayment && order.status === 'confirmed' && paymentSummary.remaining !== '0.0000' && (
                 <details className="mb-6 rounded-card border border-line bg-surface p-5">
-                    <summary className="cursor-pointer text-sm font-semibold text-ink">Enregistrer un paiement</summary>
+                    <summary className="cursor-pointer text-sm font-semibold text-ink">{t('orders.show.recordPayment')}</summary>
                     <form onSubmit={recordPayments} className="mt-4 space-y-3">
                         {paymentForm.data.payments.map((entry, index) => (
                             <div key={index} className="grid gap-3 rounded-field bg-raised p-4 md:grid-cols-6">
                                 <label className="text-sm">
-                                    Moyen
+                                    {t('orders.show.method')}
                                     <select
                                         value={entry.method}
                                         onChange={(e) => {
@@ -950,21 +946,21 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
                                         }}
                                         className="mt-1 w-full rounded-field border border-line-strong px-3 py-2"
                                     >
-                                        <option value="cash">Espèces</option>
-                                        <option value="card">TPE</option>
-                                        <option value="bank_transfer">Virement</option>
-                                        <option value="cheque">Chèque</option>
+                                        <option value="cash">{t('paymentMethods.cash')}</option>
+                                        <option value="card">{t('paymentMethods.card')}</option>
+                                        <option value="bank_transfer">{t('paymentMethods.bank_transfer')}</option>
+                                        <option value="cheque">{t('paymentMethods.cheque')}</option>
                                     </select>
                                 </label>
                                 <label className="text-sm md:col-span-2">
-                                    Compte
+                                    {t('orders.show.account')}
                                     <select
                                         required
                                         value={entry.financial_account_id}
                                         onChange={(e) => setEntry(index, 'financial_account_id', e.target.value)}
                                         className="mt-1 w-full rounded-field border border-line-strong px-3 py-2"
                                     >
-                                        <option value="">Choisir…</option>
+                                        <option value="">{t('common.choose')}</option>
                                         {financialAccounts
                                             .filter((account) => account.accepted_methods.includes(entry.method))
                                             .map((account) => (
@@ -974,11 +970,11 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
                                             ))}
                                     </select>
                                     {financialAccounts.length > 0 && financialAccounts.every((account) => !account.accepted_methods.includes(entry.method)) && (
-                                        <span className="mt-1 block text-xs text-warning">Aucun compte n’accepte ce moyen de paiement.</span>
+                                        <span className="mt-1 block text-xs text-warning">{t('orders.show.noCompatibleAccount')}</span>
                                     )}
                                 </label>
                                 <label className="text-sm">
-                                    Montant
+                                    {t('common.amount')}
                                     <input
                                         required
                                         inputMode="decimal"
@@ -988,7 +984,7 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
                                     />
                                 </label>
                                 <label className="text-sm">
-                                    Date
+                                    {t('common.date')}
                                     <input
                                         required
                                         type="date"
@@ -999,7 +995,7 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
                                     />
                                 </label>
                                 <label className="text-sm">
-                                    Référence
+                                    {t('common.reference')}
                                     <input
                                         maxLength={255}
                                         value={entry.reference}
@@ -1018,7 +1014,7 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
                                         }
                                         className="text-left text-sm text-danger"
                                     >
-                                        Retirer
+                                        {t('common.remove')}
                                     </button>
                                 )}
                             </div>
@@ -1032,20 +1028,20 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
                                 onClick={() => paymentForm.setData('payments', [...paymentForm.data.payments, blankPayment()])}
                                 className="rounded-field border border-line-strong px-4 py-2 text-sm"
                             >
-                                Ajouter un moyen
+                                {t('orders.show.addMethod')}
                             </button>
                             <Button
                                 type="submit"
                                 loading={paymentForm.processing}
-                                loadingText="Enregistrement…"
+                                loadingText={t('common.saving')}
                                 disabled={financialAccounts.length === 0}
                             >
-                                Enregistrer
+                                {t('common.save')}
                             </Button>
                         </div>
                         {financialAccounts.length === 0 && (
                             <p className="text-sm text-warning">
-                                Créez un compte financier actif compatible avant d’enregistrer un paiement.
+                                {t('orders.show.createAccountFirst')}
                             </p>
                         )}
                     </form>
@@ -1055,24 +1051,24 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
             {/* Delivery notes */}
             {(documents.deliveryNotes.length > 0 || canCreateDeliveryNoteForOrder) && (
                 <section className="mb-6 rounded-card border border-line bg-surface p-5">
-                    <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Bons de livraison</h2>
+                    <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">{t('orders.show.deliveryNotes')}</h2>
                     <ul className="mt-2 space-y-1 text-sm">
                         {documents.deliveryNotes.map((note) => (
                             <li key={note.id}>
                                 <Link href={`/delivery-notes/${note.id}`} className="text-ink underline">
-                                    {note.delivery_note_number ?? 'Brouillon'}
+                                    {note.delivery_note_number ?? t('common.draft')}
                                 </Link>{' '}
                                 <span className="text-ink-muted">· {label(deliveryNoteStatusLabel, note.status)}</span>
                             </li>
                         ))}
-                        {documents.deliveryNotes.length === 0 && <li className="text-ink-muted">Aucun bon de livraison créé.</li>}
+                        {documents.deliveryNotes.length === 0 && <li className="text-ink-muted">{t('orders.show.noDeliveryNote')}</li>}
                     </ul>
                 </section>
             )}
 
             {order.notes && (
                 <section className="mb-6 rounded-card border border-line bg-surface p-5">
-                    <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Notes</h2>
+                    <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">{t('common.notes')}</h2>
                     <p className="mt-2 whitespace-pre-line text-sm text-ink-muted">{order.notes}</p>
                 </section>
             )}
@@ -1086,45 +1082,45 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
                             onClick={() => setConfirmCancel(true)}
                             className="text-sm text-danger hover:underline"
                         >
-                            Annuler la commande
+                            {t('orders.show.cancelOrder')}
                         </button>
                     ) : (
                         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="presentation">
                         <form onSubmit={cancel} role="dialog" aria-modal="true" aria-labelledby="cancel-order-title" className="w-full max-w-lg space-y-4 rounded-card border border-line bg-surface p-5 shadow-xl">
                             <div>
-                                <h2 id="cancel-order-title" className="text-lg font-semibold text-ink">Annuler la commande</h2>
-                                <p className="mt-1 text-sm text-ink-muted">Commande {order.order_number} · Total {formatMoney(order.total_incl_tax, order.currency_code)}</p>
-                                <p className="mt-1 text-sm text-ink-muted">État de livraison : {label(fulfillmentLabel, order.fulfillment_status)}</p>
+                                <h2 id="cancel-order-title" className="text-lg font-semibold text-ink">{t('orders.show.cancelOrder')}</h2>
+                                <p className="mt-1 text-sm text-ink-muted">{t('orders.show.order')} <bdi>{order.order_number}</bdi> · {t('common.total')} {formatMoney(order.total_incl_tax, order.currency_code)}</p>
+                                <p className="mt-1 text-sm text-ink-muted">{t('orders.show.deliveryState')} : {label(fulfillmentLabel, order.fulfillment_status)}</p>
                             </div>
                             {paymentSummary.collected !== '0.0000' && (
                                 <div className="rounded-field border border-warning/30 bg-warning-soft/50 p-3 text-sm">
-                                    <p>Montant encaissé : <strong>{formatMoney(paymentSummary.collected, order.currency_code)}</strong></p>
-                                    <p>Montant à rembourser : <strong>{formatMoney(paymentSummary.net, order.currency_code)}</strong></p>
-                                    <p className="mt-1 text-xs text-ink-muted">Le paiement original restera dans l’historique. Une sortie de remboursement distincte sera enregistrée sur le même compte.</p>
+                                    <p>{t('orders.show.collectedAmount')} : <strong>{formatMoney(paymentSummary.collected, order.currency_code)}</strong></p>
+                                    <p>{t('orders.show.refundAmount')} : <strong>{formatMoney(paymentSummary.net, order.currency_code)}</strong></p>
+                                    <p className="mt-1 text-xs text-ink-muted">{t('orders.show.refundHelp')}</p>
                                 </div>
                             )}
-                            <label htmlFor="cancellation-reason" className="block text-sm font-medium text-ink">Motif de l’annulation</label>
+                            <label htmlFor="cancellation-reason" className="block text-sm font-medium text-ink">{t('orders.show.cancellationReason')}</label>
                             <textarea
                                 id="cancellation-reason"
                                 required
                                 autoFocus
                                 value={cancellation.data.reason}
                                 onChange={(e) => cancellation.setData('reason', e.target.value)}
-                                placeholder="Ex. Client a changé d’avis"
+                                placeholder={t('orders.show.cancellationPlaceholder')}
                                 className="w-full rounded-field border border-line-strong px-3 py-2 text-sm"
                             />
                             {cancellation.errors.reason && <p className="text-sm text-danger">{cancellation.errors.reason}</p>}
                             {(cancellation.errors as Record<string, string>).order && <p className="text-sm text-danger">{(cancellation.errors as Record<string, string>).order}</p>}
                             <div className="flex gap-2">
-                                <Button type="submit" variant="danger" loading={cancellation.processing} loadingText="Annulation…">
-                                    {paymentSummary.net !== '0.0000' ? 'Annuler et rembourser' : 'Confirmer l’annulation'}
+                                <Button type="submit" variant="danger" loading={cancellation.processing} loadingText={t('orders.show.cancelling')}>
+                                    {paymentSummary.net !== '0.0000' ? t('orders.show.cancelAndRefund') : t('orders.show.confirmCancellation')}
                                 </Button>
                                 <button
                                     type="button"
                                     onClick={() => setConfirmCancel(false)}
                                     className="rounded-field px-4 py-2 text-sm text-ink-muted"
                                 >
-                                    Retour
+                                    {t('common.back')}
                                 </button>
                             </div>
                         </form>
@@ -1156,6 +1152,7 @@ const PROC_STATUS_CLASS: Record<string, string> = {
 };
 
 function OutOfStockArticlePanel({ order, canReport }: { order: Order; canReport: boolean }) {
+    const { t } = useI18n();
     const unresolvedLines = order.lines.filter((l) => l.line_type === 'custom' && l.product_variant_id === null);
     if (unresolvedLines.length === 0) return null;
 
@@ -1163,7 +1160,7 @@ function OutOfStockArticlePanel({ order, canReport }: { order: Order; canReport:
 
     return (
         <section className="mb-6 rounded-card border border-line bg-surface p-5">
-            <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Articles hors catalogue</h2>
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">{t('orders.show.outOfCatalog')}</h2>
             <ul className="mt-3 space-y-2">
                 {unresolvedLines.map((line) => (
                     <li key={line.id} className="rounded-field border border-line p-3 text-sm">
@@ -1179,7 +1176,7 @@ function OutOfStockArticlePanel({ order, canReport }: { order: Order; canReport:
                                             : 'bg-amber-50 text-amber-700'
                                     }`}
                                 >
-                                    {line.out_of_stock_article.status === 'resolved' ? 'Résolu' : 'Signalé — à traiter'}
+                                    {line.out_of_stock_article.status === 'resolved' ? t('common.resolved') : t('orders.show.reportedPending')}
                                 </span>
                             ) : canReport ? (
                                 <button
@@ -1187,7 +1184,7 @@ function OutOfStockArticlePanel({ order, canReport }: { order: Order; canReport:
                                     onClick={() => flag(line.id)}
                                     className="rounded-field bg-primary px-3 py-1.5 text-xs font-medium text-primary-fg hover:bg-primary-hover"
                                 >
-                                    Signaler pour ajout au catalogue
+                                    {t('orders.show.reportForCatalog')}
                                 </button>
                             ) : null}
                         </div>
@@ -1199,6 +1196,7 @@ function OutOfStockArticlePanel({ order, canReport }: { order: Order; canReport:
 }
 
 function ProcurementPanel({ order, data }: { order: Order; data: ProcurementData }) {
+    const { t } = useI18n();
     const [addLine, setAddLine] = useState<number | null>(null);
     const toProcureLines = data.lines.filter((l) => Number(l.to_procure) > 0);
     if (data.rows.length === 0 && toProcureLines.length === 0 && !data.awaiting) return null;
@@ -1206,10 +1204,10 @@ function ProcurementPanel({ order, data }: { order: Order; data: ProcurementData
     return (
         <section className="mb-6 rounded-card border border-line bg-surface p-5">
             <div className="flex flex-wrap items-center justify-between gap-2">
-                <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Approvisionnement fournisseur</h2>
+                <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">{t('orders.show.supplierProcurement')}</h2>
                 {data.awaiting && (
                     <span className="rounded-full bg-warning-soft px-2.5 py-1 text-xs font-medium text-warning">
-                        À approvisionner fournisseur
+                        {t('orders.show.toProcureSupplier')}
                     </span>
                 )}
             </div>
@@ -1219,7 +1217,7 @@ function ProcurementPanel({ order, data }: { order: Order; data: ProcurementData
                 <div className="mt-3 space-y-2">
                     {data.suppliers.length === 0 && (
                         <p className="rounded-field bg-warning-soft/50 px-3 py-2 text-xs text-warning">
-                            Aucun fournisseur actif. Créez-en un dans Achats → Fournisseurs avant d’approvisionner.
+                            {t('orders.show.noActiveSupplier')}
                         </p>
                     )}
                     {toProcureLines.map((line) => (
@@ -1227,8 +1225,8 @@ function ProcurementPanel({ order, data }: { order: Order; data: ProcurementData
                             <div className="flex flex-wrap items-center justify-between gap-2">
                                 <span className="font-medium text-ink">{line.product}</span>
                                 <span className="text-xs text-ink-muted">
-                                    Demandé {formatQuantity(line.requested)} · Stock société {formatQuantity(line.company_available)} ·
-                                    À approvisionner <strong className="text-ink">{formatQuantity(line.to_procure)}</strong>
+                                    {t('orders.show.requested')} {formatQuantity(line.requested)} · {t('orders.show.companyStock')} {formatQuantity(line.company_available)} ·
+                                    {t('orders.show.toReplenish')} <strong className="text-ink">{formatQuantity(line.to_procure)}</strong>
                                 </span>
                             </div>
                             {data.suppliers.length > 0 &&
@@ -1245,7 +1243,7 @@ function ProcurementPanel({ order, data }: { order: Order; data: ProcurementData
                                         onClick={() => setAddLine(line.id)}
                                         className="mt-2 rounded-field bg-primary px-3 py-1.5 text-xs font-medium text-primary-fg hover:bg-primary-hover"
                                     >
-                                        Approvisionner auprès d’un fournisseur
+                                        {t('orders.show.procureFromSupplier')}
                                     </button>
                                 ))}
                         </div>
@@ -1270,32 +1268,32 @@ function ProcurementPanel({ order, data }: { order: Order; data: ProcurementData
                                         PROC_STATUS_CLASS[row.status] ?? 'bg-slate-100 text-slate-500'
                                     }`}
                                 >
-                                    {row.status_label}
+                                    {t((`orders.show.procurementStatus.${row.status}`) as Parameters<typeof t>[0])}
                                 </span>
                             </div>
                             <div className="mt-1 text-xs text-ink-muted">
-                                {row.supplier?.name ?? '—'} · Disponibilité : {row.supplier_availability_label}
-                                {row.supplier_reference ? ` · Réf ${row.supplier_reference}` : ''}
-                                {row.expected_at ? ` · Réception estimée ${formatDate(row.expected_at)}` : ''}
-                                {row.ordered_at ? ` · Commandé ${formatDate(row.ordered_at)}` : ''}
+                                {row.supplier?.name ?? '—'} · {t('orders.show.availability')} : {t((`orders.show.availabilityStatus.${row.supplier_availability_status}`) as Parameters<typeof t>[0])}
+                                {row.supplier_reference ? ` · ${t('orders.show.refShort')} ${row.supplier_reference}` : ''}
+                                {row.expected_at ? ` · ${t('orders.show.estimatedReceipt')} ${formatDate(row.expected_at)}` : ''}
+                                {row.ordered_at ? ` · ${t('orders.show.ordered')} ${formatDate(row.ordered_at)}` : ''}
                                 {row.received_at
-                                    ? ` · Reçu ${formatDate(row.received_at)} à ${row.receiving_warehouse?.name ?? '—'}`
+                                    ? ` · ${t('orders.show.received')} ${formatDate(row.received_at)} ${t('orders.show.at')} ${row.receiving_warehouse?.name ?? '—'}`
                                     : ''}
                             </div>
                             {row.transfer_request && (
                                 <p className="mt-1 text-xs text-ink-faint">
-                                    Transfert interne{' '}
+                                    {t('orders.show.internalTransfer')}{' '}
                                     <Link
                                         href={`/inventory/transfer-requests/${row.transfer_request.id}`}
                                         className="underline"
                                     >
                                         {row.transfer_request.request_number}
                                     </Link>{' '}
-                                    vers le showroom.
+                                    {t('orders.show.toShowroom')}
                                 </p>
                             )}
                             {row.cancellation_reason && (
-                                <p className="mt-1 text-xs text-ink-faint">Motif : {row.cancellation_reason}</p>
+                                <p className="mt-1 text-xs text-ink-faint">{t('common.reason')} : {row.cancellation_reason}</p>
                             )}
                             <ProcurementRowActions row={row} data={data} />
                         </li>
@@ -1317,6 +1315,7 @@ function RaiseProcurementForm({
     suppliers: { id: number; name: string }[];
     onDone: () => void;
 }) {
+    const { t } = useI18n();
     const form = useForm({
         sales_order_line_id: line.id,
         supplier_id: suppliers[0]?.id ?? 0,
@@ -1334,7 +1333,7 @@ function RaiseProcurementForm({
             className="mt-2 grid gap-2 sm:grid-cols-2"
         >
             <label className="text-xs">
-                Fournisseur
+                {t('common.supplier')}
                 <select
                     value={form.data.supplier_id}
                     onChange={(e) => form.setData('supplier_id', Number(e.target.value))}
@@ -1348,7 +1347,7 @@ function RaiseProcurementForm({
                 </select>
             </label>
             <label className="text-xs">
-                Quantité
+                {t('common.quantity')}
                 <input
                     inputMode="decimal"
                     value={form.data.quantity}
@@ -1357,7 +1356,7 @@ function RaiseProcurementForm({
                 />
             </label>
             <label className="text-xs">
-                Référence fournisseur (opt.)
+                {t('orders.show.supplierReferenceOptional')}
                 <input
                     value={form.data.supplier_reference}
                     onChange={(e) => form.setData('supplier_reference', e.target.value)}
@@ -1365,7 +1364,7 @@ function RaiseProcurementForm({
                 />
             </label>
             <label className="text-xs">
-                Réception estimée (opt.)
+                {t('orders.show.estimatedReceiptOptional')}
                 <input
                     type="date"
                     value={form.data.expected_at}
@@ -1380,10 +1379,10 @@ function RaiseProcurementForm({
                     disabled={form.processing}
                     className="rounded-field bg-primary px-3 py-1.5 text-xs font-medium text-primary-fg hover:bg-primary-hover disabled:opacity-50"
                 >
-                    Créer l’approvisionnement
+                    {t('orders.show.createProcurement')}
                 </button>
                 <button type="button" onClick={onDone} className="rounded-field px-3 py-1.5 text-xs text-ink-muted">
-                    Annuler
+                    {t('common.cancel')}
                 </button>
             </div>
         </form>
@@ -1391,6 +1390,7 @@ function RaiseProcurementForm({
 }
 
 function ProcurementRowActions({ row, data }: { row: ProcurementRow; data: ProcurementData }) {
+    const { t } = useI18n();
     const [open, setOpen] = useState<'availability' | 'order' | 'receive' | 'supplier' | 'cancel' | null>(null);
     const availability = useForm({ supplier_availability_status: 'confirmed_available', quantity: row.quantity, supplier_reference: row.supplier_reference ?? '', expected_at: row.expected_at ?? '' });
     const orderForm = useForm({ supplier_reference: row.supplier_reference ?? '', expected_at: row.expected_at ?? '' });
@@ -1411,25 +1411,25 @@ function ProcurementRowActions({ row, data }: { row: ProcurementRow; data: Procu
         <div className="mt-2 flex flex-wrap gap-2">
             {canManage && isEditable && (
                 <ActionButton onClick={() => setOpen(open === 'availability' ? null : 'availability')}>
-                    Enregistrer la disponibilité
+                    {t('orders.show.recordAvailability')}
                 </ActionButton>
             )}
             {canManage && row.status === 'supplier_confirmed' && (
                 <ActionButton onClick={() => setOpen(open === 'order' ? null : 'order')} primary>
-                    Commander au fournisseur
+                    {t('orders.show.orderFromSupplier')}
                 </ActionButton>
             )}
             {canReceive && row.status === 'ordered' && (
                 <ActionButton onClick={() => setOpen(open === 'receive' ? null : 'receive')} primary>
-                    Confirmer la réception
+                    {t('orders.show.confirmReceipt')}
                 </ActionButton>
             )}
             {canManage && isEditable && data.suppliers.length > 0 && (
-                <ActionButton onClick={() => setOpen(open === 'supplier' ? null : 'supplier')}>Changer de fournisseur</ActionButton>
+                <ActionButton onClick={() => setOpen(open === 'supplier' ? null : 'supplier')}>{t('orders.show.changeSupplier')}</ActionButton>
             )}
             {canManage && (row.status === 'pending_supplier' || row.status === 'supplier_confirmed' || row.status === 'ordered') && (
                 <ActionButton onClick={() => setOpen(open === 'cancel' ? null : 'cancel')} danger>
-                    Annuler
+                    {t('common.cancel')}
                 </ActionButton>
             )}
 
@@ -1442,19 +1442,19 @@ function ProcurementRowActions({ row, data }: { row: ProcurementRow; data: Procu
                     className="mt-1 w-full grid gap-2 rounded-field bg-raised p-3 sm:grid-cols-2"
                 >
                     <label className="text-xs">
-                        Disponibilité
+                        {t('orders.show.availability')}
                         <select
                             value={availability.data.supplier_availability_status}
                             onChange={(e) => availability.setData('supplier_availability_status', e.target.value)}
                             className="mt-1 w-full rounded-field border border-line-strong px-2 py-1.5 text-sm"
                         >
-                            <option value="confirmed_available">Confirmée disponible</option>
-                            <option value="pending_confirmation">À confirmer</option>
-                            <option value="unavailable">Indisponible</option>
+                            <option value="confirmed_available">{t('orders.show.confirmedAvailable')}</option>
+                            <option value="pending_confirmation">{t('orders.show.toConfirm')}</option>
+                            <option value="unavailable">{t('common.unavailable')}</option>
                         </select>
                     </label>
                     <label className="text-xs">
-                        Quantité confirmée
+                        {t('orders.show.confirmedQuantity')}
                         <input
                             inputMode="decimal"
                             value={availability.data.quantity}
@@ -1463,7 +1463,7 @@ function ProcurementRowActions({ row, data }: { row: ProcurementRow; data: Procu
                         />
                     </label>
                     <label className="text-xs">
-                        Référence fournisseur
+                        {t('orders.show.supplierReference')}
                         <input
                             value={availability.data.supplier_reference}
                             onChange={(e) => availability.setData('supplier_reference', e.target.value)}
@@ -1471,7 +1471,7 @@ function ProcurementRowActions({ row, data }: { row: ProcurementRow; data: Procu
                         />
                     </label>
                     <label className="text-xs">
-                        Réception estimée
+                        {t('orders.show.estimatedReceipt')}
                         <input
                             type="date"
                             value={availability.data.expected_at}
@@ -1480,7 +1480,7 @@ function ProcurementRowActions({ row, data }: { row: ProcurementRow; data: Procu
                         />
                     </label>
                     <FormErrors errors={availability.errors} />
-                    <SubmitRow processing={availability.processing} onCancel={() => setOpen(null)} label="Enregistrer" />
+                    <SubmitRow processing={availability.processing} onCancel={() => setOpen(null)} label={t('common.save')} />
                 </form>
             )}
 
@@ -1493,7 +1493,7 @@ function ProcurementRowActions({ row, data }: { row: ProcurementRow; data: Procu
                     className="mt-1 w-full grid gap-2 rounded-field bg-raised p-3 sm:grid-cols-2"
                 >
                     <label className="text-xs">
-                        Référence fournisseur
+                        {t('orders.show.supplierReference')}
                         <input
                             value={orderForm.data.supplier_reference}
                             onChange={(e) => orderForm.setData('supplier_reference', e.target.value)}
@@ -1501,7 +1501,7 @@ function ProcurementRowActions({ row, data }: { row: ProcurementRow; data: Procu
                         />
                     </label>
                     <label className="text-xs">
-                        Réception estimée
+                        {t('orders.show.estimatedReceipt')}
                         <input
                             type="date"
                             value={orderForm.data.expected_at}
@@ -1510,7 +1510,7 @@ function ProcurementRowActions({ row, data }: { row: ProcurementRow; data: Procu
                         />
                     </label>
                     <FormErrors errors={orderForm.errors} />
-                    <SubmitRow processing={orderForm.processing} onCancel={() => setOpen(null)} label="Confirmer la commande" />
+                    <SubmitRow processing={orderForm.processing} onCancel={() => setOpen(null)} label={t('orders.show.confirmSupplierOrder')} />
                 </form>
             )}
 
@@ -1523,7 +1523,7 @@ function ProcurementRowActions({ row, data }: { row: ProcurementRow; data: Procu
                     className="mt-1 w-full grid gap-2 rounded-field bg-raised p-3 sm:grid-cols-2"
                 >
                     <label className="text-xs">
-                        Entrepôt de réception
+                        {t('orders.show.receivingWarehouse')}
                         <select
                             value={receive.data.receiving_warehouse_id}
                             onChange={(e) => receive.setData('receiving_warehouse_id', Number(e.target.value))}
@@ -1537,7 +1537,7 @@ function ProcurementRowActions({ row, data }: { row: ProcurementRow; data: Procu
                         </select>
                     </label>
                     <label className="text-xs">
-                        Reçu (qté)
+                        {t('orders.show.receivedQuantity')}
                         <input
                             inputMode="decimal"
                             value={receive.data.quantity}
@@ -1546,11 +1546,10 @@ function ProcurementRowActions({ row, data }: { row: ProcurementRow; data: Procu
                         />
                     </label>
                     <p className="text-xs text-ink-faint sm:col-span-2">
-                        La marchandise entre en stock puis est immédiatement réservée à cette commande. Si l’entrepôt choisi n’est
-                        pas le showroom de la commande, une demande de transfert interne est créée automatiquement.
+                        {t('orders.show.receiptHelp')}
                     </p>
                     <FormErrors errors={receive.errors} />
-                    <SubmitRow processing={receive.processing} onCancel={() => setOpen(null)} label="Confirmer la réception" />
+                    <SubmitRow processing={receive.processing} onCancel={() => setOpen(null)} label={t('orders.show.confirmReceipt')} />
                 </form>
             )}
 
@@ -1563,7 +1562,7 @@ function ProcurementRowActions({ row, data }: { row: ProcurementRow; data: Procu
                     className="mt-1 w-full grid gap-2 rounded-field bg-raised p-3 sm:grid-cols-2"
                 >
                     <label className="text-xs">
-                        Nouveau fournisseur
+                        {t('orders.show.newSupplier')}
                         <select
                             value={supplierForm.data.supplier_id}
                             onChange={(e) => supplierForm.setData('supplier_id', Number(e.target.value))}
@@ -1577,7 +1576,7 @@ function ProcurementRowActions({ row, data }: { row: ProcurementRow; data: Procu
                         </select>
                     </label>
                     <FormErrors errors={supplierForm.errors} />
-                    <SubmitRow processing={supplierForm.processing} onCancel={() => setOpen(null)} label="Remplacer" />
+                    <SubmitRow processing={supplierForm.processing} onCancel={() => setOpen(null)} label={t('common.replace')} />
                 </form>
             )}
 
@@ -1590,7 +1589,7 @@ function ProcurementRowActions({ row, data }: { row: ProcurementRow; data: Procu
                     className="mt-1 w-full grid gap-2 rounded-field bg-danger-soft/40 p-3"
                 >
                     <label className="text-xs">
-                        Motif
+                        {t('common.reason')}
                         <input
                             value={cancelForm.data.reason}
                             onChange={(e) => cancelForm.setData('reason', e.target.value)}
@@ -1604,11 +1603,11 @@ function ProcurementRowActions({ row, data }: { row: ProcurementRow; data: Procu
                                 checked={cancelForm.data.acknowledge_ordered}
                                 onChange={(e) => cancelForm.setData('acknowledge_ordered', e.target.checked)}
                             />
-                            Je confirme abandonner la commande fournisseur déjà passée.
+                            {t('orders.show.confirmAbandonSupplierOrder')}
                         </label>
                     )}
                     <FormErrors errors={cancelForm.errors} />
-                    <SubmitRow processing={cancelForm.processing} onCancel={() => setOpen(null)} label="Annuler l’approvisionnement" danger />
+                    <SubmitRow processing={cancelForm.processing} onCancel={() => setOpen(null)} label={t('orders.show.cancelProcurement')} danger />
                 </form>
             )}
         </div>
@@ -1648,6 +1647,7 @@ function FormErrors({ errors }: { errors: Partial<Record<string, string>> }) {
 }
 
 function SubmitRow({ processing, onCancel, label, danger }: { processing: boolean; onCancel: () => void; label: string; danger?: boolean }) {
+    const { t } = useI18n();
     return (
         <div className="flex gap-2 sm:col-span-2">
             <button
@@ -1660,7 +1660,7 @@ function SubmitRow({ processing, onCancel, label, danger }: { processing: boolea
                 {label}
             </button>
             <button type="button" onClick={onCancel} className="rounded-field px-3 py-1.5 text-xs text-ink-muted">
-                Fermer
+                {t('common.close')}
             </button>
         </div>
     );

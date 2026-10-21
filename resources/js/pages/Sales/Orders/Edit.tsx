@@ -1,6 +1,7 @@
 import DocBadge from '@/components/ui/DocBadge';
 import { Button } from '@/components/ui/Button';
 import SalesLayout from '@/layouts/SalesLayout';
+import { useI18n } from '@/i18n';
 import OrderLineGrid, { type OLine } from './OrderLineGrid';
 import { formatMoney } from '@/utils/format';
 import { label, orderStatusLabel, orderStatusTone } from '@/utils/labels';
@@ -44,6 +45,7 @@ type Props = {
 };
 
 export default function EditOrder({ order, taxRates, lineSearchUrl, customerSearchUrl, isEditable, correction, procurementUnderCovered, originatingQuotation, salespersons, can }: Props) {
+    const { t } = useI18n();
     const currency = order.currency_code;
     const header = useForm({
         customer_id: order.customer_id,
@@ -65,23 +67,23 @@ export default function EditOrder({ order, taxRates, lineSearchUrl, customerSear
 
     return (
         <SalesLayout>
-            <Head title={`Modifier la commande ${order.order_number}`} />
+            <Head title={`${t('orders.edit.title')} ${order.order_number}`} />
 
             <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
                 <div>
                     <Link href="/sales/orders" className="text-sm text-ink-muted">
-                        ← Commandes
+                        ← {t('orders.show.back')}
                     </Link>
                     <div className="mt-1 flex flex-wrap items-center gap-3">
-                        <h1 className="text-2xl font-semibold tracking-tight text-ink">Modifier la commande {order.order_number}</h1>
+                        <h1 className="text-2xl font-semibold tracking-tight text-ink">{t('orders.edit.title')} <bdi>{order.order_number}</bdi></h1>
                         <DocBadge tone={orderStatusTone(order.status)}>{label(orderStatusLabel, order.status)}</DocBadge>
                     </div>
                     {originatingQuotation && (
                         <p className="mt-1 text-sm text-ink-muted">
-                            Créée depuis le devis{' '}
+                            {t('orders.edit.fromQuotation')}{' '}
                             <Link href={`/quotations/${originatingQuotation.id}`} className="underline">
-                                {originatingQuotation.number ?? 'brouillon'}
-                                {originatingQuotation.revision_number > 0 ? ` · Révision ${originatingQuotation.revision_number}` : ''}
+                                <bdi>{originatingQuotation.number ?? t('common.draft')}</bdi>
+                                {originatingQuotation.revision_number > 0 ? ` · ${t('orders.edit.revision')} ${originatingQuotation.revision_number}` : ''}
                             </Link>
                         </p>
                     )}
@@ -90,35 +92,33 @@ export default function EditOrder({ order, taxRates, lineSearchUrl, customerSear
                     href={`/sales/orders/${order.id}`}
                     className="inline-flex min-h-10 items-center rounded-field border border-line-strong bg-surface px-4 text-sm text-ink hover:bg-raised"
                 >
-                    Voir la commande
+                    {t('orders.edit.viewOrder')}
                 </Link>
             </div>
 
             {correction && (
                 <section className="mb-6 rounded-card border border-warning/30 bg-warning-soft/50 px-4 py-4">
-                    <p className="font-semibold text-ink">Correction de la commande en cours</p>
-                    <p className="mt-1 text-sm text-ink-muted">Motif : {correction.reason}</p>
-                    <p className="mt-1 text-xs text-ink-faint">Correction {correction.revision_number} — la facture déjà émise reste inchangée jusqu’à la validation.</p>
+                    <p className="font-semibold text-ink">{t('orders.edit.correctionInProgress')}</p>
+                    <p className="mt-1 text-sm text-ink-muted">{t('common.reason')} : {correction.reason}</p>
+                    <p className="mt-1 text-xs text-ink-faint">{t('orders.edit.correctionNotice').replace('{number}', String(correction.revision_number))}</p>
                 </section>
             )}
 
             {isEditable && procurementUnderCovered > 0 && (
                 <div className="mb-6 rounded-card border border-warning/30 bg-warning-soft/50 px-4 py-3 text-sm text-warning">
-                    {procurementUnderCovered === 1 ? 'Une ligne dépasse' : `${procurementUnderCovered} lignes dépassent`} le stock société
-                    disponible. Approvisionnez la quantité manquante auprès d’un fournisseur depuis la{' '}
+                    {t(procurementUnderCovered === 1 ? 'orders.edit.stockWarningOne' : 'orders.edit.stockWarningMany').replace('{count}', String(procurementUnderCovered))}{' '}
                     <Link href={`/sales/orders/${order.id}`} className="font-medium underline">
-                        fiche commande
+                        {t('orders.edit.orderPage')}
                     </Link>{' '}
-                    avant de confirmer.
+                    {t('orders.edit.beforeConfirm')}
                 </div>
             )}
 
             {!isEditable && (
                 <div className="mb-6 rounded-card border border-warning/30 bg-warning-soft/50 px-4 py-3 text-sm text-warning">
-                    Cette commande est {label(orderStatusLabel, order.status).toLowerCase()} et n’est plus modifiable. Les lignes, les
-                    prix et les réservations sont figés.{' '}
+                    {t('orders.edit.lockedPrefix')} {label(orderStatusLabel, order.status).toLowerCase()} {t('orders.edit.lockedSuffix')}{' '}
                     <Link href={`/sales/orders/${order.id}`} className="font-medium underline">
-                        Voir la commande
+                        {t('orders.edit.viewOrder')}
                     </Link>
                     .
                 </div>
@@ -128,7 +128,7 @@ export default function EditOrder({ order, taxRates, lineSearchUrl, customerSear
             <form onSubmit={saveHeader} className="mb-6 rounded-card border border-line bg-surface p-5">
                 <div className="grid gap-4 md:grid-cols-3">
                     <label className="block text-sm">
-                        <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-ink-muted">Client</span>
+                        <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-ink-muted">{t('common.customer')}</span>
                         <CustomerPicker
                             searchUrl={customerSearchUrl}
                             disabled={!isEditable}
@@ -140,7 +140,7 @@ export default function EditOrder({ order, taxRates, lineSearchUrl, customerSear
                         />
                     </label>
                     <label className="block text-sm">
-                        <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-ink-muted">Date de vente</span>
+                        <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-ink-muted">{t('orders.edit.saleDate')}</span>
                         <input
                             type="date"
                             disabled={!isEditable}
@@ -149,9 +149,9 @@ export default function EditOrder({ order, taxRates, lineSearchUrl, customerSear
                             className="w-full rounded-field border border-line-strong px-3 py-2 disabled:bg-raised"
                         />
                     </label>
-                    <div className="flex items-end text-xs text-ink-faint">Devise : {order.currency_code}</div>
+                    <div className="flex items-end text-xs text-ink-faint">{t('orders.edit.currency')} : <bdi>{order.currency_code}</bdi></div>
                     <label className="block text-sm">
-                        <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-ink-muted">Commercial</span>
+                        <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-ink-muted">{t('orders.show.salesperson')}</span>
                         {can.assignSalesperson && !correction ? (
                             <select
                                 disabled={!isEditable}
@@ -159,17 +159,17 @@ export default function EditOrder({ order, taxRates, lineSearchUrl, customerSear
                                 onChange={(e) => header.setData('salesperson_id', e.target.value ? Number(e.target.value) : null)}
                                 className="w-full rounded-field border border-line-strong px-3 py-2 disabled:bg-raised"
                             >
-                                <option value="">Non attribuée</option>
+                                <option value="">{t('orders.show.unassigned')}</option>
                                 {salespersons.map((salesperson) => <option key={salesperson.id} value={salesperson.id}>{salesperson.name}</option>)}
                             </select>
                         ) : (
                             <div className="rounded-field border border-line bg-raised px-3 py-2 text-ink">
-                                {order.salesperson_name_snapshot ?? order.salesperson?.name ?? 'Non attribuée'}
+                                {order.salesperson_name_snapshot ?? order.salesperson?.name ?? t('orders.show.unassigned')}
                             </div>
                         )}
                     </label>
                     <label className="block text-sm md:col-span-3">
-                        <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-ink-muted">Notes</span>
+                        <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-ink-muted">{t('common.notes')}</span>
                         <textarea
                             disabled={!isEditable}
                             value={header.data.notes}
@@ -182,8 +182,8 @@ export default function EditOrder({ order, taxRates, lineSearchUrl, customerSear
                 {Object.values(header.errors).map((err) => err && <p key={err} className="mt-2 text-sm text-danger">{err}</p>)}
                 {isEditable && (
                     <div className="mt-3">
-                        <Button type="submit" variant="secondary" loading={header.processing} loadingText="Enregistrement…">
-                            Enregistrer
+                        <Button type="submit" variant="secondary" loading={header.processing} loadingText={t('common.saving')}>
+                            {t('common.save')}
                         </Button>
                     </div>
                 )}
@@ -191,7 +191,7 @@ export default function EditOrder({ order, taxRates, lineSearchUrl, customerSear
 
             {/* ARTICLES */}
             <section className="mb-6 rounded-card border border-line bg-surface p-5">
-                <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-ink-muted">Articles</h2>
+                <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-ink-muted">{t('orders.edit.items')}</h2>
                 {isEditable ? (
                     <OrderLineGrid
                         orderId={order.id}
@@ -209,10 +209,10 @@ export default function EditOrder({ order, taxRates, lineSearchUrl, customerSear
 
             {/* TOTALS */}
             <div className="ml-auto max-w-xs space-y-1 text-sm">
-                {hasDiscount && <Row term="Total brut HT" value={formatMoney(order.subtotal_excl_tax, currency)} />}
-                {hasDiscount && <Row term="Remise HT" value={`- ${formatMoney(order.discount_total, currency)}`} />}
-                <Row term="Total HT" value={formatMoney(hasDiscount ? net : order.subtotal_excl_tax, currency)} />
-                <Row term="TVA" value={formatMoney(order.tax_total, currency)} />
+                {hasDiscount && <Row term={t('orders.show.grossExclTax')} value={formatMoney(order.subtotal_excl_tax, currency)} />}
+                {hasDiscount && <Row term={t('orders.show.discountExclTax')} value={`- ${formatMoney(order.discount_total, currency)}`} />}
+                <Row term={t('orders.show.totalExclTax')} value={formatMoney(hasDiscount ? net : order.subtotal_excl_tax, currency)} />
+                <Row term={t('orders.show.tax')} value={formatMoney(order.tax_total, currency)} />
                 <div className="flex justify-between border-t-2 border-line pt-1 text-base font-bold text-ink">
                     <span>TOTAL TTC</span>
                     <span className="tabular-nums">{formatMoney(order.total_incl_tax, currency)}</span>
@@ -221,14 +221,14 @@ export default function EditOrder({ order, taxRates, lineSearchUrl, customerSear
 
             {correction && isEditable && can.confirm && (
                 <div className="mt-6 flex flex-col items-stretch gap-2 rounded-card border border-line bg-surface p-4 sm:flex-row sm:items-center sm:justify-between">
-                    <p className="text-sm text-ink-muted">Cette action recalcule les réservations et fige le nouvel état commercial.</p>
+                    <p className="text-sm text-ink-muted">{t('orders.edit.confirmCorrectionHelp')}</p>
                     <Button
                         type="button"
                         loading={confirmation.processing}
-                        loadingText="Validation…"
+                        loadingText={t('common.validating')}
                         onClick={() => confirmation.post(`/sales/orders/${order.id}/confirm`)}
                     >
-                        Valider la correction
+                        {t('orders.edit.confirmCorrection')}
                     </Button>
                 </div>
             )}
@@ -247,18 +247,19 @@ function Row({ term, value }: { term: string; value: string }) {
 }
 
 function ReadOnlyLines({ lines, currency }: { lines: OLine[]; currency: string }) {
-    if (lines.length === 0) return <p className="text-sm text-ink-muted">Aucun article.</p>;
+    const { t } = useI18n();
+    if (lines.length === 0) return <p className="text-sm text-ink-muted">{t('orders.edit.noItems')}</p>;
     return (
         <div className="overflow-x-auto">
             <table className="w-full min-w-[640px] border-collapse text-sm">
                 <thead>
                     <tr className="border-b border-line-strong text-left text-xs uppercase tracking-wide text-ink-muted [&>th]:px-2 [&>th]:py-2 [&>th]:font-medium">
-                        <th>Article</th>
-                        <th className="text-right">Qté</th>
-                        <th className="text-right">PU HT</th>
-                        <th className="text-right">Remise HT</th>
-                        <th className="text-right">TVA</th>
-                        <th className="text-right">Total TTC</th>
+                        <th>{t('orders.edit.item')}</th>
+                        <th className="text-right">{t('common.quantityShort')}</th>
+                        <th className="text-right">{t('orders.show.unitPriceExclTax')}</th>
+                        <th className="text-right">{t('orders.show.discountExclTax')}</th>
+                        <th className="text-right">{t('orders.show.tax')}</th>
+                        <th className="text-right">{t('orders.show.totalInclTax')}</th>
                     </tr>
                 </thead>
                 <tbody className="[&>tr>td]:border-b [&>tr>td]:border-line [&>tr>td]:px-2 [&>tr>td]:py-2">
@@ -272,7 +273,7 @@ function ReadOnlyLines({ lines, currency }: { lines: OLine[]; currency: string }
                             <td className="text-right tabular-nums">{formatMoney(line.unit_price_excl_tax, currency)}</td>
                             <td className="text-right tabular-nums">{Number(line.discount_amount) > 0 ? `- ${formatMoney(line.discount_amount, currency)}` : '—'}</td>
                             <td className="text-right tabular-nums text-ink-muted">
-                                {line.tax_unresolved ? 'À définir' : `${Number(line.tax_rate)} %`}
+                                {line.tax_unresolved ? t('orders.edit.toDefine') : `${Number(line.tax_rate)} %`}
                             </td>
                             <td className="text-right font-medium tabular-nums text-ink">{formatMoney(line.total_incl_tax, currency)}</td>
                         </tr>
@@ -296,6 +297,7 @@ function CustomerPicker({
     disabled: boolean;
     onPick: (c: CustomerHit | null) => void;
 }) {
+    const { t } = useI18n();
     const [open, setOpen] = useState(false);
     const [query, setQuery] = useState('');
     const [rows, setRows] = useState<CustomerHit[]>([]);
@@ -334,11 +336,11 @@ function CustomerPicker({
                     onClick={() => setOpen(true)}
                     className="flex-1 rounded-field border border-line-strong px-3 py-2 text-left disabled:bg-raised"
                 >
-                    {value || <span className="text-ink-faint">Client comptoir</span>}
+                    {value || <span className="text-ink-faint">{t('common.counterCustomer')}</span>}
                 </button>
                 {value && !disabled && (
                     <button type="button" onClick={() => onPick(null)} className="text-xs text-ink-muted hover:underline">
-                        Retirer
+                        {t('common.remove')}
                     </button>
                 )}
             </div>
@@ -351,7 +353,7 @@ function CustomerPicker({
                 autoFocus
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Nom, société, téléphone, email…"
+                placeholder={t('orders.edit.customerSearch')}
                 className="w-full rounded-field border border-line-strong px-2 py-1 text-sm"
             />
             <ul className="mt-1 max-h-48 divide-y divide-line overflow-y-auto">
@@ -364,10 +366,10 @@ function CustomerPicker({
                         }}
                         className="block w-full px-1 py-1.5 text-left text-xs text-ink-muted hover:bg-raised"
                     >
-                        Client comptoir (aucun)
+                        {t('orders.edit.counterCustomerNone')}
                     </button>
                 </li>
-                {loading && <li className="px-1 py-1.5 text-xs text-ink-muted">Recherche…</li>}
+                {loading && <li className="px-1 py-1.5 text-xs text-ink-muted">{t('common.searching')}</li>}
                 {!loading &&
                     rows.map((row) => (
                         <li key={row.id}>
@@ -386,7 +388,7 @@ function CustomerPicker({
                     ))}
             </ul>
             <button type="button" onClick={() => setOpen(false)} className="mt-1 text-xs text-ink-muted hover:underline">
-                Fermer
+                {t('common.close')}
             </button>
         </div>
     );

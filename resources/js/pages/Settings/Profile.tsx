@@ -1,6 +1,7 @@
 import { Button } from '@/components/ui/Button';
 import { TextField } from '@/components/ui/form';
 import AccountLayout from '@/layouts/AccountLayout';
+import { useI18n } from '@/i18n';
 import { Head, useForm } from '@inertiajs/react';
 import type { FormEvent } from 'react';
 
@@ -11,6 +12,7 @@ type Props = {
 };
 
 export default function Profile({ user, emailVerified, status }: Props) {
+    const { t } = useI18n();
     const form = useForm({ name: user.name, email: user.email });
     const resendForm = useForm({});
     const emailChanged = form.data.email !== user.email;
@@ -28,20 +30,20 @@ export default function Profile({ user, emailVerified, status }: Props) {
 
     return (
         <AccountLayout>
-            <Head title="Mon profil" />
-            <h1 className="text-xl font-semibold tracking-tight text-ink sm:text-2xl">Mon profil</h1>
-            <p className="mt-1 text-sm text-ink-muted">Vos informations personnelles. La gestion des accès de l’organisation se fait depuis « Utilisateurs & accès ».</p>
+            <Head title={t('profile.title')} />
+            <h1 className="text-xl font-semibold tracking-tight text-ink sm:text-2xl">{t('profile.title')}</h1>
+            <p className="mt-1 text-sm text-ink-muted">{t('profile.help')}</p>
 
             {status === 'verification-link-sent' && (
                 <p className="mt-4 rounded-field bg-success-soft px-3.5 py-2.5 text-[13px] font-medium text-success">
-                    Un nouveau lien de vérification a été envoyé à votre adresse email.
+                    {t('profile.verificationSent')}
                 </p>
             )}
 
             <section className="mt-6 rounded-card border border-line bg-surface p-4 sm:p-6">
                 <form onSubmit={submit} className="space-y-4">
                     <TextField
-                        label="Nom"
+                        label={t('profile.name')}
                         name="name"
                         autoComplete="name"
                         required
@@ -52,7 +54,7 @@ export default function Profile({ user, emailVerified, status }: Props) {
 
                     <div>
                         <TextField
-                            label="Adresse email"
+                            label={t('profile.email')}
                             type="email"
                             name="email"
                             autoComplete="email"
@@ -64,12 +66,12 @@ export default function Profile({ user, emailVerified, status }: Props) {
                         <div className="mt-1.5 flex flex-wrap items-center gap-2">
                             {emailVerified ? (
                                 <span className="inline-flex items-center gap-1 rounded-full bg-success-soft px-2.5 py-1 text-[12px] font-medium text-success">
-                                    ✓ E-mail vérifié
+                                    ✓ {t('profile.emailVerified')}
                                 </span>
                             ) : (
                                 <>
                                     <span className="inline-flex items-center gap-1 rounded-full bg-warning-soft px-2.5 py-1 text-[12px] font-medium text-warning">
-                                        Vérification requise
+                                        {t('profile.verificationRequired')}
                                     </span>
                                     <button
                                         type="button"
@@ -77,7 +79,7 @@ export default function Profile({ user, emailVerified, status }: Props) {
                                         disabled={resendForm.processing}
                                         className="text-[12px] font-medium text-ink-muted underline-offset-4 hover:underline disabled:opacity-50"
                                     >
-                                        {resendForm.processing ? 'Envoi…' : 'Renvoyer l’email de vérification'}
+                                        {resendForm.processing ? t('profile.sending') : t('profile.resendVerification')}
                                     </button>
                                 </>
                             )}
@@ -87,15 +89,14 @@ export default function Profile({ user, emailVerified, status }: Props) {
                     {emailChanged && (
                         <div className="rounded-field border border-line bg-raised p-3.5">
                             <p className="text-[13px] text-ink-muted">
-                                Changer votre adresse email est une opération sensible : une confirmation de sécurité vous sera demandée avant de continuer.
-                                Vous devrez vérifier la nouvelle adresse avant de retrouver l’accès complet.
+                                {t('profile.emailChangeWarning')}
                             </p>
                         </div>
                     )}
 
                     <div className="flex justify-end">
-                        <Button type="submit" loading={form.processing} loadingText="Enregistrement…" className="w-full sm:w-auto">
-                            Enregistrer
+                        <Button type="submit" loading={form.processing} loadingText={t('common.saving')} className="w-full sm:w-auto">
+                            {t('common.save')}
                         </Button>
                     </div>
                 </form>

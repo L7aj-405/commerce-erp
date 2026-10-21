@@ -41,6 +41,18 @@
     --color-warning-soft: #f6efe0;
     --color-danger: #b0453b;
     --color-danger-soft: #f6e8e6;
+    --color-info: #426b86;
+    --color-info-soft: #eaf1f5;
+
+    /* Financial semantics — meaning stays stable across dashboards and tables. */
+    --color-finance-inflow: #3f7a56;
+    --color-finance-inflow-soft: #eaf2ec;
+    --color-finance-outflow: #b0453b;
+    --color-finance-outflow-soft: #f6e8e6;
+    --color-finance-forecast: #426b86;
+    --color-finance-forecast-soft: #eaf1f5;
+    --color-finance-balance: #2b3a30;
+    --color-finance-overdue: #9c3f38;
 
     /* Radius */
     --radius-field: 0.625rem;
@@ -68,6 +80,24 @@
         -moz-osx-font-smoothing: grayscale;
     }
 
+    html[dir='rtl'] body {
+        font-family: 'Noto Sans Arabic', 'Segoe UI', Tahoma, Arial, sans-serif;
+        letter-spacing: 0;
+    }
+
+    /* Keep business identifiers and amounts readable inside Arabic UI. */
+    [dir='rtl'] [dir='ltr'],
+    [dir='rtl'] .bidi-isolate {
+        unicode-bidi: isolate;
+    }
+
+    input,
+    select,
+    textarea,
+    button {
+        font: inherit;
+    }
+
     /* Consistent, visible focus for keyboard users across the app. */
     :focus-visible {
         outline: 2px solid var(--color-primary);
@@ -78,6 +108,107 @@
     ::selection {
         background-color: color-mix(in srgb, var(--color-primary) 18%, transparent);
     }
+}
+
+@layer components {
+    .control-base,
+    .control-input,
+    .control-select {
+        width: 100%;
+        border: 1px solid var(--color-line-strong);
+        border-radius: var(--radius-field);
+        background-color: var(--color-surface);
+        color: var(--color-ink);
+        transition: border-color 170ms var(--ease-out-soft), box-shadow 170ms var(--ease-out-soft), background-color 170ms var(--ease-out-soft);
+    }
+
+    .control-base:hover:not(:disabled),
+    .control-input:hover:not(:disabled),
+    .control-select:hover:not(:disabled) {
+        border-color: color-mix(in srgb, var(--color-primary) 36%, var(--color-line-strong));
+    }
+
+    .control-base:focus,
+    .control-input:focus,
+    .control-select:focus {
+        border-color: var(--color-primary);
+        box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-primary) 10%, transparent);
+        outline: none;
+    }
+
+    .control-base:disabled,
+    .control-input:disabled,
+    .control-select:disabled {
+        cursor: not-allowed;
+        background-color: var(--color-raised);
+        color: var(--color-ink-faint);
+        opacity: 0.72;
+    }
+
+    .control-input,
+    .control-select {
+        min-height: 2.5rem;
+        padding-inline: 0.75rem;
+        font-size: 0.875rem;
+    }
+
+    .control-select {
+        appearance: none;
+        -webkit-appearance: none;
+        -moz-appearance: none;
+        padding-inline-end: 2.25rem;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23656a5e' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+        background-position: right 0.75rem center;
+        background-size: 1rem 1rem;
+        background-repeat: no-repeat;
+    }
+
+    [dir='rtl'] .control-select {
+        background-position: left 0.75rem center;
+    }
+
+    /* Directional affordances only; semantic icons remain untouched. */
+    .directional-icon {
+        unicode-bidi: isolate;
+    }
+
+    .control-error {
+        border-color: color-mix(in srgb, var(--color-danger) 60%, transparent);
+    }
+
+    .erp-table thead {
+        background-color: var(--color-raised);
+        color: var(--color-ink-muted);
+        font-size: 0.75rem;
+        font-weight: 600;
+        letter-spacing: 0.025em;
+    }
+
+    .erp-table tbody tr {
+        border-top: 1px solid var(--color-line);
+        transition: background-color 150ms var(--ease-out-soft);
+    }
+
+    .erp-table tbody tr:hover {
+        background-color: color-mix(in srgb, var(--color-raised) 70%, transparent);
+    }
+}
+
+@utility finance-inflow {
+    color: var(--color-finance-inflow);
+}
+
+@utility finance-outflow {
+    color: var(--color-finance-outflow);
+}
+
+@utility finance-forecast {
+    color: var(--color-finance-forecast);
+}
+
+@utility metric-value {
+    font-variant-numeric: tabular-nums;
+    unicode-bidi: isolate;
 }
 
 @utility transition-soft {

@@ -1,4 +1,5 @@
 import { NumericInput } from '@/components/pos/primitives';
+import { useI18n } from '@/i18n';
 import { useState } from 'react';
 import type { ReactNode } from 'react';
 import type { Option } from './types';
@@ -39,6 +40,7 @@ type Props = {
 };
 
 function Group({ title, defaultOpen = true, children }: { title: string; defaultOpen?: boolean; children: ReactNode }) {
+    const { direction } = useI18n();
     const [open, setOpen] = useState(defaultOpen);
 
     return (
@@ -50,7 +52,7 @@ function Group({ title, defaultOpen = true, children }: { title: string; default
                 aria-expanded={open}
             >
                 {title}
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={`text-ink-faint transition-transform ${open ? '' : '-rotate-90'}`}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={`directional-icon text-ink-faint transition-transform ${open ? '' : direction === 'rtl' ? 'rotate-90' : '-rotate-90'}`}>
                     <path d="m6 9 6 6 6-6" />
                 </svg>
             </button>
@@ -64,7 +66,7 @@ function OptionRow({ active, label, onClick }: { active: boolean; label: string;
         <button
             type="button"
             onClick={onClick}
-            className={`flex w-full items-center gap-2 rounded-field px-2 py-1.5 text-left text-[13px] transition-soft ${
+            className={`flex w-full items-center gap-2 rounded-field px-2 py-1.5 text-start text-[13px] transition-soft ${
                 active ? 'bg-sage font-medium text-ink' : 'text-ink-muted hover:bg-sage/60 hover:text-ink'
             }`}
         >
@@ -77,6 +79,7 @@ function OptionRow({ active, label, onClick }: { active: boolean; label: string;
 }
 
 export default function PosFilters({ brands, categories, value, onChange, variant = 'sidebar' }: Props) {
+    const { t } = useI18n();
     const set = (patch: Partial<CatalogueFilters>) => onChange({ ...value, ...patch });
     const isSheet = variant === 'sheet';
 
@@ -84,32 +87,30 @@ export default function PosFilters({ brands, categories, value, onChange, varian
         <aside className={isSheet ? 'flex h-full w-full flex-col' : 'flex h-full w-56 shrink-0 flex-col rounded-card border border-line bg-surface'}>
             {!isSheet && (
                 <div className="flex items-center justify-between border-b border-line px-3.5 py-3">
-                    <h2 className="text-sm font-semibold text-ink">Filtres</h2>
+                    <h2 className="text-sm font-semibold text-ink">{t('pos.filters')}</h2>
                     {filtersActive(value) && (
                         <button type="button" onClick={() => onChange(emptyFilters)} className="text-[12px] font-medium text-ink-muted transition-soft hover:text-ink">
-                            Réinitialiser
+                            {t('pos.reset')}
                         </button>
                     )}
                 </div>
             )}
             {isSheet && filtersActive(value) && (
-                <div className="flex justify-end px-4 pt-3">
+                <div className="flex justify-end px-4 pt-3 rtl:justify-start">
                     <button type="button" onClick={() => onChange(emptyFilters)} className="text-[12px] font-medium text-ink-muted transition-soft hover:text-ink">
-                        Réinitialiser
+                        {t('pos.reset')}
                     </button>
                 </div>
             )}
 
             <div className={`min-h-0 flex-1 overflow-y-auto ${isSheet ? 'px-4' : 'px-3.5'}`}>
-                <Group title="Disponibilité">
+                <Group title={t('pos.availability')}>
                     <div className="space-y-0.5">
-                        <OptionRow active={value.availability === 'all'} label="Tous les produits" onClick={() => set({ availability: 'all' })} />
-                        <OptionRow active={value.availability === 'in_stock'} label="En stock (société)" onClick={() => set({ availability: 'in_stock' })} />
-                        <OptionRow active={value.availability === 'out_of_stock'} label="En rupture" onClick={() => set({ availability: 'out_of_stock' })} />
+                        <OptionRow active={value.availability === 'all'} label={t('pos.allProducts')} onClick={() => set({ availability: 'all' })} /><OptionRow active={value.availability === 'in_stock'} label={t('pos.inStockCompany')} onClick={() => set({ availability: 'in_stock' })} /><OptionRow active={value.availability === 'out_of_stock'} label={t('pos.outOfStock')} onClick={() => set({ availability: 'out_of_stock' })} />
                     </div>
                 </Group>
 
-                <Group title="Prix (DH)">
+                <Group title={t('pos.price')}>
                     <div className="flex items-center gap-2">
                         <NumericInput
                             value={value.priceMin}
@@ -128,9 +129,9 @@ export default function PosFilters({ brands, categories, value, onChange, varian
                 </Group>
 
                 {categories.length > 0 && (
-                    <Group title="Catégorie">
+                    <Group title={t('pos.category')}>
                         <div className="max-h-52 space-y-0.5 overflow-y-auto">
-                            <OptionRow active={value.categoryId === null} label="Toutes" onClick={() => set({ categoryId: null })} />
+                            <OptionRow active={value.categoryId === null} label={t('pos.all')} onClick={() => set({ categoryId: null })} />
                             {categories.map((category) => (
                                 <OptionRow
                                     key={category.id}
@@ -144,9 +145,9 @@ export default function PosFilters({ brands, categories, value, onChange, varian
                 )}
 
                 {brands.length > 0 && (
-                    <Group title="Marque">
+                    <Group title={t('pos.brand')}>
                         <div className="max-h-52 space-y-0.5 overflow-y-auto">
-                            <OptionRow active={value.brandId === null} label="Toutes" onClick={() => set({ brandId: null })} />
+                            <OptionRow active={value.brandId === null} label={t('pos.all')} onClick={() => set({ brandId: null })} />
                             {brands.map((brand) => (
                                 <OptionRow
                                     key={brand.id}

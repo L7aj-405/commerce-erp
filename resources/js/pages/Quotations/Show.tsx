@@ -1,17 +1,35 @@
-import DocBadge from '@/components/ui/DocBadge';
-import { Button } from '@/components/ui/Button';
-import SendDocumentEmailModal from '@/components/documents/SendDocumentEmailModal';
-import StampDocumentAction from '@/components/documents/StampDocumentAction';
-import SalesLayout from '@/layouts/SalesLayout';
-import LineGrid, { type QLine } from './LineGrid';
-import { formatDate, formatDateTime, formatMoney, formatQuantity } from '@/utils/format';
-import { label, quotationStatusLabel, quotationStatusTone } from '@/utils/labels';
-import { whatsappLink, type WhatsAppDestination } from '@/utils/whatsapp';
-import { Head, Link, router, useForm } from '@inertiajs/react';
-import type { FormEvent, ReactNode } from 'react';
-import { useState } from 'react';
+import DocBadge from "@/components/ui/DocBadge";
+import { Button } from "@/components/ui/Button";
+import SendDocumentEmailModal from "@/components/documents/SendDocumentEmailModal";
+import StampDocumentAction from "@/components/documents/StampDocumentAction";
+import { useI18n } from "@/i18n";
+import SalesLayout from "@/layouts/SalesLayout";
+import LineGrid, { type QLine } from "./LineGrid";
+import {
+    formatDate,
+    formatDateTime,
+    formatMoney,
+    formatQuantity,
+} from "@/utils/format";
+import {
+    label,
+    quotationStatusLabel,
+    quotationStatusTone,
+} from "@/utils/labels";
+import { whatsappLink, type WhatsAppDestination } from "@/utils/whatsapp";
+import { Head, Link, router, useForm } from "@inertiajs/react";
+import type { FormEvent, ReactNode } from "react";
+import { useState } from "react";
 
-type Seller = { legal_name?: string; trade_name?: string; address?: string; phone?: string; email?: string; tax_identifier?: string; accent_color?: string };
+type Seller = {
+    legal_name?: string;
+    trade_name?: string;
+    address?: string;
+    phone?: string;
+    email?: string;
+    tax_identifier?: string;
+    accent_color?: string;
+};
 type Quotation = {
     id: number;
     quotation_number: string | null;
@@ -30,7 +48,11 @@ type Quotation = {
     rejection_reason: string | null;
     revision_number: number;
     revision_reason: string | null;
-    revised_from: { id: number; quotation_number: string | null; revision_number: number } | null;
+    revised_from: {
+        id: number;
+        quotation_number: string | null;
+        revision_number: number;
+    } | null;
     root_quotation: { id: number; quotation_number: string | null } | null;
     subtotal_excl_tax: string;
     discount_total: string;
@@ -42,9 +64,21 @@ type Quotation = {
     lines: QLine[];
     issued_by: { name: string } | null;
     created_by: { name: string } | null;
-    converted_sales_order: { id: number; order_number: string; status: string } | null;
+    converted_sales_order: {
+        id: number;
+        order_number: string;
+        status: string;
+    } | null;
 };
-type Sharing = { pdfUrl: string; email: string | null; phone: string | null; whatsappMessage: string; whatsappDestination: WhatsAppDestination; defaultSubject: string; attachmentName: string };
+type Sharing = {
+    pdfUrl: string;
+    email: string | null;
+    phone: string | null;
+    whatsappMessage: string;
+    whatsappDestination: WhatsAppDestination;
+    defaultSubject: string;
+    attachmentName: string;
+};
 type HistoryEntry = {
     id: number;
     quotation_number: string | null;
@@ -99,33 +133,41 @@ export default function QuotationShow({
     stamp,
     can,
 }: Props) {
-    const isDraft = quotation.status === 'draft';
-    const isSuperseded = quotation.status === 'superseded';
-    const isConverted = quotation.status === 'converted';
+    const { direction, t } = useI18n();
+    const isDraft = quotation.status === "draft";
+    const isSuperseded = quotation.status === "superseded";
+    const isConverted = quotation.status === "converted";
     const isRevision = (quotation.revision_number ?? 0) > 0;
     const currency = quotation.currency_code;
     const seller = quotation.seller_snapshot ?? {};
     const editable = isDraft && can.update;
     const currentEntry = history.find((h) => h.is_current) ?? null;
-    const rootNumber = quotation.root_quotation?.quotation_number ?? quotation.revised_from?.quotation_number ?? null;
+    const rootNumber =
+        quotation.root_quotation?.quotation_number ??
+        quotation.revised_from?.quotation_number ??
+        null;
 
     const header = useForm({
         quotation_date: quotation.quotation_date.slice(0, 10),
-        valid_until: quotation.valid_until ? quotation.valid_until.slice(0, 10) : '',
-        representative_name: quotation.representative_name ?? '',
-        customer_name: quotation.customer_name ?? '',
-        customer_company: quotation.customer_company ?? '',
-        customer_email: quotation.customer_email ?? '',
-        customer_phone: quotation.customer_phone ?? '',
-        customer_tax_identifier: quotation.customer_tax_identifier ?? '',
-        billing_address: quotation.billing_address ?? '',
-        notes: quotation.notes ?? '',
-        terms: quotation.terms ?? '',
+        valid_until: quotation.valid_until
+            ? quotation.valid_until.slice(0, 10)
+            : "",
+        representative_name: quotation.representative_name ?? "",
+        customer_name: quotation.customer_name ?? "",
+        customer_company: quotation.customer_company ?? "",
+        customer_email: quotation.customer_email ?? "",
+        customer_phone: quotation.customer_phone ?? "",
+        customer_tax_identifier: quotation.customer_tax_identifier ?? "",
+        billing_address: quotation.billing_address ?? "",
+        notes: quotation.notes ?? "",
+        terms: quotation.terms ?? "",
     });
     const issueForm = useForm({});
-    const decideForm = useForm({ reason: '' });
-    const reviseForm = useForm({ reason: '' });
-    const convertForm = useForm<{ warehouse_id: number | null }>({ warehouse_id: warehouses[0]?.id ?? null });
+    const decideForm = useForm({ reason: "" });
+    const reviseForm = useForm({ reason: "" });
+    const convertForm = useForm<{ warehouse_id: number | null }>({
+        warehouse_id: warehouses[0]?.id ?? null,
+    });
     const [confirmReject, setConfirmReject] = useState(false);
     const [confirmRevise, setConfirmRevise] = useState(false);
     const [convertOpen, setConvertOpen] = useState(false);
@@ -134,82 +176,150 @@ export default function QuotationShow({
         e.preventDefault();
         header.patch(`/quotations/${quotation.id}`, { preserveScroll: true });
     };
-    const issue = () => issueForm.post(`/quotations/${quotation.id}/issue`, { preserveScroll: true });
-    const accept = () => decideForm.post(`/quotations/${quotation.id}/accept`, { preserveScroll: true });
+    const issue = () =>
+        issueForm.post(`/quotations/${quotation.id}/issue`, {
+            preserveScroll: true,
+        });
+    const accept = () =>
+        decideForm.post(`/quotations/${quotation.id}/accept`, {
+            preserveScroll: true,
+        });
     const reject = (e: FormEvent) => {
         e.preventDefault();
-        decideForm.post(`/quotations/${quotation.id}/reject`, { preserveScroll: true, onSuccess: () => setConfirmReject(false) });
+        decideForm.post(`/quotations/${quotation.id}/reject`, {
+            preserveScroll: true,
+            onSuccess: () => setConfirmReject(false),
+        });
     };
     const startRevision = (e: FormEvent) => {
         e.preventDefault();
-        reviseForm.post(`/quotations/${quotation.id}/revise`, { preserveScroll: true, onSuccess: () => setConfirmRevise(false) });
+        reviseForm.post(`/quotations/${quotation.id}/revise`, {
+            preserveScroll: true,
+            onSuccess: () => setConfirmRevise(false),
+        });
     };
-    const convert = () => convertForm.post(`/quotations/${quotation.id}/conversion`, { preserveScroll: true });
+    const convert = () =>
+        convertForm.post(`/quotations/${quotation.id}/conversion`, {
+            preserveScroll: true,
+        });
 
-    const net = (Number(quotation.subtotal_excl_tax) - Number(quotation.discount_total)).toFixed(4);
-    const buyerLabel = quotation.customer_company || quotation.customer_name || '—';
+    const net = (
+        Number(quotation.subtotal_excl_tax) - Number(quotation.discount_total)
+    ).toFixed(4);
+    const buyerLabel =
+        quotation.customer_company || quotation.customer_name || "—";
     const heading = quotation.quotation_number
-        ? `Devis ${quotation.quotation_number}`
+        ? `${t("quotations.title")} ${quotation.quotation_number}`
         : isRevision
-          ? `Devis brouillon · Révision ${quotation.revision_number}`
-          : 'Devis brouillon';
+          ? `${t("quotations.draft")} · ${t("quotations.revision")} ${quotation.revision_number}`
+          : `${t("quotations.title")} ${t("quotations.draft")}`;
     const showBusinessActions = can.revise || can.convert;
 
     return (
         <SalesLayout>
-            <Head title={quotation.quotation_number ?? 'Devis brouillon'} />
+            <Head
+                title={
+                    quotation.quotation_number ??
+                    `${t("quotations.title")} ${t("quotations.draft")}`
+                }
+            />
 
             <div className="mb-6">
                 <Link href="/quotations" className="text-sm text-ink-muted">
-                    ← Devis
+                    {direction === "rtl" ? "→" : "←"} {t("quotations.title")}
                 </Link>
                 <div className="mt-1 flex flex-wrap items-center gap-3">
-                    <h1 className="text-2xl font-semibold tracking-tight text-ink">{heading}</h1>
-                    <DocBadge tone={quotationStatusTone(quotation.status)}>{label(quotationStatusLabel, quotation.status)}</DocBadge>
-                    {isRevision && <span className="text-xs text-ink-muted">Révision {quotation.revision_number}</span>}
-                    {isPastValidity && quotation.status === 'issued' && <span className="text-xs text-warning">Échu</span>}
+                    <h1 className="text-2xl font-semibold tracking-tight text-ink">
+                        {heading}
+                    </h1>
+                    <DocBadge tone={quotationStatusTone(quotation.status)}>
+                        {label(quotationStatusLabel, quotation.status)}
+                    </DocBadge>
+                    {isRevision && (
+                        <span className="text-xs text-ink-muted">
+                            {t("quotations.revision")}{" "}
+                            {quotation.revision_number}
+                        </span>
+                    )}
+                    {isPastValidity && quotation.status === "issued" && (
+                        <span className="text-xs text-warning">
+                            {t("quotations.expired")}
+                        </span>
+                    )}
                 </div>
                 <p className="text-sm text-ink-muted">
                     {buyerLabel}
-                    {quotation.valid_until && <> · Valable jusqu’au {formatDate(quotation.valid_until)}</>}
+                    {quotation.valid_until && (
+                        <>
+                            {" "}
+                            · {t("quotations.validUntilLabel")}{" "}
+                            {formatDate(quotation.valid_until)}
+                        </>
+                    )}
                 </p>
             </div>
 
             {isConverted && quotation.converted_sales_order && (
                 <div className="mb-4 rounded-card border border-line bg-sage/50 px-4 py-2.5 text-sm text-ink">
-                    Devis transformé en{' '}
-                    <Link href={`/sales/orders/${quotation.converted_sales_order.id}`} className="font-medium underline">
+                    {t("quotations.convertedTo")}{" "}
+                    <Link
+                        href={`/sales/orders/${quotation.converted_sales_order.id}`}
+                        className="font-medium underline"
+                    >
                         commande {quotation.converted_sales_order.order_number}
                     </Link>
                     .
                 </div>
             )}
-            {quotation.status === 'rejected' && quotation.rejection_reason && (
+            {quotation.status === "rejected" && quotation.rejection_reason && (
                 <div className="mb-4 rounded-card border border-danger/30 bg-danger-soft/40 px-4 py-2.5 text-sm text-danger">
-                    Devis refusé — {quotation.rejection_reason}
+                    {t("quotations.rejected")} — {quotation.rejection_reason}
                 </div>
             )}
             {isSuperseded && currentEntry && (
                 <div className="mb-4 rounded-card border border-warning/30 bg-warning-soft/50 px-4 py-2.5 text-sm text-warning">
-                    Cette version a été remplacée par la{' '}
-                    <Link href={`/quotations/${currentEntry.id}`} className="font-medium underline">
-                        {currentEntry.label.toLowerCase()} ({currentEntry.quotation_number ?? 'en cours'})
+                    {t("quotations.supersededBy")}{" "}
+                    <Link
+                        href={`/quotations/${currentEntry.id}`}
+                        className="font-medium underline"
+                    >
+                        {currentEntry.label.toLowerCase()} (
+                        {currentEntry.quotation_number ?? "en cours"})
                     </Link>
-                    . Le partage et la conversion se font depuis la version actuelle.
+                    . Le partage et la conversion se font depuis la version
+                    actuelle.
                 </div>
             )}
             {isRevision && isDraft && (
                 <div className="mb-4 rounded-card border border-line bg-raised/60 px-4 py-2.5 text-sm text-ink">
-                    Révision {quotation.revision_number}
-                    {rootNumber && <> de {rootNumber}</>} — brouillon éditable copié depuis la version émise.
-                    {quotation.revision_reason && <> Motif : {quotation.revision_reason}</>} La version émise reste le
-                    document courant jusqu’à l’émission de cette révision.
+                    {t("quotations.revision")} {quotation.revision_number}
+                    {rootNumber && (
+                        <>
+                            {" "}
+                            {t("quotations.of")} <bdi>{rootNumber}</bdi>
+                        </>
+                    )}{" "}
+                    — {t("quotations.editableDraftCopied")}
+                    {quotation.revision_reason && (
+                        <>
+                            {" "}
+                            {t("invoices.reason")} : {quotation.revision_reason}
+                        </>
+                    )}{" "}
+                    {t("quotations.currentUntilIssue")}
                 </div>
             )}
             {isRevision && !isDraft && !isSuperseded && rootNumber && (
                 <div className="mb-4 rounded-card border border-line bg-surface px-4 py-2.5 text-sm text-ink-muted">
-                    Révision {quotation.revision_number} de la proposition {rootNumber}.
-                    {quotation.revision_reason && <> Motif : {quotation.revision_reason}</>}
+                    {t("quotations.revision")} {quotation.revision_number}{" "}
+                    {t("quotations.of")} {t("quotations.proposal")}{" "}
+                    <bdi>{rootNumber}</bdi>.
+                    {quotation.revision_reason && (
+                        <>
+                            {" "}
+                            {t("invoices.reason")} : {quotation.revision_reason}
+                        </>
+                    )}
                 </div>
             )}
 
@@ -219,88 +329,242 @@ export default function QuotationShow({
                     <section className="rounded-card border border-line bg-surface p-6">
                         <div className="flex flex-wrap justify-between gap-6">
                             <div className="text-sm">
-                                <p className="text-base font-semibold uppercase text-ink">{seller.legal_name ?? '—'}</p>
-                                {seller.address && <p className="text-ink-muted">{seller.address}</p>}
-                                {seller.tax_identifier && <p className="text-ink-muted">ICE : {seller.tax_identifier}</p>}
-                                {seller.phone && <p className="text-ink-muted">Tél : {seller.phone}</p>}
-                                {seller.email && <p className="text-ink-muted">{seller.email}</p>}
-                            </div>
-                            <div className="min-w-52 border p-3 text-sm" style={{ borderColor: accentColor }}>
-                                <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: accentColor }}>
-                                    Destinataire
+                                <p className="text-base font-semibold uppercase text-ink">
+                                    {seller.legal_name ?? "—"}
                                 </p>
-                                <p className="font-medium text-ink">{buyerLabel}</p>
-                                {quotation.customer_company && quotation.customer_name && <p className="text-ink-muted">{quotation.customer_name}</p>}
-                                {quotation.billing_address && <p className="whitespace-pre-line text-ink-muted">{quotation.billing_address}</p>}
-                                {quotation.customer_phone && <p className="text-ink-muted">Tél : {quotation.customer_phone}</p>}
-                                {quotation.customer_tax_identifier && <p className="text-ink-muted">ICE : {quotation.customer_tax_identifier}</p>}
+                                {seller.address && (
+                                    <p className="text-ink-muted">
+                                        {seller.address}
+                                    </p>
+                                )}
+                                {seller.tax_identifier && (
+                                    <p className="text-ink-muted">
+                                        ICE : {seller.tax_identifier}
+                                    </p>
+                                )}
+                                {seller.phone && (
+                                    <p className="text-ink-muted">
+                                        {t("invoices.phoneShort")} :{" "}
+                                        <bdi>{seller.phone}</bdi>
+                                    </p>
+                                )}
+                                {seller.email && (
+                                    <p className="text-ink-muted">
+                                        {seller.email}
+                                    </p>
+                                )}
+                            </div>
+                            <div
+                                className="min-w-52 border p-3 text-sm"
+                                style={{ borderColor: accentColor }}
+                            >
+                                <p
+                                    className="text-xs font-semibold uppercase tracking-wide"
+                                    style={{ color: accentColor }}
+                                >
+                                    {t("quotations.recipient")}
+                                </p>
+                                <p className="font-medium text-ink">
+                                    {buyerLabel}
+                                </p>
+                                {quotation.customer_company &&
+                                    quotation.customer_name && (
+                                        <p className="text-ink-muted">
+                                            {quotation.customer_name}
+                                        </p>
+                                    )}
+                                {quotation.billing_address && (
+                                    <p className="whitespace-pre-line text-ink-muted">
+                                        {quotation.billing_address}
+                                    </p>
+                                )}
+                                {quotation.customer_phone && (
+                                    <p className="text-ink-muted">
+                                        {t("invoices.phoneShort")} :{" "}
+                                        <bdi>{quotation.customer_phone}</bdi>
+                                    </p>
+                                )}
+                                {quotation.customer_tax_identifier && (
+                                    <p className="text-ink-muted">
+                                        ICE :{" "}
+                                        {quotation.customer_tax_identifier}
+                                    </p>
+                                )}
                             </div>
                         </div>
 
-                        <h2 className="mb-1 mt-5 text-center text-2xl font-bold uppercase tracking-[0.15em]" style={{ color: accentColor }}>
-                            Devis
+                        <h2
+                            className="mb-1 mt-5 text-center text-2xl font-bold uppercase tracking-[0.15em]"
+                            style={{ color: accentColor }}
+                        >
+                            {t("quotations.title")}
                         </h2>
                         {isRevision && (
-                            <p className="mb-4 text-center text-sm font-semibold" style={{ color: accentColor }}>
-                                Révision {quotation.revision_number}
-                                {rootNumber && <> — Devis {rootNumber}</>}
+                            <p
+                                className="mb-4 text-center text-sm font-semibold"
+                                style={{ color: accentColor }}
+                            >
+                                {t("quotations.revision")}{" "}
+                                {quotation.revision_number}
+                                {rootNumber && (
+                                    <>
+                                        {" "}
+                                        — {t("quotations.title")}{" "}
+                                        <bdi>{rootNumber}</bdi>
+                                    </>
+                                )}
                             </p>
                         )}
 
                         <table className="mb-5 mt-4 w-full border-collapse text-center text-sm">
                             <thead>
-                                <tr style={{ background: accentColor }} className="text-white">
-                                    <th className="px-2 py-1.5 font-normal">Devis N°</th>
-                                    <th className="px-2 py-1.5 font-normal">Représentant</th>
-                                    <th className="px-2 py-1.5 font-normal">Date du devis</th>
-                                    <th className="px-2 py-1.5 font-normal">Valable jusqu’au</th>
+                                <tr
+                                    style={{ background: accentColor }}
+                                    className="text-white"
+                                >
+                                    <th className="px-2 py-1.5 font-normal">
+                                        {t("quotations.number")}
+                                    </th>
+                                    <th className="px-2 py-1.5 font-normal">
+                                        {t("quotations.representative")}
+                                    </th>
+                                    <th className="px-2 py-1.5 font-normal">
+                                        {t("quotations.date")}
+                                    </th>
+                                    <th className="px-2 py-1.5 font-normal">
+                                        {t("quotations.validUntil")}
+                                    </th>
                                 </tr>
                             </thead>
                             <tbody>
                                 <tr className="font-medium text-ink [&>td]:border [&>td]:border-line [&>td]:px-2 [&>td]:py-1.5">
-                                    <td>{quotation.quotation_number ?? 'Brouillon'}</td>
-                                    <td>{quotation.representative_name || '—'}</td>
-                                    <td>{formatDate(quotation.quotation_date)}</td>
-                                    <td>{quotation.valid_until ? formatDate(quotation.valid_until) : '—'}</td>
+                                    <td>
+                                        <bdi>
+                                            {quotation.quotation_number ??
+                                                t("quotations.draft")}
+                                        </bdi>
+                                    </td>
+                                    <td>
+                                        {quotation.representative_name || "—"}
+                                    </td>
+                                    <td>
+                                        {formatDate(quotation.quotation_date)}
+                                    </td>
+                                    <td>
+                                        {quotation.valid_until
+                                            ? formatDate(quotation.valid_until)
+                                            : "—"}
+                                    </td>
                                 </tr>
                             </tbody>
                         </table>
 
                         {editable ? (
-                            <LineGrid quotationId={quotation.id} currency={currency} lines={quotation.lines} searchUrl={searchUrl} taxRates={taxRates} />
+                            <LineGrid
+                                quotationId={quotation.id}
+                                currency={currency}
+                                lines={quotation.lines}
+                                searchUrl={searchUrl}
+                                taxRates={taxRates}
+                            />
                         ) : (
                             <div className="overflow-x-auto">
                                 <table className="w-full min-w-[640px] border-collapse text-sm">
                                     <thead>
-                                        <tr style={{ background: accentColor }} className="text-white [&>th]:px-2 [&>th]:py-2 [&>th]:font-normal">
-                                            <th className="text-left">Référence</th>
-                                            <th className="text-left">Désignation</th>
-                                            <th>Présentation</th>
-                                            <th className="text-right">Qté</th>
-                                            <th className="text-right">PU HT</th>
-                                            <th className="text-right">PT HT</th>
-                                            {hasDiscount && <th className="text-right">Remise HT</th>}
-                                            <th className="text-right">Total TTC</th>
+                                        <tr
+                                            style={{ background: accentColor }}
+                                            className="text-white [&>th]:px-2 [&>th]:py-2 [&>th]:font-normal"
+                                        >
+                                            <th className="text-start">
+                                                {t("common.reference")}
+                                            </th>
+                                            <th className="text-start">
+                                                {t("quotations.designation")}
+                                            </th>
+                                            <th>
+                                                {t("quotations.presentation")}
+                                            </th>
+                                            <th className="text-end">
+                                                {t("inventory.quantity")}
+                                            </th>
+                                            <th className="text-end">
+                                                {t("quotations.unitPriceExcl")}
+                                            </th>
+                                            <th className="text-end">
+                                                {t("quotations.lineTotalExcl")}
+                                            </th>
+                                            {hasDiscount && (
+                                                <th className="text-end">
+                                                    {t(
+                                                        "quotations.discountExcl",
+                                                    )}
+                                                </th>
+                                            )}
+                                            <th className="text-end">
+                                                {t(
+                                                    "quotations.totalTaxIncluded",
+                                                )}
+                                            </th>
                                         </tr>
                                     </thead>
                                     <tbody className="[&>tr>td]:border [&>tr>td]:border-line [&>tr>td]:px-2 [&>tr>td]:py-1.5">
                                         {quotation.lines.map((line) => (
                                             <tr key={line.id}>
-                                                <td>{line.reference ?? line.sku ?? '—'}</td>
                                                 <td>
-                                                    <span className="font-medium text-ink">{line.product_name ?? line.description}</span>
-                                                    {line.variant_name && <span className="block text-xs text-ink-muted">{line.variant_name}</span>}
+                                                    {line.reference ??
+                                                        line.sku ??
+                                                        "—"}
                                                 </td>
-                                                <td className="text-center">{line.unit_label ?? 'Unité'}</td>
-                                                <td className="text-right tabular-nums">{formatQuantity(line.quantity)}</td>
-                                                <td className="text-right tabular-nums">{formatMoney(line.unit_price_excl_tax, currency)}</td>
-                                                <td className="text-right tabular-nums">{formatMoney(line.taxable_amount, currency)}</td>
+                                                <td>
+                                                    <span className="font-medium text-ink">
+                                                        {line.product_name ??
+                                                            line.description}
+                                                    </span>
+                                                    {line.variant_name && (
+                                                        <span className="block text-xs text-ink-muted">
+                                                            {line.variant_name}
+                                                        </span>
+                                                    )}
+                                                </td>
+                                                <td className="text-center">
+                                                    {line.unit_label ??
+                                                        t("quotations.unit")}
+                                                </td>
+                                                <td className="text-right tabular-nums">
+                                                    {formatQuantity(
+                                                        line.quantity,
+                                                    )}
+                                                </td>
+                                                <td className="text-right tabular-nums">
+                                                    {formatMoney(
+                                                        line.unit_price_excl_tax,
+                                                        currency,
+                                                    )}
+                                                </td>
+                                                <td className="text-right tabular-nums">
+                                                    {formatMoney(
+                                                        line.taxable_amount,
+                                                        currency,
+                                                    )}
+                                                </td>
                                                 {hasDiscount && (
                                                     <td className="text-right tabular-nums">
-                                                        {Number(line.discount_amount) > 0 ? formatMoney(line.discount_amount, currency) : '—'}
+                                                        {Number(
+                                                            line.discount_amount,
+                                                        ) > 0
+                                                            ? formatMoney(
+                                                                  line.discount_amount,
+                                                                  currency,
+                                                              )
+                                                            : "—"}
                                                     </td>
                                                 )}
-                                                <td className="text-right font-medium tabular-nums text-ink">{formatMoney(line.total_incl_tax, currency)}</td>
+                                                <td className="text-right font-medium tabular-nums text-ink">
+                                                    {formatMoney(
+                                                        line.total_incl_tax,
+                                                        currency,
+                                                    )}
+                                                </td>
                                             </tr>
                                         ))}
                                     </tbody>
@@ -311,22 +575,66 @@ export default function QuotationShow({
                         <div className="mt-4 ml-auto max-w-xs space-y-1 text-sm">
                             {hasDiscount ? (
                                 <>
-                                    <SummaryRow term="Total brut HT" value={formatMoney(quotation.subtotal_excl_tax, currency)} />
-                                    <SummaryRow term="Remise HT" value={`- ${formatMoney(quotation.discount_total, currency)}`} />
-                                    <SummaryRow term="Total HT" value={formatMoney(net, currency)} />
+                                    <SummaryRow
+                                        term={t("quotations.grossExcl")}
+                                        value={formatMoney(
+                                            quotation.subtotal_excl_tax,
+                                            currency,
+                                        )}
+                                    />
+                                    <SummaryRow
+                                        term={t("quotations.discountExcl")}
+                                        value={`- ${formatMoney(quotation.discount_total, currency)}`}
+                                    />
+                                    <SummaryRow
+                                        term={t("quotations.totalExcl")}
+                                        value={formatMoney(net, currency)}
+                                    />
                                 </>
                             ) : (
-                                <SummaryRow term="Total HT" value={formatMoney(quotation.subtotal_excl_tax, currency)} />
+                                <SummaryRow
+                                    term={t("quotations.totalExcl")}
+                                    value={formatMoney(
+                                        quotation.subtotal_excl_tax,
+                                        currency,
+                                    )}
+                                />
                             )}
-                            <SummaryRow term="TVA" value={formatMoney(quotation.tax_total, currency)} />
-                            <div className="flex justify-between border-t-2 pt-1 text-base font-bold" style={{ borderColor: accentColor, color: accentColor }}>
+                            <SummaryRow
+                                term={t("quotations.tax")}
+                                value={formatMoney(
+                                    quotation.tax_total,
+                                    currency,
+                                )}
+                            />
+                            <div
+                                className="flex justify-between border-t-2 pt-1 text-base font-bold"
+                                style={{
+                                    borderColor: accentColor,
+                                    color: accentColor,
+                                }}
+                            >
                                 <span>TOTAL TTC</span>
-                                <span className="tabular-nums">{formatMoney(quotation.total_incl_tax, currency)}</span>
+                                <span className="tabular-nums">
+                                    {formatMoney(
+                                        quotation.total_incl_tax,
+                                        currency,
+                                    )}
+                                </span>
                             </div>
                         </div>
 
-                        {quotation.notes && <p className="mt-4 whitespace-pre-line border-t border-line pt-3 text-sm text-ink-muted">{quotation.notes}</p>}
-                        {quotation.terms && <p className="mt-2 whitespace-pre-line text-sm text-ink-muted"><strong>Conditions :</strong> {quotation.terms}</p>}
+                        {quotation.notes && (
+                            <p className="mt-4 whitespace-pre-line border-t border-line pt-3 text-sm text-ink-muted">
+                                {quotation.notes}
+                            </p>
+                        )}
+                        {quotation.terms && (
+                            <p className="mt-2 whitespace-pre-line text-sm text-ink-muted">
+                                <strong>{t("quotations.terms")} :</strong>{" "}
+                                {quotation.terms}
+                            </p>
+                        )}
                     </section>
                 </div>
 
@@ -335,20 +643,40 @@ export default function QuotationShow({
                     <section className="rounded-card border border-line bg-surface p-5">
                         <dl className="space-y-2 text-sm">
                             <div className="flex justify-between">
-                                <dt className="text-ink-muted">Total TTC</dt>
-                                <dd className="font-semibold text-ink">{formatMoney(quotation.total_incl_tax, currency)}</dd>
+                                <dt className="text-ink-muted">
+                                    {t("quotations.totalTaxIncluded")}
+                                </dt>
+                                <dd className="font-semibold text-ink">
+                                    {formatMoney(
+                                        quotation.total_incl_tax,
+                                        currency,
+                                    )}
+                                </dd>
                             </div>
                             <div className="flex justify-between">
-                                <dt className="text-ink-muted">Statut</dt>
+                                <dt className="text-ink-muted">
+                                    {t("common.status")}
+                                </dt>
                                 <dd>
-                                    <DocBadge tone={quotationStatusTone(quotation.status)}>{label(quotationStatusLabel, quotation.status)}</DocBadge>
+                                    <DocBadge
+                                        tone={quotationStatusTone(
+                                            quotation.status,
+                                        )}
+                                    >
+                                        {label(
+                                            quotationStatusLabel,
+                                            quotation.status,
+                                        )}
+                                    </DocBadge>
                                 </dd>
                             </div>
                             {quotation.issued_at && (
                                 <div className="flex justify-between">
-                                    <dt className="text-ink-muted">Émis</dt>
+                                    <dt className="text-ink-muted">
+                                        {t("quotations.issued")}
+                                    </dt>
                                     <dd className="text-right text-ink">
-                                        {quotation.issued_by?.name ?? '—'}
+                                        {quotation.issued_by?.name ?? "—"}
                                         <br />
                                         {formatDateTime(quotation.issued_at)}
                                     </dd>
@@ -366,11 +694,20 @@ export default function QuotationShow({
                                         rel="noreferrer"
                                         className="inline-flex min-h-10 items-center justify-center rounded-field border border-line-strong bg-surface px-4 text-sm text-ink hover:bg-raised"
                                     >
-                                        Aperçu PDF
+                                        {t("quotations.previewPdf")}
                                     </a>
                                     {can.issue && (
-                                        <Button loading={issueForm.processing} loadingText="Émission…" onClick={issue} disabled={quotation.lines.length === 0}>
-                                            {isRevision ? 'Émettre la révision' : 'Émettre le devis'}
+                                        <Button
+                                            loading={issueForm.processing}
+                                            loadingText={t("common.loading")}
+                                            onClick={issue}
+                                            disabled={
+                                                quotation.lines.length === 0
+                                            }
+                                        >
+                                            {isRevision
+                                                ? t("quotations.issueRevision")
+                                                : t("quotations.issue")}
                                         </Button>
                                     )}
                                 </>
@@ -382,13 +719,13 @@ export default function QuotationShow({
                                         rel="noreferrer"
                                         className="inline-flex min-h-10 items-center justify-center rounded-field bg-primary px-4 text-sm font-medium text-primary-fg hover:bg-primary-hover"
                                     >
-                                        Voir PDF
+                                        {t("quotations.viewPdf")}
                                     </a>
                                     <a
                                         href={`/quotations/${quotation.id}/download`}
                                         className="inline-flex min-h-10 items-center justify-center rounded-field border border-line-strong bg-surface px-4 text-sm text-ink hover:bg-raised"
                                     >
-                                        Télécharger PDF
+                                        {t("quotations.downloadPdf")}
                                     </a>
                                 </>
                             )}
@@ -399,29 +736,70 @@ export default function QuotationShow({
                             <div className="mt-3 flex flex-col gap-2 border-t border-line pt-3">
                                 {can.revise &&
                                     (!confirmRevise ? (
-                                        <Button variant="secondary" onClick={() => setConfirmRevise(true)}>
-                                            Réviser le devis
+                                        <Button
+                                            variant="secondary"
+                                            onClick={() =>
+                                                setConfirmRevise(true)
+                                            }
+                                        >
+                                            {t("quotations.revise")}
                                         </Button>
                                     ) : (
-                                        <form onSubmit={startRevision} className="space-y-2 rounded-field border border-line-strong p-3">
-                                            <p className="text-sm font-medium text-ink">Créer une révision ?</p>
+                                        <form
+                                            onSubmit={startRevision}
+                                            className="space-y-2 rounded-field border border-line-strong p-3"
+                                        >
+                                            <p className="text-sm font-medium text-ink">
+                                                {t(
+                                                    "quotations.createRevisionQuestion",
+                                                )}
+                                            </p>
                                             <p className="text-xs text-ink-muted">
-                                                La version émise est conservée dans l’historique. Un brouillon éditable est créé à partir de sa copie.
+                                                {t("quotations.revisionHelp")}
                                             </p>
                                             <textarea
                                                 required
                                                 value={reviseForm.data.reason}
-                                                onChange={(e) => reviseForm.setData('reason', e.target.value)}
-                                                placeholder="Motif de la révision"
-                                                className="w-full rounded-field border border-line-strong px-2 py-1 text-sm"
+                                                onChange={(e) =>
+                                                    reviseForm.setData(
+                                                        "reason",
+                                                        e.target.value,
+                                                    )
+                                                }
+                                                placeholder={t(
+                                                    "quotations.revisionReason",
+                                                )}
+                                                className="control-input w-full"
                                             />
-                                            {reviseForm.errors.reason && <p className="text-sm text-danger">{reviseForm.errors.reason}</p>}
+                                            {reviseForm.errors.reason && (
+                                                <p className="text-sm text-danger">
+                                                    {reviseForm.errors.reason}
+                                                </p>
+                                            )}
                                             <div className="flex gap-2">
-                                                <Button size="sm" variant="secondary" type="submit" loading={reviseForm.processing} loadingText="Création…">
-                                                    Créer la révision
+                                                <Button
+                                                    size="sm"
+                                                    variant="secondary"
+                                                    type="submit"
+                                                    loading={
+                                                        reviseForm.processing
+                                                    }
+                                                    loadingText={t(
+                                                        "quotations.creating",
+                                                    )}
+                                                >
+                                                    {t(
+                                                        "quotations.createRevision",
+                                                    )}
                                                 </Button>
-                                                <button type="button" onClick={() => setConfirmRevise(false)} className="text-xs text-ink-muted hover:underline">
-                                                    Annuler
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        setConfirmRevise(false)
+                                                    }
+                                                    className="text-xs text-ink-muted hover:underline"
+                                                >
+                                                    {t("common.cancel")}
                                                 </button>
                                             </div>
                                         </form>
@@ -429,35 +807,79 @@ export default function QuotationShow({
 
                                 {can.convert &&
                                     (!convertOpen ? (
-                                        <Button variant="secondary" onClick={() => setConvertOpen(true)}>
-                                            Transformer en commande
+                                        <Button
+                                            variant="secondary"
+                                            onClick={() => setConvertOpen(true)}
+                                        >
+                                            {t("quotations.convert")}
                                         </Button>
                                     ) : (
                                         <div className="space-y-2 rounded-field border border-line-strong p-3">
-                                            <p className="text-sm font-medium text-ink">Transformer en commande brouillon ?</p>
+                                            <p className="text-sm font-medium text-ink">
+                                                {t(
+                                                    "quotations.convertQuestion",
+                                                )}
+                                            </p>
                                             {warehouses.length > 0 && (
                                                 <label className="block text-xs text-ink-muted">
-                                                    Entrepôt (lignes catalogue)
+                                                    {t(
+                                                        "quotations.warehouseLines",
+                                                    )}
                                                     <select
-                                                        value={convertForm.data.warehouse_id ?? ''}
-                                                        onChange={(e) => convertForm.setData('warehouse_id', e.target.value ? Number(e.target.value) : null)}
+                                                        value={
+                                                            convertForm.data
+                                                                .warehouse_id ??
+                                                            ""
+                                                        }
+                                                        onChange={(e) =>
+                                                            convertForm.setData(
+                                                                "warehouse_id",
+                                                                e.target.value
+                                                                    ? Number(
+                                                                          e
+                                                                              .target
+                                                                              .value,
+                                                                      )
+                                                                    : null,
+                                                            )
+                                                        }
                                                         className="mt-1 w-full rounded-field border border-line-strong px-2 py-1 text-sm"
                                                     >
                                                         {warehouses.map((w) => (
-                                                            <option key={w.id} value={w.id}>
+                                                            <option
+                                                                key={w.id}
+                                                                value={w.id}
+                                                            >
                                                                 {w.name}
                                                             </option>
                                                         ))}
                                                     </select>
                                                 </label>
                                             )}
-                                            <p className="text-xs text-ink-faint">Le stock est vérifié à la confirmation de la commande, pas ici.</p>
+                                            <p className="text-xs text-ink-faint">
+                                                {t("quotations.stockCheckHelp")}
+                                            </p>
                                             <div className="flex gap-2">
-                                                <Button size="sm" loading={convertForm.processing} loadingText="Création de la commande…" onClick={convert}>
-                                                    Confirmer
+                                                <Button
+                                                    size="sm"
+                                                    loading={
+                                                        convertForm.processing
+                                                    }
+                                                    loadingText={t(
+                                                        "quotations.creatingOrder",
+                                                    )}
+                                                    onClick={convert}
+                                                >
+                                                    {t("auth.confirm")}
                                                 </Button>
-                                                <button type="button" onClick={() => setConvertOpen(false)} className="text-xs text-ink-muted hover:underline">
-                                                    Annuler
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        setConvertOpen(false)
+                                                    }
+                                                    className="text-xs text-ink-muted hover:underline"
+                                                >
+                                                    {t("common.cancel")}
                                                 </button>
                                             </div>
                                         </div>
@@ -468,32 +890,68 @@ export default function QuotationShow({
                         {/* LIFECYCLE — accept / reject the current issued version */}
                         {can.decide && (
                             <div className="mt-3 flex flex-wrap gap-2 border-t border-line pt-3">
-                                {quotation.status !== 'accepted' && (
-                                    <Button size="sm" variant="secondary" loading={decideForm.processing} onClick={accept}>
-                                        Accepter
+                                {quotation.status !== "accepted" && (
+                                    <Button
+                                        size="sm"
+                                        variant="secondary"
+                                        loading={decideForm.processing}
+                                        onClick={accept}
+                                    >
+                                        {t("quotations.accept")}
                                     </Button>
                                 )}
-                                {quotation.status !== 'rejected' &&
+                                {quotation.status !== "rejected" &&
                                     (confirmReject ? (
-                                        <form onSubmit={reject} className="w-full space-y-2">
+                                        <form
+                                            onSubmit={reject}
+                                            className="w-full space-y-2"
+                                        >
                                             <textarea
                                                 value={decideForm.data.reason}
-                                                onChange={(e) => decideForm.setData('reason', e.target.value)}
-                                                placeholder="Motif du refus (facultatif)"
-                                                className="w-full rounded-field border border-line-strong px-2 py-1 text-sm"
+                                                onChange={(e) =>
+                                                    decideForm.setData(
+                                                        "reason",
+                                                        e.target.value,
+                                                    )
+                                                }
+                                                placeholder={t(
+                                                    "quotations.rejectReason",
+                                                )}
+                                                className="control-input w-full"
                                             />
                                             <div className="flex gap-2">
-                                                <Button size="sm" variant="danger" type="submit" loading={decideForm.processing}>
-                                                    Confirmer le refus
+                                                <Button
+                                                    size="sm"
+                                                    variant="danger"
+                                                    type="submit"
+                                                    loading={
+                                                        decideForm.processing
+                                                    }
+                                                >
+                                                    {t(
+                                                        "quotations.confirmReject",
+                                                    )}
                                                 </Button>
-                                                <button type="button" onClick={() => setConfirmReject(false)} className="text-xs text-ink-muted hover:underline">
-                                                    Annuler
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        setConfirmReject(false)
+                                                    }
+                                                    className="text-xs text-ink-muted hover:underline"
+                                                >
+                                                    {t("common.cancel")}
                                                 </button>
                                             </div>
                                         </form>
                                     ) : (
-                                        <button type="button" onClick={() => setConfirmReject(true)} className="text-sm text-danger hover:underline">
-                                            Refuser
+                                        <button
+                                            type="button"
+                                            onClick={() =>
+                                                setConfirmReject(true)
+                                            }
+                                            className="text-sm text-danger hover:underline"
+                                        >
+                                            {t("quotations.reject")}
                                         </button>
                                     ))}
                             </div>
@@ -503,12 +961,18 @@ export default function QuotationShow({
                             <div className="mt-3 border-t border-line pt-3">
                                 <button
                                     type="button"
-                                    onClick={() => router.post(`/quotations/${quotation.id}/duplicate`)}
+                                    onClick={() =>
+                                        router.post(
+                                            `/quotations/${quotation.id}/duplicate`,
+                                        )
+                                    }
                                     className="text-sm text-ink-muted hover:text-ink hover:underline"
                                 >
-                                    Dupliquer ce devis
+                                    {t("quotations.duplicate")}
                                 </button>
-                                <p className="mt-1 text-xs text-ink-faint">Crée un nouveau devis commercial distinct, sans lien d’historique.</p>
+                                <p className="mt-1 text-xs text-ink-faint">
+                                    {t("quotations.duplicateHelp")}
+                                </p>
                             </div>
                         )}
                     </section>
@@ -525,7 +989,9 @@ export default function QuotationShow({
 
                     {sharing && (
                         <section className="rounded-card border border-line bg-surface p-5">
-                            <h2 className="text-sm font-semibold text-ink">Cachet de l’entreprise</h2>
+                            <h2 className="text-sm font-semibold text-ink">
+                                {t("quotations.companyStamp")}
+                            </h2>
                             <div className="mt-3">
                                 <StampDocumentAction
                                     postUrl={`/quotations/${quotation.id}/stamp`}
@@ -540,78 +1006,235 @@ export default function QuotationShow({
 
                     {history.length > 0 && (
                         <section className="rounded-card border border-line bg-surface p-5">
-                            <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Historique</h2>
+                            <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                                {t("quotations.history")}
+                            </h2>
                             <ul className="mt-2 space-y-2 text-sm">
                                 {history.map((entry) => (
-                                    <li key={entry.id} className="flex flex-col">
+                                    <li
+                                        key={entry.id}
+                                        className="flex flex-col"
+                                    >
                                         <div className="flex items-center justify-between gap-2">
-                                            <span className="text-ink-muted">{entry.label}</span>
+                                            <span className="text-ink-muted">
+                                                {entry.label}
+                                            </span>
                                             {entry.id === quotation.id ? (
-                                                <span className="font-medium text-ink">{entry.quotation_number ?? 'Brouillon'}</span>
+                                                <span className="font-medium text-ink">
+                                                    <bdi>
+                                                        {entry.quotation_number ??
+                                                            t(
+                                                                "quotations.draft",
+                                                            )}
+                                                    </bdi>
+                                                </span>
                                             ) : (
-                                                <Link href={`/quotations/${entry.id}`} className="font-medium text-ink underline">
-                                                    {entry.quotation_number ?? 'Brouillon'}
+                                                <Link
+                                                    href={`/quotations/${entry.id}`}
+                                                    className="font-medium text-ink underline"
+                                                >
+                                                    <bdi>
+                                                        {entry.quotation_number ??
+                                                            t(
+                                                                "quotations.draft",
+                                                            )}
+                                                    </bdi>
                                                 </Link>
                                             )}
                                         </div>
                                         <span className="text-xs text-ink-faint">
-                                            {entry.is_current ? 'Version actuelle' : label(quotationStatusLabel, entry.status)}
-                                            {entry.issued_at && ` · émise le ${formatDate(entry.issued_at)}`}
+                                            {entry.is_current
+                                                ? t("quotations.currentVersion")
+                                                : label(
+                                                      quotationStatusLabel,
+                                                      entry.status,
+                                                  )}
+                                            {entry.issued_at &&
+                                                ` · ${t("quotations.issuedOn")} ${formatDate(entry.issued_at)}`}
                                         </span>
-                                        {entry.reason && <span className="text-xs text-ink-muted">Motif : {entry.reason}</span>}
+                                        {entry.reason && (
+                                            <span className="text-xs text-ink-muted">
+                                                {t("invoices.reason")} :{" "}
+                                                {entry.reason}
+                                            </span>
+                                        )}
                                     </li>
                                 ))}
                             </ul>
                             <p className="mt-3 text-xs text-ink-faint">
-                                Chaque version émise conserve son propre PDF. Ouvrez une version pour consulter son document.
+                                {t("quotations.historyHelp")}
                             </p>
                         </section>
                     )}
 
                     {editable && (
                         <section className="rounded-card border border-line bg-surface p-5">
-                            <h2 className="text-sm font-semibold text-ink">Informations variables</h2>
-                            <form onSubmit={saveHeader} className="mt-3 space-y-3 text-sm">
+                            <h2 className="text-sm font-semibold text-ink">
+                                {t("quotations.variableInfo")}
+                            </h2>
+                            <form
+                                onSubmit={saveHeader}
+                                className="mt-3 space-y-3 text-sm"
+                            >
                                 <div className="grid grid-cols-2 gap-2">
-                                    <Field label="Date du devis">
-                                        <input type="date" value={header.data.quotation_date} onChange={(e) => header.setData('quotation_date', e.target.value)} className={input} />
+                                    <Field label={t("quotations.date")}>
+                                        <input
+                                            type="date"
+                                            value={header.data.quotation_date}
+                                            onChange={(e) =>
+                                                header.setData(
+                                                    "quotation_date",
+                                                    e.target.value,
+                                                )
+                                            }
+                                            className={input}
+                                        />
                                     </Field>
-                                    <Field label="Valable jusqu’au">
-                                        <input type="date" value={header.data.valid_until} onChange={(e) => header.setData('valid_until', e.target.value)} className={input} />
+                                    <Field label={t("quotations.validUntil")}>
+                                        <input
+                                            type="date"
+                                            value={header.data.valid_until}
+                                            onChange={(e) =>
+                                                header.setData(
+                                                    "valid_until",
+                                                    e.target.value,
+                                                )
+                                            }
+                                            className={input}
+                                        />
                                     </Field>
                                 </div>
-                                <Field label="Représentant">
-                                    <input value={header.data.representative_name} onChange={(e) => header.setData('representative_name', e.target.value)} className={input} />
+                                <Field label={t("quotations.representative")}>
+                                    <input
+                                        value={header.data.representative_name}
+                                        onChange={(e) =>
+                                            header.setData(
+                                                "representative_name",
+                                                e.target.value,
+                                            )
+                                        }
+                                        className={input}
+                                    />
                                 </Field>
-                                <Field label="Nom / raison sociale du client">
-                                    <input value={header.data.customer_name} onChange={(e) => header.setData('customer_name', e.target.value)} className={input} />
+                                <Field label={t("quotations.nameCompany")}>
+                                    <input
+                                        value={header.data.customer_name}
+                                        onChange={(e) =>
+                                            header.setData(
+                                                "customer_name",
+                                                e.target.value,
+                                            )
+                                        }
+                                        className={input}
+                                    />
                                 </Field>
-                                <Field label="Société">
-                                    <input value={header.data.customer_company} onChange={(e) => header.setData('customer_company', e.target.value)} className={input} />
+                                <Field label={t("quotations.company")}>
+                                    <input
+                                        value={header.data.customer_company}
+                                        onChange={(e) =>
+                                            header.setData(
+                                                "customer_company",
+                                                e.target.value,
+                                            )
+                                        }
+                                        className={input}
+                                    />
                                 </Field>
-                                <Field label="ICE client">
-                                    <input value={header.data.customer_tax_identifier} onChange={(e) => header.setData('customer_tax_identifier', e.target.value)} className={input} />
+                                <Field label={t("quotations.taxId")}>
+                                    <input
+                                        value={
+                                            header.data.customer_tax_identifier
+                                        }
+                                        onChange={(e) =>
+                                            header.setData(
+                                                "customer_tax_identifier",
+                                                e.target.value,
+                                            )
+                                        }
+                                        className={input}
+                                    />
                                 </Field>
                                 <div className="grid grid-cols-2 gap-2">
-                                    <Field label="Email">
-                                        <input type="email" value={header.data.customer_email} onChange={(e) => header.setData('customer_email', e.target.value)} className={input} />
+                                    <Field label={t("quotations.email")}>
+                                        <input
+                                            type="email"
+                                            value={header.data.customer_email}
+                                            onChange={(e) =>
+                                                header.setData(
+                                                    "customer_email",
+                                                    e.target.value,
+                                                )
+                                            }
+                                            className={input}
+                                        />
                                     </Field>
-                                    <Field label="Téléphone">
-                                        <input value={header.data.customer_phone} onChange={(e) => header.setData('customer_phone', e.target.value)} className={input} />
+                                    <Field label={t("quotations.phone")}>
+                                        <input
+                                            value={header.data.customer_phone}
+                                            onChange={(e) =>
+                                                header.setData(
+                                                    "customer_phone",
+                                                    e.target.value,
+                                                )
+                                            }
+                                            className={input}
+                                        />
                                     </Field>
                                 </div>
-                                <Field label="Adresse de facturation">
-                                    <textarea value={header.data.billing_address} onChange={(e) => header.setData('billing_address', e.target.value)} className={input} />
+                                <Field label={t("quotations.billingAddress")}>
+                                    <textarea
+                                        value={header.data.billing_address}
+                                        onChange={(e) =>
+                                            header.setData(
+                                                "billing_address",
+                                                e.target.value,
+                                            )
+                                        }
+                                        className={input}
+                                    />
                                 </Field>
-                                <Field label="Notes">
-                                    <textarea value={header.data.notes} onChange={(e) => header.setData('notes', e.target.value)} className={input} />
+                                <Field label={t("quotations.notes")}>
+                                    <textarea
+                                        value={header.data.notes}
+                                        onChange={(e) =>
+                                            header.setData(
+                                                "notes",
+                                                e.target.value,
+                                            )
+                                        }
+                                        className={input}
+                                    />
                                 </Field>
-                                <Field label="Conditions">
-                                    <textarea value={header.data.terms} onChange={(e) => header.setData('terms', e.target.value)} className={input} />
+                                <Field label={t("quotations.terms")}>
+                                    <textarea
+                                        value={header.data.terms}
+                                        onChange={(e) =>
+                                            header.setData(
+                                                "terms",
+                                                e.target.value,
+                                            )
+                                        }
+                                        className={input}
+                                    />
                                 </Field>
-                                {Object.values(header.errors).map((err) => err && <p key={err} className="text-sm text-danger">{err}</p>)}
-                                <Button type="submit" variant="secondary" loading={header.processing} loadingText="Enregistrement…">
-                                    Enregistrer le brouillon
+                                {Object.values(header.errors).map(
+                                    (err) =>
+                                        err && (
+                                            <p
+                                                key={err}
+                                                className="text-sm text-danger"
+                                            >
+                                                {err}
+                                            </p>
+                                        ),
+                                )}
+                                <Button
+                                    type="submit"
+                                    variant="secondary"
+                                    loading={header.processing}
+                                    loadingText="Enregistrement…"
+                                >
+                                    {t("quotations.saveDraft")}
                                 </Button>
                             </form>
                         </section>
@@ -622,7 +1245,7 @@ export default function QuotationShow({
     );
 }
 
-const input = 'w-full rounded-field border border-line-strong px-3 py-2';
+const input = "w-full rounded-field border border-line-strong px-3 py-2";
 
 function SummaryRow({ term, value }: { term: string; value: string }) {
     return (
@@ -636,7 +1259,9 @@ function SummaryRow({ term, value }: { term: string; value: string }) {
 function Field({ label: l, children }: { label: string; children: ReactNode }) {
     return (
         <label className="block">
-            <span className="mb-1 block text-xs font-medium text-ink-muted">{l}</span>
+            <span className="mb-1 block text-xs font-medium text-ink-muted">
+                {l}
+            </span>
             {children}
         </label>
     );
@@ -655,62 +1280,90 @@ function ShareCard({
     mailConfigured: boolean;
     canConfigureMail: boolean;
 }) {
-    const [tab, setTab] = useState<'email' | 'whatsapp'>('email');
-    const [waPhone, setWaPhone] = useState(sharing.phone ?? '');
-    const [waMessage, setWaMessage] = useState(`${sharing.whatsappMessage}\nPDF : ${sharing.pdfUrl}`);
+    const { t } = useI18n();
+    const [tab, setTab] = useState<"email" | "whatsapp">("email");
+    const [waPhone, setWaPhone] = useState(sharing.phone ?? "");
+    const [waMessage, setWaMessage] = useState(
+        `${sharing.whatsappMessage}\nPDF : ${sharing.pdfUrl}`,
+    );
     const [emailModalOpen, setEmailModalOpen] = useState(false);
 
     const openWhatsApp = () => {
-        const link = whatsappLink(sharing.whatsappDestination, waMessage, waPhone);
+        const link = whatsappLink(
+            sharing.whatsappDestination,
+            waMessage,
+            waPhone,
+        );
         if (!link) return;
-        window.open(link, '_blank', 'noopener,noreferrer');
+        window.open(link, "_blank", "noopener,noreferrer");
     };
-    const usesUsername = sharing.whatsappDestination.type === 'username';
-    const unavailable = !whatsappLink(sharing.whatsappDestination, waMessage, waPhone);
+    const usesUsername = sharing.whatsappDestination.type === "username";
+    const unavailable = !whatsappLink(
+        sharing.whatsappDestination,
+        waMessage,
+        waPhone,
+    );
 
     return (
         <section className="rounded-card border border-line bg-surface p-5">
-            <h2 className="text-sm font-semibold text-ink">Envoyer le devis</h2>
-            <div role="tablist" className="mt-3 inline-flex rounded-field border border-line-strong p-0.5 text-sm">
-                {(['email', 'whatsapp'] as const).map((key) => (
+            <h2 className="text-sm font-semibold text-ink">
+                {t("quotations.send")}
+            </h2>
+            <div
+                role="tablist"
+                className="mt-3 inline-flex rounded-field border border-line-strong p-0.5 text-sm"
+            >
+                {(["email", "whatsapp"] as const).map((key) => (
                     <button
                         key={key}
                         type="button"
                         role="tab"
                         aria-selected={tab === key}
                         onClick={() => setTab(key)}
-                        className={`rounded-[7px] px-3 py-1 font-medium transition-soft ${tab === key ? 'bg-primary text-primary-fg' : 'text-ink-muted hover:text-ink'}`}
+                        className={`rounded-[7px] px-3 py-1 font-medium transition-soft ${tab === key ? "bg-primary text-primary-fg" : "text-ink-muted hover:text-ink"}`}
                     >
-                        {key === 'email' ? 'Email' : 'WhatsApp'}
+                        {key === "email" ? "Email" : "WhatsApp"}
                     </button>
                 ))}
             </div>
 
-            {tab === 'email' && (
+            {tab === "email" && (
                 <div className="mt-3 space-y-2 text-sm">
                     {!mailConfigured && (
                         <p className="text-xs text-warning">
-                            Configuration e-mail requise avant l’envoi.
+                            {t("quotations.emailConfigRequired")}
                             {canConfigureMail && (
                                 <>
-                                    {' '}
-                                    <Link href="/email-settings" className="font-medium underline">
-                                        Configurer
+                                    {" "}
+                                    <Link
+                                        href="/email-settings"
+                                        className="font-medium underline"
+                                    >
+                                        {t("quotations.configure")}
                                     </Link>
                                 </>
                             )}
                         </p>
                     )}
-                    {!canEmail && <p className="text-xs text-ink-muted">Vous n’avez pas la permission d’envoyer des devis par email.</p>}
-                    <Button type="button" variant="secondary" disabled={!canEmail} onClick={() => setEmailModalOpen(true)}>
-                        Envoyer le devis par e-mail
+                    {!canEmail && (
+                        <p className="text-xs text-ink-muted">
+                            {t("quotations.noEmailPermission")}
+                        </p>
+                    )}
+                    <Button
+                        type="button"
+                        variant="secondary"
+                        disabled={!canEmail}
+                        onClick={() => setEmailModalOpen(true)}
+                    >
+                        {t("quotations.sendEmail")}
                     </Button>
                     <SendDocumentEmailModal
                         open={emailModalOpen}
                         onClose={() => setEmailModalOpen(false)}
                         postUrl={`/quotations/${quotationId}/email`}
-                        title="Envoyer le devis par e-mail"
-                        defaultTo={sharing.email ?? ''}
+                        title={t("quotations.sendEmail")}
+                        defaultTo={sharing.email ?? ""}
                         defaultSubject={sharing.defaultSubject}
                         defaultMessage={`Bonjour,\n\nVeuillez trouver ci-joint notre devis.\n\nCordialement.`}
                         attachmentName={sharing.attachmentName}
@@ -721,26 +1374,47 @@ function ShareCard({
                 </div>
             )}
 
-            {tab === 'whatsapp' && (
+            {tab === "whatsapp" && (
                 <div className="mt-3 space-y-2 text-sm">
                     {usesUsername ? (
-                        <Field label="Nom d’utilisateur WhatsApp">
-                            <div className="rounded-field border border-line bg-raised px-3 py-2 text-ink">@{sharing.whatsappDestination.destination}</div>
+                        <Field label={t("quotations.whatsappUser")}>
+                            <div className="rounded-field border border-line bg-raised px-3 py-2 text-ink">
+                                @{sharing.whatsappDestination.destination}
+                            </div>
                         </Field>
                     ) : (
-                        <Field label="Téléphone">
-                            <input value={waPhone} onChange={(e) => setWaPhone(e.target.value)} placeholder="+212 6 12 34 56 78" className={input} />
+                        <Field label={t("quotations.phone")}>
+                            <input
+                                value={waPhone}
+                                onChange={(e) => setWaPhone(e.target.value)}
+                                placeholder="+212 6 12 34 56 78"
+                                className={input}
+                            />
                         </Field>
                     )}
-                    {unavailable && <p className="text-xs text-ink-muted">Aucun contact WhatsApp disponible.</p>}
-                    <Field label="Message">
-                        <textarea rows={5} value={waMessage} onChange={(e) => setWaMessage(e.target.value)} className={input} />
+                    {unavailable && (
+                        <p className="text-xs text-ink-muted">
+                            {t("quotations.noWhatsapp")}
+                        </p>
+                    )}
+                    <Field label={t("quotations.message")}>
+                        <textarea
+                            rows={5}
+                            value={waMessage}
+                            onChange={(e) => setWaMessage(e.target.value)}
+                            className={input}
+                        />
                     </Field>
                     <p className="text-xs text-ink-faint">
-                        Le lien PDF est temporaire et sécurisé. WhatsApp n’attache pas le fichier automatiquement — le message s’ouvre, vous l’envoyez depuis WhatsApp.
+                        {t("quotations.whatsappHelp")}
                     </p>
-                    <Button type="button" variant="secondary" disabled={unavailable} onClick={openWhatsApp}>
-                        Ouvrir dans WhatsApp
+                    <Button
+                        type="button"
+                        variant="secondary"
+                        disabled={unavailable}
+                        onClick={openWhatsApp}
+                    >
+                        {t("quotations.openWhatsapp")}
                     </Button>
                 </div>
             )}

@@ -1,12 +1,14 @@
 import AuthLayout from '@/components/auth/AuthLayout';
 import { Button } from '@/components/ui/Button';
 import { TextField } from '@/components/ui/form';
+import { useI18n } from '@/i18n';
 import { Head, Link, useForm } from '@inertiajs/react';
 import type { FormEvent } from 'react';
 
 type Props = { status?: string | null };
 
 export default function ForgotPassword({ status }: Props) {
+    const { t } = useI18n();
     const form = useForm({ email: '' });
 
     function submit(event: FormEvent<HTMLFormElement>) {
@@ -16,14 +18,14 @@ export default function ForgotPassword({ status }: Props) {
 
     return (
         <>
-            <Head title="Mot de passe oublié" />
+            <Head title={t('auth.forgotTitle')} />
 
             <AuthLayout
-                title="Mot de passe oublié ?"
-                subtitle="Indiquez votre adresse email, nous vous enverrons un lien de réinitialisation."
+                title={t('auth.forgotPassword')}
+                subtitle={t('auth.forgotSubtitle')}
                 footer={
                     <Link href="/login" className="font-medium text-ink underline-offset-4 hover:underline">
-                        Retour à la connexion
+                        {t('auth.backToLogin')}
                     </Link>
                 }
             >
@@ -31,20 +33,20 @@ export default function ForgotPassword({ status }: Props) {
                     {status && <p className="rounded-lg bg-success-soft px-3 py-2 text-sm font-medium text-success">{status}</p>}
 
                     <TextField
-                        label="Adresse email"
+                        label={t('auth.email')}
                         type="email"
                         name="email"
                         autoComplete="email"
                         autoFocus
                         required
-                        placeholder="vous@entreprise.com"
+                        placeholder={t('auth.emailPlaceholder')}
                         value={form.data.email}
                         onChange={(event) => form.setData('email', event.target.value)}
                         error={form.errors.email}
                     />
 
                     <Button type="submit" block size="lg" disabled={form.processing}>
-                        {form.processing ? 'Envoi…' : 'Envoyer le lien de réinitialisation'}
+                        {form.processing ? t('auth.sending') : t('auth.sendResetLink')}
                     </Button>
                 </form>
             </AuthLayout>

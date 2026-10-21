@@ -1,5 +1,6 @@
 import { Button, ButtonLink } from '@/components/ui/Button';
 import ApplicationShell from '@/layouts/ApplicationShell';
+import { useI18n } from '@/i18n';
 import { Head, useForm } from '@inertiajs/react';
 import type { FormEvent, ReactNode } from 'react';
 import { useState } from 'react';
@@ -18,6 +19,7 @@ type Props = {
 };
 
 export default function DocumentStamp({ stamp, canUpdate }: Props) {
+    const { t } = useI18n();
     const [confirmRemove, setConfirmRemove] = useState(false);
     const [cacheBust, setCacheBust] = useState(0);
 
@@ -43,48 +45,44 @@ export default function DocumentStamp({ stamp, canUpdate }: Props) {
 
     return (
         <ApplicationShell>
-            <Head title="Cachet de l’entreprise" />
+            <Head title={t('stamp.title')} />
             <main className="mx-auto max-w-3xl">
                 <div className="flex items-center justify-between gap-3">
                     <div>
-                        <h1 className="text-2xl font-semibold tracking-tight text-ink">Cachet de l’entreprise</h1>
-                        <p className="mt-1 text-sm text-ink-muted">
-                            Le cachet numérique utilisé pour marquer vos factures et devis. Ce n’est pas une signature
-                            électronique certifiée.
-                        </p>
+                        <h1 className="text-2xl font-semibold tracking-tight text-ink">{t('stamp.title')}</h1><p className="mt-1 text-sm text-ink-muted">{t('stamp.help')}</p>
                     </div>
                     <span
                         className={`inline-flex shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ${
                             stamp?.available ? 'bg-success-soft text-success' : stamp ? 'bg-warning-soft text-warning' : 'bg-raised text-ink-muted'
                         }`}
                     >
-                        {stamp?.available ? 'Configuré' : stamp ? 'Fichier indisponible' : 'Non configuré'}
+                        {stamp?.available ? t('stamp.configured') : stamp ? t('stamp.fileUnavailable') : t('stamp.notConfigured')}
                     </span>
                 </div>
 
                 {!canUpdate && (
                     <p className="mt-4 rounded-field border border-line bg-raised px-3 py-2 text-xs text-ink-muted">
-                        Lecture seule — vous n’avez pas la permission de modifier le cachet de l’entreprise.
+                        {t('stamp.readOnly')}
                     </p>
                 )}
 
                 {!stamp && (
                     <section className="mt-8 rounded-card border border-line bg-surface p-5">
                         <p className="text-sm text-ink-muted">
-                            Téléversez le cachet numérique de votre entreprise pour pouvoir l’apposer sur vos documents.
+                            {t('stamp.uploadHelp')}
                         </p>
-                        <p className="mt-1 text-xs text-ink-faint">PNG (idéalement transparent), JPG ou WebP.</p>
+                        <p className="mt-1 text-xs text-ink-faint">{t('stamp.formats')}</p>
                     </section>
                 )}
 
                 {stamp?.available && (
                     <section className="mt-8 rounded-card border border-line bg-surface p-5">
-                        <h2 className="mb-3 text-sm font-semibold text-ink">Aperçu du cachet</h2>
+                        <h2 className="mb-3 text-sm font-semibold text-ink">{t('stamp.preview')}</h2>
                         <div className="flex size-28 items-center justify-center overflow-hidden rounded-card border border-line bg-raised">
                             <img
                                 key={cacheBust}
                                 src={`/document-stamp/image?v=${cacheBust}`}
-                                alt="Cachet de l’entreprise"
+                                alt={t('stamp.imageAlt')}
                                 className="max-h-full max-w-full object-contain"
                             />
                         </div>
@@ -93,36 +91,29 @@ export default function DocumentStamp({ stamp, canUpdate }: Props) {
 
                 {stamp && !stamp.available && (
                     <section className="mt-8 rounded-card border border-warning/30 bg-warning-soft p-5">
-                        <h2 className="text-sm font-semibold text-warning">Fichier du cachet indisponible</h2>
-                        <p className="mt-1 text-sm text-warning">
-                            L’image enregistrée n’existe plus dans le stockage. Téléversez-la de nouveau avant de pouvoir apposer le cachet.
-                        </p>
+                        <h2 className="text-sm font-semibold text-warning">{t('stamp.missingTitle')}</h2><p className="mt-1 text-sm text-warning">{t('stamp.missingHelp')}</p>
                     </section>
                 )}
 
                 <form onSubmit={submit} className="mt-4 space-y-4">
                     <fieldset disabled={!canUpdate} className="space-y-4">
-                        <Section title={stamp?.available ? 'Remplacer l’image' : 'Ajouter un cachet'}>
+                        <Section title={stamp?.available ? t('stamp.replace') : t('stamp.add')}>
                             <input
                                 type="file"
                                 accept="image/png,image/jpeg,image/webp"
                                 onChange={(e) => form.setData('image', e.target.files?.[0] ?? null)}
                                 className="block text-sm"
                             />
-                            <p className="text-xs text-ink-faint">PNG (idéalement transparent), JPG ou WebP · 2 Mo max.</p>
+                            <p className="text-xs text-ink-faint">{t('stamp.maxSize')}</p>
                             {form.errors.image && <p className="text-xs text-danger">{form.errors.image}</p>}
                         </Section>
 
-                        <Section title="Présentation sur les documents">
-                            <p className="text-sm text-ink-muted">
-                                La taille, la position, la rotation, l’opacité et la visibilité du cachet sont centralisées dans le Studio PDF.
-                            </p>
-                            <ButtonLink href="/document-profile/studio" variant="secondary" size="sm">Ouvrir le Studio PDF</ButtonLink>
+                        <Section title={t('stamp.presentation')}><p className="text-sm text-ink-muted">{t('stamp.presentationHelp')}</p><ButtonLink href="/document-profile/studio" variant="secondary" size="sm">{t('stamp.openStudio')}</ButtonLink>
                         </Section>
 
                         <div className="flex flex-wrap items-center gap-2">
-                            <Button type="submit" loading={form.processing} loadingText="Enregistrement…">
-                                Enregistrer
+                            <Button type="submit" loading={form.processing} loadingText={t('common.saving')}>
+                                {t('common.save')}
                             </Button>
                         </div>
                     </fieldset>
@@ -130,22 +121,18 @@ export default function DocumentStamp({ stamp, canUpdate }: Props) {
 
                 {stamp && canUpdate && (
                     <section className="mt-8 rounded-card border border-line bg-surface p-5">
-                        <h2 className="text-sm font-semibold text-ink">Désactiver le cachet</h2>
-                        <p className="mt-1 text-xs text-ink-muted">
-                            Les documents déjà cachetés conservent leur cachet. Seules les nouvelles appositions seront
-                            bloquées tant qu’aucun cachet n’est reconfiguré.
-                        </p>
+                        <h2 className="text-sm font-semibold text-ink">{t('stamp.disable')}</h2><p className="mt-1 text-xs text-ink-muted">{t('stamp.disableHelp')}</p>
                         {!confirmRemove ? (
                             <Button type="button" variant="danger" size="sm" className="mt-3" onClick={() => setConfirmRemove(true)}>
-                                Désactiver le cachet
+                                {t('stamp.disable')}
                             </Button>
                         ) : (
                             <div className="mt-3 flex items-center gap-2">
                                 <Button type="button" variant="danger" size="sm" loading={form.processing} onClick={remove}>
-                                    Confirmer la désactivation
+                                    {t('stamp.confirmDisable')}
                                 </Button>
                                 <Button type="button" variant="ghost" size="sm" onClick={() => setConfirmRemove(false)}>
-                                    Annuler
+                                    {t('common.cancel')}
                                 </Button>
                             </div>
                         )}

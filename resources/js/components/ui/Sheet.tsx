@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import type { ReactNode } from 'react';
+import { useI18n } from '@/i18n';
 
 type Side = 'left' | 'right' | 'bottom';
 
@@ -28,6 +29,7 @@ export function Sheet({
     widthClassName?: string;
     footer?: ReactNode;
 }) {
+    const { direction, t } = useI18n();
     useEffect(() => {
         if (!open) return;
         const previousOverflow = document.documentElement.style.overflow;
@@ -44,6 +46,7 @@ export function Sheet({
 
     if (!open) return null;
 
+    const effectiveSide = direction === 'rtl' && side !== 'bottom' ? (side === 'right' ? 'left' : 'right') : side;
     const wrapperPosition: Record<Side, string> = {
         right: 'justify-end',
         left: 'justify-start',
@@ -56,9 +59,9 @@ export function Sheet({
     };
 
     return (
-        <div className={`fixed inset-0 z-40 flex ${wrapperPosition[side]}`} role="dialog" aria-modal="true">
-            <button type="button" className="absolute inset-0 bg-ink/40" onClick={onClose} aria-label="Fermer" />
-            <div className={`relative flex min-h-0 flex-col overflow-hidden bg-surface shadow-pop ${panelShape[side]}`}>
+        <div className={`fixed inset-0 z-40 flex ${wrapperPosition[effectiveSide]}`} role="dialog" aria-modal="true" dir={direction}>
+            <button type="button" className="absolute inset-0 bg-ink/40" onClick={onClose} aria-label={t('common.close')} />
+            <div className={`relative flex min-h-0 flex-col overflow-hidden bg-surface shadow-pop ${panelShape[effectiveSide]}`}>
                 {(title || description) && (
                     <div className="flex shrink-0 items-start justify-between gap-3 border-b border-line px-4 py-3.5">
                         <div className="min-w-0">
@@ -68,7 +71,7 @@ export function Sheet({
                         <button
                             type="button"
                             onClick={onClose}
-                            aria-label="Fermer"
+                            aria-label={t('common.close')}
                             className="flex size-9 shrink-0 items-center justify-center rounded-field text-ink-muted transition-soft hover:bg-sage hover:text-ink"
                         >
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

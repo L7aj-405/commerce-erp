@@ -1,4 +1,5 @@
 import SalesLayout from '@/layouts/SalesLayout';
+import { useI18n } from '@/i18n';
 import { formatDate, formatMoney, formatQuantity } from '@/utils/format';
 import { Head, Link } from '@inertiajs/react';
 
@@ -38,61 +39,62 @@ type Props = {
 };
 
 export default function CreditNoteShow({ creditNote: note, summary }: Props) {
+    const { direction, t } = useI18n();
     return (
         <SalesLayout>
-            <Head title={note.credit_note_number || 'Avoir brouillon'} />
+            <Head title={note.credit_note_number || `${t('creditNotes.title')} ${t('creditNotes.draft')}`} />
             <div className="mx-auto max-w-6xl space-y-6">
                 <header className="flex flex-wrap justify-between gap-3">
                     <div>
                         <Link href={`/invoices/${note.invoice.id}`} className="text-sm text-ink-muted">
-                            ← Facture {note.invoice.invoice_number}{note.invoice.version > 1 ? ` · V${note.invoice.version}` : ''}
+                            {direction === 'rtl' ? '→' : '←'} {t('invoices.invoice')} <bdi>{note.invoice.invoice_number}</bdi>{note.invoice.version > 1 ? ` · V${note.invoice.version}` : ''}
                         </Link>
-                        <h1 className="mt-1 text-2xl font-semibold">Avoir {note.credit_note_number || 'Brouillon'}</h1>
+                        <h1 className="mt-1 text-2xl font-semibold">{t('creditNotes.title')} <bdi>{note.credit_note_number || t('creditNotes.draft')}</bdi></h1>
                         <p className="text-sm text-ink-muted">
-                            <Link href={`/sales/orders/${note.sales_order.id}`} className="hover:underline">Commande {note.sales_order.order_number}</Link>
+                            <Link href={`/sales/orders/${note.sales_order.id}`} className="hover:underline">{t('invoices.order')} <bdi>{note.sales_order.order_number}</bdi></Link>
                             {' · '}
-                            <Link href={`/sales/returns/${note.customer_return.id}`} className="hover:underline">Retour {note.customer_return.return_number}</Link>
+                            <Link href={`/sales/returns/${note.customer_return.id}`} className="hover:underline">{t('creditNotes.return')} <bdi>{note.customer_return.return_number}</bdi></Link>
                         </p>
                     </div>
                     {note.status === 'issued' && (
                         <a href={`/credit-notes/${note.id}/pdf`} target="_blank" rel="noreferrer" className="rounded-field border border-line-strong px-4 py-2 text-sm">
-                            Voir le PDF officiel
+                            {t('creditNotes.officialPdf')}
                         </a>
                     )}
                 </header>
 
                 <section className="rounded-card border border-line bg-surface p-5 text-sm">
-                    <p><span className="text-ink-muted">Date d’émission :</span> {formatDate(note.credit_note_date)}</p>
-                    <p className="mt-1"><span className="text-ink-muted">Motif :</span> {note.reason}</p>
+                    <p><span className="text-ink-muted">{t('creditNotes.issueDate')} :</span> {formatDate(note.credit_note_date)}</p>
+                    <p className="mt-1"><span className="text-ink-muted">{t('creditNotes.reason')} :</span> {note.reason}</p>
                     <p className="mt-3 rounded-field bg-raised px-3 py-2 text-xs text-ink-muted">
-                        L’avoir réduit la position comptable de la facture. Il ne constitue pas, à lui seul, une preuve de remboursement.
+                        {t('creditNotes.accountingNotice')}
                     </p>
                 </section>
 
                 <div className="overflow-x-auto rounded-card border border-line bg-surface">
-                    <table className="w-full text-sm">
-                        <thead className="bg-raised text-left text-xs uppercase text-ink-faint">
-                            <tr><th className="p-3">Article</th><th className="p-3">Qté</th><th className="p-3 text-right">HT net</th><th className="p-3 text-right">Remise</th><th className="p-3 text-right">TVA</th><th className="p-3 text-right">TTC crédité</th></tr>
+                    <table className="erp-table w-full text-sm">
+                        <thead className="bg-raised text-start text-xs uppercase text-ink-faint">
+                            <tr><th className="p-3">{t('quotations.item')}</th><th className="p-3">{t('quotations.quantityShort')}</th><th className="p-3 text-end">{t('creditNotes.netExcl')}</th><th className="p-3 text-end">{t('creditNotes.discount')}</th><th className="p-3 text-end">{t('quotations.tax')}</th><th className="p-3 text-end">{t('creditNotes.creditedIncl')}</th></tr>
                         </thead>
                         <tbody>{note.lines.map((line) => (
                             <tr key={line.id} className="border-t border-line">
                                 <td className="p-3"><strong>{line.reference || line.customer_return_line?.sku || '—'}</strong><br />{line.description}{line.customer_return_line?.variant_name && <span className="block text-xs text-ink-muted">{line.customer_return_line.variant_name}</span>}</td>
                                 <td className="p-3">{formatQuantity(line.quantity)}</td>
-                                <td className="p-3 text-right">{formatMoney(line.taxable_amount, note.currency_code)}</td>
-                                <td className="p-3 text-right">{formatMoney(line.discount_amount, note.currency_code)}</td>
-                                <td className="p-3 text-right">{formatQuantity(line.tax_rate)}% · {formatMoney(line.tax_amount, note.currency_code)}</td>
-                                <td className="p-3 text-right font-medium">-{formatMoney(line.total_incl_tax, note.currency_code)}</td>
+                                <td className="p-3 text-end">{formatMoney(line.taxable_amount, note.currency_code)}</td>
+                                <td className="p-3 text-end">{formatMoney(line.discount_amount, note.currency_code)}</td>
+                                <td className="p-3 text-end">{formatQuantity(line.tax_rate)}% · {formatMoney(line.tax_amount, note.currency_code)}</td>
+                                <td className="p-3 text-end font-medium">-{formatMoney(line.total_incl_tax, note.currency_code)}</td>
                             </tr>
                         ))}</tbody>
                     </table>
                 </div>
 
-                <dl className="ml-auto max-w-sm space-y-2 rounded-card bg-raised p-5 text-sm">
-                    <Total label="Sous-total HT" value={`-${formatMoney(note.subtotal_excl_tax, note.currency_code)}`} />
-                    {Number(note.discount_total) !== 0 && <Total label="Remises" value={formatMoney(note.discount_total, note.currency_code)} />}
-                    <Total label="Total HT net" value={`-${formatMoney(summary.net_excl_tax, note.currency_code)}`} />
-                    <Total label="TVA" value={`-${formatMoney(note.tax_total, note.currency_code)}`} />
-                    <div className="flex justify-between border-t border-line-strong pt-2 text-lg font-semibold"><dt>Total TTC</dt><dd>-{formatMoney(note.total_incl_tax, note.currency_code)}</dd></div>
+                <dl className="ms-auto max-w-sm space-y-2 rounded-card bg-raised p-5 text-sm">
+                    <Total label={t('creditNotes.subtotalExcl')} value={`-${formatMoney(note.subtotal_excl_tax, note.currency_code)}`} />
+                    {Number(note.discount_total) !== 0 && <Total label={t('creditNotes.discounts')} value={formatMoney(note.discount_total, note.currency_code)} />}
+                    <Total label={t('creditNotes.totalNetExcl')} value={`-${formatMoney(summary.net_excl_tax, note.currency_code)}`} />
+                    <Total label={t('quotations.tax')} value={`-${formatMoney(note.tax_total, note.currency_code)}`} />
+                    <div className="flex justify-between border-t border-line-strong pt-2 text-lg font-semibold"><dt>{t('quotations.totalTaxIncluded')}</dt><dd>-{formatMoney(note.total_incl_tax, note.currency_code)}</dd></div>
                 </dl>
             </div>
         </SalesLayout>

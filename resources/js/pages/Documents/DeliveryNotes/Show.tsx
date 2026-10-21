@@ -4,6 +4,7 @@ import DocBadge from '@/components/ui/DocBadge';
 import { formatDate, formatDateTime } from '@/utils/format';
 import { deliveryNoteStatusLabel, deliveryNoteStatusTone, label } from '@/utils/labels';
 import SalesLayout from '@/layouts/SalesLayout';
+import { useI18n } from '@/i18n';
 import { Head, Link, router, useForm } from '@inertiajs/react';
 import type { FormEvent, ReactNode } from 'react';
 import { useState } from 'react';
@@ -41,6 +42,8 @@ function Card({ label: title, children }: { label: string; children: ReactNode }
 }
 
 export default function DeliveryNoteShow({ deliveryNote: note, can, mailConfigured }: Props) {
+    const { t } = useI18n();
+    const statusLabel: Record<string, string> = { draft: t('deliveryNotes.draft'), issued: t('deliveryNotes.issued'), cancelled: t('deliveryNotes.cancelled') };
     const form = useForm({
         delivery_date: note.delivery_date.slice(0, 10),
         recipient_name: note.recipient_name ?? '',
@@ -53,7 +56,7 @@ export default function DeliveryNoteShow({ deliveryNote: note, can, mailConfigur
     const [emailModalOpen, setEmailModalOpen] = useState(false);
     const update = (event: FormEvent) => { event.preventDefault(); form.patch(`/delivery-notes/${note.id}`, { preserveScroll: true }); };
     const cancel = (event: FormEvent) => { event.preventDefault(); cancellation.post(`/delivery-notes/${note.id}/cancel`, { preserveScroll: true }); };
-    const title = note.delivery_note_number ?? `Brouillon #${note.id}`;
+    const title = note.delivery_note_number ?? t('deliveryNotes.draftNumber').replace('{id}', String(note.id));
 
     return (
         <SalesLayout>
@@ -62,74 +65,74 @@ export default function DeliveryNoteShow({ deliveryNote: note, can, mailConfigur
             <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
                 <div>
                     <Link href="/delivery-notes" className="text-sm text-ink-muted">
-                        ← Bons de livraison
+                        <span aria-hidden="true">←</span> {t('deliveryNotes.back')}
                     </Link>
                     <div className="mt-1 flex flex-wrap items-center gap-2">
                         <h1 className="text-2xl font-semibold tracking-tight text-ink">{title}</h1>
-                        <DocBadge tone={deliveryNoteStatusTone(note.status)}>{label(deliveryNoteStatusLabel, note.status)}</DocBadge>
+                        <DocBadge tone={deliveryNoteStatusTone(note.status)}>{statusLabel[note.status] ?? note.status}</DocBadge>
                     </div>
                     <p className="text-sm text-ink-muted">
-                        Commande <Link href={`/sales/orders/${note.sales_order.id}`}>{note.sales_order.order_number}</Link> · {note.store.code} · {note.store.name}
+                        {t('deliveryNotes.order')} <Link href={`/sales/orders/${note.sales_order.id}`}><bdi>{note.sales_order.order_number}</bdi></Link> · <bdi>{note.store.code}</bdi> · {note.store.name}
                     </p>
                 </div>
                 {note.status === 'draft' && can.issue && (
-                    <Button onClick={() => router.post(`/delivery-notes/${note.id}/issue`)}>Émettre le bon de livraison</Button>
+                    <Button onClick={() => router.post(`/delivery-notes/${note.id}/issue`)}>{t('deliveryNotes.issue')}</Button>
                 )}
             </div>
 
             <section className="mb-6 grid gap-3 sm:grid-cols-3">
-                <Card label="Date de livraison">{formatDate(note.delivery_date)}</Card>
-                <Card label="Statut">{label(deliveryNoteStatusLabel, note.status)}</Card>
-                <Card label="Émission">{note.issued_at ? `${note.issued_by?.name ?? 'Inconnu'} · ${formatDateTime(note.issued_at)}` : 'Non émis'}</Card>
+                <Card label={t('deliveryNotes.deliveryDate')}>{formatDate(note.delivery_date)}</Card>
+                <Card label={t('common.status')}>{statusLabel[note.status] ?? note.status}</Card>
+                <Card label={t('deliveryNotes.issuance')}>{note.issued_at ? `${note.issued_by?.name ?? t('deliveryNotes.unknown')} · ${formatDateTime(note.issued_at)}` : t('deliveryNotes.notIssued')}</Card>
             </section>
 
             <section className="mb-6 flex flex-wrap items-end gap-3 rounded-card border border-line bg-surface p-5">
                 <a href={note.status === 'draft' ? `/delivery-notes/${note.id}/print` : `/delivery-notes/${note.id}/pdf`} target="_blank" rel="noreferrer" className="inline-flex min-h-10 items-center justify-center rounded-field border border-line-strong bg-surface px-4 text-sm text-ink transition-soft hover:bg-raised">
-                    {note.status === 'draft' ? 'Aperçu' : 'Voir PDF'}
+                    {note.status === 'draft' ? t('deliveryNotes.preview') : t('deliveryNotes.viewPdf')}
                 </a>
                 {note.status === 'issued' && (
                     <a href={`/delivery-notes/${note.id}/download`} className="inline-flex min-h-10 items-center justify-center rounded-field bg-primary px-4 text-sm font-medium text-primary-fg transition-soft hover:bg-primary-hover">
-                        Télécharger PDF
+                        {t('deliveryNotes.downloadPdf')}
                     </a>
                 )}
                 {note.status === 'issued' && can.email && (
                     <Button type="button" variant="secondary" onClick={() => setEmailModalOpen(true)}>
-                        Envoyer par email
+                        {t('deliveryNotes.email')}
                     </Button>
                 )}
             </section>
 
             {note.status === 'draft' && can.updateDraft && (
                 <form onSubmit={update} className="mb-6 grid gap-4 rounded-card border border-line bg-surface p-5 md:grid-cols-2">
-                    <h3 className="text-sm font-semibold text-ink md:col-span-2">Informations de livraison (brouillon)</h3>
+                    <h3 className="text-sm font-semibold text-ink md:col-span-2">{t('deliveryNotes.draftInfo')}</h3>
                     <label className={labelClass}>
-                        Date de livraison
+                        {t('deliveryNotes.deliveryDate')}
                         <input type="date" readOnly={!can.backdate} value={form.data.delivery_date} onChange={(e) => form.setData('delivery_date', e.target.value)} className={`${fieldClass} read-only:bg-raised`} />
                     </label>
                     <label className={labelClass}>
-                        Nom du destinataire
+                        {t('deliveryNotes.recipientName')}
                         <input value={form.data.recipient_name} onChange={(e) => form.setData('recipient_name', e.target.value)} className={fieldClass} />
                     </label>
                     <label className={labelClass}>
-                        Société
+                        {t('deliveryNotes.company')}
                         <input value={form.data.recipient_company} onChange={(e) => form.setData('recipient_company', e.target.value)} className={fieldClass} />
                     </label>
                     <label className={labelClass}>
-                        Téléphone
+                        {t('deliveryNotes.phone')}
                         <input value={form.data.recipient_phone} onChange={(e) => form.setData('recipient_phone', e.target.value)} className={fieldClass} />
                     </label>
                     <label className={`${labelClass} md:col-span-2`}>
-                        Adresse de livraison
+                        {t('deliveryNotes.address')}
                         <textarea rows={2} value={form.data.delivery_address} onChange={(e) => form.setData('delivery_address', e.target.value)} className={`${fieldClass} h-auto py-2`} />
                     </label>
                     <label className={`${labelClass} md:col-span-2`}>
-                        Notes
+                        {t('deliveryNotes.notes')}
                         <textarea rows={2} value={form.data.notes} onChange={(e) => form.setData('notes', e.target.value)} className={`${fieldClass} h-auto py-2`} />
                     </label>
                     {Object.values(form.errors).map((error) => error && <p key={error} className="text-[13px] text-danger md:col-span-2">{error}</p>)}
                     <div className="md:col-span-2">
                         <Button type="submit" variant="secondary" loading={form.processing} loadingText="Enregistrement…">
-                            Enregistrer le brouillon
+                            {t('deliveryNotes.saveDraft')}
                         </Button>
                     </div>
                 </form>
@@ -137,20 +140,18 @@ export default function DeliveryNoteShow({ deliveryNote: note, can, mailConfigur
 
             {note.status !== 'draft' && (
                 <section className="mb-6 rounded-card border border-line bg-surface p-5">
-                    <h3 className="text-sm font-semibold text-ink">Destinataire (au moment de l’émission)</h3>
-                    <p className="mt-2 text-sm text-ink">{note.recipient_company ?? note.recipient_name ?? 'Client comptoir'}</p>
+                    <h3 className="text-sm font-semibold text-ink">{t('deliveryNotes.recipientAtIssue')}</h3>
+                    <p className="mt-2 text-sm text-ink">{note.recipient_company ?? note.recipient_name ?? t('common.counterCustomer')}</p>
                     {note.recipient_phone && <p className="text-sm text-ink-muted">{note.recipient_phone}</p>}
                     {note.delivery_address && <p className="whitespace-pre-wrap text-sm text-ink-muted">{note.delivery_address}</p>}
                 </section>
             )}
 
             <div className="mb-6 overflow-x-auto rounded-card border border-line bg-surface">
-                <table className="w-full text-left text-sm">
+                <table className="w-full text-start text-sm">
                     <thead className="bg-raised text-[11px] uppercase tracking-wide text-ink-faint">
                         <tr>
-                            <th className="px-4 py-2.5">Article</th>
-                            <th className="px-4 py-2.5">Référence</th>
-                            <th className="px-4 py-2.5 text-right">Quantité livrée</th>
+                            <th className="px-4 py-2.5">{t('deliveryNotes.item')}</th><th className="px-4 py-2.5">{t('deliveryNotes.reference')}</th><th className="px-4 py-2.5 text-end">{t('deliveryNotes.deliveredQuantity')}</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -160,13 +161,13 @@ export default function DeliveryNoteShow({ deliveryNote: note, can, mailConfigur
                                     <p className="font-medium text-ink">{line.product_name ?? line.description}</p>
                                     {(line.variant_name || line.sku) && <p className="text-[12px] text-ink-muted">{[line.variant_name, line.sku].filter(Boolean).join(' · ')}</p>}
                                 </td>
-                                <td className="px-4 py-2.5 text-ink-muted">{line.reference ?? '—'}</td>
-                                <td className="px-4 py-2.5 text-right">{line.quantity} {line.unit_label}</td>
+                                <td className="px-4 py-2.5 text-ink-muted"><bdi>{line.reference ?? '—'}</bdi></td>
+                                <td className="px-4 py-2.5 text-end">{line.quantity} {line.unit_label}</td>
                             </tr>
                         ))}
                         {note.lines.length === 0 && (
                             <tr>
-                                <td colSpan={3} className="px-4 py-8 text-center text-ink-faint">Aucun article sur ce bon de livraison.</td>
+                                <td colSpan={3} className="px-4 py-8 text-center text-ink-faint">{t('deliveryNotes.noItems')}</td>
                             </tr>
                         )}
                     </tbody>
@@ -175,31 +176,31 @@ export default function DeliveryNoteShow({ deliveryNote: note, can, mailConfigur
 
             {note.status === 'draft' && can.updateDraft && (
                 <form onSubmit={cancel} className="max-w-xl space-y-3 rounded-card border border-danger/30 bg-danger-soft p-5">
-                    <h3 className="text-sm font-semibold text-danger">Annuler le brouillon</h3>
+                    <h3 className="text-sm font-semibold text-danger">{t('deliveryNotes.cancelDraft')}</h3>
                     <textarea
                         value={cancellation.data.reason}
                         onChange={(e) => cancellation.setData('reason', e.target.value)}
-                        placeholder="Motif (facultatif)"
+                        placeholder={t('deliveryNotes.reasonOptional')}
                         className="w-full rounded-field border border-danger/30 bg-surface px-3 py-2 text-sm text-ink outline-none focus:border-danger"
                     />
                     <button type="submit" className="inline-flex min-h-10 items-center justify-center rounded-field border border-danger/40 px-4 text-sm font-medium text-danger transition-soft hover:bg-danger-soft">
-                        Annuler le brouillon
+                        {t('deliveryNotes.cancelDraft')}
                     </button>
                 </form>
             )}
             {note.status === 'cancelled' && (
                 <p className="rounded-card border border-warning/30 bg-warning-soft p-5 text-sm text-warning">
-                    Brouillon annulé : {note.cancellation_reason ?? 'aucun motif renseigné'}
+                    {t('deliveryNotes.cancelledReason').replace('{reason}', note.cancellation_reason ?? t('deliveryNotes.noReason'))}
                 </p>
             )}
             <SendDocumentEmailModal
                 open={emailModalOpen}
                 onClose={() => setEmailModalOpen(false)}
                 postUrl={`/delivery-notes/${note.id}/email`}
-                title="Envoyer le bon de livraison"
+                title={t('deliveryNotes.emailTitle')}
                 defaultTo=""
-                defaultSubject={`Bon de livraison ${title}`}
-                defaultMessage="Bonjour,\n\nVeuillez trouver votre bon de livraison en pièce jointe.\n\nCordialement,"
+                defaultSubject={t('deliveryNotes.emailSubject').replace('{number}', title)}
+                defaultMessage={t('deliveryNotes.emailMessage')}
                 attachmentName={`Bon-de-Livraison-${title}.pdf`}
                 canSend={can.email}
                 mailConfigured={mailConfigured}

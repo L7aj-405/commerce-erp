@@ -3,6 +3,7 @@ import { Money, Popover, ProductCardSkeleton, Quantity, SegmentedControl } from 
 import { useDebouncedValue } from '@/components/pos/useDebouncedValue';
 import { MAX_COLUMNS, MIN_COLUMNS, usePosPreferences } from '@/components/pos/usePosPreferences';
 import { InlineLoader, Spinner } from '@/components/ui/Spinner';
+import { useI18n } from '@/i18n';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CatalogueFilters } from './PosFilters';
 import PosProductCard from './PosProductCard';
@@ -26,6 +27,7 @@ type Payload = {
 const columnChoices = Array.from({ length: MAX_COLUMNS - MIN_COLUMNS + 1 }, (_, index) => MIN_COLUMNS + index);
 
 export default function PosCatalogue({ warehouseId, filters, isAdding, justAdded, onAdd }: Props) {
+    const { t } = useI18n();
     const { preferences, update } = usePosPreferences();
     const { viewMode, cardSize, columns, showImages, showLocalStock, showCompanyStock } = preferences;
 
@@ -53,7 +55,7 @@ export default function PosCatalogue({ warehouseId, filters, isAdding, justAdded
     async function lookup(page = 1, append = false, barcode?: string) {
         if (!warehouseId) {
             setResults([]);
-            setError('Sélectionnez un entrepôt opérationnel.');
+            setError(t('pos.selectOperationalWarehouse'));
             return [];
         }
 
@@ -81,7 +83,7 @@ export default function PosCatalogue({ warehouseId, filters, isAdding, justAdded
                 signal: controller.signal,
             });
             if (!response.ok) {
-                throw new Error(response.status === 403 ? 'Accès au catalogue non autorisé.' : 'Le chargement du catalogue a échoué.');
+                throw new Error(response.status === 403 ? t('pos.catalogForbidden') : t('pos.catalogLoadFailed'));
             }
             const payload = (await response.json()) as Payload;
             if (requestContextKey !== requestContextRef.current) return [];
@@ -97,7 +99,7 @@ export default function PosCatalogue({ warehouseId, filters, isAdding, justAdded
             return payload.data;
         } catch (reason) {
             if ((reason as Error).name === 'AbortError') return [];
-            setError(reason instanceof Error ? reason.message : 'Le chargement du catalogue a échoué.');
+            setError(reason instanceof Error ? reason.message : t('pos.catalogLoadFailed'));
             return [];
         } finally {
             if (append) loadingMoreRef.current = false;
@@ -141,7 +143,7 @@ export default function PosCatalogue({ warehouseId, filters, isAdding, justAdded
             <div className="shrink-0 space-y-3 border-b border-line p-3.5">
                 <div className="flex items-center gap-2">
                     <div className="relative min-w-0 flex-1">
-                        <svg className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-faint" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <svg className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-ink-faint" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                             <circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" />
                         </svg>
                         <input
@@ -159,19 +161,19 @@ export default function PosCatalogue({ warehouseId, filters, isAdding, justAdded
                                     setQuery('');
                                 }
                             }}
-                            placeholder="Rechercher un produit, SKU, référence, code-barres…"
-                            className="h-11 w-full rounded-field border border-line-strong bg-surface pl-9 pr-3 text-sm outline-none transition-soft focus:border-primary focus:ring-4 focus:ring-primary/10"
+                            placeholder={t('pos.searchProduct')}
+                            className="h-11 w-full rounded-field border border-line-strong bg-surface ps-9 pe-3 text-sm outline-none transition-soft focus:border-primary focus:ring-4 focus:ring-primary/10"
                         />
                     </div>
 
                     <SegmentedControl
                         size="sm"
-                        ariaLabel="Mode d’affichage"
+                        ariaLabel={t('pos.displayMode')}
                         value={viewMode}
                         onChange={(next) => update({ viewMode: next })}
                         options={[
-                            { value: 'table', label: 'Liste' },
-                            { value: 'grid', label: 'Grille' },
+                            { value: 'table', label: t('pos.list') },
+                            { value: 'grid', label: t('pos.grid') },
                         ]}
                     />
 
@@ -181,14 +183,14 @@ export default function PosCatalogue({ warehouseId, filters, isAdding, justAdded
                             onClick={() => setDisplayOpen((value) => !value)}
                             aria-expanded={displayOpen}
                             className="grid size-9 place-items-center rounded-field border border-line-strong text-ink-muted transition-soft hover:text-ink"
-                            aria-label="Options d’affichage"
+                            aria-label={t('pos.displayOptions')}
                         >
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="3" /><path d="M19 12a7 7 0 0 0-.1-1l2-1.6-2-3.4-2.4 1a7 7 0 0 0-1.7-1l-.4-2.5H10l-.4 2.5a7 7 0 0 0-1.7 1l-2.4-1-2 3.4 2 1.6a7 7 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 1.7 1l.4 2.5h4l.4-2.5a7 7 0 0 0 1.7-1l2.4 1 2-3.4-2-1.6c.06-.33.1-.66.1-1Z" /></svg>
                         </button>
                         <Popover open={displayOpen} onClose={() => setDisplayOpen(false)}>
-                            <p className="text-xs font-semibold uppercase tracking-wide text-ink-faint">Affichage</p>
+                            <p className="text-xs font-semibold uppercase tracking-wide text-ink-faint">{t('pos.display')}</p>
                             <div className="mt-2 flex items-center justify-between py-1.5 text-[13px] text-ink-muted">
-                                Densité
+                                {t('pos.density')}
                                 <SegmentedControl
                                     size="sm"
                                     value={cardSize}
@@ -202,7 +204,7 @@ export default function PosCatalogue({ warehouseId, filters, isAdding, justAdded
                             </div>
                             {viewMode === 'grid' && (
                                 <label className="flex items-center justify-between py-1.5 text-[13px] text-ink-muted">
-                                    Colonnes
+                                    {t('pos.columns')}
                                     <select
                                         value={columns}
                                         onChange={(event) => update({ columns: Number(event.target.value) })}
@@ -216,9 +218,9 @@ export default function PosCatalogue({ warehouseId, filters, isAdding, justAdded
                             )}
                             <div className="mt-1 border-t border-line pt-1">
                                 {[
-                                    ['Images', showImages, (v: boolean) => update({ showImages: v })],
-                                    ['Stock local', showLocalStock, (v: boolean) => update({ showLocalStock: v })],
-                                    ['Stock société', showCompanyStock, (v: boolean) => update({ showCompanyStock: v })],
+                                    [t('pos.images'), showImages, (v: boolean) => update({ showImages: v })],
+                                    [t('pos.localStock'), showLocalStock, (v: boolean) => update({ showLocalStock: v })],
+                                    [t('pos.companyStock'), showCompanyStock, (v: boolean) => update({ showCompanyStock: v })],
                                 ].map(([label, checked, setter]) => (
                                     <label key={label as string} className="flex items-center justify-between py-1.5 text-[13px] text-ink-muted">
                                         {label as string}
@@ -239,8 +241,8 @@ export default function PosCatalogue({ warehouseId, filters, isAdding, justAdded
             {/* Results */}
             <div className="relative min-h-0 flex-1 overflow-y-auto p-3.5">
                 {refreshing && (
-                    <div className="pointer-events-none absolute right-3.5 top-3 z-10">
-                        <InlineLoader label="Actualisation…" className="rounded-full bg-surface/90 px-2 py-1 text-[11px] shadow-card" />
+                    <div className="pointer-events-none absolute end-3.5 top-3 z-10">
+                        <InlineLoader label={t('pos.refreshing')} className="rounded-full bg-surface/90 px-2 py-1 text-[11px] shadow-card" />
                     </div>
                 )}
                 {error && <p className="mb-3 rounded-field bg-danger-soft px-3.5 py-2.5 text-[13px] text-danger">{error}</p>}
@@ -261,7 +263,7 @@ export default function PosCatalogue({ warehouseId, filters, isAdding, justAdded
 
                 {!initialLoading && results.length === 0 && !error && (
                     <div className="rounded-card border border-dashed border-line-strong bg-raised px-6 py-14 text-center text-sm text-ink-muted">
-                        Aucun produit ne correspond aux filtres.
+                        {t('pos.noMatchingProducts')}
                     </div>
                 )}
 
@@ -289,15 +291,15 @@ export default function PosCatalogue({ warehouseId, filters, isAdding, justAdded
                 {!initialLoading && viewMode === 'table' && results.length > 0 && (
                     <div className={`overflow-x-auto rounded-card border border-line transition-opacity ${refreshing ? 'opacity-60' : ''}`}>
                         <table className="min-w-[640px] w-full divide-y divide-line text-sm">
-                            <thead className="bg-raised text-left text-[11px] uppercase tracking-wide text-ink-faint">
+                            <thead className="bg-raised text-start text-[11px] uppercase tracking-wide text-ink-faint">
                                 <tr>
                                     {showImages && <th className="w-12 px-3 py-2.5" />}
-                                    <th className="px-3 py-2.5">Produit</th>
+                                    <th className="px-3 py-2.5">{t('pos.product')}</th>
                                     <th className="px-3 py-2.5">SKU</th>
-                                    <th className="px-3 py-2.5">Marque</th>
-                                    <th className="px-3 py-2.5 text-right">Prix</th>
-                                    {showLocalStock && <th className="px-3 py-2.5 text-right">Ici</th>}
-                                    {showCompanyStock && <th className="px-3 py-2.5 text-right">Société</th>}
+                                    <th className="px-3 py-2.5">{t('pos.brand')}</th>
+                                    <th className="px-3 py-2.5 text-end">{t('pos.price')}</th>
+                                    {showLocalStock && <th className="px-3 py-2.5 text-end">{t('pos.hereStock')}</th>}
+                                    {showCompanyStock && <th className="px-3 py-2.5 text-end">{t('pos.companyShort')}</th>}
                                     <th className="px-3 py-2.5" />
                                 </tr>
                             </thead>
@@ -323,20 +325,20 @@ export default function PosCatalogue({ warehouseId, filters, isAdding, justAdded
                                             </td>
                                             <td className={`px-3 ${pad} text-ink-muted`}>{product.sku ?? '—'}</td>
                                             <td className={`px-3 ${pad} text-ink-muted`}>{product.brand?.name ?? '—'}</td>
-                                            <td className={`px-3 ${pad} text-right font-medium text-ink`}><Money value={product.unit_price_incl_tax} /></td>
-                                            {showLocalStock && <td className={`px-3 ${pad} text-right ${local > 0 ? 'text-success' : 'text-warning'}`}><Quantity value={product.stock.available} /></td>}
+                                            <td className={`px-3 ${pad} text-end font-medium text-ink`}><Money value={product.unit_price_incl_tax} /></td>
+                                            {showLocalStock && <td className={`px-3 ${pad} text-end ${local > 0 ? 'text-success' : 'text-warning'}`}><Quantity value={product.stock.available} /></td>}
                                             {showCompanyStock && (
-                                                <td className={`px-3 ${pad} text-right ${total > 0 ? 'text-ink-muted' : 'text-warning'}`}>
-                                                    {total > 0 ? <Quantity value={product.stock.total_available} /> : '0 · Sur commande'}
+                                                <td className={`px-3 ${pad} text-end ${total > 0 ? 'text-ink-muted' : 'text-warning'}`}>
+                                                    {total > 0 ? <Quantity value={product.stock.total_available} /> : `0 · ${t('pos.backorder')}`}
                                                 </td>
                                             )}
-                                            <td className={`px-3 ${pad} text-right`}>
+                                            <td className={`px-3 ${pad} text-end`}>
                                                 <button
                                                     type="button"
                                                     disabled={adding || product.tax_config_missing === true}
                                                     aria-busy={adding || undefined}
                                                     onClick={() => onAdd(product)}
-                                                    title={product.tax_config_missing ? 'Aucune taxe par défaut n’est configurée pour ce magasin.' : undefined}
+                                                    title={product.tax_config_missing ? t('pos.taxMissingHelp') : undefined}
                                                     className="inline-flex min-w-[4.75rem] items-center justify-center gap-1.5 rounded-field bg-primary px-3 py-1.5 text-xs font-medium text-primary-fg transition-soft hover:bg-primary-hover disabled:opacity-40"
                                                 >
                                                     {adding ? (
@@ -344,7 +346,7 @@ export default function PosCatalogue({ warehouseId, filters, isAdding, justAdded
                                                     ) : added ? (
                                                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" aria-hidden="true"><path d="m5 13 4 4L19 7" /></svg>
                                                     ) : null}
-                                                    {adding ? 'Ajout…' : added ? 'Ajouté' : product.tax_config_missing ? 'Taxe ?' : total > 0 ? 'Ajouter' : 'Commander'}
+                                                    {adding ? t('pos.adding') : added ? t('pos.added') : product.tax_config_missing ? t('pos.taxUnknown') : total > 0 ? t('pos.add') : t('pos.order')}
                                                 </button>
                                             </td>
                                         </tr>
@@ -356,7 +358,7 @@ export default function PosCatalogue({ warehouseId, filters, isAdding, justAdded
                 )}
 
                 <div ref={sentinelRef} className="flex min-h-8 items-center justify-center py-2" aria-hidden={!nextPage}>
-                    {nextPage && loading && <InlineLoader label="Chargement des produits…" />}
+                    {nextPage && loading && <InlineLoader label={t('pos.loadingProducts')} />}
                 </div>
             </div>
         </div>

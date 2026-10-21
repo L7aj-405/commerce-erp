@@ -1,5 +1,6 @@
 import { Button } from '@/components/ui/Button';
 import { FormBanner, TextField } from '@/components/ui/form';
+import { useI18n } from '@/i18n';
 import { router } from '@inertiajs/react';
 import { useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
@@ -17,42 +18,6 @@ export type RoleSummary = {
     permissions: string[];
 };
 
-const GROUP_LABELS: Record<string, string> = {
-    organizations: 'Organisation',
-    settings: 'Paramètres',
-    stores: 'Magasins',
-    members: 'Membres',
-    'store-memberships': 'Accès magasins',
-    roles: 'Rôles',
-    catalog: 'Catalogue',
-    products: 'Produits',
-    product_cost: "Prix d'achat",
-    categories: 'Catégories',
-    brands: 'Marques',
-    units: 'Unités',
-    tax_rates: 'Taxes (TVA)',
-    warehouses: 'Entrepôts',
-    inventory: 'Stock',
-    suppliers: 'Fournisseurs',
-    procurement: 'Achats',
-    customers: 'Clients',
-    sales_orders: 'Ventes',
-    pos: 'Point de vente',
-    financial_accounts: 'Comptes financiers',
-    payments: 'Paiements',
-    invoices: 'Factures',
-    quotations: 'Devis',
-    non_stock_items: 'Articles hors stock',
-    delivery_notes: 'Bons de livraison',
-    integrations: 'Intégrations',
-    finance: 'Finance',
-    commissions: 'Commissions',
-};
-
-function groupLabel(key: string) {
-    return GROUP_LABELS[key] ?? key.replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase());
-}
-
 type Props = {
     permissionGroups: PermissionGroups;
     presets: Preset[];
@@ -64,6 +29,16 @@ type Props = {
 };
 
 export default function RoleEditor({ permissionGroups, presets, actorPermissions, role, canAssignPermissions, onClose }: Props) {
+    const { t } = useI18n();
+    const groupLabels: Record<string, string> = {
+        organizations: t('roles.group.organizations'), settings: t('roles.group.settings'), stores: t('roles.group.stores'), members: t('roles.group.members'),
+        'store-memberships': t('roles.group.storeMemberships'), roles: t('roles.group.roles'), catalog: t('roles.group.catalog'), products: t('roles.group.products'),
+        product_cost: t('roles.group.productCost'), categories: t('roles.group.categories'), brands: t('roles.group.brands'), units: t('roles.group.units'),
+        tax_rates: t('roles.group.taxRates'), warehouses: t('roles.group.warehouses'), inventory: t('roles.group.inventory'), suppliers: t('roles.group.suppliers'),
+        procurement: t('roles.group.procurement'), customers: t('roles.group.customers'), sales_orders: t('roles.group.salesOrders'), pos: t('roles.group.pos'),
+        financial_accounts: t('roles.group.financialAccounts'), payments: t('roles.group.payments'), invoices: t('roles.group.invoices'), quotations: t('roles.group.quotations'),
+        non_stock_items: t('roles.group.nonStockItems'), delivery_notes: t('roles.group.deliveryNotes'), integrations: t('roles.group.integrations'), finance: t('roles.group.finance'), commissions: t('roles.group.commissions'),
+    };
     const isCreate = role === null;
     const [name, setName] = useState(role?.name ?? '');
     const [presetSlug, setPresetSlug] = useState<string | null>(role?.preset_slug ?? null);
@@ -172,31 +147,29 @@ export default function RoleEditor({ permissionGroups, presets, actorPermissions
 
     const destroy = () => {
         if (!role) return;
-        if (!window.confirm(`Supprimer le rôle « ${role.name} » ? Cette action est irréversible.`)) return;
+        if (!window.confirm(t('roles.deleteConfirm').replace('{name}', role.name))) return;
         router.delete(`/roles/${role.id}`, { preserveScroll: true, onSuccess: () => onClose() });
     };
 
     return (
         <div className="rounded-card border border-line bg-surface p-5">
             <div className="mb-4 flex items-start justify-between gap-3">
-                <h3 className="text-sm font-semibold text-ink">{isCreate ? 'Nouveau rôle' : role!.name}</h3>
+                <h3 className="text-sm font-semibold text-ink">{isCreate ? t('roles.new') : role!.name}</h3>
                 <button type="button" onClick={onClose} className="text-xs text-ink-muted hover:text-ink">
-                    Fermer
+                    {t('common.close')}
                 </button>
             </div>
 
             {role?.is_system && (
                 <FormBanner tone="info">
-                    Rôle système protégé — son nom et ses permissions ne peuvent pas être modifiés. Créez un rôle personnalisé pour
-                    adapter les accès.
+                    {t('roles.systemProtected')}
                 </FormBanner>
             )}
 
             {!role?.is_system && lockedPermissions.length > 0 && (
                 <div className="mb-3">
                     <FormBanner tone="info">
-                        Ce rôle inclut des permissions que vous ne détenez pas vous-même ({lockedPermissions.length}), donc vous ne
-                        pouvez pas modifier sa matrice de permissions ici. Seul un titulaire de ces permissions peut l’ajuster.
+                        {t('roles.lockedPermissions').replace('{count}', String(lockedPermissions.length))}
                     </FormBanner>
                 </div>
             )}
@@ -209,7 +182,7 @@ export default function RoleEditor({ permissionGroups, presets, actorPermissions
 
             <form onSubmit={submit} className="space-y-5">
                 <TextField
-                    label="Nom du rôle"
+                    label={t('roles.name')}
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     required
@@ -219,9 +192,9 @@ export default function RoleEditor({ permissionGroups, presets, actorPermissions
 
                 {isCreate && (
                     <div>
-                        <span className="mb-2 block text-[13px] font-medium text-ink">Préréglage</span>
+                        <span className="mb-2 block text-[13px] font-medium text-ink">{t('roles.preset')}</span>
                         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                            {[...presets, { slug: '', name: 'Personnalisé', permissions: [] }].map((preset) => {
+                            {[...presets, { slug: '', name: t('roles.custom'), permissions: [] }].map((preset) => {
                                 const value = preset.slug || null;
                                 const active = touchedPreset ? presetSlug === value : value === null && !touchedPreset;
                                 return (
@@ -229,7 +202,7 @@ export default function RoleEditor({ permissionGroups, presets, actorPermissions
                                         type="button"
                                         key={preset.slug || 'custom'}
                                         onClick={() => applyPreset(value)}
-                                        className={`rounded-field border px-3 py-2.5 text-left text-[13px] font-medium transition-soft ${
+                                        className={`rounded-field border px-3 py-2.5 text-start text-[13px] font-medium transition-soft ${
                                             active ? 'border-primary bg-sage text-ink' : 'border-line-strong text-ink-muted hover:bg-raised'
                                         }`}
                                     >
@@ -243,13 +216,13 @@ export default function RoleEditor({ permissionGroups, presets, actorPermissions
 
                 <div>
                     <span className="mb-2 block text-[13px] font-medium text-ink">
-                        Permissions {matrixLocked && !role?.is_system ? '(lecture seule)' : ''}
+                        {t('roles.permissions')} {matrixLocked && !role?.is_system ? `(${t('roles.readOnly')})` : ''}
                     </span>
                     <div className="max-h-96 space-y-4 overflow-y-auto rounded-field border border-line p-3">
                         {Object.entries(permissionGroups).map(([group, rows]) => (
                             <div key={group}>
                                 <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
-                                    {groupLabel(group)}
+                                    {groupLabels[group] ?? group.replace(/_/g, ' ')}
                                 </p>
                                 <div className="grid gap-1 sm:grid-cols-2">
                                     {rows.map((row) => {
@@ -259,7 +232,7 @@ export default function RoleEditor({ permissionGroups, presets, actorPermissions
                                         return (
                                             <label
                                                 key={row.key}
-                                                title={!available ? 'Vous ne détenez pas cette permission' : undefined}
+                                                title={!available ? t('roles.permissionUnavailable') : undefined}
                                                 className={`flex items-center gap-2 rounded px-1.5 py-1 text-[13px] ${
                                                     disabled ? 'text-ink-faint' : 'text-ink-muted hover:bg-raised'
                                                 }`}
@@ -285,13 +258,13 @@ export default function RoleEditor({ permissionGroups, presets, actorPermissions
                     <div>
                         {canDelete && (
                             <Button type="button" variant="danger" size="sm" onClick={destroy}>
-                                Supprimer le rôle
+                                {t('roles.delete')}
                             </Button>
                         )}
                     </div>
                     {!role?.is_system && (
-                        <Button type="submit" loading={processing} loadingText="Enregistrement…">
-                            Enregistrer
+                        <Button type="submit" loading={processing} loadingText={t('common.saving')}>
+                            {t('common.save')}
                         </Button>
                     )}
                 </div>

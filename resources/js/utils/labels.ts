@@ -49,7 +49,7 @@ export const invoiceStatusLabel: Record<string, string> = {
 };
 
 export function orderStatusTone(value: string): BadgeTone {
-    return value === 'confirmed' ? 'info' : value === 'cancelled' ? 'danger' : 'neutral';
+    return value === 'confirmed' ? 'positive' : value === 'cancelled' ? 'danger' : 'neutral';
 }
 
 export function fulfillmentTone(value: string): BadgeTone {
@@ -57,7 +57,7 @@ export function fulfillmentTone(value: string): BadgeTone {
 }
 
 export function paymentStatusTone(value: string): BadgeTone {
-    return value === 'paid' ? 'positive' : value === 'partially_paid' ? 'warning' : 'neutral';
+    return value === 'paid' ? 'positive' : value === 'partially_paid' ? 'warning' : value === 'unpaid' ? 'danger' : 'neutral';
 }
 
 export function invoiceStatusTone(value: string): BadgeTone {
@@ -97,8 +97,21 @@ export function deliveryNoteStatusTone(value: string): BadgeTone {
     return 'neutral';
 }
 
+const arabicLabels = new Map<Record<string, string>, Record<string, string>>([
+    [orderStatusLabel, { draft: 'مسودة', confirmed: 'مؤكدة', cancelled: 'ملغاة' }],
+    [fulfillmentLabel, { unfulfilled: 'بانتظار التحضير', partially_fulfilled: 'محضّرة جزئياً', fulfilled: 'تم التسليم' }],
+    [paymentStatusLabel, { unpaid: 'غير مؤداة', partially_paid: 'مؤداة جزئياً', paid: 'مؤداة' }],
+    [sourceLabel, { pos: 'نقطة البيع', manual: 'يدوي', ecommerce: 'تجارة إلكترونية' }],
+    [paymentMethodLabel, { cash: 'نقداً', card: 'بطاقة / TPE', bank_transfer: 'تحويل بنكي', cheque: 'شيك' }],
+    [paymentEntryStatusLabel, { posted: 'مُحصّل', reversed: 'ملغى' }],
+    [invoiceStatusLabel, { draft: 'مسودة', issued: 'صادرة', cancelled: 'ملغاة', superseded: 'مستبدلة' }],
+    [quotationStatusLabel, { draft: 'مسودة', issued: 'صادر', accepted: 'مقبول', rejected: 'مرفوض', expired: 'منتهي الصلاحية', converted: 'محوّل', superseded: 'مستبدل' }],
+    [deliveryNoteStatusLabel, { draft: 'مسودة', issued: 'صادر', cancelled: 'ملغى' }],
+]);
+
 /** `label` helper: read a map, fall back to a de-underscored raw value. */
 export function label(map: Record<string, string>, value: string | null | undefined): string {
     if (!value) return '—';
-    return map[value] ?? value.replaceAll('_', ' ');
+    const localizedMap = typeof document !== 'undefined' && document.documentElement.lang === 'ar' ? arabicLabels.get(map) : undefined;
+    return localizedMap?.[value] ?? map[value] ?? value.replaceAll('_', ' ');
 }

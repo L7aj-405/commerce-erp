@@ -1,4 +1,5 @@
 import { formatMoney, formatQuantity } from '@/utils/format';
+import { useI18n } from '@/i18n';
 import type { InputHTMLAttributes, ReactNode } from 'react';
 import { useEffect } from 'react';
 
@@ -114,6 +115,7 @@ export function Drawer({ open, onClose, title, description, children, widthClass
     children: ReactNode;
     widthClassName?: string;
 }) {
+    const { direction, t } = useI18n();
     useEffect(() => {
         if (!open) return;
         const handler = (event: KeyboardEvent) => {
@@ -126,15 +128,15 @@ export function Drawer({ open, onClose, title, description, children, widthClass
     if (!open) return null;
 
     return (
-        <div className="fixed inset-0 z-40 flex justify-end bg-slate-950/30">
-            <button type="button" className="flex-1 cursor-default" onClick={onClose} aria-label="Fermer" />
+        <div className={`fixed inset-0 z-40 flex ${direction === 'rtl' ? 'flex-row-reverse' : ''} bg-slate-950/30`} dir={direction}>
+            <button type="button" className="flex-1 cursor-default" onClick={onClose} aria-label={t('common.close')} />
             <aside className={`flex w-full ${widthClassName} flex-col overflow-y-auto bg-white shadow-2xl`}>
                 <div className="flex items-start justify-between gap-3 border-b border-slate-200 p-5">
                     <div>
                         <h2 className="text-lg font-semibold text-slate-950">{title}</h2>
                         {description && <p className="mt-0.5 text-sm text-slate-500">{description}</p>}
                     </div>
-                    <button type="button" onClick={onClose} className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">Fermer</button>
+                    <button type="button" onClick={onClose} className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">{t('common.close')}</button>
                 </div>
                 <div className="flex-1 p-5">{children}</div>
             </aside>
@@ -158,7 +160,7 @@ export function Popover({ open, onClose, children }: { open: boolean; onClose: (
     return (
         <>
             <button type="button" aria-hidden className="fixed inset-0 z-30 cursor-default" tabIndex={-1} onClick={onClose} />
-            <div className="absolute right-0 top-full z-40 mt-2 max-h-[70vh] w-72 max-w-[calc(100vw-1.5rem)] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-4 shadow-xl">
+            <div className="absolute end-0 top-full z-40 mt-2 max-h-[70vh] w-72 max-w-[calc(100vw-1.5rem)] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-4 text-start shadow-xl">
                 {children}
             </div>
         </>

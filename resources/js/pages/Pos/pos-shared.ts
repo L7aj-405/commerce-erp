@@ -30,12 +30,6 @@ export type PaymentMethod = 'cash' | 'card' | 'bank_transfer' | 'cheque';
  */
 export type SettlementMode = 'full' | 'partial' | 'deferred';
 
-export const settlementLabels: Record<SettlementMode, string> = {
-    full: 'Paiement comptant',
-    partial: 'Paiement partiel',
-    deferred: 'Paiement ultérieur',
-};
-
 export type PaymentDraft = {
     method: PaymentMethod | '';
     financial_account_id: number | '';
@@ -97,20 +91,6 @@ export type ReviewData = {
     requires_replenishment: boolean;
     remote_required: string;
     print: boolean;
-};
-
-export const paymentLabels: Record<PaymentMethod, string> = {
-    cash: 'Espèces',
-    card: 'TPE / Carte',
-    bank_transfer: 'Virement',
-    cheque: 'Chèque',
-};
-
-export const referenceLabels: Record<PaymentMethod, string> = {
-    cash: '',
-    card: 'Référence transaction / ticket TPE',
-    bank_transfer: 'Référence du virement',
-    cheque: 'Numéro du chèque',
 };
 
 export const blankCustomerForm = (): CustomerForm => ({

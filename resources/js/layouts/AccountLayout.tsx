@@ -1,11 +1,12 @@
-import ApplicationShell from '@/layouts/ApplicationShell';
-import { Link, usePage } from '@inertiajs/react';
-import type { PropsWithChildren } from 'react';
+import ApplicationShell from "@/layouts/ApplicationShell";
+import { useI18n } from "@/i18n";
+import { Link, usePage } from "@inertiajs/react";
+import type { PropsWithChildren } from "react";
 
 const TABS = [
-    { href: '/account/profile', label: 'Profil' },
-    { href: '/security', label: 'Sécurité' },
-    { href: '/security/sessions', label: 'Sessions' },
+    { href: "/account/profile", key: "common.profile" },
+    { href: "/security", key: "common.security" },
+    { href: "/security/sessions", key: "sessions.title" },
 ];
 
 /**
@@ -16,24 +17,30 @@ const TABS = [
  * read as one section instead of two unrelated pages.
  */
 export default function AccountLayout({ children }: PropsWithChildren) {
-    const currentPath = usePage().url.split('?')[0];
+    const { t } = useI18n();
+    const currentPath = usePage().url.split("?")[0];
 
     return (
         <ApplicationShell>
             <div className="mx-auto max-w-2xl">
-                <nav aria-label="Compte" className="mb-6 flex gap-1 overflow-x-auto border-b border-line">
+                <nav
+                    aria-label={t("account.navigation")}
+                    className="mb-6 flex gap-1 overflow-x-auto border-b border-line"
+                >
                     {TABS.map((tab) => {
                         const active = currentPath === tab.href;
                         return (
                             <Link
                                 key={tab.href}
                                 href={tab.href}
-                                aria-current={active ? 'page' : undefined}
+                                aria-current={active ? "page" : undefined}
                                 className={`flex min-h-11 shrink-0 items-center border-b-2 px-3.5 text-sm font-medium transition-soft ${
-                                    active ? 'border-primary text-ink' : 'border-transparent text-ink-muted hover:text-ink'
+                                    active
+                                        ? "border-primary text-ink"
+                                        : "border-transparent text-ink-muted hover:text-ink"
                                 }`}
                             >
-                                {tab.label}
+                                {t(tab.key as Parameters<typeof t>[0])}
                             </Link>
                         );
                     })}

@@ -3,7 +3,9 @@ import FilterSelect from '@/components/ui/FilterSelect';
 import PageHeader from '@/components/ui/PageHeader';
 import Pagination from '@/components/ui/Pagination';
 import SearchInput from '@/components/ui/SearchInput';
+import { MetricCard } from '@/components/ui/MetricCard';
 import { useDebouncedValue } from '@/components/pos/useDebouncedValue';
+import { useI18n } from '@/i18n';
 import { Popover } from '@/components/pos/primitives';
 import SalesLayout from '@/layouts/SalesLayout';
 import { formatDate, formatMoney } from '@/utils/format';
@@ -45,6 +47,7 @@ type Props = {
 };
 
 export default function OrderIndex({ orders, filters, summary }: Props) {
+    const { t } = useI18n();
     const [search, setSearch] = useState(filters.search ?? '');
     const [menuFor, setMenuFor] = useState<number | null>(null);
     const debounced = useDebouncedValue(search, 250);
@@ -65,23 +68,20 @@ export default function OrderIndex({ orders, filters, summary }: Props) {
     const searching = search !== (filters.search ?? '');
 
     const tiles = [
-        { label: 'Total commandes', value: summary.total },
-        { label: 'À préparer', value: summary.a_preparer },
-        { label: 'Partiellement payées', value: summary.partiellement_payees },
-        { label: 'Payées', value: summary.payees },
+        { label: t('sales.orders.total'), value: summary.total },
+        { label: t('sales.orders.toPrepare'), value: summary.a_preparer },
+        { label: t('sales.orders.partiallyPaid'), value: summary.partiellement_payees },
+        { label: t('sales.orders.paid'), value: summary.payees },
     ];
 
     return (
         <SalesLayout>
-            <Head title="Commandes" />
-            <PageHeader title="Commandes" description="Les commandes proviennent du point de vente." />
+            <Head title={t('sales.orders.title')} />
+            <PageHeader title={t('sales.orders.title')} description={t('sales.orders.description')} />
 
             <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
                 {tiles.map((tile) => (
-                    <div key={tile.label} className="rounded-card border border-line bg-surface px-4 py-3">
-                        <p className="text-xs text-ink-muted">{tile.label}</p>
-                        <p className="mt-1 text-xl font-semibold text-ink">{tile.value}</p>
-                    </div>
+                    <MetricCard key={tile.label} level="secondary" label={tile.label} value={tile.value} />
                 ))}
             </div>
 
@@ -90,59 +90,59 @@ export default function OrderIndex({ orders, filters, summary }: Props) {
                     value={search}
                     onChange={setSearch}
                     searching={searching}
-                    placeholder="N° commande, client, téléphone…"
+                    placeholder={t('sales.orders.searchPlaceholder')}
                 />
                 <FilterSelect value={filters.status ?? ''} onChange={(e) => apply({ status: e.target.value || undefined })}>
-                    <option value="">Tous statuts</option>
-                    <option value="draft">Brouillon</option>
-                    <option value="confirmed">Confirmée</option>
-                    <option value="cancelled">Annulée</option>
+                    <option value="">{t('common.allStatuses')}</option>
+                    <option value="draft">{label(orderStatusLabel, 'draft')}</option>
+                    <option value="confirmed">{label(orderStatusLabel, 'confirmed')}</option>
+                    <option value="cancelled">{label(orderStatusLabel, 'cancelled')}</option>
                 </FilterSelect>
                 <FilterSelect
                     value={filters.fulfillment_status ?? ''}
                     onChange={(e) => apply({ fulfillment_status: e.target.value || undefined })}
                 >
-                    <option value="">Préparation</option>
-                    <option value="unfulfilled">À préparer</option>
-                    <option value="partially_fulfilled">Préparation partielle</option>
-                    <option value="fulfilled">Livrée</option>
+                    <option value="">{t('sales.orders.preparation')}</option>
+                    <option value="unfulfilled">{t('sales.orders.toPrepare')}</option>
+                    <option value="partially_fulfilled">{t('sales.orders.partialPreparation')}</option>
+                    <option value="fulfilled">{t('sales.orders.delivered')}</option>
                 </FilterSelect>
                 <FilterSelect
                     value={filters.payment_status ?? ''}
                     onChange={(e) => apply({ payment_status: e.target.value || undefined })}
                 >
-                    <option value="">Paiement</option>
-                    <option value="unpaid">Non payée</option>
-                    <option value="partially_paid">Partiellement payée</option>
-                    <option value="paid">Payée</option>
+                    <option value="">{t('common.payment')}</option>
+                    <option value="unpaid">{label(paymentStatusLabel, 'unpaid')}</option>
+                    <option value="partially_paid">{label(paymentStatusLabel, 'partially_paid')}</option>
+                    <option value="paid">{label(paymentStatusLabel, 'paid')}</option>
                 </FilterSelect>
                 <input
                     type="date"
                     value={filters.sale_date ?? ''}
                     onChange={(e) => apply({ sale_date: e.target.value || undefined })}
-                    className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+                    className="control-input w-auto"
                 />
             </div>
 
             {orders.data.length === 0 ? (
                 <div className="rounded-card border border-dashed border-line-strong bg-raised px-4 py-10 text-center text-sm text-ink-muted">
-                    Aucune commande ne correspond à ces critères.
+                    {t('sales.orders.empty')}
                 </div>
             ) : (
                 <>
                     {/* Desktop/tablet: table */}
                     <div className="hidden overflow-x-auto rounded-card border border-line bg-surface md:block">
-                        <table className="w-full min-w-[880px] text-left text-sm">
-                            <thead className="border-b border-line bg-raised text-xs uppercase tracking-wide text-ink-muted">
+                        <table className="erp-table min-w-[880px]">
+                            <thead>
                                 <tr>
-                                    <th className="px-4 py-3 font-medium">Commande</th>
-                                    <th className="px-4 py-3 font-medium">Date</th>
-                                    <th className="px-4 py-3 font-medium">Client</th>
-                                    <th className="px-4 py-3 font-medium">Statut</th>
-                                    <th className="px-4 py-3 font-medium">Préparation / Livraison</th>
-                                    <th className="px-4 py-3 font-medium">Paiement</th>
-                                    <th className="px-4 py-3 text-right font-medium">Total</th>
-                                    <th className="px-4 py-3 font-medium">Source</th>
+                                    <th className="px-4 py-3 font-medium">{t('sales.orders.title')}</th>
+                                    <th className="px-4 py-3 font-medium">{t('common.date')}</th>
+                                    <th className="px-4 py-3 font-medium">{t('common.customer')}</th>
+                                    <th className="px-4 py-3 font-medium">{t('common.status')}</th>
+                                    <th className="px-4 py-3 font-medium">{t('sales.orders.fulfillment')}</th>
+                                    <th className="px-4 py-3 font-medium">{t('common.payment')}</th>
+                                    <th className="px-4 py-3 text-end font-medium">{t('common.total')}</th>
+                                    <th className="px-4 py-3 font-medium">{t('common.source')}</th>
                                     <th className="px-4 py-3" />
                                 </tr>
                             </thead>
@@ -153,10 +153,10 @@ export default function OrderIndex({ orders, filters, summary }: Props) {
                                         onClick={() => router.visit(`/sales/orders/${order.id}`)}
                                         className="cursor-pointer transition-soft hover:bg-sage/50"
                                     >
-                                        <td className="px-4 py-3 font-medium text-ink">{order.order_number}</td>
+                                        <td className="bidi-isolate px-4 py-3 font-medium text-ink" dir="ltr">{order.order_number}</td>
                                         <td className="px-4 py-3 text-ink-muted">{formatDate(order.sale_date)}</td>
                                         <td className="px-4 py-3">
-                                            <div className="text-ink">{order.customer_name ?? 'Client comptoir'}</div>
+                                            <div className="text-ink">{order.customer_name ?? t('common.counterCustomer')}</div>
                                             {order.customer_company && (
                                                 <div className="text-xs text-ink-muted">{order.customer_company}</div>
                                             )}
@@ -164,8 +164,8 @@ export default function OrderIndex({ orders, filters, summary }: Props) {
                                         <td className="px-4 py-3">
                                             <div className="flex flex-wrap gap-1">
                                                 <DocBadge tone={orderStatusTone(order.status)}>{label(orderStatusLabel, order.status)}</DocBadge>
-                                                {order.return_state === 'partial' && <DocBadge tone="warning">Retour partiel</DocBadge>}
-                                                {order.return_state === 'full' && <DocBadge tone="danger">Retournée intégralement</DocBadge>}
+                                                {order.return_state === 'partial' && <DocBadge tone="warning">{t('sales.orders.partialReturn')}</DocBadge>}
+                                                {order.return_state === 'full' && <DocBadge tone="danger">{t('sales.orders.fullReturn')}</DocBadge>}
                                             </div>
                                         </td>
                                         <td className="px-4 py-3">
@@ -178,7 +178,7 @@ export default function OrderIndex({ orders, filters, summary }: Props) {
                                                 {label(paymentStatusLabel, order.payment_status)}
                                             </DocBadge>
                                         </td>
-                                        <td className="px-4 py-3 text-right font-medium tabular-nums text-ink">
+                                        <td className="metric-value px-4 py-3 text-end font-medium tabular-nums text-ink" dir="ltr">
                                             <span className={order.return_state === 'none' ? '' : 'text-ink-muted line-through'}>{formatMoney(order.total_incl_tax, order.currency_code)}</span>
                                             {order.return_state !== 'none' && <span className="block text-xs font-semibold text-ink">Net {formatMoney(order.net_total, order.currency_code)}</span>}
                                         </td>
@@ -186,7 +186,7 @@ export default function OrderIndex({ orders, filters, summary }: Props) {
                                         <td className="relative px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
                                             <button
                                                 type="button"
-                                                aria-label="Actions"
+                                                aria-label={t('common.actions')}
                                                 onClick={() => setMenuFor(menuFor === order.id ? null : order.id)}
                                                 className="flex size-9 items-center justify-center rounded-field text-ink-faint transition-soft hover:bg-sage hover:text-ink"
                                             >
@@ -196,9 +196,9 @@ export default function OrderIndex({ orders, filters, summary }: Props) {
                                                 <div className="flex flex-col text-sm">
                                                     <Link
                                                         href={`/sales/orders/${order.id}`}
-                                                        className="rounded-field px-2 py-1.5 text-left hover:bg-sage"
+                                                        className="rounded-field px-2 py-1.5 text-start hover:bg-sage"
                                                     >
-                                                        Voir
+                                                        {t('common.view')}
                                                     </Link>
                                                     {order.status === 'confirmed' && !order.has_active_invoice && (
                                                         <button
@@ -206,9 +206,9 @@ export default function OrderIndex({ orders, filters, summary }: Props) {
                                                             onClick={() =>
                                                                 router.post(`/sales/orders/${order.id}/invoices`, {}, { onFinish: () => setMenuFor(null) })
                                                             }
-                                                            className="rounded-field px-2 py-1.5 text-left hover:bg-sage"
+                                                            className="rounded-field px-2 py-1.5 text-start hover:bg-sage"
                                                         >
-                                                            Créer facture
+                                                            {t('sales.orders.createInvoice')}
                                                         </button>
                                                     )}
                                                 </div>
@@ -232,7 +232,7 @@ export default function OrderIndex({ orders, filters, summary }: Props) {
                                     <div className="relative shrink-0">
                                         <button
                                             type="button"
-                                            aria-label="Actions"
+                                            aria-label={t('common.actions')}
                                             onClick={() => setMenuFor(menuFor === order.id ? null : order.id)}
                                             className="flex size-9 items-center justify-center rounded-field text-ink-faint transition-soft hover:bg-sage hover:text-ink"
                                         >
@@ -242,9 +242,9 @@ export default function OrderIndex({ orders, filters, summary }: Props) {
                                             <div className="flex flex-col text-sm">
                                                 <Link
                                                     href={`/sales/orders/${order.id}`}
-                                                    className="rounded-field px-2 py-1.5 text-left hover:bg-sage"
+                                                    className="rounded-field px-2 py-1.5 text-start hover:bg-sage"
                                                 >
-                                                    Voir
+                                                    {t('common.view')}
                                                 </Link>
                                                 {order.status === 'confirmed' && !order.has_active_invoice && (
                                                     <button
@@ -252,9 +252,9 @@ export default function OrderIndex({ orders, filters, summary }: Props) {
                                                         onClick={() =>
                                                             router.post(`/sales/orders/${order.id}/invoices`, {}, { onFinish: () => setMenuFor(null) })
                                                         }
-                                                        className="rounded-field px-2 py-1.5 text-left hover:bg-sage"
+                                                        className="rounded-field px-2 py-1.5 text-start hover:bg-sage"
                                                     >
-                                                        Créer facture
+                                                        {t('sales.orders.createInvoice')}
                                                     </button>
                                                 )}
                                             </div>
@@ -264,20 +264,20 @@ export default function OrderIndex({ orders, filters, summary }: Props) {
 
                                 <div className="mt-2 flex flex-wrap gap-1.5">
                                     <DocBadge tone={orderStatusTone(order.status)}>{label(orderStatusLabel, order.status)}</DocBadge>
-                                    {order.return_state === 'partial' && <DocBadge tone="warning">Retour partiel</DocBadge>}
-                                    {order.return_state === 'full' && <DocBadge tone="danger">Retournée intégralement</DocBadge>}
+                                    {order.return_state === 'partial' && <DocBadge tone="warning">{t('sales.orders.partialReturn')}</DocBadge>}
+                                    {order.return_state === 'full' && <DocBadge tone="danger">{t('sales.orders.fullReturn')}</DocBadge>}
                                     <DocBadge tone={fulfillmentTone(order.fulfillment_status)}>{label(fulfillmentLabel, order.fulfillment_status)}</DocBadge>
                                     <DocBadge tone={paymentStatusTone(order.payment_status)}>{label(paymentStatusLabel, order.payment_status)}</DocBadge>
                                 </div>
 
                                 <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1.5 text-[13px]">
                                     <div className="min-w-0">
-                                        <dt className="text-ink-faint">Client</dt>
-                                        <dd className="truncate text-ink">{order.customer_name ?? 'Client comptoir'}</dd>
+                                        <dt className="text-ink-faint">{t('common.customer')}</dt>
+                                        <dd className="truncate text-ink">{order.customer_name ?? t('common.counterCustomer')}</dd>
                                         {order.customer_company && <dd className="truncate text-ink-muted">{order.customer_company}</dd>}
                                     </div>
                                     <div className="min-w-0">
-                                        <dt className="text-ink-faint">Source</dt>
+                                        <dt className="text-ink-faint">{t('common.source')}</dt>
                                         <dd className="truncate text-ink-muted">{label(sourceLabel, order.source)}</dd>
                                     </div>
                                 </dl>
@@ -285,7 +285,7 @@ export default function OrderIndex({ orders, filters, summary }: Props) {
                                 <p className="mt-2 text-base font-semibold tabular-nums text-ink">
                                     {formatMoney(order.return_state === 'none' ? order.total_incl_tax : order.net_total, order.currency_code)}
                                 </p>
-                                {order.return_state !== 'none' && <p className="text-xs text-ink-muted">Vente initiale {formatMoney(order.total_incl_tax, order.currency_code)} · Retours -{formatMoney(order.returned_total, order.currency_code)}</p>}
+                                {order.return_state !== 'none' && <p className="text-xs text-ink-muted">{t('sales.orders.initialSale')} {formatMoney(order.total_incl_tax, order.currency_code)} · {t('sales.orders.returns')} -{formatMoney(order.returned_total, order.currency_code)}</p>}
                             </li>
                         ))}
                     </ul>

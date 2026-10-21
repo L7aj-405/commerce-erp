@@ -1,5 +1,6 @@
 import { Button } from '@/components/ui/Button';
 import AccountLayout from '@/layouts/AccountLayout';
+import { useI18n } from '@/i18n';
 import { Head, router } from '@inertiajs/react';
 import { toCanvas } from 'qrcode';
 import type { FormEvent } from 'react';
@@ -37,6 +38,7 @@ function PasswordSection({
     googleAuthConnected: boolean;
     onCredentialsChanged: () => void;
 }) {
+    const { t } = useI18n();
     const [open, setOpen] = useState(false);
     const [hasPassword, setHasPassword] = useState(initialHasPassword);
     const [currentPassword, setCurrentPassword] = useState('');
@@ -77,8 +79,8 @@ function PasswordSection({
         setHasPassword(true);
         onCredentialsChanged();
         setDoneMessage(data.message ?? (isInitialSetup
-            ? 'Votre mot de passe a été défini. Vous pouvez maintenant vous connecter avec Google ou avec votre adresse e-mail.'
-            : 'Mot de passe modifié. Vos autres sessions ont été déconnectées.'));
+            ? t('security.passwordSetSuccess')
+            : t('security.passwordChangedSuccess')));
         reset();
         setDone(true);
     };
@@ -87,24 +89,24 @@ function PasswordSection({
         <section className="rounded-2xl border bg-white p-4 sm:p-6">
             <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="min-w-0">
-                    <p className="font-medium text-ink">Mot de passe</p>
+                    <p className="font-medium text-ink">{t('security.password')}</p>
                     <p className="mt-1 text-sm text-ink-muted">
                         {hasPassword
-                            ? 'Votre mot de passe protège l’accès à votre compte.'
-                            : 'Vous utilisez actuellement Google pour vous connecter. Définissez un mot de passe ERP pour pouvoir également vous connecter avec votre adresse e-mail.'}
+                            ? t('security.passwordProtects')
+                            : t('security.googlePasswordHelp')}
                     </p>
                     <div className="mt-3 flex flex-wrap gap-2 text-xs">
                         <span className="rounded-full bg-muted px-2.5 py-1 font-medium text-ink-muted">
-                            Google {googleAuthConnected ? 'Connecté' : 'Non connecté'}
+                            {t('security.google')} {googleAuthConnected ? t('security.connected') : t('security.notConnected')}
                         </span>
                         <span className="rounded-full bg-muted px-2.5 py-1 font-medium text-ink-muted">
-                            Mot de passe {hasPassword ? 'Configuré' : 'Non configuré'}
+                            {t('security.password')} {hasPassword ? t('security.configured') : t('security.notConfigured')}
                         </span>
                     </div>
                 </div>
                 {!open && (
                     <Button variant="secondary" onClick={() => { setOpen(true); setDone(false); }} className="w-full sm:w-auto">
-                        {hasPassword ? 'Modifier le mot de passe' : 'Définir un mot de passe'}
+                        {hasPassword ? t('security.changePassword') : t('security.setPassword')}
                     </Button>
                 )}
             </div>
@@ -119,7 +121,7 @@ function PasswordSection({
                 <form onSubmit={submit} className="mt-4 space-y-3">
                     {hasPassword && (
                         <label className="block text-sm">
-                            Mot de passe actuel
+                            {t('security.currentPassword')}
                             <input
                                 type="password"
                                 autoComplete="current-password"
@@ -132,7 +134,7 @@ function PasswordSection({
                         </label>
                     )}
                     <label className="block text-sm">
-                        Nouveau mot de passe
+                        {t('security.newPassword')}
                         <input
                             type="password"
                             autoComplete="new-password"
@@ -144,7 +146,7 @@ function PasswordSection({
                         {errors.password && <span className="mt-1 block text-xs text-danger">{errors.password}</span>}
                     </label>
                     <label className="block text-sm">
-                        Confirmer le nouveau mot de passe
+                        {t('security.confirmPassword')}
                         <input
                             type="password"
                             autoComplete="new-password"
@@ -155,10 +157,10 @@ function PasswordSection({
                     </label>
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                         <Button type="submit" disabled={busy || (hasPassword && !currentPassword) || !newPassword || !confirmation} className="w-full sm:w-auto">
-                            {busy ? 'Enregistrement…' : hasPassword ? 'Enregistrer' : 'Définir mon mot de passe'}
+                            {busy ? t('common.saving') : hasPassword ? t('common.save') : t('security.settingPassword')}
                         </Button>
                         <button type="button" onClick={reset} className="py-2 text-sm text-ink-muted underline-offset-4 hover:underline">
-                            Annuler
+                            {t('common.cancel')}
                         </button>
                     </div>
                 </form>
@@ -171,6 +173,7 @@ function PasswordSection({
  * is never generated or stored server-side (it contains only the otpauth
  * URI, nothing else), and only ever shown during authenticated enrollment. */
 function TotpQrCode({ otpauthUri }: { otpauthUri: string }) {
+    const { t } = useI18n();
     const canvasRef = useRef<HTMLCanvasElement>(null);
 
     useEffect(() => {
@@ -179,7 +182,7 @@ function TotpQrCode({ otpauthUri }: { otpauthUri: string }) {
         }
     }, [otpauthUri]);
 
-    return <canvas ref={canvasRef} className="rounded-lg border" aria-label="QR code de configuration de la double authentification" />;
+    return <canvas ref={canvasRef} className="rounded-lg border" aria-label={t('security.qrLabel')} />;
 }
 
 function xsrfToken(): string {
@@ -207,6 +210,8 @@ async function apiCall<T>(url: string, method: string, body?: Record<string, unk
 }
 
 export default function Security({ status, twoFactorEnabled, hasPassword, googleAuthConnected, recoveryCodesRemaining, trustedDevices }: Props) {
+    const { locale, t } = useI18n();
+    const dateLocale = locale === 'ar' ? 'ar-MA' : 'fr-FR';
     const [enabled, setEnabled] = useState(twoFactorEnabled);
     const [codesRemaining, setCodesRemaining] = useState(recoveryCodesRemaining);
     const [step, setStep] = useState<'idle' | 'enrolling' | 'recovery'>('idle');
@@ -244,7 +249,7 @@ export default function Security({ status, twoFactorEnabled, hasPassword, google
         const { status, data } = await apiCall<{ secret: string; otpauth_uri: string }>('/two-factor-authentication', 'POST');
         setBusy(false);
         if (status !== 200) {
-            setError('Impossible de démarrer la configuration.');
+            setError(t('security.startError'));
             return;
         }
         setSecret(data.secret);
@@ -264,7 +269,7 @@ export default function Security({ status, twoFactorEnabled, hasPassword, google
         );
         setBusy(false);
         if (status !== 200 || !data.recovery_codes) {
-            setError(data.errors?.code?.[0] ?? 'Code invalide.');
+            setError(data.errors?.code?.[0] ?? t('security.invalidCode'));
             return;
         }
         setRecoveryCodes(data.recovery_codes);
@@ -280,7 +285,7 @@ export default function Security({ status, twoFactorEnabled, hasPassword, google
         const { status } = await apiCall<Record<string, never>>('/two-factor-authentication', 'DELETE');
         setBusy(false);
         if (status >= 400) {
-            if (status !== 409) setError('Impossible de désactiver la double authentification.');
+            if (status !== 409) setError(t('security.disableError'));
             return;
         }
         setEnabled(false);
@@ -295,7 +300,7 @@ export default function Security({ status, twoFactorEnabled, hasPassword, google
         const { status, data } = await apiCall<{ recovery_codes?: string[] }>('/two-factor-recovery-codes', 'POST');
         setBusy(false);
         if (status !== 200 || !data.recovery_codes) {
-            if (status !== 409) setError('Échec de la régénération.');
+            if (status !== 409) setError(t('security.regenerateError'));
             return;
         }
         setRecoveryCodes(data.recovery_codes);
@@ -305,12 +310,9 @@ export default function Security({ status, twoFactorEnabled, hasPassword, google
 
     return (
         <AccountLayout>
-            <Head title="Sécurité du compte" />
-            <h1 className="text-xl font-semibold tracking-tight text-ink sm:text-2xl">Sécurité du compte</h1>
-            <p className="mt-1 text-sm text-ink-muted">
-                Double authentification (TOTP) — compatible Google Authenticator, Microsoft Authenticator, 1Password
-                et toute application compatible Authy.
-            </p>
+            <Head title={t('security.title')} />
+            <h1 className="text-xl font-semibold tracking-tight text-ink sm:text-2xl">{t('security.title')}</h1>
+            <p className="mt-1 text-sm text-ink-muted">{t('security.description')}</p>
 
             {status && (
                 <p role="alert" className="mt-4 rounded-lg border border-warning/30 bg-warning-soft px-3.5 py-2.5 text-sm font-medium text-warning">
@@ -333,18 +335,17 @@ export default function Security({ status, twoFactorEnabled, hasPassword, google
                             <div className="flex flex-wrap items-center justify-between gap-3">
                                 <div className="min-w-0">
                                     <p className="font-medium text-ink">
-                                        {enabled ? 'Double authentification activée' : 'Double authentification désactivée'}
+                                        {enabled ? t('security.twoFactorEnabled') : t('security.twoFactorDisabled')}
                                     </p>
                                     {enabled && (
                                         <p className="mt-1 text-sm text-ink-muted">
-                                            {codesRemaining} code{codesRemaining === 1 ? '' : 's'} de récupération restant
-                                            {codesRemaining === 1 ? '' : 's'}.
+                                            {codesRemaining} {t('security.recoveryCodesRemaining')}.
                                         </p>
                                     )}
                                 </div>
                                 {!enabled && (
                                     <Button onClick={startEnrollment} disabled={busy} className="w-full sm:w-auto">
-                                        Activer
+                                        {t('security.enable')}
                                     </Button>
                                 )}
                             </div>
@@ -352,23 +353,23 @@ export default function Security({ status, twoFactorEnabled, hasPassword, google
                             {enabled && !showDisableForm && (
                                 <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                                     <Button variant="secondary" onClick={regenerateCodes} disabled={busy}>
-                                        Régénérer les codes de récupération
+                                        {t('security.regenerateCodes')}
                                     </Button>
                                     <Button variant="secondary" onClick={() => setShowDisableForm(true)}>
-                                        Désactiver
+                                        {t('security.disable')}
                                     </Button>
                                 </div>
                             )}
 
                             {enabled && showDisableForm && (
                                 <div className="mt-4 rounded-lg border border-warning/30 bg-warning-soft p-3">
-                                    <p className="text-sm text-warning">Une confirmation de sécurité renforcée sera demandée.</p>
+                                    <p className="text-sm text-warning">{t('security.strongConfirmation')}</p>
                                     <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
                                     <Button type="button" onClick={disable} disabled={busy}>
-                                        Confirmer la désactivation
+                                        {t('security.confirmDisable')}
                                     </Button>
                                     <button type="button" onClick={() => setShowDisableForm(false)} className="py-2 text-sm text-ink-muted underline-offset-4 hover:underline">
-                                        Annuler
+                                        {t('common.cancel')}
                                     </button>
                                     </div>
                                 </div>
@@ -379,16 +380,16 @@ export default function Security({ status, twoFactorEnabled, hasPassword, google
                     {step === 'enrolling' && (
                         <form onSubmit={confirmEnrollment} className="space-y-4">
                             <div>
-                                <p className="text-sm font-medium text-ink">1. Scannez ce code avec votre application d’authentification</p>
+                                <p className="text-sm font-medium text-ink">{t('security.scanQr')}</p>
                                 <div className="mt-2">
                                     <TotpQrCode otpauthUri={otpauthUri} />
                                 </div>
-                                <p className="mt-3 text-xs text-ink-muted">Vous ne pouvez pas scanner ? Entrez cette clé manuellement :</p>
+                                <p className="mt-3 text-xs text-ink-muted">{t('security.manualKey')}</p>
                                 <p className="mt-1 break-all rounded-lg bg-slate-50 p-3 font-mono text-sm">{secret}</p>
                             </div>
                             <div>
                                 <label className="text-sm font-medium text-ink" htmlFor="totp-code">
-                                    2. Entrez le code à 6 chiffres affiché par l’application
+                                    {t('security.enterCode')}
                                 </label>
                                 <input
                                     id="totp-code"
@@ -403,10 +404,10 @@ export default function Security({ status, twoFactorEnabled, hasPassword, google
                             </div>
                             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                                 <Button type="submit" disabled={busy || code.length !== 6} className="w-full sm:w-auto">
-                                    Confirmer
+                                    {t('security.confirm')}
                                 </Button>
                                 <button type="button" onClick={() => setStep('idle')} className="py-2 text-sm text-ink-muted underline-offset-4 hover:underline">
-                                    Annuler
+                                    {t('common.cancel')}
                                 </button>
                             </div>
                         </form>
@@ -414,18 +415,15 @@ export default function Security({ status, twoFactorEnabled, hasPassword, google
 
                     {step === 'recovery' && (
                         <div>
-                            <p className="text-sm font-medium text-ink">Codes de récupération</p>
-                            <p className="mt-1 text-sm text-ink-muted">
-                                Notez ces codes dans un endroit sûr. Chacun ne peut être utilisé qu’une seule fois et ils
-                                ne seront plus jamais affichés.
-                            </p>
+                            <p className="text-sm font-medium text-ink">{t('security.recoveryCodes')}</p>
+                            <p className="mt-1 text-sm text-ink-muted">{t('security.recoveryCodesHelp')}</p>
                             <ul className="mt-3 grid grid-cols-1 gap-2 rounded-lg bg-slate-50 p-4 font-mono text-sm min-[420px]:grid-cols-2">
                                 {recoveryCodes.map((c) => (
                                     <li key={c} className="break-all">{c}</li>
                                 ))}
                             </ul>
                             <Button className="mt-4 w-full sm:w-auto" onClick={() => setStep('idle')}>
-                                J’ai noté mes codes
+                                {t('security.codesSaved')}
                             </Button>
                         </div>
                     )}
@@ -435,10 +433,8 @@ export default function Security({ status, twoFactorEnabled, hasPassword, google
                     <section className="rounded-2xl border bg-white p-4 sm:p-6">
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                             <div className="min-w-0">
-                                <p className="font-medium text-ink">Appareils de confiance</p>
-                                <p className="mt-1 text-sm text-ink-muted">
-                                    Ces appareils peuvent ignorer la seconde étape de connexion jusqu’à leur expiration. Le mot de passe reste obligatoire.
-                                </p>
+                                <p className="font-medium text-ink">{t('security.trustedDevices')}</p>
+                                <p className="mt-1 text-sm text-ink-muted">{t('security.trustedDevicesHelp')}</p>
                             </div>
                             {trustedDeviceRows.length > 0 && (
                                 <Button
@@ -447,14 +443,14 @@ export default function Security({ status, twoFactorEnabled, hasPassword, google
                                     disabled={revokingDevice !== null}
                                     className="w-full sm:w-auto"
                                 >
-                                    {revokingDevice === 'all' ? 'Révocation…' : 'Révoquer tous les appareils'}
+                                    {revokingDevice === 'all' ? t('security.revoking') : t('security.revokeAll')}
                                 </Button>
                             )}
                         </div>
 
                         {trustedDeviceRows.length === 0 ? (
                             <p className="mt-4 rounded-lg bg-slate-50 px-3 py-3 text-sm text-ink-muted">
-                                Aucun appareil de confiance actif.
+                                {t('security.noTrustedDevices')}
                             </p>
                         ) : (
                             <ul className="mt-4 divide-y">
@@ -462,16 +458,16 @@ export default function Security({ status, twoFactorEnabled, hasPassword, google
                                     <li key={device.id} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 py-3">
                                         <div className="min-w-0 flex-1">
                                             <p className="truncate text-sm font-medium text-ink">
-                                                {device.deviceName ?? ([device.browser, device.platform].filter(Boolean).join(' sur ') || 'Appareil inconnu')}
+                                                {device.deviceName ?? ([device.browser, device.platform].filter(Boolean).join(` ${t('security.onPlatform')} `) || t('security.unknownDevice'))}
                                                 {device.isCurrent && (
-                                                    <span className="ml-2 rounded-full bg-success-soft px-2 py-0.5 text-xs font-medium text-success">
-                                                        Cet appareil
+                                                    <span className="ms-2 rounded-full bg-success-soft px-2 py-0.5 text-xs font-medium text-success">
+                                                        {t('security.thisDevice')}
                                                     </span>
                                                 )}
                                             </p>
                                             <p className="mt-0.5 text-xs text-ink-muted">
-                                                Expire le {new Date(device.expiresAt).toLocaleString('fr-FR')}
-                                                {device.lastUsedAt ? ` · utilisé le ${new Date(device.lastUsedAt).toLocaleString('fr-FR')}` : ''}
+                                                {t('security.expiresOn')} {new Date(device.expiresAt).toLocaleString(dateLocale)}
+                                                {device.lastUsedAt ? ` · ${t('security.usedOn')} ${new Date(device.lastUsedAt).toLocaleString(dateLocale)}` : ''}
                                                 {device.lastIp ? ` · ${device.lastIp}` : ''}
                                             </p>
                                         </div>
@@ -481,7 +477,7 @@ export default function Security({ status, twoFactorEnabled, hasPassword, google
                                             disabled={revokingDevice !== null}
                                             className="shrink-0 rounded-field px-2 py-1.5 text-sm text-danger underline-offset-4 hover:underline disabled:opacity-50"
                                         >
-                                            {revokingDevice === device.id ? 'Révocation…' : 'Révoquer'}
+                                            {revokingDevice === device.id ? t('security.revoking') : t('security.revoke')}
                                         </button>
                                     </li>
                                 ))}

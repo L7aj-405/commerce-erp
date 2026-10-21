@@ -1,6 +1,7 @@
 import AppPreview from '@/components/marketing/AppPreview';
 import { BrandLockup } from '@/components/ui/brand';
 import { useToast } from '@/components/ui/toast';
+import { LocaleSwitcher, useI18n } from '@/i18n';
 import type { SharedPageProps } from '@/types/app';
 import { Link, usePage } from '@inertiajs/react';
 import { useEffect } from 'react';
@@ -16,6 +17,7 @@ type Props = {
 };
 
 export default function AuthLayout({ title, subtitle, children, footer, aside }: Props) {
+    const { t } = useI18n();
     // Same flash("success", …) → toast bridge as ApplicationShell — an
     // authenticated user can land here mid-flow (e.g. redirected to
     // /email/verify right after changing their email from Account Settings),
@@ -39,10 +41,10 @@ export default function AuthLayout({ title, subtitle, children, footer, aside }:
 
                 <div className="max-w-md">
                     <h2 className="text-[26px] font-semibold leading-tight tracking-tight text-ink">
-                        Vos ventes, votre stock et vos points de vente au même endroit.
+                        {t('auth.marketingTitle')}
                     </h2>
                     <p className="mt-3 text-sm leading-6 text-ink-muted">
-                        {aside ?? 'Une base opérationnelle claire pour piloter le commerce au quotidien : catalogue, stock multi-emplacements, clients, paiements et documents de vente.'}
+                        {aside ?? t('auth.marketingDescription')}
                     </p>
                 </div>
 
@@ -51,10 +53,13 @@ export default function AuthLayout({ title, subtitle, children, footer, aside }:
 
             {/* Form panel */}
             <main className="flex min-h-dvh flex-col px-5 py-8 sm:px-8 lg:py-12">
-                <div className="lg:hidden">
-                    <Link href="/" className="w-fit rounded-lg">
-                        <BrandLockup />
-                    </Link>
+                <div className="flex items-start justify-between gap-3">
+                    <div className="lg:hidden">
+                        <Link href="/" className="w-fit rounded-lg">
+                            <BrandLockup />
+                        </Link>
+                    </div>
+                    <div className="ms-auto"><LocaleSwitcher compact /></div>
                 </div>
 
                 <div className="flex flex-1 items-center justify-center">
@@ -69,9 +74,9 @@ export default function AuthLayout({ title, subtitle, children, footer, aside }:
                         <div className="mt-6 space-y-3 text-center text-[13px] text-ink-muted">
                             {footer && <div>{footer}</div>}
                             <p className="flex justify-center gap-3 text-xs">
-                                <Link href="/privacy" className="underline-offset-4 hover:underline">Confidentialité</Link>
+                                <Link href="/privacy" className="underline-offset-4 hover:underline">{t('auth.privacy')}</Link>
                                 <span aria-hidden>·</span>
-                                <Link href="/terms" className="underline-offset-4 hover:underline">Conditions d’utilisation</Link>
+                                <Link href="/terms" className="underline-offset-4 hover:underline">{t('auth.terms')}</Link>
                             </p>
                         </div>
                     </div>

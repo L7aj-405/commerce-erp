@@ -1,6 +1,7 @@
 import { Button } from '@/components/ui/Button';
 import { usePendingKeys } from '@/hooks/usePendingKeys';
 import { useSerializedByKey } from '@/hooks/useSerializedByKey';
+import { useI18n } from '@/i18n';
 import { formatMoney, formatQuantity } from '@/utils/format';
 import { router } from '@inertiajs/react';
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
@@ -82,6 +83,7 @@ function integerQuantity(value: string): string {
 }
 
 export default function OrderLineGrid({ orderId, currency, lines, searchUrl, taxRates, canOverridePrice, canApplyDiscount }: Props) {
+    const { t } = useI18n();
     const pending = usePendingKeys();
     const serialized = useSerializedByKey();
     const timers = useRef<Record<number, number>>({});
@@ -144,7 +146,7 @@ export default function OrderLineGrid({ orderId, currency, lines, searchUrl, tax
                 preserveScroll: true,
                 preserveState: true,
                 only: RELOAD_ONLY,
-                onError: (e) => setRowError((c) => ({ ...c, [id]: Object.values(e)[0] ?? 'Modification refusée.' })),
+                onError: (e) => setRowError((c) => ({ ...c, [id]: Object.values(e)[0] ?? t('orders.lines.updateRejected') })),
                 onSuccess: () => setRowError((c) => omit(c, id)),
                 onFinish: () => {
                     pending.stop(`line:${id}`);
@@ -161,7 +163,7 @@ export default function OrderLineGrid({ orderId, currency, lines, searchUrl, tax
                     preserveScroll: true,
                     preserveState: true,
                     only: RELOAD_ONLY,
-                    onError: (e) => setRowError((c) => ({ ...c, [id]: Object.values(e)[0] ?? 'Suppression refusée.' })),
+                    onError: (e) => setRowError((c) => ({ ...c, [id]: Object.values(e)[0] ?? t('orders.lines.deleteRejected') })),
                     onFinish: () => resolve(),
                 });
             }),
@@ -175,7 +177,7 @@ export default function OrderLineGrid({ orderId, currency, lines, searchUrl, tax
                     preserveScroll: true,
                     preserveState: true,
                     only: RELOAD_ONLY,
-                    onError: (e) => setRowError((c) => ({ ...c, 0: Object.values(e)[0] ?? 'Ajout refusé.' })),
+                    onError: (e) => setRowError((c) => ({ ...c, 0: Object.values(e)[0] ?? t('orders.lines.addRejected') })),
                     onSuccess: () => {
                         setRowError((c) => omit(c, 0));
                         if (!keepOpen) setAdderOpen(false);
@@ -192,12 +194,12 @@ export default function OrderLineGrid({ orderId, currency, lines, searchUrl, tax
                 <table className="w-full min-w-[820px] border-collapse text-sm">
                     <thead>
                         <tr className="border-b border-line-strong text-left text-xs uppercase tracking-wide text-ink-muted [&>th]:px-2 [&>th]:py-2 [&>th]:font-medium">
-                            <th>Article</th>
-                            <th className="w-16 text-right">Qté</th>
-                            <th className="w-44">PU HT</th>
-                            <th className="w-32">Remise HT</th>
-                            <th className="w-20 text-right">TVA</th>
-                            <th className="w-32 text-right">Total TTC</th>
+                            <th>{t('orders.edit.item')}</th>
+                            <th className="w-16 text-right">{t('common.quantityShort')}</th>
+                            <th className="w-44">{t('orders.show.unitPriceExclTax')}</th>
+                            <th className="w-32">{t('orders.show.discountExclTax')}</th>
+                            <th className="w-20 text-right">{t('orders.show.tax')}</th>
+                            <th className="w-32 text-right">{t('orders.show.totalInclTax')}</th>
                             <th className="w-8" />
                         </tr>
                     </thead>
@@ -214,13 +216,13 @@ export default function OrderLineGrid({ orderId, currency, lines, searchUrl, tax
                                         {line.variant_name && <span className="block text-xs text-ink-muted">{line.variant_name}</span>}
                                         <span className="block text-xs text-ink-faint">
                                             <span className="mr-1 rounded bg-raised px-1 text-[10px] uppercase tracking-wide">
-                                                {line.line_type === 'catalog' ? 'Catalogue' : 'Personnalisé'}
+                                                {line.line_type === 'catalog' ? t('orders.lines.catalog') : t('orders.lines.custom')}
                                             </span>
                                             {[line.reference ?? line.sku, line.unit_label].filter(Boolean).join(' · ')}
-                                            {source && <span className="block">Source : {source}</span>}
+                                            {source && <span className="block">{t('common.source')} : {source}</span>}
                                         </span>
                                         {line.tax_unresolved && (
-                                            <p className="mt-1 text-xs text-warning">TVA à définir avant confirmation</p>
+                                            <p className="mt-1 text-xs text-warning">{t('orders.lines.taxRequired')}</p>
                                         )}
                                         {rowError[line.id] && <p className="mt-1 text-xs text-danger">{rowError[line.id]}</p>}
                                     </td>
@@ -332,7 +334,7 @@ export default function OrderLineGrid({ orderId, currency, lines, searchUrl, tax
                                                     line.tax_unresolved ? 'border-warning text-warning' : 'border-line-strong'
                                                 }`}
                                             >
-                                                <option value="">{line.tax_unresolved && line.line_type === 'catalog' ? 'À définir' : '0 %'}</option>
+                                                <option value="">{line.tax_unresolved && line.line_type === 'catalog' ? t('orders.edit.toDefine') : '0 %'}</option>
                                                 {taxRates.map((t) => (
                                                     <option key={t.id} value={t.id}>
                                                         {formatQuantity(t.rate)} %
@@ -352,7 +354,7 @@ export default function OrderLineGrid({ orderId, currency, lines, searchUrl, tax
                                             disabled={busy}
                                             onClick={() => removeLine(line.id)}
                                             className="text-ink-faint hover:text-danger disabled:opacity-40"
-                                            aria-label="Retirer la ligne"
+                                            aria-label={t('orders.lines.removeLine')}
                                         >
                                             ✕
                                         </button>
@@ -363,7 +365,7 @@ export default function OrderLineGrid({ orderId, currency, lines, searchUrl, tax
                         {lines.length === 0 && (
                             <tr>
                                 <td colSpan={7} className="px-2 py-8 text-center text-ink-muted">
-                                    Aucun article.
+                                    {t('orders.edit.noItems')}
                                 </td>
                             </tr>
                         )}
@@ -383,22 +385,22 @@ export default function OrderLineGrid({ orderId, currency, lines, searchUrl, tax
                             <div className="flex items-start justify-between gap-2">
                                 <div className="min-w-0">
                                     <span className="mr-1 rounded bg-raised px-1 text-[10px] uppercase tracking-wide text-ink-faint">
-                                        {line.line_type === 'catalog' ? 'Catalogue' : 'Personnalisé'}
+                                        {line.line_type === 'catalog' ? t('orders.lines.catalog') : t('orders.lines.custom')}
                                     </span>
                                     <p className="truncate font-medium text-ink">{line.product_name}</p>
                                     {line.variant_name && <p className="truncate text-xs text-ink-muted">{line.variant_name}</p>}
                                     <p className="truncate text-xs text-ink-faint">
                                         {[line.reference ?? line.sku, line.unit_label].filter(Boolean).join(' · ')}
                                     </p>
-                                    {source && <p className="text-xs text-ink-faint">Source : {source}</p>}
-                                    {line.tax_unresolved && <p className="mt-1 text-xs text-warning">TVA à définir avant confirmation</p>}
+                                    {source && <p className="text-xs text-ink-faint">{t('common.source')} : {source}</p>}
+                                    {line.tax_unresolved && <p className="mt-1 text-xs text-warning">{t('orders.lines.taxRequired')}</p>}
                                     {rowError[line.id] && <p className="mt-1 text-xs text-danger">{rowError[line.id]}</p>}
                                 </div>
                                 <button
                                     type="button"
                                     disabled={busy}
                                     onClick={() => removeLine(line.id)}
-                                    aria-label="Retirer la ligne"
+                                    aria-label={t('orders.lines.removeLine')}
                                     className="flex size-9 shrink-0 items-center justify-center rounded-field text-ink-faint hover:text-danger disabled:opacity-40"
                                 >
                                     ✕
@@ -407,7 +409,7 @@ export default function OrderLineGrid({ orderId, currency, lines, searchUrl, tax
 
                             <div className="mt-3 grid grid-cols-2 gap-x-2 gap-y-2.5 text-xs text-ink-muted">
                                 <label className="block">
-                                    Qté
+                                    {t('common.quantityShort')}
                                     <input
                                         type="number"
                                         inputMode="numeric"
@@ -426,7 +428,7 @@ export default function OrderLineGrid({ orderId, currency, lines, searchUrl, tax
                                 </label>
 
                                 <label className="block">
-                                    TVA
+                                    {t('orders.show.tax')}
                                     {line.line_type === 'custom' || line.tax_unresolved ? (
                                         <select
                                             disabled={busy}
@@ -439,7 +441,7 @@ export default function OrderLineGrid({ orderId, currency, lines, searchUrl, tax
                                                 line.tax_unresolved ? 'border-warning text-warning' : 'border-line-strong text-ink'
                                             }`}
                                         >
-                                            <option value="">{line.tax_unresolved && line.line_type === 'catalog' ? 'À définir' : '0 %'}</option>
+                                            <option value="">{line.tax_unresolved && line.line_type === 'catalog' ? t('orders.edit.toDefine') : '0 %'}</option>
                                             {taxRates.map((t) => (
                                                 <option key={t.id} value={t.id}>
                                                     {formatQuantity(t.rate)} %
@@ -500,7 +502,7 @@ export default function OrderLineGrid({ orderId, currency, lines, searchUrl, tax
                                 </label>
 
                                 <label className="col-span-2 block">
-                                    Remise HT
+                                    {t('orders.show.discountExclTax')}
                                     {canApplyDiscount ? (
                                         <div className="mt-0.5 flex items-center gap-1.5">
                                             <input
@@ -537,13 +539,13 @@ export default function OrderLineGrid({ orderId, currency, lines, searchUrl, tax
                             </div>
 
                             <div className="mt-3 flex items-center justify-between border-t border-line pt-2.5 text-sm font-semibold text-ink">
-                                <span>Total TTC</span>
+                                <span>{t('orders.show.totalInclTax')}</span>
                                 <span className="tabular-nums">{formatMoney(line.total_incl_tax, currency)}</span>
                             </div>
                         </li>
                     );
                 })}
-                {lines.length === 0 && <li className="rounded-card border border-dashed border-line-strong px-3 py-8 text-center text-sm text-ink-muted">Aucun article.</li>}
+                {lines.length === 0 && <li className="rounded-card border border-dashed border-line-strong px-3 py-8 text-center text-sm text-ink-muted">{t('orders.edit.noItems')}</li>}
             </ul>
 
             {adderOpen ? (
@@ -558,7 +560,7 @@ export default function OrderLineGrid({ orderId, currency, lines, searchUrl, tax
                 />
             ) : (
                 <Button type="button" variant="secondary" size="sm" onClick={() => setAdderOpen(true)}>
-                    + Ajouter un article
+                    + {t('orders.lines.addItem')}
                 </Button>
             )}
             {rowError[0] && <p className="text-xs text-danger">{rowError[0]}</p>}
@@ -589,6 +591,7 @@ function ArticleAdder({
     onAdd: (body: Record<string, string | number | null>, keepOpen?: boolean) => Promise<unknown>;
     onClose: () => void;
 }) {
+    const { t } = useI18n();
     const [query, setQuery] = useState('');
     const [rows, setRows] = useState<SearchRow[]>([]);
     const [loading, setLoading] = useState(false);
@@ -690,15 +693,15 @@ function ArticleAdder({
                             value={query}
                             onChange={(e) => setQuery(e.target.value)}
                             onKeyDown={onKeyDown}
-                            placeholder="Nom, SKU, référence, code-barres, marque…"
+                            placeholder={t('orders.lines.searchPlaceholder')}
                             className="w-full rounded-field border border-line-strong px-2 py-1"
                         />
                         <button type="button" onClick={onClose} className="text-xs text-ink-muted hover:underline">
-                            Fermer
+                            {t('common.close')}
                         </button>
                     </div>
                     <ul className="mt-2 max-h-64 divide-y divide-line overflow-y-auto">
-                        {loading && <li className="px-1 py-2 text-xs text-ink-muted">Recherche…</li>}
+                        {loading && <li className="px-1 py-2 text-xs text-ink-muted">{t('common.searching')}</li>}
                         {!loading &&
                             rows.map((row, index) => {
                                 const outOfStock = Number(row.stock_available) <= 0;
@@ -714,13 +717,13 @@ function ArticleAdder({
                                             }`}
                                         >
                                             <span>
-                                                <span className="mr-1 rounded bg-raised px-1 text-[10px] uppercase tracking-wide text-ink-faint">Catalogue</span>
+                                                <span className="mr-1 rounded bg-raised px-1 text-[10px] uppercase tracking-wide text-ink-faint">{t('orders.lines.catalog')}</span>
                                                 <span className="font-medium text-ink">{row.product_name}</span>
                                                 {row.variant_name && <span className="block text-xs text-ink-muted">{row.variant_name}</span>}
                                                 <span className="block text-xs text-ink-faint">
                                                     {row.reference ?? row.sku ?? '—'}
                                                     {' · '}
-                                                    {outOfStock ? 'Hors stock' : `Stock société : ${formatQuantity(row.stock_available)}`}
+                                                    {outOfStock ? t('orders.lines.outOfStock') : `${t('orders.lines.companyStock')} : ${formatQuantity(row.stock_available)}`}
                                                 </span>
                                             </span>
                                             <span className="whitespace-nowrap text-xs text-ink-muted">
@@ -730,7 +733,7 @@ function ArticleAdder({
                                                       ? `${formatMoney(row.unit_price_incl_tax, currency)} TTC`
                                                       : '—'}
                                                 <span className={`block ${row.tax_unresolved ? 'text-warning' : 'text-ink-faint'}`}>
-                                                    {row.tax_unresolved ? 'TVA à définir' : `TVA ${formatQuantity(row.tax_rate)} %`}
+                                                    {row.tax_unresolved ? t('orders.lines.taxToDefine') : `${t('orders.show.tax')} ${formatQuantity(row.tax_rate)} %`}
                                                 </span>
                                             </span>
                                         </button>
@@ -745,7 +748,7 @@ function ArticleAdder({
                                     onClick={openManual}
                                     className={`block w-full px-1 py-2 text-left text-primary ${rows.length === active ? 'bg-raised' : 'hover:bg-raised'}`}
                                 >
-                                    + Ajouter{query.trim() ? ` « ${query.trim()} »` : ''} comme article personnalisé
+                                    + {t('orders.lines.addCustomPrefix')}{query.trim() ? ` « ${query.trim()} »` : ''} {t('orders.lines.asCustomItem')}
                                 </button>
                             </li>
                         )}
@@ -753,24 +756,24 @@ function ArticleAdder({
                 </>
             ) : (
                 <div className="space-y-2">
-                    <p className="text-sm font-medium text-ink">Nouvel article personnalisé</p>
+                    <p className="text-sm font-medium text-ink">{t('orders.lines.newCustomItem')}</p>
                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                         <input
-                            placeholder="Désignation *"
+                            placeholder={t('orders.lines.designationRequired')}
                             value={mForm.name}
                             onChange={(e) => setMForm((f) => ({ ...f, name: e.target.value }))}
                             className="rounded-field border border-line-strong px-2 py-1 sm:col-span-2"
                         />
-                        <input placeholder="Référence" value={mForm.reference} onChange={(e) => setMForm((f) => ({ ...f, reference: e.target.value }))} className="rounded-field border border-line-strong px-2 py-1" />
-                        <input placeholder="Unité" value={mForm.unit_label} onChange={(e) => setMForm((f) => ({ ...f, unit_label: e.target.value }))} className="rounded-field border border-line-strong px-2 py-1" />
+                        <input placeholder={t('common.reference')} value={mForm.reference} onChange={(e) => setMForm((f) => ({ ...f, reference: e.target.value }))} className="rounded-field border border-line-strong px-2 py-1" />
+                        <input placeholder={t('orders.lines.unit')} value={mForm.unit_label} onChange={(e) => setMForm((f) => ({ ...f, unit_label: e.target.value }))} className="rounded-field border border-line-strong px-2 py-1" />
                         <label className="text-xs text-ink-muted">
-                            Quantité
+                            {t('common.quantity')}
                             <input type="number" inputMode="numeric" min={1} step={1} value={mForm.quantity} onChange={(e) => setMForm((f) => ({ ...f, quantity: e.target.value }))} className="mt-0.5 w-full rounded-field border border-line-strong px-2 py-1 text-right" />
                         </label>
                         <label className="text-xs text-ink-muted">
-                            TVA
+                            {t('orders.show.tax')}
                             <select value={mForm.tax_rate_id} onChange={(e) => setMForm((f) => ({ ...f, tax_rate_id: e.target.value }))} className="mt-0.5 w-full rounded-field border border-line-strong px-2 py-1">
-                                <option value="">Aucune</option>
+                                <option value="">{t('common.none')}</option>
                                 {taxRates.map((t) => (
                                     <option key={t.id} value={t.id}>
                                         {t.name} ({formatQuantity(t.rate)} %)
@@ -779,7 +782,7 @@ function ArticleAdder({
                             </select>
                         </label>
                         <label className="text-xs text-ink-muted">
-                            Prix
+                            {t('orders.lines.price')}
                             <div className="mt-0.5 flex gap-1">
                                 <input
                                     inputMode="decimal"
@@ -795,7 +798,7 @@ function ArticleAdder({
                         </label>
                         {canApplyDiscount && (
                             <label className="text-xs text-ink-muted">
-                                Remise
+                                {t('orders.lines.discount')}
                                 <div className="mt-0.5 flex gap-1">
                                     <input
                                         inputMode="decimal"
@@ -813,11 +816,11 @@ function ArticleAdder({
                         )}
                     </div>
                     <div className="flex gap-2">
-                        <Button type="button" size="sm" loading={adding} loadingText="Ajout…" disabled={mForm.name.trim() === ''} onClick={submitManual}>
-                            Ajouter à la commande
+                        <Button type="button" size="sm" loading={adding} loadingText={t('orders.lines.adding')} disabled={mForm.name.trim() === ''} onClick={submitManual}>
+                            {t('orders.lines.addToOrder')}
                         </Button>
                         <button type="button" onClick={() => setManual(false)} className="text-xs text-ink-muted hover:underline">
-                            Retour à la recherche
+                            {t('orders.lines.backToSearch')}
                         </button>
                     </div>
                 </div>

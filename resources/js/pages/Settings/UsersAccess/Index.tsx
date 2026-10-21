@@ -3,6 +3,7 @@ import { FormBanner, TextField } from '@/components/ui/form';
 import PageHeader from '@/components/ui/PageHeader';
 import StatusBadge from '@/components/ui/StatusBadge';
 import ApplicationShell from '@/layouts/ApplicationShell';
+import { useI18n } from '@/i18n';
 import type { SharedPageProps } from '@/types/app';
 import { Head, router, usePage } from '@inertiajs/react';
 import { useState } from 'react';
@@ -52,13 +53,14 @@ type Props = {
 };
 
 export default function UsersAccessIndex({ organization, memberships, roles, invitations, permissionGroups, presets, stores, warehouses, can }: Props) {
+    const { t } = useI18n();
     const { auth, flash } = usePage<SharedPageProps>().props;
     const selectableRoles = roles.filter((role) => role.slug !== 'owner');
 
     return (
         <ApplicationShell>
-            <Head title="Utilisateurs & accès" />
-            <PageHeader title="Utilisateurs & accès" description={`Membres, rôles et permissions de ${organization.name}.`} />
+            <Head title={t('usersAccess.title')} />
+            <PageHeader title={t('usersAccess.title')} description={t('usersAccess.help').replace('{organization}', organization.name)} />
 
             {flash?.invitationUrl && <InvitationUrlBanner url={flash.invitationUrl} />}
 
@@ -66,20 +68,16 @@ export default function UsersAccessIndex({ organization, memberships, roles, inv
 
             <section className="mt-8 rounded-card border border-line bg-surface">
                 <header className="border-b border-line px-5 py-3">
-                    <h2 className="text-sm font-semibold text-ink">Membres ({memberships.length})</h2>
+                    <h2 className="text-sm font-semibold text-ink">{t('usersAccess.members')} ({memberships.length})</h2>
                 </header>
 
                 {/* Desktop/tablet: table */}
                 <div className="hidden overflow-x-auto md:block">
-                    <table className="w-full text-left text-sm">
+                    <table className="erp-table w-full text-start text-sm">
                         <thead className="bg-raised text-[11px] uppercase tracking-wide text-ink-faint">
                             <tr>
-                                <th className="px-4 py-2.5">Nom</th>
-                                <th className="px-4 py-2.5">Email</th>
-                                <th className="px-4 py-2.5">Rôle</th>
-                                <th className="px-4 py-2.5">Statut</th>
-                                {stores.length > 0 && <th className="px-4 py-2.5">Magasins</th>}
-                                <th className="px-4 py-2.5">Entrepôt par défaut</th>
+                                <th className="px-4 py-2.5">{t('usersAccess.name')}</th><th className="px-4 py-2.5">{t('usersAccess.email')}</th><th className="px-4 py-2.5">{t('usersAccess.role')}</th>
+                                <th className="px-4 py-2.5">{t('common.status')}</th>{stores.length > 0 && <th className="px-4 py-2.5">{t('usersAccess.stores')}</th>}<th className="px-4 py-2.5">{t('usersAccess.defaultWarehouse')}</th>
                                 <th className="px-4 py-2.5" />
                             </tr>
                         </thead>
@@ -118,18 +116,16 @@ export default function UsersAccessIndex({ organization, memberships, roles, inv
             {can.manageMembers && (
                 <section className="mt-8 rounded-card border border-line bg-surface">
                     <header className="border-b border-line px-5 py-3">
-                        <h2 className="text-sm font-semibold text-ink">Invitations en attente ({invitations.length})</h2>
+                        <h2 className="text-sm font-semibold text-ink">{t('usersAccess.pendingInvitations')} ({invitations.length})</h2>
                     </header>
                     {invitations.length === 0 ? (
-                        <p className="px-5 py-4 text-sm text-ink-muted">Aucune invitation en attente.</p>
+                        <p className="px-5 py-4 text-sm text-ink-muted">{t('usersAccess.noInvitations')}</p>
                     ) : (
                         <div className="overflow-x-auto">
-                            <table className="w-full text-left text-sm">
+                            <table className="erp-table w-full text-start text-sm">
                                 <thead className="bg-raised text-[11px] uppercase tracking-wide text-ink-faint">
                                     <tr>
-                                        <th className="px-4 py-2.5">Email</th>
-                                        <th className="px-4 py-2.5">Rôle</th>
-                                        <th className="px-4 py-2.5">Expire le</th>
+                                        <th className="px-4 py-2.5">{t('usersAccess.email')}</th><th className="px-4 py-2.5">{t('usersAccess.role')}</th><th className="px-4 py-2.5">{t('usersAccess.expiresOn')}</th>
                                         <th className="px-4 py-2.5" />
                                     </tr>
                                 </thead>
@@ -143,12 +139,12 @@ export default function UsersAccessIndex({ organization, memberships, roles, inv
                                                 <button
                                                     type="button"
                                                     onClick={() =>
-                                                        window.confirm(`Annuler l’invitation de ${invitation.email} ?`) &&
+                                                        window.confirm(t('usersAccess.cancelInvitation').replace('{email}', invitation.email)) &&
                                                         router.delete(`/invitations/${invitation.id}`, { preserveScroll: true })
                                                     }
                                                     className="inline-flex min-h-9 items-center rounded-field px-2 text-xs text-danger hover:bg-danger-soft hover:underline"
                                                 >
-                                                    Annuler
+                                                    {t('common.cancel')}
                                                 </button>
                                             </td>
                                         </tr>
@@ -168,6 +164,7 @@ export default function UsersAccessIndex({ organization, memberships, roles, inv
 }
 
 function InvitationUrlBanner({ url }: { url: string }) {
+    const { t } = useI18n();
     const [copied, setCopied] = useState(false);
     const copy = async () => {
         try {
@@ -181,14 +178,11 @@ function InvitationUrlBanner({ url }: { url: string }) {
     return (
         <div className="mb-6">
             <FormBanner tone="success">
-                <p className="mb-1.5 font-medium">Invitation créée. Un email a été envoyé si la messagerie est configurée.</p>
-                <p className="mb-2 text-[13px]">
-                    Ce lien reste utilisable si l’email n’arrive pas (environnement sans SMTP configuré) :
-                </p>
+                <p className="mb-1.5 font-medium">{t('usersAccess.invitationCreated')}</p><p className="mb-2 text-[13px]">{t('usersAccess.invitationFallback')}</p>
                 <div className="flex flex-wrap items-center gap-2">
                     <code className="break-all rounded bg-surface px-2 py-1 text-[12px]">{url}</code>
                     <Button type="button" size="sm" variant="secondary" onClick={copy}>
-                        {copied ? 'Copié !' : 'Copier le lien'}
+                        {copied ? t('usersAccess.copied') : t('usersAccess.copyLink')}
                     </Button>
                 </div>
             </FormBanner>
@@ -197,6 +191,7 @@ function InvitationUrlBanner({ url }: { url: string }) {
 }
 
 function AddMemberPanel({ organizationId, roles }: { organizationId: number; roles: RoleSummary[] }) {
+    const { t } = useI18n();
     const [mode, setMode] = useState<'existing' | 'invite'>('existing');
     const [email, setEmail] = useState('');
     const [roleId, setRoleId] = useState<number | ''>(roles[0]?.id ?? '');
@@ -217,7 +212,7 @@ function AddMemberPanel({ organizationId, roles }: { organizationId: number; rol
             {
                 preserveScroll: true,
                 onSuccess: () => setEmail(''),
-                onError: (errors) => setError((Object.values(errors)[0] as string) ?? 'Une erreur est survenue.'),
+                onError: (errors) => setError((Object.values(errors)[0] as string) ?? t('usersAccess.genericError')),
                 onFinish: () => setProcessing(false),
             },
         );
@@ -227,10 +222,10 @@ function AddMemberPanel({ organizationId, roles }: { organizationId: number; rol
         <section className="rounded-card border border-line bg-surface p-5">
             <div className="mb-4 flex items-center gap-2">
                 <TabButton active={mode === 'existing'} onClick={() => setMode('existing')}>
-                    Ajouter un utilisateur existant
+                    {t('usersAccess.addExisting')}
                 </TabButton>
                 <TabButton active={mode === 'invite'} onClick={() => setMode('invite')}>
-                    Inviter par email
+                    {t('usersAccess.inviteEmail')}
                 </TabButton>
             </div>
             {error && (
@@ -240,7 +235,7 @@ function AddMemberPanel({ organizationId, roles }: { organizationId: number; rol
             )}
             <form onSubmit={submit} className="flex flex-wrap items-end gap-3">
                 <TextField
-                    label="Email"
+                    label={t('usersAccess.email')}
                     type="email"
                     required
                     value={email}
@@ -249,12 +244,12 @@ function AddMemberPanel({ organizationId, roles }: { organizationId: number; rol
                     className="w-full min-w-0 flex-1 sm:w-auto sm:min-w-64"
                 />
                 <label className="block">
-                    <span className="mb-1.5 block text-[13px] font-medium text-ink">Rôle</span>
+                    <span className="mb-1.5 block text-[13px] font-medium text-ink">{t('usersAccess.role')}</span>
                     <select
                         value={roleId}
                         onChange={(e) => setRoleId(Number(e.target.value))}
                         required
-                        className="h-11 rounded-field border border-line-strong bg-surface px-3 text-sm text-ink"
+                        className="control-select h-11"
                     >
                         {roles.map((role) => (
                             <option key={role.id} value={role.id}>
@@ -263,13 +258,13 @@ function AddMemberPanel({ organizationId, roles }: { organizationId: number; rol
                         ))}
                     </select>
                 </label>
-                <Button type="submit" loading={processing} loadingText="Envoi…">
-                    {mode === 'existing' ? 'Ajouter' : 'Envoyer l’invitation'}
+                <Button type="submit" loading={processing} loadingText={t('profile.sending')}>
+                    {mode === 'existing' ? t('usersAccess.add') : t('usersAccess.sendInvitation')}
                 </Button>
             </form>
             {mode === 'invite' && (
                 <p className="mt-2 text-[13px] text-ink-muted">
-                    Si aucun compte n’existe pour cet email, un lien d’invitation à usage unique sera généré (valable 7 jours).
+                    {t('usersAccess.invitationHelp')}
                 </p>
             )}
         </section>
@@ -306,6 +301,7 @@ function DefaultWarehouseField({
     editable: boolean;
     fullWidth?: boolean;
 }) {
+    const { t } = useI18n();
     const current = member.default_warehouse;
     const unavailable = current !== null && !current.available;
 
@@ -321,7 +317,7 @@ function DefaultWarehouseField({
         return current ? (
             <span className={unavailable ? 'text-ink-faint' : 'text-ink'}>
                 {current.name} · {current.code}
-                {unavailable && <span className="ml-1.5 text-[11px] text-danger">(indisponible)</span>}
+                {unavailable && <span className="ms-1.5 text-[11px] text-danger">({t('usersAccess.unavailable')})</span>}
             </span>
         ) : (
             <span className="text-ink-faint">—</span>
@@ -333,14 +329,14 @@ function DefaultWarehouseField({
             <select
                 value={current?.id ?? ''}
                 onChange={(e) => change(e.target.value)}
-                aria-label={`Entrepôt par défaut de ${member.user.name}`}
-                title="Entrepôt sélectionné automatiquement à l’ouverture du point de vente"
-                className={`rounded-field border border-line-strong bg-surface px-2 text-[13px] ${fullWidth ? 'h-9 w-full' : 'py-1'}`}
+                aria-label={t('usersAccess.defaultWarehouseFor').replace('{name}', member.user.name)}
+                title={t('usersAccess.defaultWarehouseHelp')}
+                className={`control-select text-[13px] ${fullWidth ? 'h-9 w-full' : 'py-1'}`}
             >
-                <option value="">Aucun (par défaut du point de vente)</option>
+                <option value="">{t('usersAccess.posDefault')}</option>
                 {unavailable && (
                     <option value={current.id} disabled>
-                        {current.name} · {current.code} (indisponible)
+                        {current.name} · {current.code} ({t('usersAccess.unavailable')})
                     </option>
                 )}
                 {warehouses.map((warehouse) => (
@@ -350,7 +346,7 @@ function DefaultWarehouseField({
                 ))}
             </select>
             {unavailable && (
-                <p className="mt-1 text-[11px] text-danger">Entrepôt inactif — ignoré au point de vente.</p>
+                <p className="mt-1 text-[11px] text-danger">{t('usersAccess.inactiveWarehouse')}</p>
             )}
         </div>
     );
@@ -358,6 +354,7 @@ function DefaultWarehouseField({
 
 /** Shared state/handlers for a membership row, reused by both the desktop `<tr>` and the mobile `<li>` card. */
 function useMemberRowActions(member: Member) {
+    const { t } = useI18n();
     const [managingStores, setManagingStores] = useState(false);
 
     const changeRole = (roleId: number) => {
@@ -370,7 +367,7 @@ function useMemberRowActions(member: Member) {
     };
 
     const remove = () => {
-        if (!window.confirm(`Retirer ${member.user.name} de l’organisation ?`)) return;
+        if (!window.confirm(t('usersAccess.removeMemberConfirm').replace('{name}', member.user.name))) return;
         router.delete(`/organization-memberships/${member.id}`, { preserveScroll: true });
     };
 
@@ -400,6 +397,7 @@ function MemberRow({
     isSelf: boolean;
     can: Props['can'];
 }) {
+    const { t } = useI18n();
     const locked = member.is_owner || isSelf;
     const { managingStores, setManagingStores, changeRole, toggleStatus, remove, memberStoreIds, addStore, removeStore } =
         useMemberRowActions(member);
@@ -413,7 +411,7 @@ function MemberRow({
                     <select
                         value={member.role.id}
                         onChange={(e) => changeRole(Number(e.target.value))}
-                        className="rounded-field border border-line-strong bg-surface px-2 py-1 text-[13px]"
+                        className="control-select py-1 text-[13px]"
                     >
                         {roles.map((role) => (
                             <option key={role.id} value={role.id}>
@@ -424,7 +422,7 @@ function MemberRow({
                 ) : (
                     <span>
                         {member.role.name}
-                        {member.is_owner && <span className="ml-1.5 text-[11px] text-ink-faint">(propriétaire)</span>}
+                        {member.is_owner && <span className="ms-1.5 text-[11px] text-ink-faint">({t('usersAccess.owner')})</span>}
                     </span>
                 )}
             </td>
@@ -438,7 +436,7 @@ function MemberRow({
                             <span key={sm.id} className="inline-flex items-center gap-1 rounded-full bg-raised px-2 py-0.5 text-[11px] text-ink-muted">
                                 {sm.store.code}
                                 {can.manageStoreAccess && (
-                                    <button type="button" onClick={() => removeStore(sm.id)} className="text-ink-faint hover:text-danger" aria-label={`Retirer l’accès à ${sm.store.name}`}>
+                                    <button type="button" onClick={() => removeStore(sm.id)} className="text-ink-faint hover:text-danger" aria-label={t('usersAccess.removeStoreAccess').replace('{store}', sm.store.name)}>
                                         ×
                                     </button>
                                 )}
@@ -446,7 +444,7 @@ function MemberRow({
                         ))}
                         {can.manageStoreAccess && (
                             <button type="button" onClick={() => setManagingStores((v) => !v)} className="text-[11px] text-ink-muted hover:underline">
-                                {managingStores ? 'Fermer' : '+ Magasin'}
+                                {managingStores ? t('common.close') : t('usersAccess.addStore')}
                             </button>
                         )}
                     </div>
@@ -471,17 +469,17 @@ function MemberRow({
             <td className="px-4 py-2.5">
                 <DefaultWarehouseField member={member} warehouses={warehouses} editable={can.updateMembers} />
             </td>
-            <td className="px-4 py-2.5 text-right">
+            <td className="px-4 py-2.5 text-end">
                 {!locked && (can.updateMembers || can.deleteMembers) && (
-                    <div className="flex justify-end gap-1">
+                    <div className="flex justify-end gap-1 rtl:justify-start">
                         {can.updateMembers && (
                             <button type="button" onClick={toggleStatus} className="inline-flex min-h-9 items-center rounded-field px-2 text-xs text-ink-muted hover:bg-raised hover:underline">
-                                {member.status === 'active' ? 'Suspendre' : 'Réactiver'}
+                                {member.status === 'active' ? t('usersAccess.suspend') : t('usersAccess.reactivate')}
                             </button>
                         )}
                         {can.deleteMembers && (
                             <button type="button" onClick={remove} className="inline-flex min-h-9 items-center rounded-field px-2 text-xs text-danger hover:bg-danger-soft hover:underline">
-                                Retirer
+                                {t('usersAccess.remove')}
                             </button>
                         )}
                     </div>
@@ -507,6 +505,7 @@ function MemberCard({
     isSelf: boolean;
     can: Props['can'];
 }) {
+    const { t } = useI18n();
     const locked = member.is_owner || isSelf;
     const { managingStores, setManagingStores, changeRole, toggleStatus, remove, memberStoreIds, addStore, removeStore } =
         useMemberRowActions(member);
@@ -522,12 +521,12 @@ function MemberCard({
             </div>
 
             <div className="mt-3 text-[13px]">
-                <p className="text-ink-faint">Rôle</p>
+                <p className="text-ink-faint">{t('usersAccess.role')}</p>
                 {can.updateMembers && !locked ? (
                     <select
                         value={member.role.id}
                         onChange={(e) => changeRole(Number(e.target.value))}
-                        className="mt-1 h-9 w-full rounded-field border border-line-strong bg-surface px-2 text-[13px]"
+                        className="control-select mt-1 h-9 w-full text-[13px]"
                     >
                         {roles.map((role) => (
                             <option key={role.id} value={role.id}>
@@ -538,14 +537,14 @@ function MemberCard({
                 ) : (
                     <p className="text-ink">
                         {member.role.name}
-                        {member.is_owner && <span className="ml-1.5 text-[11px] text-ink-faint">(propriétaire)</span>}
+                        {member.is_owner && <span className="ms-1.5 text-[11px] text-ink-faint">({t('usersAccess.owner')})</span>}
                     </p>
                 )}
             </div>
 
             {stores.length > 0 && (
                 <div className="mt-3 text-[13px]">
-                    <p className="text-ink-faint">Magasins</p>
+                    <p className="text-ink-faint">{t('usersAccess.stores')}</p>
                     <div className="mt-1 flex flex-wrap items-center gap-1">
                         {member.store_memberships.map((sm) => (
                             <span key={sm.id} className="inline-flex items-center gap-1 rounded-full bg-raised px-2 py-0.5 text-[11px] text-ink-muted">
@@ -555,7 +554,7 @@ function MemberCard({
                                         type="button"
                                         onClick={() => removeStore(sm.id)}
                                         className="text-ink-faint hover:text-danger"
-                                        aria-label={`Retirer l’accès à ${sm.store.name}`}
+                                        aria-label={t('usersAccess.removeStoreAccess').replace('{store}', sm.store.name)}
                                     >
                                         ×
                                     </button>
@@ -568,7 +567,7 @@ function MemberCard({
                                 onClick={() => setManagingStores((v) => !v)}
                                 className="rounded-full px-2 py-0.5 text-[11px] text-ink-muted hover:bg-raised hover:underline"
                             >
-                                {managingStores ? 'Fermer' : '+ Magasin'}
+                                {managingStores ? t('common.close') : t('usersAccess.addStore')}
                             </button>
                         )}
                     </div>
@@ -592,7 +591,7 @@ function MemberCard({
             )}
 
             <div className="mt-3 text-[13px]">
-                <p className="text-ink-faint">Entrepôt par défaut</p>
+                <p className="text-ink-faint">{t('usersAccess.defaultWarehouse')}</p>
                 <div className="mt-1">
                     <DefaultWarehouseField member={member} warehouses={warehouses} editable={can.updateMembers} fullWidth />
                 </div>
@@ -606,7 +605,7 @@ function MemberCard({
                             onClick={toggleStatus}
                             className="inline-flex min-h-9 flex-1 items-center justify-center rounded-field border border-line-strong px-3 text-[13px] text-ink-muted hover:bg-raised"
                         >
-                            {member.status === 'active' ? 'Suspendre' : 'Réactiver'}
+                            {member.status === 'active' ? t('usersAccess.suspend') : t('usersAccess.reactivate')}
                         </button>
                     )}
                     {can.deleteMembers && (
@@ -615,7 +614,7 @@ function MemberCard({
                             onClick={remove}
                             className="inline-flex min-h-9 flex-1 items-center justify-center rounded-field border border-danger/30 px-3 text-[13px] text-danger hover:bg-danger-soft"
                         >
-                            Retirer
+                            {t('usersAccess.remove')}
                         </button>
                     )}
                 </div>
@@ -636,15 +635,16 @@ function RolesSection({
     can: Props['can'];
 }) {
     const { tenant } = usePage<SharedPageProps>().props;
+    const { t } = useI18n();
     const [editing, setEditing] = useState<RoleSummary | null | 'new'>(null);
 
     return (
         <section className="mt-8">
             <div className="mb-3 flex items-center justify-between">
-                <h2 className="text-sm font-semibold text-ink">Rôles ({roles.length})</h2>
+                <h2 className="text-sm font-semibold text-ink">{t('usersAccess.roles')} ({roles.length})</h2>
                 {can.createRole && (
                     <Button size="sm" variant="secondary" onClick={() => setEditing('new')}>
-                        Nouveau rôle
+                        {t('roles.new')}
                     </Button>
                 )}
             </div>
@@ -668,15 +668,14 @@ function RolesSection({
                         key={role.id}
                         type="button"
                         onClick={() => setEditing(role)}
-                        className="rounded-card border border-line bg-surface p-4 text-left transition-soft hover:border-line-strong"
+                        className="rounded-card border border-line bg-surface p-4 text-start transition-soft hover:border-line-strong"
                     >
                         <div className="mb-1 flex items-center justify-between gap-2">
                             <span className="font-medium text-ink">{role.name}</span>
-                            {role.is_system && <span className="rounded-full bg-raised px-2 py-0.5 text-[11px] text-ink-faint">Système</span>}
+                            {role.is_system && <span className="rounded-full bg-raised px-2 py-0.5 text-[11px] text-ink-faint">{t('usersAccess.system')}</span>}
                         </div>
                         <p className="text-[13px] text-ink-muted">
-                            {role.permissions.length} permission{role.permissions.length !== 1 ? 's' : ''} · {role.members_count} membre
-                            {role.members_count !== 1 ? 's' : ''}
+                            {role.permissions.length} {t('usersAccess.permissionsCount')} · {role.members_count} {t('usersAccess.membersCount')}
                         </p>
                     </button>
                 ))}

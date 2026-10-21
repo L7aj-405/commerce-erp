@@ -1,6 +1,7 @@
 import AuthLayout from '@/components/auth/AuthLayout';
 import { Button, DownloadLink } from '@/components/ui/Button';
 import { Checkbox, PasswordField, TextField } from '@/components/ui/form';
+import { useI18n } from '@/i18n';
 import { Head, Link, useForm, usePage } from '@inertiajs/react';
 import type { FormEvent } from 'react';
 
@@ -13,6 +14,7 @@ type Props = {
 };
 
 export default function Login({ status }: Props) {
+    const { t } = useI18n();
     const { props } = usePage<{ errors?: Record<string, string> }>();
     const form = useForm({
         email: '',
@@ -30,16 +32,16 @@ export default function Login({ status }: Props) {
 
     return (
         <>
-            <Head title="Se connecter" />
+            <Head title={t('auth.signIn')} />
 
             <AuthLayout
-                title="Se connecter"
-                subtitle="Accédez à votre organisation et à vos magasins."
+                title={t('auth.signIn')}
+                subtitle={t('auth.signInSubtitle')}
                 footer={
                     <>
-                        Pas encore de compte ?{' '}
+                        {t('auth.noAccount')}{' '}
                         <Link href="/register" className="font-medium text-ink underline-offset-4 hover:underline">
-                            Créer un compte
+                            {t('auth.createAccount')}
                         </Link>
                     </>
                 }
@@ -55,13 +57,13 @@ export default function Login({ status }: Props) {
                     )}
 
                     <TextField
-                        label="Adresse email"
+                        label={t('auth.email')}
                         type="email"
                         name="email"
                         autoComplete="email"
                         autoFocus
                         required
-                        placeholder="vous@entreprise.com"
+                        placeholder={t('auth.emailPlaceholder')}
                         value={form.data.email}
                         onChange={(event) => form.setData('email', event.target.value)}
                         error={form.errors.email}
@@ -69,7 +71,7 @@ export default function Login({ status }: Props) {
 
                     <div>
                         <PasswordField
-                            label="Mot de passe"
+                            label={t('auth.password')}
                             name="password"
                             autoComplete="current-password"
                             required
@@ -82,31 +84,31 @@ export default function Login({ status }: Props) {
                             href="/forgot-password"
                             className="mt-1.5 inline-block text-[13px] text-ink-muted underline-offset-4 hover:underline"
                         >
-                            Mot de passe oublié ?
+                            {t('auth.forgotPassword')}
                         </Link>
                     </div>
 
                     <div className="pt-0.5">
                         <Checkbox
-                            label="Se souvenir de moi"
+                            label={t('auth.rememberMe')}
                             checked={form.data.remember}
                             onChange={(event) => form.setData('remember', event.target.checked)}
                         />
                     </div>
 
                     <Button type="submit" block size="lg" disabled={form.processing}>
-                        {form.processing ? 'Connexion…' : 'Se connecter'}
+                        {form.processing ? t('auth.signingIn') : t('auth.signIn')}
                     </Button>
 
                     <div className="flex items-center gap-3 py-1 text-xs uppercase tracking-wide text-ink-muted">
                         <span className="h-px flex-1 bg-line" />
-                        ou
+                        {t('auth.or')}
                         <span className="h-px flex-1 bg-line" />
                     </div>
 
                     <DownloadLink href="/auth/google/redirect" variant="secondary" block size="lg">
                         <span className="font-semibold">G</span>
-                        Continuer avec Google
+                        {t('auth.continueGoogle')}
                     </DownloadLink>
                 </form>
             </AuthLayout>

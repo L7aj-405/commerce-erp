@@ -1,17 +1,18 @@
 import type { SharedPageProps } from '@/types/app';
+import { useI18n } from '@/i18n';
 import { Link, usePage } from '@inertiajs/react';
-
-const TABS = [
-    { href: '/finance/commissions', label: 'Tableau de bord', permission: 'commissions.ledger.view' },
-    { href: '/finance/commissions/ledger', label: 'Registre', permission: 'commissions.ledger.view' },
-    { href: '/finance/commissions/rules', label: 'Règles', permission: 'commissions.rules.view' },
-];
 
 /** Section switcher shared by the three Finance commission pages. */
 export default function CommissionTabs({ active }: { active: 'dashboard' | 'ledger' | 'rules' }) {
+    const { t } = useI18n();
+    const tabs = [
+        { href: '/finance/commissions', label: t('commissions.dashboard'), permission: 'commissions.ledger.view' },
+        { href: '/finance/commissions/ledger', label: t('commissions.ledger'), permission: 'commissions.ledger.view' },
+        { href: '/finance/commissions/rules', label: t('commissions.rules'), permission: 'commissions.rules.view' },
+    ];
     const { tenant } = usePage<SharedPageProps>().props;
     const keys = { '/finance/commissions': 'dashboard', '/finance/commissions/ledger': 'ledger', '/finance/commissions/rules': 'rules' } as const;
-    const visible = TABS.filter((tab) => tenant.permissions.includes(tab.permission));
+    const visible = tabs.filter((tab) => tenant.permissions.includes(tab.permission));
     if (visible.length < 2) return null;
 
     return (

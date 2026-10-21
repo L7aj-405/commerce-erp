@@ -1,9 +1,13 @@
-const frenchNumber = new Intl.NumberFormat('fr-FR');
-const frenchQuantity = new Intl.NumberFormat('fr-FR', {
+function uiLocale(): string {
+    return typeof document !== 'undefined' && document.documentElement.lang === 'ar' ? 'ar-MA' : 'fr-FR';
+}
+
+const numberFormatter = () => new Intl.NumberFormat(uiLocale());
+const quantityFormatter = () => new Intl.NumberFormat(uiLocale(), {
     minimumFractionDigits: 0,
     maximumFractionDigits: 4,
 });
-const frenchMoney = new Intl.NumberFormat('fr-FR', {
+const moneyFormatter = () => new Intl.NumberFormat(uiLocale(), {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
 });
@@ -19,7 +23,7 @@ export function formatQuantity(value: number | string | null | undefined): strin
         return String(value);
     }
 
-    return frenchQuantity.format(numeric);
+    return quantityFormatter().format(numeric);
 }
 
 /**
@@ -66,22 +70,22 @@ export function formatMoney(value: number | string | null | undefined, currencyC
     }
 
     const normalized = Object.is(numeric, -0) || Math.abs(numeric) < 0.00005 ? 0 : numeric;
-    const formatted = frenchMoney.format(normalized);
+    const formatted = moneyFormatter().format(normalized);
 
     return currencyCode === 'MAD' ? `${formatted} DH` : `${formatted} ${currencyCode}`;
 }
 
 export function formatDate(value: string): string {
-    return new Intl.DateTimeFormat('fr-FR').format(new Date(value));
+    return new Intl.DateTimeFormat(uiLocale()).format(new Date(value));
 }
 
 export function formatDateTime(value: string): string {
-    return new Intl.DateTimeFormat('fr-FR', {
+    return new Intl.DateTimeFormat(uiLocale(), {
         dateStyle: 'short',
         timeStyle: 'short',
     }).format(new Date(value));
 }
 
 export function formatInteger(value: number): string {
-    return frenchNumber.format(value);
+    return numberFormatter().format(value);
 }

@@ -1,11 +1,13 @@
 import AuthLayout from '@/components/auth/AuthLayout';
 import { Button } from '@/components/ui/Button';
+import { useI18n } from '@/i18n';
 import { Head, useForm } from '@inertiajs/react';
 import type { FormEvent } from 'react';
 
 type Props = { status?: string | null };
 
 export default function VerifyEmail({ status }: Props) {
+    const { t } = useI18n();
     const form = useForm({});
     const logout = useForm({});
 
@@ -16,30 +18,29 @@ export default function VerifyEmail({ status }: Props) {
 
     return (
         <>
-            <Head title="Vérifier votre email" />
+            <Head title={t('auth.verifyEmailTitle')} />
 
-            <AuthLayout title="Vérifiez votre adresse email" subtitle="Un lien de confirmation vous a été envoyé.">
+            <AuthLayout title={t('auth.verifyEmailTitle')} subtitle={t('auth.verifyEmailSent')}>
                 <div className="space-y-4 text-sm text-ink-muted">
                     <p>
-                        Avant de continuer, cliquez sur le lien que nous venons de vous envoyer par email pour
-                        confirmer votre adresse. Si vous ne l’avez pas reçu, nous pouvons vous en renvoyer un.
+                        {t('auth.verifyEmailHelp')}
                     </p>
 
                     {status === 'verification-link-sent' && (
                         <p className="rounded-lg bg-success-soft px-3 py-2 text-sm font-medium text-success">
-                            Un nouveau lien de vérification a été envoyé à votre adresse email.
+                            {t('auth.verifyEmailResent')}
                         </p>
                     )}
 
                     <form onSubmit={resend}>
                         <Button type="submit" block disabled={form.processing}>
-                            {form.processing ? 'Envoi…' : 'Renvoyer l’email de vérification'}
+                            {form.processing ? t('auth.sending') : t('auth.resendVerification')}
                         </Button>
                     </form>
 
                     <form onSubmit={(e) => { e.preventDefault(); logout.post('/logout'); }}>
                         <button type="submit" className="text-sm font-medium text-ink underline-offset-4 hover:underline">
-                            Se déconnecter
+                            {t('auth.signOut')}
                         </button>
                     </form>
                 </div>

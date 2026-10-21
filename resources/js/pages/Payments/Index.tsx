@@ -1,6 +1,8 @@
 import EmptyState from '@/components/ui/EmptyState';
 import PageHeader from '@/components/ui/PageHeader';
 import Pagination from '@/components/ui/Pagination';
+import StatusBadge from '@/components/ui/StatusBadge';
+import { useI18n } from '@/i18n';
 import PaymentsLayout from '@/layouts/PaymentsLayout';
 import { formatDate, formatMoney } from '@/utils/format';
 import { Head, Link, router } from '@inertiajs/react';
@@ -24,6 +26,7 @@ type PageLink = { url: string | null; label: string; active: boolean };
 type Props = { payments: { data: Payment[]; links: PageLink[] }; accounts: Account[]; filters: Record<string, string | number | undefined> };
 
 export default function PaymentIndex({ payments, accounts, filters }: Props) {
+    const { t } = useI18n();
     const submit = (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
         const data = Object.fromEntries(new FormData(event.currentTarget).entries());
@@ -32,50 +35,50 @@ export default function PaymentIndex({ payments, accounts, filters }: Props) {
 
     return (
         <PaymentsLayout>
-            <Head title="Paiements" />
+            <Head title={t('payments.title')} />
             <PageHeader
-                title="Paiements"
-                description="Registre des encaissements postés et annulés pour le magasin actif."
+                title={t('payments.title')}
+                description={t('payments.description')}
             />
 
             <form onSubmit={submit} className="mb-6 rounded-card border border-line bg-surface p-4 shadow-soft">
                 <div className="grid gap-3 md:grid-cols-6">
                     <label className="block md:col-span-2">
-                        <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-ink-faint">Recherche</span>
+                        <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-ink-faint">{t('common.search')}</span>
                         <input
                             name="search"
                             defaultValue={String(filters.search ?? '')}
-                            placeholder="Paiement, commande, client"
-                            className="w-full rounded-field border border-line-strong bg-surface px-3 py-2 text-sm"
+                            placeholder={t('payments.searchPlaceholder')}
+                            className="control-input w-full"
                         />
                     </label>
-                    <Field label="Date">
+                    <Field label={t('common.date')}>
                         <input
                             name="date"
                             type="date"
                             defaultValue={String(filters.date ?? '')}
-                            className="w-full rounded-field border border-line-strong bg-surface px-3 py-2 text-sm"
+                            className="control-input w-full"
                         />
                     </Field>
-                    <Field label="Mode">
-                        <select name="method" defaultValue={String(filters.method ?? '')} className="w-full rounded-field border border-line-strong bg-surface px-3 py-2 text-sm">
-                            <option value="">Tous les modes</option>
-                            <option value="cash">Espèces</option>
-                            <option value="card">Carte / TPE</option>
-                            <option value="bank_transfer">Virement</option>
-                            <option value="cheque">Chèque</option>
+                    <Field label={t('payments.method')}>
+                        <select name="method" defaultValue={String(filters.method ?? '')} className="control-select w-full">
+                            <option value="">{t('payments.allMethods')}</option>
+                            <option value="cash">{t('payments.cash')}</option>
+                            <option value="card">{t('payments.card')}</option>
+                            <option value="bank_transfer">{t('payments.bankTransfer')}</option>
+                            <option value="cheque">{t('payments.cheque')}</option>
                         </select>
                     </Field>
-                    <Field label="Statut">
-                        <select name="status" defaultValue={String(filters.status ?? '')} className="w-full rounded-field border border-line-strong bg-surface px-3 py-2 text-sm">
-                            <option value="">Tous les statuts</option>
-                            <option value="posted">Posté</option>
-                            <option value="reversed">Annulé</option>
+                    <Field label={t('common.status')}>
+                        <select name="status" defaultValue={String(filters.status ?? '')} className="control-select w-full">
+                            <option value="">{t('common.allStatuses')}</option>
+                            <option value="posted">{t('status.posted')}</option>
+                            <option value="reversed">{t('status.reversed')}</option>
                         </select>
                     </Field>
-                    <Field label="Compte">
-                        <select name="account" defaultValue={String(filters.account ?? '')} className="w-full rounded-field border border-line-strong bg-surface px-3 py-2 text-sm">
-                            <option value="">Tous les comptes</option>
+                    <Field label={t('payments.account')}>
+                        <select name="account" defaultValue={String(filters.account ?? '')} className="control-select w-full">
+                            <option value="">{t('payments.allAccounts')}</option>
                             {accounts.map((account) => (
                                 <option key={account.id} value={account.id}>
                                     {account.code} · {account.name}
@@ -85,33 +88,33 @@ export default function PaymentIndex({ payments, accounts, filters }: Props) {
                     </Field>
                 </div>
                 <div className="mt-4 flex justify-end">
-                    <button className="rounded-field bg-ink px-4 py-2 text-sm font-semibold text-white transition-soft hover:bg-ink-muted">Filtrer</button>
+                    <button className="rounded-field bg-ink px-4 py-2 text-sm font-semibold text-white transition-soft hover:bg-ink-muted">{t('payments.filter')}</button>
                 </div>
             </form>
 
             {payments.data.length === 0 ? (
-                <EmptyState title="Aucun paiement" description="Aucun encaissement ne correspond aux filtres sélectionnés." />
+                <EmptyState title={t('payments.empty')} description={t('payments.emptyHelp')} />
             ) : (
                 <>
                     <div className="hidden overflow-x-auto rounded-card border border-line bg-surface shadow-soft md:block">
-                        <table className="w-full min-w-[980px] text-left text-sm">
+                        <table className="erp-table w-full min-w-[980px] text-start text-sm">
                             <thead className="bg-raised text-[11px] uppercase tracking-wide text-ink-faint">
                                 <tr>
-                                    <th className="px-4 py-3">N° paiement</th>
-                                    <th className="px-4 py-3">Date</th>
-                                    <th className="px-4 py-3">Client</th>
-                                    <th className="px-4 py-3">Commande / facture</th>
-                                    <th className="px-4 py-3">Mode</th>
-                                    <th className="px-4 py-3">Compte financier</th>
-                                    <th className="px-4 py-3">Statut</th>
-                                    <th className="px-4 py-3 text-right">Montant</th>
-                                    <th className="px-4 py-3 text-right">Actions</th>
+                                    <th className="px-4 py-3">{t('payments.number')}</th>
+                                    <th className="px-4 py-3">{t('common.date')}</th>
+                                    <th className="px-4 py-3">{t('common.customer')}</th>
+                                    <th className="px-4 py-3">{t('payments.orderInvoice')}</th>
+                                    <th className="px-4 py-3">{t('payments.method')}</th>
+                                    <th className="px-4 py-3">{t('payments.financialAccount')}</th>
+                                    <th className="px-4 py-3">{t('common.status')}</th>
+                                    <th className="px-4 py-3 text-end">{t('payments.amount')}</th>
+                                    <th className="px-4 py-3 text-end">{t('common.actions')}</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-line">
                                 {payments.data.map((payment) => {
                                     const order = payment.allocations[0]?.sales_order;
-                                    const customer = order?.customer_name ?? order?.customer_company ?? 'Client comptoir';
+                                    const customer = order?.customer_name ?? order?.customer_company ?? t('common.counterCustomer');
 
                                     return (
                                         <tr key={payment.id} className="transition-soft hover:bg-raised/70">
@@ -139,10 +142,10 @@ export default function PaymentIndex({ payments, accounts, filters }: Props) {
                                             <td className="px-4 py-3">
                                                 <StatusBadge status={payment.status} />
                                             </td>
-                                            <td className="px-4 py-3 text-right font-semibold tabular-nums text-ink">{formatMoney(payment.amount, payment.currency_code)}</td>
-                                            <td className="px-4 py-3 text-right">
+                                            <td className="px-4 py-3 text-end font-semibold tabular-nums text-ink" dir="ltr">{formatMoney(payment.amount, payment.currency_code)}</td>
+                                            <td className="px-4 py-3 text-end">
                                                 <Link href={`/payments/${payment.id}`} className="rounded-field px-3 py-2 text-sm font-medium text-ink transition-soft hover:bg-sage">
-                                                    Ouvrir
+                                                    {t('common.open')}
                                                 </Link>
                                             </td>
                                         </tr>
@@ -155,7 +158,7 @@ export default function PaymentIndex({ payments, accounts, filters }: Props) {
                     <ul className="space-y-3 md:hidden">
                         {payments.data.map((payment) => {
                             const order = payment.allocations[0]?.sales_order;
-                            const customer = order?.customer_name ?? order?.customer_company ?? 'Client comptoir';
+                            const customer = order?.customer_name ?? order?.customer_company ?? t('common.counterCustomer');
 
                             return (
                                 <li key={payment.id} className="rounded-card border border-line bg-surface p-4 shadow-soft">
@@ -173,10 +176,10 @@ export default function PaymentIndex({ payments, accounts, filters }: Props) {
                                         <StatusBadge status={payment.status} />
                                     </div>
                                     <dl className="mt-4 grid grid-cols-2 gap-x-3 gap-y-2 text-[13px]">
-                                        <Info label="Date" value={formatDate(payment.payment_date)} />
-                                        <Info label="Compte" value={payment.financial_account?.name ?? '—'} />
+                                        <Info label={t('common.date')} value={formatDate(payment.payment_date)} />
+                                        <Info label={t('payments.account')} value={payment.financial_account?.name ?? '—'} />
                                         <div className="min-w-0">
-                                            <dt className="text-ink-faint">Commande</dt>
+                                            <dt className="text-ink-faint">{t('payments.order')}</dt>
                                             <dd className="truncate text-ink-muted">
                                                 {order ? (
                                                     <Link href={`/sales/orders/${order.id}`} className="underline-offset-2 hover:underline">
@@ -187,7 +190,7 @@ export default function PaymentIndex({ payments, accounts, filters }: Props) {
                                                 )}
                                             </dd>
                                         </div>
-                                        <Info label="Reçu par" value={payment.received_by?.name ?? '—'} />
+                                        <Info label={t('payments.receivedBy')} value={payment.received_by?.name ?? '—'} />
                                     </dl>
                                 </li>
                             );
@@ -211,27 +214,10 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 }
 
 function MethodBadge({ method }: { method: string }) {
-    const labels: Record<string, string> = {
-        cash: 'Espèces',
-        card: 'Carte / TPE',
-        bank_transfer: 'Virement',
-        cheque: 'Chèque',
-    };
+    const { t } = useI18n();
+    const labels: Record<string, string> = { cash: t('payments.cash'), card: t('payments.card'), bank_transfer: t('payments.bankTransfer'), cheque: t('payments.cheque') };
 
     return <span className="inline-flex rounded-full bg-sage px-2.5 py-1 text-xs font-semibold text-ink">{labels[method] ?? method.replaceAll('_', ' ')}</span>;
-}
-
-function StatusBadge({ status }: { status: string }) {
-    const styles: Record<string, string> = {
-        posted: 'bg-success-soft text-success',
-        reversed: 'bg-danger-soft text-danger',
-    };
-    const labels: Record<string, string> = {
-        posted: 'Posté',
-        reversed: 'Annulé',
-    };
-
-    return <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${styles[status] ?? 'bg-raised text-ink-muted'}`}>{labels[status] ?? status.replaceAll('_', ' ')}</span>;
 }
 
 function Info({ label, value }: { label: string; value: string }) {

@@ -1,5 +1,7 @@
 import { Button } from '@/components/ui/Button';
 import AccountLayout from '@/layouts/AccountLayout';
+import { useI18n } from '@/i18n';
+import { formatDateTime } from '@/utils/format';
 import { Head, router } from '@inertiajs/react';
 import { useState } from 'react';
 
@@ -15,6 +17,7 @@ type SessionRow = {
 };
 
 export default function Sessions({ sessions }: { sessions: SessionRow[] }) {
+    const { t } = useI18n();
     const [processing, setProcessing] = useState<string | 'all' | null>(null);
     const otherSessions = sessions.filter((session) => !session.isCurrent);
 
@@ -36,15 +39,15 @@ export default function Sessions({ sessions }: { sessions: SessionRow[] }) {
 
     return (
         <AccountLayout>
-            <Head title="Sessions actives" />
+            <Head title={t('sessions.title')} />
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
-                    <h1 className="text-xl font-semibold tracking-tight text-ink sm:text-2xl">Sessions actives</h1>
-                    <p className="mt-1 text-sm text-ink-muted">Les navigateurs où votre compte est actuellement connecté, toutes organisations confondues.</p>
+                    <h1 className="text-xl font-semibold tracking-tight text-ink sm:text-2xl">{t('sessions.title')}</h1>
+                    <p className="mt-1 text-sm text-ink-muted">{t('sessions.description')}</p>
                 </div>
                 {otherSessions.length > 0 && (
                     <Button variant="secondary" onClick={revokeAll} disabled={processing !== null} className="w-full sm:w-auto">
-                        {processing === 'all' ? 'Déconnexion…' : 'Déconnecter toutes les autres'}
+                        {processing === 'all' ? t('sessions.signingOut') : t('sessions.signOutOthers')}
                     </Button>
                 )}
             </div>
@@ -57,18 +60,18 @@ export default function Sessions({ sessions }: { sessions: SessionRow[] }) {
                                 <div className="flex flex-wrap items-center gap-2">
                                     <p className="font-medium text-ink">{session.deviceLabel}</p>
                                     {session.isCurrent && (
-                                        <span className="rounded-full bg-success-soft px-2 py-0.5 text-xs font-medium text-success">Session actuelle</span>
+                                        <span className="rounded-full bg-success-soft px-2 py-0.5 text-xs font-medium text-success">{t('sessions.current')}</span>
                                     )}
                                     <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${session.state === 'recent' ? 'bg-success-soft text-success' : 'bg-muted text-ink-muted'}`}>
-                                        {session.state === 'recent' ? 'Active récemment' : 'Inactive'}
+                                        {session.state === 'recent' ? t('sessions.recent') : t('sessions.inactive')}
                                     </span>
                                 </div>
                                 <p className="mt-1 text-xs text-ink-muted">
-                                    {session.ipAddress ?? 'Adresse IP indisponible'} · dernière activité {new Date(session.lastActiveAt).toLocaleString('fr-FR')}
+                                    <bdi>{session.ipAddress ?? t('sessions.ipUnavailable')}</bdi> · {t('sessions.lastActivity')} {formatDateTime(session.lastActiveAt)}
                                 </p>
                             </div>
                             {session.isCurrent ? (
-                                <p className="text-xs text-ink-muted">Utilisez la déconnexion normale pour terminer cette session.</p>
+                                <p className="text-xs text-ink-muted">{t('sessions.currentHelp')}</p>
                             ) : (
                                 <button
                                     type="button"
@@ -76,7 +79,7 @@ export default function Sessions({ sessions }: { sessions: SessionRow[] }) {
                                     disabled={processing !== null}
                                     className="self-start rounded-field px-2 py-1.5 text-sm text-danger underline-offset-4 hover:underline disabled:opacity-50 sm:self-auto"
                                 >
-                                    {processing === session.token ? 'Déconnexion…' : 'Déconnecter'}
+                                    {processing === session.token ? t('sessions.signingOut') : t('sessions.signOut')}
                                 </button>
                             )}
                         </li>
@@ -85,7 +88,7 @@ export default function Sessions({ sessions }: { sessions: SessionRow[] }) {
             </section>
 
             <p className="mt-4 text-xs leading-5 text-ink-muted">
-                Les sessions actives sont distinctes des appareils de confiance 2FA. Un appareil de confiance peut ignorer la seconde étape lors d’une future connexion, sans prolonger cette session.
+                {t('sessions.twoFactorHelp')}
             </p>
         </AccountLayout>
     );

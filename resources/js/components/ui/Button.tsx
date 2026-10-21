@@ -6,7 +6,9 @@ const styles = {
     primary: 'bg-primary text-primary-fg hover:bg-primary-hover shadow-sm',
     secondary: 'border border-line-strong bg-surface text-ink hover:bg-raised',
     ghost: 'text-ink-muted hover:bg-sage hover:text-ink',
+    outline: 'border border-primary/35 bg-transparent text-primary hover:bg-sage',
     danger: 'border border-danger/30 text-danger hover:bg-danger-soft',
+    success: 'border border-success/25 bg-success-soft text-success hover:bg-success/15',
 };
 
 const sizes = {

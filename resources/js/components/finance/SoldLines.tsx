@@ -1,6 +1,12 @@
-import { formatQuantity } from '@/utils/format';
+import { formatQuantity } from "@/utils/format";
+import { useI18n } from "@/i18n";
 
-export type SoldLine = { quantity: string; designation: string; reference: string | null; variant: string | null };
+export type SoldLine = {
+    quantity: string;
+    designation: string;
+    reference: string | null;
+    variant: string | null;
+};
 
 /**
  * Every sold line, in full — never a truncated "Article A (+3 autres)"
@@ -11,13 +17,22 @@ export type SoldLine = { quantity: string; designation: string; reference: strin
  * encaissé — both render the same authoritative line-snapshot shape.
  */
 export default function SoldLines({ lines }: { lines: SoldLine[] }) {
+    const { t } = useI18n();
     return (
         <ul className="space-y-1.5">
             {lines.map((line, index) => (
                 <li key={index} className="text-[13px] text-ink">
-                    <span className="tabular-nums font-medium">{formatQuantity(line.quantity)}</span> × {line.designation}
-                    {line.variant ? ` — ${line.variant}` : ''}
-                    {line.reference && <span className="block text-[11px] text-ink-faint">Réf. {line.reference}</span>}
+                    <span className="tabular-nums font-medium">
+                        {formatQuantity(line.quantity)}
+                    </span>{" "}
+                    × {line.designation}
+                    {line.variant ? ` — ${line.variant}` : ""}
+                    {line.reference && (
+                        <span className="block text-[11px] text-ink-faint">
+                            {t("common.referenceShort")}{" "}
+                            <bdi>{line.reference}</bdi>
+                        </span>
+                    )}
                 </li>
             ))}
         </ul>

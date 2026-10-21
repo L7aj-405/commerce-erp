@@ -1,6 +1,7 @@
 import { BrandLockup, BrandMark } from '@/components/ui/brand';
 import NotificationBell from '@/components/notifications/NotificationBell';
 import { useToast } from '@/components/ui/toast';
+import { LocaleSwitcher, useI18n } from '@/i18n';
 import type { SharedPageProps } from '@/types/app';
 import { Link, router, usePage } from '@inertiajs/react';
 import { useEffect, useState } from 'react';
@@ -18,6 +19,7 @@ const SIDEBAR_KEY = 'shell.sidebar.collapsed';
 export default function ApplicationShell({ children, wide = false, flush = false }: PropsWithChildren<{ wide?: boolean; flush?: boolean }>) {
     const page = usePage<SharedPageProps>();
     const { auth, tenant, flash, notifications } = page.props;
+    const { direction, t } = useI18n();
     const currentPath = page.url.split('?')[0];
 
     // Bridge server flash("success", …) redirects into the toast system so every
@@ -71,125 +73,125 @@ export default function ApplicationShell({ children, wide = false, flush = false
     const groups: NavGroup[] = [
         {
             key: 'dashboard',
-            label: 'Tableau de bord',
+            label: t('nav.dashboard'),
             icon: <IconDashboard />,
-            items: [{ href: '/platform', label: 'Tableau de bord', icon: <IconHome /> }],
+            items: [{ href: '/platform', label: t('nav.dashboard'), icon: <IconHome /> }],
         },
         {
             key: 'sales',
-            label: 'Ventes',
+            label: t('nav.sales'),
             icon: <IconShoppingBag />,
             items: [
-                { href: '/pos', label: 'Point de vente', permission: 'pos.access', needsStore: true, icon: <IconRegister /> },
-                { href: '/sales/orders', label: 'Commandes', permission: 'sales_orders.view', needsStore: true, icon: <IconClipboard /> },
-                { href: '/quotations', label: 'Devis', permission: 'quotations.view', needsStore: true, icon: <IconFileText /> },
-                { href: '/invoices', label: 'Factures', permission: 'invoices.view', needsStore: true, icon: <IconInvoice /> },
-                { href: '/delivery-notes', label: 'Bons de livraison', permission: 'delivery_notes.view', needsStore: true, icon: <IconTruck /> },
-                { href: '/sales/returns', label: 'Retours / Avoirs', permission: 'sales_returns.view', needsStore: true, icon: <IconRotateBack /> },
-                { href: '/my-commissions', label: 'Mes commissions', permission: 'commissions.own.view', icon: <IconPercent /> },
+                { href: '/pos', label: t('nav.pos'), permission: 'pos.access', needsStore: true, icon: <IconRegister /> },
+                { href: '/sales/orders', label: t('nav.orders'), permission: 'sales_orders.view', needsStore: true, icon: <IconClipboard /> },
+                { href: '/quotations', label: t('nav.quotations'), permission: 'quotations.view', needsStore: true, icon: <IconFileText /> },
+                { href: '/invoices', label: t('nav.invoices'), permission: 'invoices.view', needsStore: true, icon: <IconInvoice /> },
+                { href: '/delivery-notes', label: t('nav.deliveryNotes'), permission: 'delivery_notes.view', needsStore: true, icon: <IconTruck /> },
+                { href: '/sales/returns', label: t('nav.returns'), permission: 'sales_returns.view', needsStore: true, icon: <IconRotateBack /> },
+                { href: '/my-commissions', label: t('nav.myCommissions'), permission: 'commissions.own.view', icon: <IconPercent /> },
             ],
         },
         {
             key: 'catalog-stock',
-            label: 'Catalogue',
+            label: t('nav.catalog'),
             icon: <IconPackage />,
             items: [
-                { href: '/catalog/products', label: 'Produits', permission: 'products.view', icon: <IconPackage /> },
-                { href: '/catalog/categories', label: 'Catégories', permission: 'categories.manage', icon: <IconFolder /> },
-                { href: '/catalog/brands', label: 'Marques', permission: 'brands.manage', icon: <IconTag /> },
-                { href: '/catalog/products/import', label: 'Import produits', permission: 'products.import', icon: <IconImport /> },
-                { href: '/catalog/purchase-prices', label: "Prix d'achat", permission: 'product_cost.view', icon: <IconBanknote /> },
-                { href: '/catalog/non-stock-items', label: 'Articles hors stock', permission: 'quotations.view', icon: <IconAlertBox /> },
+                { href: '/catalog/products', label: t('nav.products'), permission: 'products.view', icon: <IconPackage /> },
+                { href: '/catalog/categories', label: t('nav.categories'), permission: 'categories.manage', icon: <IconFolder /> },
+                { href: '/catalog/brands', label: t('nav.brands'), permission: 'brands.manage', icon: <IconTag /> },
+                { href: '/catalog/products/import', label: t('nav.productImport'), permission: 'products.import', icon: <IconImport /> },
+                { href: '/catalog/purchase-prices', label: t('nav.purchasePrices'), permission: 'product_cost.view', icon: <IconBanknote /> },
+                { href: '/catalog/non-stock-items', label: t('nav.nonStockItems'), permission: 'quotations.view', icon: <IconAlertBox /> },
             ],
         },
         {
             key: 'inventory',
-            label: 'Stock & logistique',
+            label: t('nav.inventory'),
             icon: <IconBoxes />,
             items: [
-                { href: '/inventory/stock', label: 'État du stock', permission: 'inventory.view', icon: <IconWarehouse /> },
-                { href: '/inventory/movements', label: 'Mouvements de stock', permission: 'inventory.view', icon: <IconArrows /> },
-                { href: '/inventory/transfers', label: 'Transferts effectués', permission: 'inventory.view', icon: <IconTransfer /> },
-                { href: '/inventory/transfer-requests', label: 'Demandes internes', permission: 'inventory.transfer_requests.view', icon: <IconRoute /> },
-                { href: '/inventory/warehouses', label: 'Entrepôts', permission: 'warehouses.view', icon: <IconPin /> },
+                { href: '/inventory/stock', label: t('nav.stockState'), permission: 'inventory.view', icon: <IconWarehouse /> },
+                { href: '/inventory/movements', label: t('nav.stockMovements'), permission: 'inventory.view', icon: <IconArrows /> },
+                { href: '/inventory/transfers', label: t('nav.transfers'), permission: 'inventory.view', icon: <IconTransfer /> },
+                { href: '/inventory/transfer-requests', label: t('nav.transferRequests'), permission: 'inventory.transfer_requests.view', icon: <IconRoute /> },
+                { href: '/inventory/warehouses', label: t('nav.warehouses'), permission: 'warehouses.view', icon: <IconPin /> },
             ],
         },
         {
             key: 'purchasing',
-            label: 'Achats',
+            label: t('nav.purchasing'),
             icon: <IconCart />,
             items: [
-                { href: '/procurement', label: 'Approvisionnements', permission: 'procurement.view', icon: <IconCart /> },
-                { href: '/procurement/out-of-stock-articles', label: 'Articles à cataloguer', permission: 'procurement.view', icon: <IconAlertBox /> },
-                { href: '/procurement/suppliers', label: 'Fournisseurs', permission: 'suppliers.view', icon: <IconBuilding /> },
+                { href: '/procurement', label: t('nav.procurement'), permission: 'procurement.view', icon: <IconCart /> },
+                { href: '/procurement/out-of-stock-articles', label: t('nav.catalogTasks'), permission: 'procurement.view', icon: <IconAlertBox /> },
+                { href: '/procurement/suppliers', label: t('nav.suppliers'), permission: 'suppliers.view', icon: <IconBuilding /> },
             ],
         },
         {
             key: 'finance',
-            label: 'Finance',
+            label: t('nav.finance'),
             icon: <IconChart />,
             // Deliberately no `needsStore`: Finance reporting works across the
             // whole organization without the viewer's active store switcher.
             items: [
-                { href: '/finance', label: 'Vue d’ensemble', permission: 'finance.view', icon: <IconChart /> },
+                { href: '/finance', label: t('nav.overview'), permission: 'finance.view', icon: <IconChart /> },
                 {
                     key: 'finance-sales-cash',
-                    label: 'Ventes & Encaissements',
+                    label: t('nav.salesCollections'),
                     icon: <IconTrending />,
                     items: [
-                        { href: '/finance/ventes', label: 'Ventes', permission: 'finance.view', icon: <IconTrending /> },
-                        { href: '/finance/ca-encaisse', label: 'CA encaissé', permission: 'finance.view', icon: <IconBanknote /> },
-                        { href: '/finance/creances', label: 'Créances clients', permission: 'finance.view', icon: <IconClockCoins /> },
+                        { href: '/finance/ventes', label: t('nav.sales'), permission: 'finance.view', icon: <IconShoppingBag /> },
+                        { href: '/finance/ca-encaisse', label: t('nav.cashRevenue'), permission: 'finance.view', icon: <IconBanknote /> },
+                        { href: '/finance/creances', label: t('nav.receivables'), permission: 'finance.view', icon: <IconClockCoins /> },
                     ],
                 },
                 {
                     href: '/finance/situation-fin-de-mois',
-                    label: 'Situation fin de mois',
+                    label: t('nav.monthEnd'),
                     permission: 'finance.monthly_situation.view',
-                    icon: <IconClockCoins />,
+                    icon: <IconCalendarChart />,
                 },
                 {
                     key: 'finance-commissions',
-                    label: 'Commissions',
+                    label: t('nav.commissions'),
                     icon: <IconPercent />,
                     items: [
-                        { href: '/finance/commissions', label: 'Tableau de bord', permission: 'commissions.ledger.view', icon: <IconChart /> },
-                        { href: '/finance/commissions/ledger', label: 'Registre', permission: 'commissions.ledger.view', icon: <IconList /> },
-                        { href: '/finance/commissions/rules', label: 'Règles', permission: 'commissions.rules.view', icon: <IconSettings /> },
+                        { href: '/finance/commissions', label: t('nav.commissionDashboard'), permission: 'commissions.ledger.view', icon: <IconChart /> },
+                        { href: '/finance/commissions/ledger', label: t('nav.ledger'), permission: 'commissions.ledger.view', icon: <IconList /> },
+                        { href: '/finance/commissions/rules', label: t('nav.rules'), permission: 'commissions.rules.view', icon: <IconSettings /> },
                     ],
                 },
-                { href: '/finance/facturation', label: 'Factures', permission: 'finance.view', icon: <IconInvoice /> },
+                { href: '/finance/facturation', label: t('nav.invoices'), permission: 'finance.view', icon: <IconInvoice /> },
                 {
                     key: 'finance-treasury',
-                    label: 'Trésorerie',
+                    label: t('nav.treasury'),
                     icon: <IconWallet />,
                     items: [
-                        { href: '/finance/encaissements', label: 'Encaissements', permission: 'finance.view', icon: <IconBanknote /> },
-                        { href: '/payments', label: 'Paiements', permission: 'payments.view', needsStore: true, icon: <IconWallet /> },
-                        { href: '/financial-accounts', label: 'Comptes financiers', permission: 'financial_accounts.view', icon: <IconBank /> },
-                        { href: '/finance/journal', label: 'Journal', permission: 'finance.view', icon: <IconList /> },
+                        { href: '/finance/encaissements', label: t('nav.collections'), permission: 'finance.view', icon: <IconCoinsIn /> },
+                        { href: '/payments', label: t('nav.payments'), permission: 'payments.view', needsStore: true, icon: <IconWallet /> },
+                        { href: '/financial-accounts', label: t('nav.financialAccounts'), permission: 'financial_accounts.view', icon: <IconBank /> },
+                        { href: '/finance/journal', label: t('nav.journal'), permission: 'finance.view', icon: <IconList /> },
                     ],
                 },
             ],
         },
         {
             key: 'customers',
-            label: 'Clients',
+            label: t('nav.customers'),
             icon: <IconUsers />,
             items: [
-                { href: '/sales/customers', label: 'Clients', permission: 'customers.view', icon: <IconUsers /> },
-                { href: '/contacts', label: 'Contacts', permission: 'contacts.view', icon: <IconUsers /> },
+                { href: '/sales/customers', label: t('nav.customers'), permission: 'customers.view', icon: <IconUsers /> },
+                { href: '/contacts', label: t('nav.contacts'), permission: 'contacts.view', icon: <IconContact /> },
             ],
         },
         {
             key: 'integrations',
-            label: 'Intégrations',
+            label: t('nav.integrations'),
             icon: <IconPlug />,
             items: [
                 { href: '/integrations/woocommerce', label: 'WooCommerce', permission: 'integrations.view', icon: <IconPlug /> },
                 {
                     href: '/integrations/woocommerce/stock-tasks',
-                    label: 'Stock WooCommerce',
+                    label: t('nav.wooStock'),
                     permission: 'integrations.woocommerce.stock_tasks.view',
                     icon: <IconSync />,
                 },
@@ -197,16 +199,16 @@ export default function ApplicationShell({ children, wide = false, flush = false
         },
         {
             key: 'administration',
-            label: 'Administration',
+            label: t('nav.administration'),
             icon: <IconShield />,
             items: [
-                { href: '/activity', label: 'Activité', permission: 'audit.view', icon: <IconList /> },
-                { href: '/system-health', label: 'Opérations système', permission: 'system.health.view', icon: <IconShield /> },
+                { href: '/activity', label: t('nav.activity'), permission: 'audit.view', icon: <IconList /> },
+                { href: '/system-health', label: t('nav.systemOperations'), permission: 'system.health.view', icon: <IconShield /> },
                 ...(tenant.organization
                     ? [
                           {
                               href: `/organizations/${tenant.organization.id}/users-access`,
-                              label: 'Utilisateurs & accès',
+                              label: t('common.usersAccess'),
                               permission: 'members.view',
                               icon: <IconUsers />,
                           },
@@ -216,32 +218,32 @@ export default function ApplicationShell({ children, wide = false, flush = false
         },
         {
             key: 'settings',
-            label: 'Paramètres',
+            label: t('nav.settings'),
             icon: <IconSettings />,
             items: [
                 ...(tenant.organization
                     ? [
                           {
                               href: '/document-profile',
-                              label: 'Organisation / société',
+                              label: t('nav.company'),
                               permission: ['settings.view', 'settings.update'],
                               icon: <IconBuilding />,
                           },
                           {
                               href: '/document-profile/studio',
-                              label: 'Studio PDF',
+                              label: t('nav.pdfStudio'),
                               permission: ['settings.view', 'settings.update'],
                               icon: <IconFileText />,
                           },
                       ]
                     : []),
-                { href: '/quotation-settings', label: 'Documents · Devis', permission: ['settings.view', 'settings.update'], icon: <IconFileText /> },
-                { href: '/document-stamp', label: 'Cachet de l’entreprise', permission: ['settings.view', 'settings.update'], icon: <IconStamp /> },
-                { href: '/return-policy', label: 'Politique de retour', permission: ['settings.view', 'settings.update'], icon: <IconRotateBack /> },
-                { href: '/email-settings', label: 'Email / SMTP', permission: ['settings.view', 'settings.update'], icon: <IconMail /> },
-                { href: '/organization-backups', label: 'Sauvegardes & restauration', permission: 'organization_backups.view', icon: <IconShield /> },
-                { href: '/account/notifications', label: 'Notifications', icon: <IconBell /> },
-                { href: '/catalog/tax-rates', label: 'Taxes (TVA)', permission: 'tax_rates.view', icon: <IconPercent /> },
+                { href: '/quotation-settings', label: t('nav.quotationSettings'), permission: ['settings.view', 'settings.update'], icon: <IconFileText /> },
+                { href: '/document-stamp', label: t('nav.companyStamp'), permission: ['settings.view', 'settings.update'], icon: <IconStamp /> },
+                { href: '/return-policy', label: t('nav.returnPolicy'), permission: ['settings.view', 'settings.update'], icon: <IconRotateBack /> },
+                { href: '/email-settings', label: t('nav.email'), permission: ['settings.view', 'settings.update'], icon: <IconMail /> },
+                { href: '/organization-backups', label: t('nav.backups'), permission: 'organization_backups.view', icon: <IconShield /> },
+                { href: '/account/notifications', label: t('common.notifications'), icon: <IconBell /> },
+                { href: '/catalog/tax-rates', label: t('nav.taxes'), permission: 'tax_rates.view', icon: <IconPercent /> },
             ],
         },
     ];
@@ -303,12 +305,12 @@ export default function ApplicationShell({ children, wide = false, flush = false
     const orgStoreSwitcher = (
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
             <select
-                aria-label="Organisation"
+                aria-label={t('common.organization')}
                 value={tenant.organization?.id ?? ''}
                 onChange={(event) => event.target.value && router.post(`/context/organizations/${event.target.value}`)}
                 className="h-11 max-w-full flex-1 rounded-field border border-line-strong bg-surface px-3 text-sm font-medium text-ink transition-soft focus:border-primary focus:outline-none sm:h-auto sm:max-w-56 sm:flex-none sm:py-2"
             >
-                <option value="">Organisation</option>
+                <option value="">{t('common.organization')}</option>
                 {tenant.organizations.map((item) => (
                     <option key={item.id} value={item.id}>
                         {item.name}
@@ -316,13 +318,13 @@ export default function ApplicationShell({ children, wide = false, flush = false
                 ))}
             </select>
             <select
-                aria-label="Magasin"
+                aria-label={t('common.store')}
                 value={tenant.store?.id ?? ''}
                 onChange={(event) => event.target.value && router.post(`/context/stores/${event.target.value}`)}
                 disabled={!tenant.organization}
                 className="h-11 max-w-full flex-1 rounded-field border border-line-strong bg-surface px-3 text-sm text-ink transition-soft focus:border-primary focus:outline-none disabled:opacity-50 sm:h-auto sm:max-w-56 sm:flex-none sm:py-2"
             >
-                <option value="">Magasin</option>
+                <option value="">{t('common.store')}</option>
                 {tenant.stores.map((item) => (
                     <option key={item.id} value={item.id}>
                         {item.name} · {item.code}
@@ -351,7 +353,7 @@ export default function ApplicationShell({ children, wide = false, flush = false
                                 groupActive ? 'bg-sage text-primary' : 'text-ink-faint hover:bg-sage/70 hover:text-ink'
                             }`}
                         >
-                            {groupActive && <span className="absolute left-0 top-2 bottom-2 w-0.5 rounded-full bg-primary" />}
+                            {groupActive && <span className="absolute start-0 top-2 bottom-2 w-0.5 rounded-full bg-primary" />}
                             {group.icon}
                         </Link>
                     );
@@ -364,18 +366,16 @@ export default function ApplicationShell({ children, wide = false, flush = false
                             onClick={() => setOpenGroup(open ? '' : group.key)}
                             aria-expanded={open}
                             aria-controls={`${scope}-sidebar-group-${group.key}`}
-                            className={`group flex w-full items-center gap-2.5 rounded-field px-3 py-2.5 text-left text-sm transition-soft ${
+                            className={`group flex w-full items-center gap-2.5 rounded-field px-3 py-2.5 text-start text-sm transition-soft ${
                                 groupActive || open ? 'bg-sage/80 font-medium text-ink' : 'text-ink-muted hover:bg-sage/60 hover:text-ink'
                             }`}
                         >
                             <span className={groupActive || open ? 'text-primary' : 'text-ink-faint group-hover:text-ink-muted'}>{group.icon}</span>
                             <span className="min-w-0 flex-1 truncate">{group.label}</span>
-                            <span className={`text-ink-faint transition-transform ${open ? 'rotate-90' : ''}`}>
-                                <IconChevron />
-                            </span>
+                            <DisclosureChevron open={open} direction={direction} />
                         </button>
                         {open && (
-                            <div id={`${scope}-sidebar-group-${group.key}`} className="mt-1 ml-5 space-y-0.5 border-l border-line/80 pl-3">
+                            <div id={`${scope}-sidebar-group-${group.key}`} className="mt-1 ms-5 space-y-0.5 border-s border-line/80 ps-3">
                                 {group.items.map((entry) => {
                                     if (isNavSection(entry)) {
                                         const sectionOpen = openSections[entry.key] ?? false;
@@ -388,7 +388,7 @@ export default function ApplicationShell({ children, wide = false, flush = false
                                                     onClick={() => setOpenSections((current) => ({ ...current, [entry.key]: !sectionOpen }))}
                                                     aria-expanded={sectionOpen}
                                                     aria-controls={`${scope}-sidebar-section-${entry.key}`}
-                                                    className={`group flex min-h-10 w-full items-center gap-2 rounded-field px-3 py-2 text-left text-[13px] transition-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${
+                                                    className={`group flex min-h-10 w-full items-center gap-2 rounded-field px-3 py-2 text-start text-[13px] transition-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${
                                                         sectionActive || sectionOpen
                                                             ? 'bg-sage/60 font-medium text-ink'
                                                             : 'text-ink-muted hover:bg-sage/60 hover:text-ink'
@@ -396,12 +396,10 @@ export default function ApplicationShell({ children, wide = false, flush = false
                                                 >
                                                     <span className={sectionActive || sectionOpen ? 'text-primary' : 'text-ink-faint group-hover:text-ink-muted'}>{entry.icon}</span>
                                                     <span className="min-w-0 flex-1 truncate">{entry.label}</span>
-                                                    <span className={`shrink-0 text-ink-faint transition-transform ${sectionOpen ? 'rotate-90' : ''}`}>
-                                                        <IconChevron />
-                                                    </span>
+                                                    <DisclosureChevron open={sectionOpen} direction={direction} />
                                                 </button>
                                                 {sectionOpen && (
-                                                    <div id={`${scope}-sidebar-section-${entry.key}`} className="mt-0.5 ml-4 space-y-0.5 border-l border-line/70 pl-2">
+                                                    <div id={`${scope}-sidebar-section-${entry.key}`} className="mt-0.5 ms-4 space-y-0.5 border-s border-line/70 ps-2">
                                                         {entry.items.map((item) => {
                                                             const active = activeHref === item.href;
                                                             return (
@@ -415,7 +413,7 @@ export default function ApplicationShell({ children, wide = false, flush = false
                                                                             : 'text-ink-muted hover:bg-sage/60 hover:text-ink'
                                                                     }`}
                                                                 >
-                                                                    {active && <span className="absolute left-0 top-2 bottom-2 w-0.5 rounded-full bg-primary" />}
+                                                                    {active && <span className="absolute start-0 top-2 bottom-2 w-0.5 rounded-full bg-primary" />}
                                                                     <span className={active ? 'text-primary' : 'text-ink-faint group-hover:text-ink-muted'}>{item.icon}</span>
                                                                     <span className="min-w-0 truncate">{item.label}</span>
                                                                 </Link>
@@ -440,7 +438,7 @@ export default function ApplicationShell({ children, wide = false, flush = false
                                                     : 'text-ink-muted hover:bg-sage/60 hover:text-ink'
                                             }`}
                                         >
-                                            {active && <span className="absolute left-0 top-2 bottom-2 w-0.5 rounded-full bg-primary" />}
+                                            {active && <span className="absolute start-0 top-2 bottom-2 w-0.5 rounded-full bg-primary" />}
                                             <span className={active ? 'text-primary' : 'text-ink-faint group-hover:text-ink-muted'}>{item.icon}</span>
                                             <span className="min-w-0 truncate">{item.label}</span>
                                         </Link>
@@ -458,7 +456,7 @@ export default function ApplicationShell({ children, wide = false, flush = false
         <div className={`bg-canvas text-ink ${flush ? 'h-dvh overflow-hidden' : 'min-h-dvh'}`}>
             {/* Desktop sidebar */}
             <aside
-                className={`fixed inset-y-0 left-0 z-20 hidden flex-col border-r border-line bg-surface lg:flex ${
+                className={`fixed inset-y-0 start-0 z-20 hidden flex-col border-e border-line bg-surface lg:flex ${
                     collapsed ? 'w-16' : 'w-72'
                 } transition-[width] duration-200`}
             >
@@ -473,24 +471,24 @@ export default function ApplicationShell({ children, wide = false, flush = false
                         type="button"
                         onClick={toggleCollapsed}
                         className="flex w-full items-center justify-center gap-2 rounded-field px-3 py-2 text-[13px] text-ink-muted transition-soft hover:bg-sage hover:text-ink"
-                        aria-label={collapsed ? 'Déplier le menu' : 'Replier le menu'}
+                        aria-label={collapsed ? t('common.expandMenu') : t('common.collapseMenu')}
                     >
                         <span className={`transition-transform ${collapsed ? 'rotate-180' : ''}`}>
-                            <IconCollapse />
+                            <span className="directional-icon"><IconCollapse direction={direction} /></span>
                         </span>
-                        {!collapsed && <span>Replier</span>}
+                        {!collapsed && <span>{t('common.collapse')}</span>}
                     </button>
                 </div>
             </aside>
 
-            <div className={`${collapsed ? 'lg:pl-16' : 'lg:pl-72'} ${flush ? 'flex h-dvh flex-col' : ''}`}>
+            <div className={`${collapsed ? 'lg:ps-16' : 'lg:ps-72'} ${flush ? 'flex h-dvh flex-col' : ''}`}>
                 <header className={`z-10 border-b border-line bg-canvas/85 px-3 py-2.5 backdrop-blur sm:px-6 ${flush ? 'shrink-0' : 'sticky top-0'}`}>
                     <div className={`mx-auto flex items-center justify-between gap-2 sm:gap-4 ${wide ? 'max-w-[1700px]' : 'max-w-7xl'}`}>
                         {/* Mobile menu trigger */}
                         <button
                             type="button"
                             onClick={() => setNavOpen(true)}
-                            aria-label="Ouvrir le menu"
+                            aria-label={t('common.openMenu')}
                             aria-expanded={navOpen}
                             className="flex size-11 shrink-0 items-center justify-center rounded-field border border-line-strong bg-surface text-ink transition-soft hover:bg-sage lg:hidden"
                         >
@@ -509,12 +507,12 @@ export default function ApplicationShell({ children, wide = false, flush = false
                                 <span className="grid size-9 shrink-0 place-items-center rounded-full bg-primary text-[13px] font-semibold text-primary-fg sm:size-8">
                                     {(auth.user?.name ?? '?').trim().charAt(0).toUpperCase()}
                                 </span>
-                                <span className="hidden text-left sm:block">
+                                <span className="hidden text-start sm:block">
                                     <span className="block text-[13px] font-medium leading-tight text-ink">{auth.user?.name}</span>
                                     <span className="block text-[11px] leading-tight text-ink-muted">{auth.user?.email}</span>
                                 </span>
                             </summary>
-                            <div className="absolute right-0 top-12 z-30 w-60 max-w-[calc(100vw-1.5rem)] rounded-card border border-line bg-surface p-1.5 shadow-pop">
+                            <div className="absolute end-0 top-12 z-30 w-60 max-w-[calc(100vw-1.5rem)] rounded-card border border-line bg-surface p-1.5 shadow-pop">
                                 <div className="px-3 py-2">
                                     <p className="text-[13px] font-medium text-ink">{auth.user?.name}</p>
                                     <p className="truncate text-[12px] text-ink-muted">{auth.user?.email}</p>
@@ -526,19 +524,19 @@ export default function ApplicationShell({ children, wide = false, flush = false
                                     href="/account/profile"
                                     className="block rounded-field px-3 py-2.5 text-[13px] text-ink-muted transition-soft hover:bg-sage hover:text-ink"
                                 >
-                                    Mon profil
+                                    {t('common.profile')}
                                 </Link>
                                 <Link
                                     href="/security"
                                     className="block rounded-field px-3 py-2.5 text-[13px] text-ink-muted transition-soft hover:bg-sage hover:text-ink"
                                 >
-                                    Sécurité
+                                    {t('common.security')}
                                 </Link>
                                 <Link
                                     href="/account/notifications"
                                     className="block rounded-field px-3 py-2.5 text-[13px] text-ink-muted transition-soft hover:bg-sage hover:text-ink"
                                 >
-                                    Notifications
+                                    {t('common.notifications')}
                                 </Link>
 
                                 {(tenant.organization && tenant.permissions.includes('members.view')) ||
@@ -551,7 +549,7 @@ export default function ApplicationShell({ children, wide = false, flush = false
                                         href={`/organizations/${tenant.organization.id}/users-access`}
                                         className="block rounded-field px-3 py-2.5 text-[13px] text-ink-muted transition-soft hover:bg-sage hover:text-ink"
                                     >
-                                        Utilisateurs & accès
+                                        {t('common.usersAccess')}
                                     </Link>
                                 )}
                                 {hasPermission(['settings.view', 'settings.update']) && (
@@ -559,16 +557,18 @@ export default function ApplicationShell({ children, wide = false, flush = false
                                         href="/document-profile"
                                         className="block rounded-field px-3 py-2.5 text-[13px] text-ink-muted transition-soft hover:bg-sage hover:text-ink"
                                     >
-                                        Paramètres de l’organisation
+                                        {t('common.organizationSettings')}
                                     </Link>
                                 )}
+                                <div className="my-1 border-t border-line" />
+                                <LocaleSwitcher />
                                 <div className="my-1 border-t border-line" />
                                 <button
                                     type="button"
                                     onClick={() => router.post('/logout')}
-                                    className="block w-full rounded-field px-3 py-2.5 text-left text-[13px] text-danger transition-soft hover:bg-danger-soft"
+                                    className="block w-full rounded-field px-3 py-2.5 text-start text-[13px] text-danger transition-soft hover:bg-danger-soft"
                                 >
-                                    Déconnexion
+                                    {t('common.logout')}
                                 </button>
                             </div>
                         </details>
@@ -577,15 +577,15 @@ export default function ApplicationShell({ children, wide = false, flush = false
 
                 {/* Mobile navigation drawer */}
                 {navOpen && (
-                    <div className="fixed inset-0 z-40 flex lg:hidden">
-                        <button type="button" className="flex-1 bg-ink/40" onClick={() => setNavOpen(false)} aria-label="Fermer le menu" />
+                    <div className="fixed inset-0 z-40 flex rtl:flex-row-reverse lg:hidden" dir={direction}>
+                        <button type="button" className="flex-1 bg-ink/40" onClick={() => setNavOpen(false)} aria-label={t('common.closeMenu')} />
                         <aside className="flex h-full w-[88vw] max-w-96 flex-col bg-surface shadow-pop">
                             <div className="flex h-14 shrink-0 items-center justify-between border-b border-line px-4">
                                 <BrandLockup />
                                 <button
                                     type="button"
                                     onClick={() => setNavOpen(false)}
-                                    aria-label="Fermer le menu"
+                                    aria-label={t('common.closeMenu')}
                                     className="flex size-10 items-center justify-center rounded-field text-ink-muted transition-soft hover:bg-sage hover:text-ink"
                                 >
                                     <IconClose />
@@ -632,10 +632,13 @@ function IconRoute() { return <svg {...s}><circle cx="6" cy="6" r="2" /><circle 
 function IconList() { return <svg {...s}><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01" /></svg>; }
 function IconCart() { return <svg {...s}><path d="M4 4h2l2 11h10l2-8H7" /><circle cx="10" cy="20" r="1.5" /><circle cx="17" cy="20" r="1.5" /></svg>; }
 function IconUsers() { return <svg {...s}><circle cx="9" cy="8" r="3" /><path d="M3 20c0-3.3 2.7-5 6-5s6 1.7 6 5M16 6.5a3 3 0 0 1 0 5.5M21 20c0-2.6-1.5-4.2-3.5-4.7" /></svg>; }
+function IconContact() { return <svg {...s}><rect x="4" y="3" width="16" height="18" rx="2" /><circle cx="12" cy="9" r="2.5" /><path d="M8 17c.5-2.2 2-3.5 4-3.5s3.5 1.3 4 3.5M2 7h4M2 12h4M2 17h4" /></svg>; }
 function IconChart() { return <svg {...s}><path d="M4 19V5M4 19h16" /><path d="M8 15v-4M12 15V8M16 15v-7" /></svg>; }
 function IconTrending() { return <svg {...s}><path d="M4 17 9 12l4 4 7-8" /><path d="M15 8h5v5" /></svg>; }
 function IconBanknote() { return <svg {...s}><rect x="3" y="6" width="18" height="12" rx="2" /><circle cx="12" cy="12" r="3" /><path d="M6 9h.01M18 15h.01" /></svg>; }
 function IconClockCoins() { return <svg {...s}><circle cx="9" cy="10" r="5" /><path d="M9 7v3l2 2M15 14c3 0 5 1.2 5 2.7s-2 2.7-5 2.7-5-1.2-5-2.7" /></svg>; }
+function IconCalendarChart() { return <svg {...s}><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M7 3v4M17 3v4M3 10h18M7 17l3-3 3 2 4-4" /></svg>; }
+function IconCoinsIn() { return <svg {...s}><ellipse cx="12" cy="17" rx="7" ry="3" /><path d="M5 17v3c0 1.7 3.1 3 7 3s7-1.3 7-3v-3M12 3v9M8 8l4 4 4-4" /></svg>; }
 function IconInvoice() { return <svg {...s}><path d="M6 3h12v18l-3-2-3 2-3-2-3 2V3Z" /><path d="M9 8h6M9 12h6" /></svg>; }
 function IconWallet() { return <svg {...s}><path d="M4 7a2 2 0 0 1 2-2h11v4M4 7v10a2 2 0 0 0 2 2h13V9H6a2 2 0 0 1-2-2Z" /><circle cx="16" cy="14" r="1.3" /></svg>; }
 function IconBank() { return <svg {...s}><path d="M4 10h16L12 4 4 10ZM6 10v8M10 10v8M14 10v8M18 10v8M4 20h16" /></svg>; }
@@ -649,7 +652,10 @@ function IconPercent() { return <svg {...s}><path d="M19 5 5 19" /><circle cx="7
 function IconMail() { return <svg {...s}><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m4 7 8 6 8-6" /></svg>; }
 function IconBell() { return <svg {...s}><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" /></svg>; }
 function IconStamp() { return <svg {...s}><circle cx="12" cy="8" r="5" /><path d="M9 8h6M9 6.5h6M9 9.5h4M6 21h12l-1.5-5h-9L6 21Z" /></svg>; }
-function IconChevron() { return <svg {...s} width={14} height={14}><path d="m9 5 5 7-5 7" /></svg>; }
-function IconCollapse() { return <svg {...s}><path d="M14 6 8 12l6 6" /></svg>; }
+function DisclosureChevron({ open, direction }: { open: boolean; direction: 'ltr' | 'rtl' }) {
+    const path = open ? 'm5 9 7 7 7-7' : direction === 'rtl' ? 'm15 5-7 7 7 7' : 'm9 5 7 7-7 7';
+    return <span className="directional-icon shrink-0 text-ink-faint"><svg {...s} width={14} height={14}><path d={path} /></svg></span>;
+}
+function IconCollapse({ direction }: { direction: 'ltr' | 'rtl' }) { return <svg {...s}><path d={direction === 'rtl' ? 'M10 6l6 6-6 6' : 'M14 6 8 12l6 6'} /></svg>; }
 function IconMenu() { return <svg {...s}><path d="M4 6h16M4 12h16M4 18h16" /></svg>; }
 function IconClose() { return <svg {...s}><path d="M6 6l12 12M18 6 6 18" /></svg>; }

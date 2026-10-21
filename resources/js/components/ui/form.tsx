@@ -1,3 +1,4 @@
+import { useI18n } from '@/i18n';
 import { useId, useState } from 'react';
 import type { InputHTMLAttributes, ReactNode } from 'react';
 
@@ -7,12 +8,12 @@ import type { InputHTMLAttributes, ReactNode } from 'react';
  */
 
 const fieldBase =
-    'h-11 w-full rounded-field border bg-surface px-3.5 text-sm text-ink placeholder:text-ink-faint outline-none transition-soft';
+    'control-input h-11 px-3.5 text-sm placeholder:text-ink-faint';
 
 function fieldTone(hasError: boolean) {
     return hasError
-        ? 'border-danger/60 focus:border-danger focus:ring-4 focus:ring-danger/10'
-        : 'border-line-strong focus:border-primary focus:ring-4 focus:ring-primary/10';
+        ? 'control-error'
+        : '';
 }
 
 export function FieldError({ id, children }: { id?: string; children?: ReactNode }) {
@@ -59,6 +60,7 @@ export function TextField({ label, error, hint, id, className = '', ...props }: 
 }
 
 export function PasswordField({ label, error, hint, id, className = '', ...props }: TextFieldProps) {
+    const { t } = useI18n();
     const autoId = useId();
     const fieldId = id ?? autoId;
     const errorId = `${fieldId}-error`;
@@ -76,16 +78,16 @@ export function PasswordField({ label, error, hint, id, className = '', ...props
                     type={visible ? 'text' : 'password'}
                     aria-invalid={error ? true : undefined}
                     aria-describedby={error ? errorId : hint ? hintId : undefined}
-                    className={`${fieldBase} pr-16 ${fieldTone(!!error)}`}
+                    className={`${fieldBase} pe-16 ${fieldTone(!!error)}`}
                     {...props}
                 />
                 <button
                     type="button"
                     onClick={() => setVisible((value) => !value)}
-                    className="absolute inset-y-0 right-0 flex items-center rounded-r-field px-3 text-[13px] font-medium text-ink-muted transition-soft hover:text-ink"
+                    className="absolute inset-y-0 end-0 flex items-center rounded-e-field px-3 text-[13px] font-medium text-ink-muted transition-soft hover:text-ink"
                     aria-pressed={visible}
                 >
-                    {visible ? 'Masquer' : 'Afficher'}
+                    {visible ? t('common.hide') : t('common.show')}
                 </button>
             </div>
             {hint && !error && (
@@ -112,6 +114,45 @@ export function Checkbox({ label, id, className = '', ...props }: InputHTMLAttri
             />
             {label}
         </label>
+    );
+}
+
+export function SelectField({ label, error, hint, id, className = '', children, ...props }: import('react').SelectHTMLAttributes<HTMLSelectElement> & {
+    label: string;
+    error?: string;
+    hint?: string;
+    children: ReactNode;
+}) {
+    const autoId = useId();
+    const fieldId = id ?? autoId;
+    const errorId = `${fieldId}-error`;
+    const hintId = `${fieldId}-hint`;
+    return (
+        <div className={className}>
+            <label htmlFor={fieldId} className="mb-1.5 block text-[13px] font-medium text-ink">{label}</label>
+            <select id={fieldId} aria-invalid={error ? true : undefined} aria-describedby={error ? errorId : hint ? hintId : undefined} className={`control-select h-11 ${error ? 'control-error' : ''}`} {...props}>{children}</select>
+            {hint && !error && <p id={hintId} className="mt-1.5 text-[13px] text-ink-muted">{hint}</p>}
+            <FieldError id={errorId}>{error}</FieldError>
+        </div>
+    );
+}
+
+export function TextAreaField({ label, error, hint, id, className = '', ...props }: import('react').TextareaHTMLAttributes<HTMLTextAreaElement> & {
+    label: string;
+    error?: string;
+    hint?: string;
+}) {
+    const autoId = useId();
+    const fieldId = id ?? autoId;
+    const errorId = `${fieldId}-error`;
+    const hintId = `${fieldId}-hint`;
+    return (
+        <div className={className}>
+            <label htmlFor={fieldId} className="mb-1.5 block text-[13px] font-medium text-ink">{label}</label>
+            <textarea id={fieldId} aria-invalid={error ? true : undefined} aria-describedby={error ? errorId : hint ? hintId : undefined} className={`control-base min-h-28 px-3.5 py-3 text-sm ${error ? 'control-error' : ''}`} {...props} />
+            {hint && !error && <p id={hintId} className="mt-1.5 text-[13px] text-ink-muted">{hint}</p>}
+            <FieldError id={errorId}>{error}</FieldError>
+        </div>
     );
 }
 

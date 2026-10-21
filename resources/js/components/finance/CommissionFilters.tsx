@@ -1,4 +1,5 @@
 import { Button } from '@/components/ui/Button';
+import { useI18n } from '@/i18n';
 import { router } from '@inertiajs/react';
 import { useState } from 'react';
 import type { ReactNode } from 'react';
@@ -13,23 +14,13 @@ export type CommissionFilterState = {
     entry_type: string | null;
 };
 
-export const PERIODS: { value: string; label: string }[] = [
-    { value: 'today', label: "Aujourd'hui" },
-    { value: 'this_week', label: 'Cette semaine' },
-    { value: 'this_month', label: 'Ce mois' },
-    { value: 'last_month', label: 'Mois précédent' },
-    { value: 'this_year', label: 'Cette année' },
-    { value: 'custom', label: 'Personnalisé' },
-];
-
-export const STATUS_LABELS: Record<string, string> = { pending: 'En attente', approved: 'Approuvée', paid: 'Payée' };
-export const TYPE_LABELS: Record<string, string> = {
-    sale: 'Vente',
-    return_reversal: 'Retour',
-    correction: 'Correction',
-    cancellation: 'Annulation',
-    manual_adjustment: 'Ajustement',
-};
+export function useCommissionLabels() {
+    const { t } = useI18n();
+    return {
+        statuses: { pending: t('commissions.pending'), approved: t('commissions.approved'), paid: t('commissions.paid') } as Record<string, string>,
+        types: { sale: t('commissions.sale'), return_reversal: t('commissions.return'), correction: t('commissions.correction'), cancellation: t('commissions.cancellation'), manual_adjustment: t('commissions.adjustment') } as Record<string, string>,
+    };
+}
 
 type Props = {
     path: string;
@@ -46,6 +37,13 @@ type Props = {
  * entry's occurrence date (payout-period basis).
  */
 export default function CommissionFilters({ path, filters, stores, salespeople, extra }: Props) {
+    const { t } = useI18n();
+    const { statuses: statusLabels, types: typeLabels } = useCommissionLabels();
+    const periods = [
+        { value: 'today', label: t('commissions.today') }, { value: 'this_week', label: t('commissions.thisWeek') },
+        { value: 'this_month', label: t('commissions.thisMonth') }, { value: 'last_month', label: t('commissions.lastMonth') },
+        { value: 'this_year', label: t('commissions.thisYear') }, { value: 'custom', label: t('commissions.custom') },
+    ];
     const [local, setLocal] = useState({
         period: filters.period,
         from: filters.from,
@@ -70,8 +68,8 @@ export default function CommissionFilters({ path, filters, stores, salespeople, 
 
     return (
         <section className="mb-5 rounded-card border border-line bg-surface p-4">
-            <div className="flex flex-wrap gap-1.5" role="group" aria-label="Période">
-                {PERIODS.map((period) => (
+            <div className="flex flex-wrap gap-1.5" role="group" aria-label={t('commissions.period')}>
+                {periods.map((period) => (
                     <button
                         key={period.value}
                         type="button"
@@ -88,45 +86,42 @@ export default function CommissionFilters({ path, filters, stores, salespeople, 
                 ))}
             </div>
             <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
-                <Field label="Du">
+                <Field label={t('activity.from')}>
                     <input type="date" className={input} value={local.from} disabled={local.period !== 'custom'} onChange={(e) => setLocal({ ...local, from: e.target.value })} />
                 </Field>
-                <Field label="Au">
+                <Field label={t('activity.to')}>
                     <input type="date" className={input} value={local.to} disabled={local.period !== 'custom'} onChange={(e) => setLocal({ ...local, to: e.target.value })} />
                 </Field>
                 {stores && (
-                    <Field label="Magasin">
+                    <Field label={t('activity.store')}>
                         <select className={input} value={local.store_id} onChange={(e) => setLocal({ ...local, store_id: e.target.value })}>
-                            <option value="">Tous</option>
+                            <option value="">{t('activity.all')}</option>
                             {stores.map((store) => <option key={store.id} value={store.id}>{store.name}</option>)}
                         </select>
                     </Field>
                 )}
                 {salespeople && (
-                    <Field label="Commercial">
+                    <Field label={t('commissions.salesperson')}>
                         <select className={input} value={local.salesperson} onChange={(e) => setLocal({ ...local, salesperson: e.target.value })}>
-                            <option value="">Tous</option>
-                            <option value="unattributed">Non attribuée</option>
+                            <option value="">{t('activity.all')}</option><option value="unattributed">{t('commissions.unattributed')}</option>
                             {salespeople.map((person) => <option key={person.id} value={person.id}>{person.name ?? `#${person.id}`}</option>)}
                         </select>
                     </Field>
                 )}
-                <Field label="Statut">
+                <Field label={t('common.status')}>
                     <select className={input} value={local.status} onChange={(e) => setLocal({ ...local, status: e.target.value })}>
-                        <option value="">Tous</option>
-                        {Object.entries(STATUS_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                        <option value="">{t('activity.all')}</option>{Object.entries(statusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                     </select>
                 </Field>
-                <Field label="Type">
+                <Field label={t('commissions.type')}>
                     <select className={input} value={local.entry_type} onChange={(e) => setLocal({ ...local, entry_type: e.target.value })}>
-                        <option value="">Tous</option>
-                        {Object.entries(TYPE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                        <option value="">{t('activity.all')}</option>{Object.entries(typeLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                     </select>
                 </Field>
             </div>
             <div className="mt-3 flex items-center justify-between gap-3">
-                <p className="text-xs text-ink-faint">Période appliquée : du {filters.from} au {filters.to} · date de l’écriture (les retours comptent à leur date de réception).</p>
-                <Button size="sm" variant="secondary" onClick={() => submit()}>Appliquer</Button>
+                <p className="text-xs text-ink-faint">{t('commissions.appliedPeriod')} : {t('activity.from').toLocaleLowerCase()} <bdi>{filters.from}</bdi> {t('activity.to').toLocaleLowerCase()} <bdi>{filters.to}</bdi> · {t('commissions.entryDateHelp')}</p>
+                <Button size="sm" variant="secondary" onClick={() => submit()}>{t('commissions.apply')}</Button>
             </div>
         </section>
     );

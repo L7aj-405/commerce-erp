@@ -5,6 +5,7 @@ import Pagination from '@/components/ui/Pagination';
 import { Spinner } from '@/components/ui/Spinner';
 import { useToast } from '@/components/ui/toast';
 import ApplicationShell from '@/layouts/ApplicationShell';
+import { useI18n } from '@/i18n';
 import { formatDate, formatMoney } from '@/utils/format';
 import { Head, Link } from '@inertiajs/react';
 import { useEffect, useRef, useState } from 'react';
@@ -118,15 +119,23 @@ function groupRows(rows: CaEncaisseRow[]): CaEncaisseGroup[] {
 }
 
 export default function FinanceCaEncaisse({ organization, period, periodLabel, storeId, stores, total, rows, can }: Props) {
+    const { t } = useI18n();
     const q = new URLSearchParams({ month: period, store_id: storeId ? String(storeId) : '' }).toString();
     const groups = groupRows(rows.data);
+    const statusLabels: Record<string, string> = {
+        'Paiement comptant': t('finance.cash.cashPayment'),
+        'Paiement complété': t('finance.cash.completedPayment'),
+        'Paiement partiel': t('finance.cash.partialPayment'),
+        'Solde / Reliquat': t('finance.cash.balance'),
+    };
+    const natureLabels: Record<string, string> = { Avance: t('finance.cash.advance'), 'Règlement facture': t('finance.cash.invoiceSettlement') };
 
     return (
         <ApplicationShell wide>
-            <Head title="CA encaissé — Finance" />
+            <Head title={`${t('finance.cash.title')} — Finance`} />
             <PageHeader
-                title="CA encaissé"
-                description={`${organization.name} · ${periodLabel} · Encaissements réellement reçus pendant la période`}
+                title={t('finance.cash.title')}
+                description={`${organization.name} · ${periodLabel} · ${t('finance.cash.description')}`}
                 actions={
                     can.export ? (
                         <ExportMenu
@@ -143,31 +152,31 @@ export default function FinanceCaEncaisse({ organization, period, periodLabel, s
             <FinanceFilters path="/finance/ca-encaisse" period={period} storeId={storeId} stores={stores} />
 
             <div className="mb-4 rounded-card border border-line bg-surface p-5">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-faint">CA encaissé du mois</p>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-faint">{t('finance.cash.monthTotal')}</p>
                 <p className="mt-2 text-2xl font-semibold text-ink">{formatMoney(total)}</p>
             </div>
 
             {rows.data.length === 0 ? (
                 <div className="rounded-card border border-dashed border-line-strong bg-raised px-4 py-8 text-center text-sm text-ink-faint">
-                    Aucun encaissement sur cette période.
+                    {t('finance.cash.empty')}
                 </div>
             ) : (
                 <>
                     {/* Desktop/tablet: table */}
                     <div className="hidden overflow-x-auto rounded-card border border-line bg-surface md:block">
-                        <table className="w-full text-left text-sm">
+                        <table className="w-full text-start text-sm">
                             <thead className="bg-raised text-[11px] uppercase tracking-wide text-ink-faint">
                                 <tr>
-                                    <th className="px-4 py-2.5">N° paiement</th>
-                                    <th className="px-4 py-2.5">Date de vente</th>
-                                    <th className="px-4 py-2.5">Date de paiement</th>
-                                    <th className="px-4 py-2.5">N° facture / commande</th>
-                                    <th className="px-4 py-2.5">Nature</th>
-                                    <th className="px-4 py-2.5">Désignation</th>
-                                    <th className="px-4 py-2.5">Client</th>
-                                    <th className="px-4 py-2.5">Mode d’encaissement</th>
-                                    <th className="px-4 py-2.5 text-right">Montant encaissé</th>
-                                    <th className="px-4 py-2.5">Statut paiement</th>
+                                    <th className="px-4 py-2.5">{t('finance.cash.paymentNumber')}</th>
+                                    <th className="px-4 py-2.5">{t('finance.cash.saleDate')}</th>
+                                    <th className="px-4 py-2.5">{t('finance.cash.paymentDate')}</th>
+                                    <th className="px-4 py-2.5">{t('finance.cash.invoiceOrder')}</th>
+                                    <th className="px-4 py-2.5">{t('finance.cash.nature')}</th>
+                                    <th className="px-4 py-2.5">{t('finance.cash.designation')}</th>
+                                    <th className="px-4 py-2.5">{t('common.customer')}</th>
+                                    <th className="px-4 py-2.5">{t('finance.cash.collectionMethod')}</th>
+                                    <th className="px-4 py-2.5 text-end">{t('finance.cash.collectedAmount')}</th>
+                                    <th className="px-4 py-2.5">{t('finance.cash.paymentStatus')}</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -177,8 +186,8 @@ export default function FinanceCaEncaisse({ organization, period, periodLabel, s
                                             <div className="divide-y divide-line">
                                                 {group.payments.map((payment) => (
                                                     <div key={payment.id} className="py-1 first:pt-0 last:pb-0">
-                                                        <p className="font-medium text-ink">{payment.payment_number}</p>
-                                                        <p className="text-[11px] text-ink-faint">Montant partiel {formatMoney(payment.amount)}</p>
+                                                        <bdi className="font-medium text-ink">{payment.payment_number}</bdi>
+                                                        <p className="text-[11px] text-ink-faint">{t('finance.cash.partialAmount')} {formatMoney(payment.amount)}</p>
                                                     </div>
                                                 ))}
                                             </div>
@@ -193,14 +202,14 @@ export default function FinanceCaEncaisse({ organization, period, periodLabel, s
                                         </td>
                                         <td className="px-4 py-2.5">
                                             {group.reference_type === 'invoice' && group.invoice_id ? (
-                                                <Link href={`/invoices/${group.invoice_id}`}>{group.reference}</Link>
+                                                <Link href={`/invoices/${group.invoice_id}`}><bdi>{group.reference}</bdi></Link>
                                             ) : (
-                                                <Link href={`/sales/orders/${group.sales_order_id}`}>{group.reference}</Link>
+                                                <Link href={`/sales/orders/${group.sales_order_id}`}><bdi>{group.reference}</bdi></Link>
                                             )}
                                         </td>
                                         <td className="px-4 py-2.5">
                                             <span className="inline-flex rounded-full bg-raised px-2.5 py-1 text-[11px] font-semibold text-ink-muted">
-                                                {group.nature_label}
+                                                {natureLabels[group.nature_label] ?? group.nature_label}
                                             </span>
                                         </td>
                                         <td className="px-4 py-2.5">
@@ -214,13 +223,13 @@ export default function FinanceCaEncaisse({ organization, period, periodLabel, s
                                                 ))}
                                             </div>
                                         </td>
-                                        <td className="px-4 py-2.5 text-right">
+                                        <td className="px-4 py-2.5 text-end">
                                             <p className="tabular-nums font-semibold text-ink">{formatMoney(group.amount)}</p>
-                                            {group.payments.length > 1 && <p className="text-[11px] text-ink-faint">Montant encaissé</p>}
+                                            {group.payments.length > 1 && <p className="text-[11px] text-ink-faint">{t('finance.cash.collectedAmount')}</p>}
                                         </td>
                                         <td className="px-4 py-2.5">
                                             <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold ${STATUS_STYLES[group.status_label] ?? 'bg-raised text-ink-muted'}`}>
-                                                {group.status_label}
+                                                {statusLabels[group.status_label] ?? group.status_label}
                                             </span>
                                         </td>
                                     </tr>
@@ -236,11 +245,11 @@ export default function FinanceCaEncaisse({ organization, period, periodLabel, s
                                 <div className="flex items-start justify-between gap-3">
                                     <p className="min-w-0 truncate text-sm font-semibold text-ink">{group.reference}</p>
                                     <span className={`shrink-0 inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold ${STATUS_STYLES[group.status_label] ?? 'bg-raised text-ink-muted'}`}>
-                                        {group.status_label}
+                                        {statusLabels[group.status_label] ?? group.status_label}
                                     </span>
                                 </div>
                                 <div className="mt-2.5">
-                                    <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-faint">Désignation</p>
+                                    <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-faint">{t('finance.cash.designation')}</p>
                                     <div className="mt-1">
                                         <SoldLines lines={group.lines} />
                                     </div>
@@ -249,11 +258,11 @@ export default function FinanceCaEncaisse({ organization, period, periodLabel, s
                                     {group.payments.map((payment) => (
                                         <div key={payment.id} className="grid grid-cols-2 gap-2 py-2 text-[13px]">
                                             <div>
-                                                <p className="font-medium text-ink">{payment.payment_number}</p>
+                                                <bdi className="font-medium text-ink">{payment.payment_number}</bdi>
                                                 <p className="text-ink-faint">{formatDate(payment.payment_date)} · {payment.method_label}</p>
                                             </div>
-                                            <div className="text-right">
-                                                <p className="text-ink-faint">Montant partiel</p>
+                                            <div className="text-end">
+                                                <p className="text-ink-faint">{t('finance.cash.partialAmount')}</p>
                                                 <p className="font-semibold tabular-nums text-ink">{formatMoney(payment.amount)}</p>
                                             </div>
                                         </div>
@@ -261,29 +270,29 @@ export default function FinanceCaEncaisse({ organization, period, periodLabel, s
                                 </div>
                                 <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1.5 text-[13px]">
                                     <div className="min-w-0">
-                                        <dt className="text-ink-faint">Client</dt>
+                                        <dt className="text-ink-faint">{t('common.customer')}</dt>
                                         <dd className="truncate text-ink-muted">{group.customer}</dd>
                                     </div>
                                     <div className="min-w-0">
-                                        <dt className="text-ink-faint">Réf. facture/commande</dt>
+                                        <dt className="text-ink-faint">{t('finance.cash.reference')}</dt>
                                         <dd className="truncate">
                                             {group.reference_type === 'invoice' && group.invoice_id ? (
-                                                <Link href={`/invoices/${group.invoice_id}`}>{group.reference}</Link>
+                                                <Link href={`/invoices/${group.invoice_id}`}><bdi>{group.reference}</bdi></Link>
                                             ) : (
-                                                <Link href={`/sales/orders/${group.sales_order_id}`}>{group.reference}</Link>
+                                                <Link href={`/sales/orders/${group.sales_order_id}`}><bdi>{group.reference}</bdi></Link>
                                             )}
                                         </dd>
                                     </div>
                                     <div className="min-w-0">
-                                        <dt className="text-ink-faint">Nature</dt>
-                                        <dd className="truncate text-ink-muted">{group.nature_label}</dd>
+                                        <dt className="text-ink-faint">{t('finance.cash.nature')}</dt>
+                                        <dd className="truncate text-ink-muted">{natureLabels[group.nature_label] ?? group.nature_label}</dd>
                                     </div>
                                     <div className="min-w-0">
-                                        <dt className="text-ink-faint">Date de vente</dt>
+                                        <dt className="text-ink-faint">{t('finance.cash.saleDate')}</dt>
                                         <dd className="text-ink-muted">{formatDate(group.sale_date)}</dd>
                                     </div>
                                     <div className="min-w-0">
-                                        <dt className="text-ink-faint">Montant encaissé</dt>
+                                        <dt className="text-ink-faint">{t('finance.cash.collectedAmount')}</dt>
                                         <dd className="tabular-nums font-semibold text-ink">{formatMoney(group.amount)}</dd>
                                     </div>
                                 </dl>
@@ -322,6 +331,7 @@ function ExportMenu({
     zipFilename: string;
     packageFilename: string;
 }) {
+    const { t } = useI18n();
     const [open, setOpen] = useState(false);
     const [zipBusy, setZipBusy] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
@@ -381,46 +391,46 @@ function ExportMenu({
                 onClick={() => setOpen((current) => !current)}
                 className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-field border border-line-strong bg-surface px-3.5 text-sm font-medium text-ink transition-soft hover:bg-raised"
             >
-                Exporter
+                {t('finance.cash.export')}
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="m6 9 6 6 6-6" /></svg>
             </button>
 
             {open && (
                 <div
                     role="menu"
-                    className="absolute right-0 top-full z-20 mt-1.5 w-64 max-w-[calc(100vw-1.5rem)] rounded-field border border-line bg-surface p-1.5 shadow-pop"
+                    className="absolute end-0 top-full z-20 mt-1.5 w-64 max-w-[calc(100vw-1.5rem)] rounded-field border border-line bg-surface p-1.5 shadow-pop"
                 >
                     <a href={xlsxHref} role="menuitem" onClick={() => setOpen(false)} className={itemClass}>
                         Excel (.xlsx)
                     </a>
                     <a href={`${pdfHrefBase}&orientation=landscape`} role="menuitem" onClick={() => setOpen(false)} className={itemClass}>
-                        Rapport PDF (Paysage)
+                        {t('finance.cash.pdfLandscape')}
                     </a>
                     <a href={`${pdfHrefBase}&orientation=portrait`} role="menuitem" onClick={() => setOpen(false)} className={itemClass}>
-                        Rapport PDF (Portrait)
+                        {t('finance.cash.pdfPortrait')}
                     </a>
                     <div className="my-1 border-t border-line" />
                     <button
                         type="button"
                         role="menuitem"
-                        onClick={() => downloadZip(zipHref, zipFilename, 'Échec de l’export des factures.')}
+                        onClick={() => downloadZip(zipHref, zipFilename, t('finance.cash.invoiceExportFailed'))}
                         disabled={zipBusy}
                         aria-busy={zipBusy || undefined}
-                        className="flex min-h-10 w-full items-center gap-2 rounded-field px-3 py-2.5 text-left text-[13px] text-ink transition-soft hover:bg-sage disabled:opacity-60"
+                        className="flex min-h-10 w-full items-center gap-2 rounded-field px-3 py-2.5 text-start text-[13px] text-ink transition-soft hover:bg-sage disabled:opacity-60"
                     >
                         {zipBusy && <Spinner size="xs" />}
-                        {zipBusy ? 'Génération du ZIP…' : 'Factures (.ZIP)'}
+                        {zipBusy ? t('finance.cash.generatingZip') : t('finance.cash.invoicesZip')}
                     </button>
                     <button
                         type="button"
                         role="menuitem"
-                        onClick={() => downloadZip(packageHref, packageFilename, 'Échec de l’export du package complet.')}
+                        onClick={() => downloadZip(packageHref, packageFilename, t('finance.cash.packageExportFailed'))}
                         disabled={zipBusy}
                         aria-busy={zipBusy || undefined}
-                        className="flex min-h-10 w-full items-center gap-2 rounded-field px-3 py-2.5 text-left text-[13px] text-ink transition-soft hover:bg-sage disabled:opacity-60"
+                        className="flex min-h-10 w-full items-center gap-2 rounded-field px-3 py-2.5 text-start text-[13px] text-ink transition-soft hover:bg-sage disabled:opacity-60"
                     >
                         {zipBusy && <Spinner size="xs" />}
-                        Package complet
+                        {t('finance.cash.fullPackage')}
                     </button>
                 </div>
             )}

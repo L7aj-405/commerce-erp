@@ -2,6 +2,7 @@ import EmptyState from '@/components/ui/EmptyState';
 import PageHeader from '@/components/ui/PageHeader';
 import Pagination from '@/components/ui/Pagination';
 import ApplicationShell from '@/layouts/ApplicationShell';
+import { useI18n } from '@/i18n';
 import { formatDateTime } from '@/utils/format';
 import { Head, Link, router } from '@inertiajs/react';
 import type { FormEvent, ReactNode } from 'react';
@@ -39,6 +40,7 @@ type Props = {
 };
 
 export default function ActivityIndex({ logs, detail, filters, organizations, users, modules, events, closeDetailUrl }: Props) {
+    const { t } = useI18n();
     const submit = (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
         router.get('/activity', Object.fromEntries(new FormData(event.currentTarget).entries()), {
@@ -49,65 +51,61 @@ export default function ActivityIndex({ logs, detail, filters, organizations, us
 
     return (
         <ApplicationShell wide>
-            <Head title="Activité" />
-            <PageHeader title="Centre d’activité" description="Historique sécurisé des actions réalisées dans vos organisations." />
+            <Head title={t('activity.title')} />
+            <PageHeader title={t('activity.title')} description={t('activity.description')} />
 
             <form onSubmit={submit} className="mb-5 rounded-card border border-line bg-surface p-4 shadow-soft">
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
-                    <Field label="Recherche" className="sm:col-span-2">
-                        <input name="search" defaultValue={String(filters.search ?? '')} placeholder="Utilisateur, référence, action…" className={inputClass} />
+                    <Field label={t('activity.search')} className="sm:col-span-2">
+                        <input name="search" defaultValue={String(filters.search ?? '')} placeholder={t('activity.searchPlaceholder')} className={inputClass} />
                     </Field>
                     {organizations.length > 1 && (
-                        <Field label="Organisation">
+                        <Field label={t('common.organization')}>
                             <select name="organization_id" defaultValue={String(filters.organization_id ?? '')} className={inputClass}>
                                 {organizations.map((organization) => <option key={organization.id} value={organization.id}>{organization.name}</option>)}
                             </select>
                         </Field>
                     )}
-                    <Field label="Utilisateur">
+                    <Field label={t('activity.user')}>
                         <select name="user_id" defaultValue={String(filters.user_id ?? '')} className={inputClass}>
-                            <option value="">Tous</option>
+                            <option value="">{t('activity.all')}</option>
                             {users.map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}
                         </select>
                     </Field>
-                    <Field label="Module">
+                    <Field label={t('activity.module')}>
                         <select name="module" defaultValue={String(filters.module ?? '')} className={inputClass}>
-                            <option value="">Tous</option>
+                            <option value="">{t('activity.all')}</option>
                             {modules.map((module) => <option key={module.key} value={module.key}>{module.label}</option>)}
                         </select>
                     </Field>
-                    <Field label="Action">
+                    <Field label={t('activity.action')}>
                         <select name="event" defaultValue={String(filters.event ?? '')} className={inputClass}>
-                            <option value="">Toutes</option>
+                            <option value="">{t('activity.allFeminine')}</option>
                             {events.map((event) => <option key={event.key} value={event.key}>{event.label}</option>)}
                         </select>
                     </Field>
-                    <Field label="Du"><input name="date_from" type="date" defaultValue={String(filters.date_from ?? '')} className={inputClass} /></Field>
-                    <Field label="Au"><input name="date_to" type="date" defaultValue={String(filters.date_to ?? '')} className={inputClass} /></Field>
+                    <Field label={t('activity.from')}><input name="date_from" type="date" defaultValue={String(filters.date_from ?? '')} className={inputClass} /></Field>
+                    <Field label={t('activity.to')}><input name="date_to" type="date" defaultValue={String(filters.date_to ?? '')} className={inputClass} /></Field>
                 </div>
                 <div className="mt-4 flex flex-wrap justify-end gap-2">
-                    <Link href="/activity" className="rounded-field border border-line-strong px-4 py-2 text-sm font-medium text-ink-muted hover:bg-raised">Réinitialiser</Link>
-                    <button className="rounded-field bg-ink px-4 py-2 text-sm font-semibold text-white hover:bg-ink-muted">Filtrer</button>
+                    <Link href="/activity" className="rounded-field border border-line-strong px-4 py-2 text-sm font-medium text-ink-muted hover:bg-raised">{t('common.reset')}</Link>
+                    <button className="rounded-field bg-ink px-4 py-2 text-sm font-semibold text-white hover:bg-ink-muted">{t('activity.filter')}</button>
                 </div>
             </form>
 
             <div className="mb-3 flex items-center justify-between text-sm text-ink-muted">
-                <span>{logs.total} événement{logs.total > 1 ? 's' : ''}</span>
-                <span>25 par page</span>
+                <span>{logs.total} {t('activity.events')}</span><span>{t('activity.perPage')}</span>
             </div>
 
             {logs.data.length === 0 ? (
-                <EmptyState title="Aucune activité" description="Aucun événement ne correspond aux filtres sélectionnés." />
+                <EmptyState title={t('activity.empty')} description={t('activity.emptyHelp')} />
             ) : (
                 <>
                     <div className="hidden overflow-x-auto rounded-card border border-line bg-surface shadow-soft lg:block">
-                        <table className="w-full min-w-[1050px] text-left text-sm">
+                        <table className="erp-table w-full min-w-[1050px] text-start text-sm">
                             <thead className="bg-raised text-[11px] uppercase tracking-wide text-ink-faint">
                                 <tr>
-                                    <th className="px-4 py-3">Date</th><th className="px-4 py-3">Utilisateur</th>
-                                    <th className="px-4 py-3">Module</th><th className="px-4 py-3">Action</th>
-                                    <th className="px-4 py-3">Cible</th><th className="px-4 py-3">Organisation / magasin</th>
-                                    <th className="px-4 py-3">IP</th><th className="px-4 py-3 text-right">Détails</th>
+                                    <th className="px-4 py-3">{t('common.date')}</th><th className="px-4 py-3">{t('activity.user')}</th><th className="px-4 py-3">{t('activity.module')}</th><th className="px-4 py-3">{t('activity.action')}</th><th className="px-4 py-3">{t('activity.target')}</th><th className="px-4 py-3">{t('activity.organizationStore')}</th><th className="px-4 py-3">IP</th><th className="px-4 py-3 text-end">{t('activity.details')}</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-line">
@@ -128,7 +126,7 @@ export default function ActivityIndex({ logs, detail, filters, organizations, us
                                     <time className="shrink-0 text-xs text-ink-faint">{formatDateTime(entry.created_at)}</time>
                                 </div>
                                 <p className="mt-3 text-sm text-ink-muted">{targetText(entry)}</p>
-                                <Link href={entry.detail_url ?? `/activity?detail=${entry.id}`} preserveScroll className="mt-3 inline-flex text-sm font-semibold text-ink underline-offset-2 hover:underline">Voir les détails</Link>
+                                <Link href={entry.detail_url ?? `/activity?detail=${entry.id}`} preserveScroll className="mt-3 inline-flex text-sm font-semibold text-ink underline-offset-2 hover:underline">{t('activity.viewDetails')}</Link>
                             </li>
                         ))}
                     </ul>
@@ -142,52 +140,50 @@ export default function ActivityIndex({ logs, detail, filters, organizations, us
 }
 
 function AuditRow({ entry }: { entry: AuditEntry }) {
+    const { t } = useI18n();
     return (
         <tr className="transition-soft hover:bg-raised/70">
             <td className="whitespace-nowrap px-4 py-3 text-ink-muted">{formatDateTime(entry.created_at)}</td>
-            <td className="px-4 py-3"><p className="font-medium text-ink">{entry.actor_label}</p><p className="text-xs text-ink-faint">{entry.actor?.email ?? 'Action système'}</p></td>
+            <td className="px-4 py-3"><p className="font-medium text-ink">{entry.actor_label}</p><p className="text-xs text-ink-faint">{entry.actor?.email ?? t('activity.systemAction')}</p></td>
             <td className="px-4 py-3"><ModuleBadge module={entry.module} /></td>
             <td className="px-4 py-3"><p className="font-medium text-ink">{entry.action_label}</p><p className="mt-0.5 text-xs text-ink-faint">{entry.event}</p></td>
             <td className="px-4 py-3 text-ink-muted">{targetText(entry)}</td>
-            <td className="px-4 py-3"><p className="text-ink">{entry.organization?.name ?? '—'}</p><p className="text-xs text-ink-faint">{entry.store ? `${entry.store.name} · ${entry.store.code}` : 'Toute l’organisation'}</p></td>
+            <td className="px-4 py-3"><p className="text-ink">{entry.organization?.name ?? '—'}</p><p className="text-xs text-ink-faint">{entry.store ? <bdi>{`${entry.store.name} · ${entry.store.code}`}</bdi> : t('activity.wholeOrganization')}</p></td>
             <td className="whitespace-nowrap px-4 py-3 font-mono text-xs text-ink-muted">{entry.ip_address ?? '—'}</td>
-            <td className="px-4 py-3 text-right"><Link href={entry.detail_url ?? `/activity?detail=${entry.id}`} preserveScroll className="rounded-field px-3 py-2 text-sm font-medium text-ink hover:bg-sage">Ouvrir</Link></td>
+            <td className="px-4 py-3 text-end"><Link href={entry.detail_url ?? `/activity?detail=${entry.id}`} preserveScroll className="rounded-field px-3 py-2 text-sm font-medium text-ink hover:bg-sage">{t('common.open')}</Link></td>
         </tr>
     );
 }
 
 function DetailDrawer({ entry, closeUrl }: { entry: AuditEntry; closeUrl: string }) {
+    const { direction, t } = useI18n();
     return (
-        <div className="fixed inset-0 z-50 flex justify-end bg-ink/25 backdrop-blur-[1px]">
-            <Link href={closeUrl} preserveScroll aria-label="Fermer les détails" className="absolute inset-0" />
-            <aside role="dialog" aria-modal="true" aria-labelledby="audit-detail-title" className="relative h-full w-full max-w-2xl overflow-y-auto border-l border-line bg-surface p-5 shadow-pop sm:p-7">
+        <div className={`fixed inset-0 z-50 flex ${direction === 'rtl' ? 'justify-start' : 'justify-end'} bg-ink/25 backdrop-blur-[1px]`}>
+            <Link href={closeUrl} preserveScroll aria-label={t('activity.closeDetails')} className="absolute inset-0" />
+            <aside role="dialog" aria-modal="true" aria-labelledby="audit-detail-title" className="relative h-full w-full max-w-2xl overflow-y-auto border-e border-line bg-surface p-5 shadow-pop sm:p-7">
                 <div className="flex items-start justify-between gap-4">
-                    <div><p className="text-xs font-semibold uppercase tracking-wide text-ink-faint">Événement #{entry.id}</p><h2 id="audit-detail-title" className="mt-1 text-xl font-semibold text-ink">{entry.action_label}</h2></div>
-                    <Link href={closeUrl} preserveScroll className="grid size-9 place-items-center rounded-full border border-line text-xl text-ink-muted hover:bg-raised" aria-label="Fermer">×</Link>
+                    <div><p className="text-xs font-semibold uppercase tracking-wide text-ink-faint">{t('activity.event')} <bdi>#{entry.id}</bdi></p><h2 id="audit-detail-title" className="mt-1 text-xl font-semibold text-ink">{entry.action_label}</h2></div>
+                    <Link href={closeUrl} preserveScroll className="grid size-9 place-items-center rounded-full border border-line text-xl text-ink-muted hover:bg-raised" aria-label={t('common.close')}>×</Link>
                 </div>
                 <dl className="mt-6 grid gap-4 rounded-card border border-line bg-raised p-4 sm:grid-cols-2">
-                    <Info label="Utilisateur" value={`${entry.actor_label}${entry.actor?.email ? ` · ${entry.actor.email}` : ''}`} />
-                    <Info label="Date" value={formatDateTime(entry.created_at)} />
-                    <Info label="Organisation" value={entry.organization?.name ?? '—'} />
-                    <Info label="Magasin" value={entry.store?.name ?? 'Toute l’organisation'} />
-                    <Info label="Module" value={entry.module.label} />
-                    <Info label="Type interne" value={entry.event} />
-                    <Info label="Cible" value={targetText(entry)} />
-                    <Info label="Adresse IP" value={entry.ip_address ?? '—'} />
+                    <Info label={t('activity.user')} value={`${entry.actor_label}${entry.actor?.email ? ` · ${entry.actor.email}` : ''}`} />
+                    <Info label={t('common.date')} value={formatDateTime(entry.created_at)} /><Info label={t('common.organization')} value={entry.organization?.name ?? '—'} />
+                    <Info label={t('activity.store')} value={entry.store?.name ?? t('activity.wholeOrganization')} /><Info label={t('activity.module')} value={entry.module.label} />
+                    <Info label={t('activity.internalType')} value={entry.event} /><Info label={t('activity.target')} value={targetText(entry)} /><Info label={t('activity.ipAddress')} value={entry.ip_address ?? '—'} />
                 </dl>
-                <ValueSection title="Valeurs précédentes" values={entry.old_values} />
-                <ValueSection title="Nouvelles valeurs" values={entry.new_values} />
+                <ValueSection title={t('activity.previousValues')} values={entry.old_values} /><ValueSection title={t('activity.newValues')} values={entry.new_values} />
             </aside>
         </div>
     );
 }
 
 function ValueSection({ title, values }: { title: string; values: Record<string, AuditValue> }) {
+    const { t } = useI18n();
     const entries = Object.entries(values);
     return (
         <section className="mt-6">
             <h3 className="text-sm font-semibold text-ink">{title}</h3>
-            {entries.length === 0 ? <p className="mt-2 text-sm text-ink-faint">Aucune valeur enregistrée.</p> : (
+            {entries.length === 0 ? <p className="mt-2 text-sm text-ink-faint">{t('activity.noValue')}</p> : (
                 <dl className="mt-2 divide-y divide-line rounded-card border border-line">
                     {entries.map(([key, value]) => (
                         <div key={key} className="grid gap-1 px-4 py-3 sm:grid-cols-[11rem_1fr] sm:gap-4">
@@ -202,8 +198,9 @@ function ValueSection({ title, values }: { title: string; values: Record<string,
 }
 
 function Value({ value }: { value: AuditValue }) {
+    const { t } = useI18n();
     if (value === null) return <span className="text-ink-faint">—</span>;
-    if (typeof value === 'boolean') return <span>{value ? 'Oui' : 'Non'}</span>;
+    if (typeof value === 'boolean') return <span>{value ? t('common.yes') : t('common.no')}</span>;
     if (typeof value !== 'object') return <span>{String(value)}</span>;
     return <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded-field bg-raised p-3 text-xs leading-relaxed">{JSON.stringify(value, null, 2)}</pre>;
 }

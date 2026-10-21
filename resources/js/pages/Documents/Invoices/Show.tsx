@@ -2,6 +2,7 @@ import DocBadge from '@/components/ui/DocBadge';
 import { Button } from '@/components/ui/Button';
 import SendDocumentEmailModal from '@/components/documents/SendDocumentEmailModal';
 import StampDocumentAction from '@/components/documents/StampDocumentAction';
+import { useI18n } from '@/i18n';
 import SalesLayout from '@/layouts/SalesLayout';
 import { formatDate, formatDateTime, formatMoney, formatQuantity } from '@/utils/format';
 import { invoiceStatusLabel, invoiceStatusTone, label } from '@/utils/labels';
@@ -147,6 +148,7 @@ export default function InvoiceShow({
     stamp,
     can,
 }: Props) {
+    const { direction, t } = useI18n();
     const isDraft = invoice.status === 'draft';
     const isIssued = invoice.status === 'issued';
     const isSuperseded = invoice.status === 'superseded';
@@ -184,23 +186,23 @@ export default function InvoiceShow({
 
     return (
         <SalesLayout>
-            <Head title={invoice.invoice_number ?? 'Facture brouillon'} />
+            <Head title={invoice.invoice_number ?? `${t('invoices.invoice')} ${t('invoices.draft')}`} />
 
             <div className="mb-6">
                 <Link href="/invoices" className="text-sm text-ink-muted">
-                    ← Factures
+                    {direction === 'rtl' ? '→' : '←'} {t('invoices.title')}
                 </Link>
                 <div className="mt-1 flex flex-wrap items-center gap-3">
                     <h1 className="text-2xl font-semibold tracking-tight text-ink">
-                        {invoice.invoice_number ? `Facture ${invoice.invoice_number}` : 'Facture brouillon'}
+                        {t('invoices.invoice')} <bdi>{invoice.invoice_number ?? t('invoices.draft')}</bdi>
                     </h1>
                     <DocBadge tone={invoiceStatusTone(invoice.status)}>{label(invoiceStatusLabel, invoice.status)}</DocBadge>
                 </div>
                 <p className="mt-1 text-sm font-medium text-ink">
-                    Version {invoice.version} · {isCurrentVersion ? 'Facture actuelle' : isSuperseded ? 'Version remplacée' : 'Brouillon'}
+                    {t('invoices.version')} {invoice.version} · {isCurrentVersion ? t('invoices.current') : isSuperseded ? t('invoices.replaced') : t('invoices.draft')}
                 </p>
                 <p className="text-sm text-ink-muted">
-                    Commande{' '}
+                    {t('invoices.order')}{' '}
                     <Link href={`/sales/orders/${invoice.sales_order.id}`} className="text-ink underline">
                         {invoice.sales_order.order_number}
                     </Link>{' '}
@@ -220,19 +222,19 @@ export default function InvoiceShow({
 
             {isSuperseded && currentVersion && (
                 <div className="mb-4 rounded-card border border-warning/30 bg-warning-soft/50 px-4 py-2.5 text-sm text-warning">
-                    Cette version a été remplacée.{' '}
+                    {t('invoices.supersededNotice')}{' '}
                     <Link href={`/invoices/${currentVersion.id}`} className="font-medium underline">
                         Voir la version actuelle — V{currentVersion.version}
                     </Link>
-                    . Le partage se fait depuis la version corrigée.
+                    .
                 </div>
             )}
 
             {orderExpandedAfterInvoice && (
                 <div className="mb-4 rounded-card border border-warning/30 bg-warning-soft/50 px-4 py-2.5 text-sm text-ink">
-                    <p className="font-medium">Commande complétée après cette facture</p>
-                    <p className="mt-1 text-ink-muted">Cette version reste un historique valide et immuable. Une nouvelle version doit être générée depuis la commande.</p>
-                    {can.viewOrder && <Link href={`/sales/orders/${invoice.sales_order.id}`} className="mt-2 inline-block font-medium underline">Ouvrir la commande</Link>}
+                    <p className="font-medium">{t('invoices.orderCompletedAfter')}</p>
+                    <p className="mt-1 text-ink-muted">{t('invoices.historicalVersionHelp')}</p>
+                    {can.viewOrder && <Link href={`/sales/orders/${invoice.sales_order.id}`} className="mt-2 inline-block font-medium underline">{t('invoices.openOrder')}</Link>}
                 </div>
             )}
 
@@ -246,7 +248,7 @@ export default function InvoiceShow({
                                 {seller.trade_name && <p className="text-ink-muted">{seller.trade_name}</p>}
                                 {seller.address && <p className="text-ink-muted">{seller.address}</p>}
                                 {seller.tax_identifier && <p className="text-ink-muted">ICE : {seller.tax_identifier}</p>}
-                                {seller.phone && <p className="text-ink-muted">Tél : {seller.phone}</p>}
+                                {seller.phone && <p className="text-ink-muted">{t('invoices.phoneShort')} : <bdi>{seller.phone}</bdi></p>}
                                 {seller.email && <p className="text-ink-muted">{seller.email}</p>}
                             </div>
                             <div className="min-w-52 border p-3 text-sm" style={{ borderColor: accentColor }}>
@@ -262,7 +264,7 @@ export default function InvoiceShow({
                                 {invoice.billing_address && (
                                     <p className="whitespace-pre-line text-ink-muted">{invoice.billing_address}</p>
                                 )}
-                                {invoice.customer_phone && <p className="text-ink-muted">Tél : {invoice.customer_phone}</p>}
+                                {invoice.customer_phone && <p className="text-ink-muted">{t('invoices.phoneShort')} : <bdi>{invoice.customer_phone}</bdi></p>}
                                 {invoice.customer_tax_identifier && (
                                     <p className="text-ink-muted">ICE : {invoice.customer_tax_identifier}</p>
                                 )}
@@ -273,16 +275,13 @@ export default function InvoiceShow({
                             className="my-5 text-center text-2xl font-bold uppercase tracking-[0.15em]"
                             style={{ color: accentColor }}
                         >
-                            Facture
+                            {t('invoices.invoice')}
                         </h2>
 
                         <table className="mb-5 w-full border-collapse text-center text-sm">
                             <thead>
                                 <tr style={{ background: accentColor }} className="text-white">
-                                    <th className="px-2 py-1.5 font-normal">Facture N°</th>
-                                    <th className="px-2 py-1.5 font-normal">Représentant</th>
-                                    <th className="px-2 py-1.5 font-normal">Modalité de paiement</th>
-                                    <th className="px-2 py-1.5 font-normal">Date de facture</th>
+                                    <th className="px-2 py-1.5 font-normal">{t('invoices.invoice')} N°</th><th className="px-2 py-1.5 font-normal">{t('invoices.representative')}</th><th className="px-2 py-1.5 font-normal">{t('invoices.paymentTerms')}</th><th className="px-2 py-1.5 font-normal">{t('invoices.date')}</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -299,14 +298,10 @@ export default function InvoiceShow({
                             <table className="w-full min-w-[640px] border-collapse text-sm">
                                 <thead>
                                     <tr style={{ background: accentColor }} className="text-white [&>th]:px-2 [&>th]:py-2 [&>th]:font-normal">
-                                        <th className="text-left">Référence</th>
-                                        <th className="text-left">Désignation</th>
-                                        <th>Présentation</th>
-                                        <th className="text-right">Qté</th>
+                                        <th className="text-start">{t('invoices.reference')}</th><th className="text-start">{t('invoices.designation')}</th><th>{t('invoices.presentation')}</th><th className="text-end">{t('invoices.quantity')}</th>
                                         <th className="text-right">PU HT</th>
                                         <th className="text-right">PT HT</th>
-                                        {hasDiscount && <th className="text-right">Remise HT</th>}
-                                        <th className="text-right">Total TTC</th>
+                                        {hasDiscount && <th className="text-end">{t('invoices.discountExcl')}</th>}<th className="text-end">{t('invoices.totalIncl')}</th>
                                     </tr>
                                 </thead>
                                 <tbody className="[&>tr>td]:border [&>tr>td]:border-line [&>tr>td]:px-2 [&>tr>td]:py-1.5">
@@ -321,7 +316,7 @@ export default function InvoiceShow({
                                                     <span className="block text-xs text-ink-muted">{line.variant_name}</span>
                                                 )}
                                             </td>
-                                            <td className="text-center">{line.unit_label ?? 'Unité'}</td>
+                                            <td className="text-center">{line.unit_label ?? t('invoices.unit')}</td>
                                             <td className="text-right tabular-nums">{formatQuantity(line.quantity)}</td>
                                             <td className="text-right tabular-nums">
                                                 {formatMoney(line.unit_price_excl_tax, currency)}
@@ -346,7 +341,7 @@ export default function InvoiceShow({
                         </div>
 
                         <div className="mt-4 flex flex-col gap-2 rounded-field border border-line bg-raised/60 p-3 text-sm sm:flex-row sm:items-center sm:justify-between">
-                            <p className="text-ink-muted">Les articles, quantités, prix, remises et taxes sont gérés depuis la commande.</p>
+                            <p className="text-ink-muted">{t('invoices.linesManagedFromOrder')}</p>
                             {can.viewOrder ? (
                                 <Link
                                     href={`/sales/orders/${invoice.sales_order.id}`}
@@ -360,12 +355,12 @@ export default function InvoiceShow({
                         <div className="mt-4 ml-auto max-w-xs space-y-1 text-sm">
                             {hasDiscount ? (
                                 <>
-                                    <SummaryRow term="Total brut HT" value={formatMoney(invoice.subtotal_excl_tax, currency)} />
-                                    <SummaryRow term="Remise HT" value={`- ${formatMoney(invoice.discount_total, currency)}`} />
-                                    <SummaryRow term="Total HT" value={formatMoney(net, currency)} />
+                                    <SummaryRow term={t('invoices.grossExcl')} value={formatMoney(invoice.subtotal_excl_tax, currency)} />
+                                    <SummaryRow term={t('invoices.discountExcl')} value={`- ${formatMoney(invoice.discount_total, currency)}`} />
+                                    <SummaryRow term={t('invoices.totalExcl')} value={formatMoney(net, currency)} />
                                 </>
                             ) : (
-                                <SummaryRow term="Total HT" value={formatMoney(invoice.subtotal_excl_tax, currency)} />
+                                <SummaryRow term={t('invoices.totalExcl')} value={formatMoney(invoice.subtotal_excl_tax, currency)} />
                             )}
                             <SummaryRow term="TVA" value={formatMoney(invoice.tax_total, currency)} />
                             <div
@@ -393,24 +388,24 @@ export default function InvoiceShow({
                     </section>
 
                     <section className="rounded-card border border-line bg-surface p-4 text-sm">
-                        <p className="font-medium text-ink">Position financière</p>
+                        <p className="font-medium text-ink">{t('invoices.financialPosition')}</p>
                         <dl className="mt-2 grid gap-1 text-ink-muted sm:grid-cols-2">
-                            <SummaryRow term="Facture originale" value={formatMoney(invoice.total_incl_tax, currency)} />
-                            <SummaryRow term="Avoirs émis" value={`-${formatMoney(creditSummary.credited, currency)}`} />
+                            <SummaryRow term={t('invoices.original')} value={formatMoney(invoice.total_incl_tax, currency)} />
+                            <SummaryRow term={t('invoices.issuedCredits')} value={`-${formatMoney(creditSummary.credited, currency)}`} />
                             <SummaryRow term="Facturation nette" value={formatMoney(creditSummary.net, currency)} />
                             <SummaryRow term="Encaissements" value={formatMoney(relatedOrderPaymentSummary.collected, currency)} />
                             <SummaryRow term="Remboursements" value={`-${formatMoney(relatedOrderPaymentSummary.refunded, currency)}`} />
-                            <SummaryRow term="Net encaissé" value={formatMoney(relatedOrderPaymentSummary.net, currency)} />
-                            <SummaryRow term="Créance restante" value={formatMoney(creditSummary.receivable, currency)} />
-                            <SummaryRow term="À rembourser au client" value={formatMoney(creditSummary.refund_obligation, currency)} />
+                            <SummaryRow term={t('invoices.netCollected')} value={formatMoney(relatedOrderPaymentSummary.net, currency)} />
+                            <SummaryRow term={t('invoices.remainingReceivable')} value={formatMoney(creditSummary.receivable, currency)} />
+                            <SummaryRow term={t('invoices.customerRefundDue')} value={formatMoney(creditSummary.refund_obligation, currency)} />
                         </dl>
-                        <p className="mt-2 text-xs text-ink-faint">Les avoirs et remboursements restent des événements distincts ; ni la facture ni les paiements d’origine ne sont réécrits.</p>
+                        <p className="mt-2 text-xs text-ink-faint">{t('invoices.creditRefundDistinct')}</p>
                     </section>
                     {creditNotes.length > 0 && (
                         <section className="rounded-card border border-line bg-surface p-4 text-sm">
-                            <div className="flex justify-between gap-3"><h2 className="font-medium">Avoirs</h2><span className="rounded-full bg-raised px-2 py-1 text-xs">{creditSummary.state === 'full' ? 'Créditée intégralement' : 'Partiellement créditée'}</span></div>
+                            <div className="flex justify-between gap-3"><h2 className="font-medium">{t('invoices.credits')}</h2><span className="rounded-full bg-raised px-2 py-1 text-xs">{creditSummary.state === 'full' ? t('invoices.fullCredit') : t('invoices.partialCredit')}</span></div>
                             <div className="mt-2 divide-y divide-line">{creditNotes.map(note => <Link key={note.id} href={`/credit-notes/${note.id}`} className="flex justify-between py-2"><span>{note.credit_note_number} · {formatDate(note.credit_note_date)}</span><span>-{formatMoney(note.total_incl_tax, currency)}</span></Link>)}</div>
-                            <div className="mt-3 flex justify-between border-t border-line pt-3 font-semibold"><span>Net après avoirs</span><span>{formatMoney(creditSummary.net, currency)}</span></div>
+                            <div className="mt-3 flex justify-between border-t border-line pt-3 font-semibold"><span>{t('invoices.netAfterCredits')}</span><span>{formatMoney(creditSummary.net, currency)}</span></div>
                         </section>
                     )}
                 </div>
@@ -420,11 +415,11 @@ export default function InvoiceShow({
                     <section className="rounded-card border border-line bg-surface p-5">
                         <dl className="space-y-2 text-sm">
                             <div className="flex justify-between">
-                                <dt className="text-ink-muted">Total TTC</dt>
+                                <dt className="text-ink-muted">{t('quotations.totalTaxIncluded')}</dt>
                                 <dd className="font-semibold text-ink">{formatMoney(invoice.total_incl_tax, currency)}</dd>
                             </div>
                             <div className="flex justify-between">
-                                <dt className="text-ink-muted">Statut</dt>
+                                <dt className="text-ink-muted">{t('common.status')}</dt>
                                 <dd>
                                     <DocBadge tone={invoiceStatusTone(invoice.status)}>
                                         {label(invoiceStatusLabel, invoice.status)}
@@ -433,7 +428,7 @@ export default function InvoiceShow({
                             </div>
                             {(isIssued || isSuperseded) && (
                                 <div className="flex justify-between">
-                                    <dt className="text-ink-muted">Émise</dt>
+                                    <dt className="text-ink-muted">{t('invoices.issued')}</dt>
                                     <dd className="text-right text-ink">
                                         {invoice.issued_by?.name ?? '—'}
                                         <br />
@@ -452,25 +447,25 @@ export default function InvoiceShow({
                                         rel="noreferrer"
                                         className="inline-flex min-h-10 items-center justify-center rounded-field border border-line-strong bg-surface px-4 text-sm text-ink hover:bg-raised"
                                     >
-                                        Aperçu PDF
+                                        {t('quotations.previewPdf')}
                                     </a>
                                     {can.issue && (
                                         <>
                                             <Button
                                                 loading={issueForm.processing}
-                                                loadingText="Émission…"
+                                                loadingText={t('common.loading')}
                                                 onClick={issue}
                                                 disabled={issueBlockedByPayment}
                                             >
-                                                {isReplacement ? 'Émettre la nouvelle version' : 'Émettre la facture'}
+                                                {isReplacement ? t('invoices.issueReplacement') : t('invoices.issue')}
                                             </Button>
                                             {issueBlockedByPayment && (
                                                 <div className="rounded-field border border-warning/30 bg-warning-soft/50 px-3 py-2 text-xs text-warning">
                                                     <p className="font-medium">
-                                                        La facture ne peut être émise qu’après le règlement intégral de la commande.
+                                                        {t('invoices.fullPaymentRequired')}
                                                     </p>
                                                     <p className="mt-1">
-                                                        Payé : {formatMoney(relatedOrderPaymentSummary.net, currency)} · Reste :{' '}
+                                                        {t('invoices.paid')} : {formatMoney(relatedOrderPaymentSummary.net, currency)} · {t('invoices.remaining')} :{' '}
                                                         {formatMoney(relatedOrderPaymentSummary.remaining, currency)}
                                                     </p>
                                                 </div>
@@ -487,13 +482,13 @@ export default function InvoiceShow({
                                         rel="noreferrer"
                                         className="inline-flex min-h-10 items-center justify-center rounded-field bg-primary px-4 text-sm font-medium text-primary-fg hover:bg-primary-hover"
                                     >
-                                        Voir PDF
+                                        {t('quotations.viewPdf')}
                                     </a>
                                     <a
                                         href={`/invoices/${invoice.id}/download`}
                                         className="inline-flex min-h-10 items-center justify-center rounded-field border border-line-strong bg-surface px-4 text-sm text-ink hover:bg-raised"
                                     >
-                                        Télécharger PDF
+                                        {t('quotations.downloadPdf')}
                                     </a>
                                 </>
                             )}
@@ -513,7 +508,7 @@ export default function InvoiceShow({
 
                     {isIssued && (
                         <section className="rounded-card border border-line bg-surface p-5">
-                            <h2 className="text-sm font-semibold text-ink">Cachet de l’entreprise</h2>
+                            <h2 className="text-sm font-semibold text-ink">{t('invoices.companyStamp')}</h2>
                             <div className="mt-3">
                                 <StampDocumentAction
                                     postUrl={`/invoices/${invoice.id}/stamp`}
@@ -528,12 +523,12 @@ export default function InvoiceShow({
 
                     {history.length > 0 && (
                         <section className="rounded-card border border-line bg-surface p-5">
-                            <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Historique</h2>
+                            <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">{t('invoices.history')}</h2>
                             <ul className="mt-2 space-y-2 text-sm">
                                 {history.map((entry) => (
                                     <li key={entry.id} className="flex flex-col">
                                         <div className="flex items-center justify-between gap-2">
-                                            <span className="text-ink-muted">Version {entry.version}{entry.is_current ? ' · Facture actuelle' : ''}</span>
+                                            <span className="text-ink-muted">{t('invoices.version')} {entry.version}{entry.is_current ? ` · ${t('invoices.currentInvoice')}` : ''}</span>
                                             {entry.id === invoice.id ? (
                                                 <span className="font-medium text-ink">
                                                     {entry.invoice_number ?? 'Brouillon'}
@@ -546,10 +541,10 @@ export default function InvoiceShow({
                                         </div>
                                         <span className="text-xs text-ink-faint">
                                             {label(invoiceStatusLabel, entry.status)}
-                                            {entry.issued_at && ` · émise le ${formatDate(entry.issued_at)}`}
+                                            {entry.issued_at && ` · ${t('invoices.issuedOn')} ${formatDate(entry.issued_at)}`}
                                         </span>
                                         {entry.reason && (
-                                            <span className="text-xs text-ink-muted">Motif : {entry.reason}</span>
+                                            <span className="text-xs text-ink-muted">{t('invoices.reason')} : {entry.reason}</span>
                                         )}
                                     </li>
                                 ))}
@@ -559,46 +554,46 @@ export default function InvoiceShow({
 
                     {isDraft && can.updateDraft && (
                         <section className="rounded-card border border-line bg-surface p-5">
-                            <h2 className="text-sm font-semibold text-ink">Informations variables</h2>
+                            <h2 className="text-sm font-semibold text-ink">{t('invoices.variableInfo')}</h2>
                             <form onSubmit={save} className="mt-3 space-y-3 text-sm">
-                                <Field label="Date de facture">
+                                <Field label={t('invoices.date')}>
                                     <input
                                         type="date"
                                         readOnly={!can.backdate}
                                         value={form.data.invoice_date}
                                         onChange={(e) => form.setData('invoice_date', e.target.value)}
-                                        className="w-full rounded-field border border-line-strong px-3 py-2 read-only:bg-raised"
+                                        className="control-input w-full read-only:bg-raised"
                                     />
                                 </Field>
-                                <Field label="Représentant">
+                                <Field label={t('quotations.representative')}>
                                     <input
                                         value={form.data.representative_name}
                                         onChange={(e) => form.setData('representative_name', e.target.value)}
                                         className="w-full rounded-field border border-line-strong px-3 py-2"
                                     />
                                 </Field>
-                                <Field label="Modalité de paiement">
+                                <Field label={t('invoices.paymentTerms')}>
                                     <input
                                         value={form.data.payment_method_summary}
                                         onChange={(e) => form.setData('payment_method_summary', e.target.value)}
                                         className="w-full rounded-field border border-line-strong px-3 py-2"
                                     />
                                 </Field>
-                                <Field label="Nom / raison sociale du client">
+                                <Field label={t('quotations.nameCompany')}>
                                     <input
                                         value={form.data.customer_name}
                                         onChange={(e) => form.setData('customer_name', e.target.value)}
                                         className="w-full rounded-field border border-line-strong px-3 py-2"
                                     />
                                 </Field>
-                                <Field label="Société">
+                                <Field label={t('quotations.company')}>
                                     <input
                                         value={form.data.customer_company}
                                         onChange={(e) => form.setData('customer_company', e.target.value)}
                                         className="w-full rounded-field border border-line-strong px-3 py-2"
                                     />
                                 </Field>
-                                <Field label="ICE client">
+                                <Field label={t('quotations.taxId')}>
                                     <input
                                         value={form.data.customer_tax_identifier}
                                         onChange={(e) => form.setData('customer_tax_identifier', e.target.value)}
@@ -606,7 +601,7 @@ export default function InvoiceShow({
                                     />
                                 </Field>
                                 <div className="grid grid-cols-2 gap-2">
-                                    <Field label="Email">
+                                    <Field label={t('quotations.email')}>
                                         <input
                                             type="email"
                                             value={form.data.customer_email}
@@ -614,7 +609,7 @@ export default function InvoiceShow({
                                             className="w-full rounded-field border border-line-strong px-3 py-2"
                                         />
                                     </Field>
-                                    <Field label="Téléphone">
+                                    <Field label={t('quotations.phone')}>
                                         <input
                                             value={form.data.customer_phone}
                                             onChange={(e) => form.setData('customer_phone', e.target.value)}
@@ -622,14 +617,14 @@ export default function InvoiceShow({
                                         />
                                     </Field>
                                 </div>
-                                <Field label="Adresse de facturation">
+                                <Field label={t('quotations.billingAddress')}>
                                     <textarea
                                         value={form.data.billing_address}
                                         onChange={(e) => form.setData('billing_address', e.target.value)}
                                         className="w-full rounded-field border border-line-strong px-3 py-2"
                                     />
                                 </Field>
-                                <Field label="Notes">
+                                <Field label={t('quotations.notes')}>
                                     <textarea
                                         value={form.data.notes}
                                         onChange={(e) => form.setData('notes', e.target.value)}
@@ -639,8 +634,8 @@ export default function InvoiceShow({
                                 {Object.values(form.errors).map(
                                     (error) => error && <p key={error} className="text-sm text-danger">{error}</p>,
                                 )}
-                                <Button type="submit" variant="secondary" loading={form.processing} loadingText="Enregistrement…">
-                                    Enregistrer
+                                <Button type="submit" variant="secondary" loading={form.processing} loadingText={t('common.loading')}>
+                                    {t('invoices.save')}
                                 </Button>
                             </form>
                         </section>
@@ -648,7 +643,7 @@ export default function InvoiceShow({
 
                     {invoice.status === 'cancelled' && (
                         <section className="rounded-card border border-warning/30 bg-warning-soft/50 p-4 text-sm text-warning">
-                            Brouillon annulé : {invoice.cancellation_reason ?? 'sans motif'}
+                            {t('invoices.cancelledDraft')} : {invoice.cancellation_reason ?? t('invoices.withoutReason')}
                         </section>
                     )}
 
@@ -660,30 +655,30 @@ export default function InvoiceShow({
                                     onClick={() => setConfirmCancel(true)}
                                     className="text-sm text-danger hover:underline"
                                 >
-                                    Annuler le brouillon
+                                    {t('invoices.cancelDraft')}
                                 </button>
                             ) : (
                                 <form
                                     onSubmit={cancel}
                                     className="space-y-2 rounded-card border border-danger/30 bg-danger-soft/40 p-3"
                                 >
-                                    <p className="text-sm font-medium text-danger">Annuler ce brouillon de facture ?</p>
+                                    <p className="text-sm font-medium text-danger">{t('invoices.cancelQuestion')}</p>
                                     <textarea
                                         value={cancellation.data.reason}
                                         onChange={(e) => cancellation.setData('reason', e.target.value)}
-                                        placeholder="Motif (facultatif)"
-                                        className="w-full rounded-field border border-line-strong px-3 py-2 text-sm"
+                                        placeholder={t('invoices.optionalReason')}
+                                        className="control-input w-full"
                                     />
                                     <div className="flex gap-2">
                                         <Button type="submit" variant="danger" loading={cancellation.processing} loadingText="Annulation…">
-                                            Confirmer
+                                            {t('auth.confirm')}
                                         </Button>
                                         <button
                                             type="button"
                                             onClick={() => setConfirmCancel(false)}
                                             className="rounded-field px-3 py-2 text-sm text-ink-muted"
                                         >
-                                            Retour
+                                            {t('common.back')}
                                         </button>
                                     </div>
                                 </form>
@@ -714,22 +709,23 @@ function CorrectionDeltaBlock({
     currency: string;
     paid: string;
 }) {
+    const { t } = useI18n();
     const delta = Number(comparison.delta_incl_tax);
     const changed = Math.abs(delta) >= 0.005;
     const indicativeBalance = (Number(comparison.correction.total_incl_tax) - Number(paid)).toFixed(4);
 
     return (
-        <div className="mt-4 ml-auto max-w-xs rounded-card border border-line bg-raised/60 p-3 text-sm">
+        <div className="mt-4 ms-auto max-w-xs rounded-card border border-line bg-raised/60 p-3 text-sm">
             <div className="flex justify-between text-ink-muted">
-                <span>Facture originale</span>
+                <span>{t('invoices.original')}</span>
                 <span className="tabular-nums text-ink">{formatMoney(comparison.original.total_incl_tax, currency)}</span>
             </div>
             <div className="flex justify-between text-ink-muted">
-                <span>Facture corrigée</span>
+                <span>{t('invoices.correctedInvoice')}</span>
                 <span className="tabular-nums text-ink">{formatMoney(comparison.correction.total_incl_tax, currency)}</span>
             </div>
             <div className={`mt-1 flex justify-between border-t border-line pt-1 font-medium ${changed ? 'text-warning' : 'text-ink-muted'}`}>
-                <span>Écart</span>
+                <span>{t('invoices.difference')}</span>
                 <span className="tabular-nums">
                     {delta > 0 ? '+ ' : delta < 0 ? '- ' : ''}
                     {formatMoney(Math.abs(delta).toFixed(4), currency)}
@@ -737,19 +733,19 @@ function CorrectionDeltaBlock({
             </div>
             <div className="mt-2 space-y-0.5 border-t border-line pt-2 text-xs text-ink-muted">
                 <div className="flex justify-between">
-                    <span>Montant corrigé</span>
+                    <span>{t('invoices.correctedAmount')}</span>
                     <span className="tabular-nums">{formatMoney(comparison.correction.total_incl_tax, currency)}</span>
                 </div>
                 <div className="flex justify-between">
-                    <span>Payé (commande liée)</span>
+                    <span>{t('invoices.linkedOrderPaid')}</span>
                     <span className="tabular-nums">{formatMoney(paid, currency)}</span>
                 </div>
                 <div className="flex justify-between">
-                    <span>Solde indicatif</span>
+                    <span>{t('invoices.indicativeBalance')}</span>
                     <span className="tabular-nums">{formatMoney(indicativeBalance, currency)}</span>
                 </div>
                 <p className="pt-1 text-ink-faint">
-                    Les paiements restent gérés au niveau de la commande et ne sont pas modifiés par la correction.
+                    {t('invoices.correctionPaymentHelp')}
                 </p>
             </div>
         </div>
@@ -778,6 +774,7 @@ function ShareCard({
     mailConfigured: boolean;
     canConfigureMail: boolean;
 }) {
+    const { t } = useI18n();
     const [tab, setTab] = useState<'email' | 'whatsapp'>('email');
     const [waPhone, setWaPhone] = useState(sharing.phone ?? '');
     const [waMessage, setWaMessage] = useState(sharing.whatsappMessage);
@@ -796,7 +793,7 @@ function ShareCard({
 
     return (
         <section className="rounded-card border border-line bg-surface p-5">
-            <h2 className="text-sm font-semibold text-ink">Envoyer la facture</h2>
+            <h2 className="text-sm font-semibold text-ink">{t('invoices.send')}</h2>
 
             <div role="tablist" className="mt-3 inline-flex rounded-field border border-line-strong p-0.5 text-sm">
                 {(['email', 'whatsapp'] as const).map((key) => (
@@ -819,12 +816,12 @@ function ShareCard({
                 <div className="mt-3 space-y-2 text-sm">
                     {!mailConfigured && (
                         <p className="text-xs text-warning">
-                            Configuration e-mail requise avant l’envoi.
+                            {t('quotations.emailConfigRequired')}
                             {canConfigureMail && (
                                 <>
                                     {' '}
                                     <Link href="/email-settings" className="font-medium underline">
-                                        Configurer
+                                        {t('quotations.configure')}
                                     </Link>
                                 </>
                             )}
@@ -832,17 +829,17 @@ function ShareCard({
                     )}
                     {!canEmail && (
                         <p className="text-xs text-ink-muted">
-                            Vous n’avez pas la permission d’envoyer des factures par email.
+                            {t('invoices.noEmailPermission')}
                         </p>
                     )}
                     <Button type="button" variant="secondary" disabled={!canEmail} onClick={() => setEmailModalOpen(true)}>
-                        Envoyer la facture par e-mail
+                        {t('invoices.sendEmail')}
                     </Button>
                     <SendDocumentEmailModal
                         open={emailModalOpen}
                         onClose={() => setEmailModalOpen(false)}
                         postUrl={`/invoices/${invoiceId}/email`}
-                        title="Envoyer la facture par e-mail"
+                        title={t('invoices.sendEmail')}
                         defaultTo={sharing.email ?? ''}
                         defaultSubject={sharing.defaultSubject}
                         defaultMessage={`Bonjour,\n\nVeuillez trouver ci-joint votre facture.\n\nCordialement.`}
@@ -857,11 +854,11 @@ function ShareCard({
             {tab === 'whatsapp' && (
                 <div className="mt-3 space-y-2 text-sm">
                     {usesUsername ? (
-                        <Field label="Nom d’utilisateur WhatsApp">
+                        <Field label={t('quotations.whatsappUser')}>
                             <div className="rounded-field border border-line bg-raised px-3 py-2 text-ink">@{sharing.whatsappDestination.destination}</div>
                         </Field>
                     ) : (
-                        <Field label="Téléphone">
+                        <Field label={t('quotations.phone')}>
                             <input
                                 value={waPhone}
                                 onChange={(e) => {
@@ -873,8 +870,8 @@ function ShareCard({
                             />
                         </Field>
                     )}
-                    {unavailable && <p className="text-xs text-ink-muted">Aucun contact WhatsApp disponible.</p>}
-                    <Field label="Message">
+                    {unavailable && <p className="text-xs text-ink-muted">{t('quotations.noWhatsapp')}</p>}
+                    <Field label={t('quotations.message')}>
                         <textarea
                             rows={5}
                             value={waMessage}
@@ -886,13 +883,12 @@ function ShareCard({
                         />
                     </Field>
                     <p className="text-xs text-ink-faint">
-                        Le lien PDF ci-dessus est temporaire et sécurisé. WhatsApp n’attache pas le fichier automatiquement — le
-                        message s’ouvre, vous l’envoyez depuis WhatsApp.
+                        {t('quotations.whatsappHelp')}
                     </p>
                     <Button type="button" variant="secondary" disabled={unavailable} onClick={openWhatsApp}>
-                        Ouvrir dans WhatsApp
+                        {t('quotations.openWhatsapp')}
                     </Button>
-                    {waOpened && <p className="text-sm text-success">WhatsApp ouvert. Envoyez le message depuis WhatsApp.</p>}
+                    {waOpened && <p className="text-sm text-success">{t('invoices.whatsappOpened')}</p>}
                 </div>
             )}
         </section>

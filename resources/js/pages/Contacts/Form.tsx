@@ -1,5 +1,6 @@
 import PageHeader from '@/components/ui/PageHeader';
 import SalesLayout from '@/layouts/SalesLayout';
+import { useI18n } from '@/i18n';
 import { Head, Link, useForm } from '@inertiajs/react';
 import type { FormEvent } from 'react';
 
@@ -25,6 +26,7 @@ const input = 'w-full rounded-field border border-line-strong bg-surface px-3 py
 const blank = { full_name: '', company_name: '', job_title: '', email: '', phone: '', whatsapp: '', whatsapp_username: '', contact_type: 'client', customer_id: '', supplier_id: '', notes: '', active: true };
 
 export default function ContactForm({ contact, linkedOptions }: Props) {
+    const { t } = useI18n();
     const form = useForm({
         full_name: contact?.full_name ?? blank.full_name,
         company_name: contact?.company_name ?? blank.company_name,
@@ -48,54 +50,51 @@ export default function ContactForm({ contact, linkedOptions }: Props) {
 
     return (
         <SalesLayout>
-            <Head title={contact ? 'Modifier le contact' : 'Nouveau contact'} />
+            <Head title={contact ? t('contacts.edit') : t('contacts.new')} />
             <PageHeader
-                title={contact ? 'Modifier le contact' : 'Nouveau contact'}
-                description="Un contact est une entrée d’adresse pour votre organisation. Ce n’est pas un utilisateur ERP."
-                actions={<Link href={contact ? `/contacts/${contact.id}` : '/contacts'} className="inline-flex min-h-10 items-center rounded-field border border-line-strong px-4 text-sm text-ink transition-soft hover:bg-sage">Retour</Link>}
+                title={contact ? t('contacts.edit') : t('contacts.new')}
+                description={t('contacts.formHelp')}
+                actions={<Link href={contact ? `/contacts/${contact.id}` : '/contacts'} className="inline-flex min-h-10 items-center rounded-field border border-line-strong px-4 text-sm text-ink transition-soft hover:bg-sage">{t('common.back')}</Link>}
             />
             <form onSubmit={submit} className="rounded-card border border-line bg-surface p-5">
                 <div className="grid gap-4 md:grid-cols-2">
-                    <Field label="Nom complet" error={form.errors.full_name}><input required value={form.data.full_name} onChange={(e) => form.setData('full_name', e.target.value)} className={input} /></Field>
-                    <Field label="Type" error={form.errors.contact_type}>
+                    <Field label={t('contacts.fullName')} error={form.errors.full_name}><input required value={form.data.full_name} onChange={(e) => form.setData('full_name', e.target.value)} className={input} /></Field>
+                    <Field label={t('contacts.type')} error={form.errors.contact_type}>
                         <select value={form.data.contact_type} onChange={(e) => form.setData('contact_type', e.target.value)} className={input}>
-                            <option value="client">Client</option>
-                            <option value="supplier">Fournisseur</option>
-                            <option value="internal">Interne</option>
-                            <option value="other">Autre</option>
+                            <option value="client">{t('contacts.client')}</option><option value="supplier">{t('contacts.supplier')}</option><option value="internal">{t('contacts.internal')}</option><option value="other">{t('contacts.other')}</option>
                         </select>
                     </Field>
-                    <Field label="Société / organisation" error={form.errors.company_name}><input value={form.data.company_name} onChange={(e) => form.setData('company_name', e.target.value)} className={input} /></Field>
-                    <Field label="Fonction" error={form.errors.job_title}><input value={form.data.job_title} onChange={(e) => form.setData('job_title', e.target.value)} className={input} /></Field>
-                    <Field label="Email" error={form.errors.email}><input type="email" value={form.data.email} onChange={(e) => form.setData('email', e.target.value)} className={input} /></Field>
-                    <Field label="Téléphone" error={form.errors.phone}><input value={form.data.phone} onChange={(e) => form.setData('phone', e.target.value)} className={input} /></Field>
+                    <Field label={t('contacts.organization')} error={form.errors.company_name}><input value={form.data.company_name} onChange={(e) => form.setData('company_name', e.target.value)} className={input} /></Field>
+                    <Field label={t('contacts.jobTitle')} error={form.errors.job_title}><input value={form.data.job_title} onChange={(e) => form.setData('job_title', e.target.value)} className={input} /></Field>
+                    <Field label={t('contacts.email')} error={form.errors.email}><input type="email" value={form.data.email} onChange={(e) => form.setData('email', e.target.value)} className={input} /></Field>
+                    <Field label={t('contacts.phone')} error={form.errors.phone}><input value={form.data.phone} onChange={(e) => form.setData('phone', e.target.value)} className={input} /></Field>
                     <Field label="WhatsApp" error={form.errors.whatsapp}><input value={form.data.whatsapp} onChange={(e) => form.setData('whatsapp', e.target.value)} className={input} /></Field>
-                    <Field label="Nom d’utilisateur WhatsApp" error={form.errors.whatsapp_username}>
+                    <Field label={t('contacts.whatsappUser')} error={form.errors.whatsapp_username}>
                         <input value={form.data.whatsapp_username} onChange={(e) => form.setData('whatsapp_username', e.target.value)} placeholder="monentreprise" className={input} />
-                        <span className="mt-1 block text-xs text-ink-faint">Optionnel — sans le @</span>
+                        <span className="mt-1 block text-xs text-ink-faint">{t('contacts.optionalWithoutAt')}</span>
                     </Field>
-                    <Field label="Client lié" error={form.errors.customer_id}>
+                    <Field label={t('contacts.linkedCustomer')} error={form.errors.customer_id}>
                         <select value={form.data.customer_id} onChange={(e) => form.setData('customer_id', e.target.value)} className={input}>
-                            <option value="">Aucun</option>
+                            <option value="">{t('common.none')}</option>
                             {linkedOptions.customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.display_name}</option>)}
                         </select>
                     </Field>
-                    <Field label="Fournisseur lié" error={form.errors.supplier_id}>
+                    <Field label={t('contacts.linkedSupplier')} error={form.errors.supplier_id}>
                         <select value={form.data.supplier_id} onChange={(e) => form.setData('supplier_id', e.target.value)} className={input}>
-                            <option value="">Aucun</option>
+                            <option value="">{t('common.none')}</option>
                             {linkedOptions.suppliers.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}
                         </select>
                     </Field>
-                    <Field label="Notes" error={form.errors.notes}><textarea rows={4} value={form.data.notes} onChange={(e) => form.setData('notes', e.target.value)} className={input} /></Field>
+                    <Field label={t('contacts.notes')} error={form.errors.notes}><textarea rows={4} value={form.data.notes} onChange={(e) => form.setData('notes', e.target.value)} className={input} /></Field>
                 </div>
                 <label className="mt-4 flex items-center gap-2 text-sm text-ink-muted">
                     <input type="checkbox" checked={form.data.active} onChange={(e) => form.setData('active', e.target.checked)} />
-                    Contact actif
+                    {t('contacts.activeContact')}
                 </label>
-                {form.data.email && <p className="mt-3 rounded-field border border-warning/30 bg-warning-soft px-3 py-2 text-xs text-warning">Si cet email existe déjà dans votre répertoire, l’enregistrement reste autorisé : vérifiez simplement qu’il s’agit du bon interlocuteur.</p>}
+                {form.data.email && <p className="mt-3 rounded-field border border-warning/30 bg-warning-soft px-3 py-2 text-xs text-warning">{t('contacts.duplicateWarning')}</p>}
                 <div className="mt-5 flex justify-end gap-2">
-                    <Link href={contact ? `/contacts/${contact.id}` : '/contacts'} className="inline-flex min-h-10 items-center rounded-field px-4 text-sm text-ink-muted hover:bg-sage">Annuler</Link>
-                    <button type="submit" disabled={form.processing} className="inline-flex min-h-10 items-center rounded-field bg-primary px-4 text-sm font-medium text-primary-fg disabled:opacity-60">{form.processing ? 'Enregistrement…' : 'Enregistrer'}</button>
+                    <Link href={contact ? `/contacts/${contact.id}` : '/contacts'} className="inline-flex min-h-10 items-center rounded-field px-4 text-sm text-ink-muted hover:bg-sage">{t('common.cancel')}</Link>
+                    <button type="submit" disabled={form.processing} className="inline-flex min-h-10 items-center rounded-field bg-primary px-4 text-sm font-medium text-primary-fg disabled:opacity-60">{form.processing ? t('contacts.saving') : t('common.save')}</button>
                 </div>
             </form>
         </SalesLayout>

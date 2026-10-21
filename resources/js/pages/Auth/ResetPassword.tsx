@@ -1,12 +1,14 @@
 import AuthLayout from '@/components/auth/AuthLayout';
 import { Button } from '@/components/ui/Button';
 import { PasswordField, TextField } from '@/components/ui/form';
+import { useI18n } from '@/i18n';
 import { Head, useForm } from '@inertiajs/react';
 import type { FormEvent } from 'react';
 
 type Props = { token: string; email: string };
 
 export default function ResetPassword({ token, email }: Props) {
+    const { t } = useI18n();
     const form = useForm({
         token,
         email,
@@ -21,12 +23,12 @@ export default function ResetPassword({ token, email }: Props) {
 
     return (
         <>
-            <Head title="Réinitialiser le mot de passe" />
+            <Head title={t('auth.resetTitle')} />
 
-            <AuthLayout title="Choisissez un nouveau mot de passe" subtitle="Ce lien n’est valable qu’une seule fois.">
+            <AuthLayout title={t('auth.choosePassword')} subtitle={t('auth.oneTimeLink')}>
                 <form onSubmit={submit} className="space-y-4" noValidate>
                     <TextField
-                        label="Adresse email"
+                        label={t('auth.email')}
                         type="email"
                         name="email"
                         autoComplete="email"
@@ -37,31 +39,31 @@ export default function ResetPassword({ token, email }: Props) {
                     />
 
                     <PasswordField
-                        label="Nouveau mot de passe"
+                        label={t('auth.newPassword')}
                         name="password"
                         autoComplete="new-password"
                         autoFocus
                         required
-                        placeholder="10 caractères minimum"
+                        placeholder={t('auth.passwordMin10')}
                         value={form.data.password}
                         onChange={(event) => form.setData('password', event.target.value)}
                         error={form.errors.password}
-                        hint="Au moins 10 caractères — une phrase de passe fonctionne bien."
+                        hint={t('auth.passwordHint')}
                     />
 
                     <PasswordField
-                        label="Confirmation du mot de passe"
+                        label={t('auth.passwordConfirmation')}
                         name="password_confirmation"
                         autoComplete="new-password"
                         required
-                        placeholder="Retapez le mot de passe"
+                        placeholder={t('auth.repeatPassword')}
                         value={form.data.password_confirmation}
                         onChange={(event) => form.setData('password_confirmation', event.target.value)}
                         error={form.errors.password_confirmation}
                     />
 
                     <Button type="submit" block size="lg" disabled={form.processing}>
-                        {form.processing ? 'Réinitialisation…' : 'Réinitialiser le mot de passe'}
+                        {form.processing ? t('auth.resetting') : t('auth.resetTitle')}
                     </Button>
                 </form>
             </AuthLayout>

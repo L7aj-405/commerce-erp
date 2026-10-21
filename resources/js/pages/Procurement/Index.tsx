@@ -1,6 +1,10 @@
 import PageHeader from '@/components/ui/PageHeader';
 import Pagination from '@/components/ui/Pagination';
 import SearchInput from '@/components/ui/SearchInput';
+import EmptyState from '@/components/ui/EmptyState';
+import StatusBadge from '@/components/ui/StatusBadge';
+import { useI18n } from '@/i18n';
+import type { TranslationKey } from '@/i18n/translations';
 import ProcurementLayout from '@/layouts/ProcurementLayout';
 import { formatDate, formatQuantity } from '@/utils/format';
 import { Head, Link, router } from '@inertiajs/react';
@@ -36,25 +40,9 @@ const STATUS_ORDER = [
     'cancelled',
     'unavailable',
 ] as const;
-const STATUS_LABEL: Record<string, string> = {
-    pending_supplier: 'En attente fournisseur',
-    supplier_confirmed: 'Disponibilité confirmée',
-    ordered: 'Commandé',
-    received: 'Réceptionné',
-    completed: 'Clôturé',
-    cancelled: 'Annulé',
-    unavailable: 'Indisponible',
-};
-const statusClass = (s: string) =>
-    s === 'received' || s === 'completed'
-        ? 'bg-emerald-50 text-emerald-700'
-        : s === 'cancelled' || s === 'unavailable'
-          ? 'bg-slate-100 text-slate-500'
-          : s === 'ordered'
-            ? 'bg-indigo-50 text-indigo-700'
-            : 'bg-amber-50 text-amber-700';
-
 export default function ProcurementIndex({ procurements, filters, can }: Props) {
+    const { t } = useI18n();
+    const statusLabel = (status: string) => t(`procurement.status.${status}` as TranslationKey);
     const [search, setSearch] = useState(filters.search ?? '');
     const [searching, setSearching] = useState(false);
 
@@ -76,57 +64,52 @@ export default function ProcurementIndex({ procurements, filters, can }: Props) 
 
     return (
         <ProcurementLayout>
-            <Head title="Approvisionnements fournisseur" />
+            <Head title={t('procurement.title')} />
             <PageHeader
-                title="Approvisionnements fournisseur"
-                description="Commandes spéciales : la marchandise est commandée au fournisseur pour un client précis et reste réservée à sa commande à la réception."
+                title={t('procurement.title')}
+                description={t('procurement.description')}
                 actions={
                     can.suppliers ? (
                         <Link
                             href="/procurement/suppliers"
-                            className="inline-flex min-h-10 items-center rounded-lg border border-slate-300 bg-white px-4 text-sm text-slate-900 hover:bg-slate-50"
+                            className="inline-flex min-h-10 items-center rounded-field border border-line-strong bg-surface px-4 text-sm text-ink hover:bg-raised"
                         >
-                            Fournisseurs
+                            {t('procurement.suppliers')}
                         </Link>
                     ) : undefined
                 }
             />
 
             <div className="mb-6 flex flex-wrap items-center gap-2">
-                <SearchInput value={search} onChange={setSearch} searching={searching} placeholder="N°, commande, fournisseur" />
+                <SearchInput value={search} onChange={setSearch} searching={searching} placeholder={t('procurement.searchPlaceholder')} />
                 <select
                     value={filters.status ?? ''}
                     onChange={(e) => visit({ search: filters.search, status: e.target.value || undefined, page: undefined })}
-                    className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm"
+                    className="control-select"
                 >
-                    <option value="">Tous les statuts</option>
+                    <option value="">{t('common.allStatuses')}</option>
                     {STATUS_ORDER.map((s) => (
                         <option key={s} value={s}>
-                            {STATUS_LABEL[s]}
+                            {statusLabel(s)}
                         </option>
                     ))}
                 </select>
             </div>
 
             {procurements.data.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-10 text-center text-sm text-slate-500">
-                    Aucun approvisionnement fournisseur.
-                </div>
+                <EmptyState title={t('procurement.empty')} description={t('procurement.description')} />
             ) : (
                 <>
                     {/* Desktop/tablet: table */}
-                    <div className="hidden overflow-x-auto rounded-xl border border-slate-200 bg-white md:block">
-                        <table className="w-full min-w-[900px] text-left text-sm">
-                            <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                    <div className="hidden overflow-x-auto rounded-card border border-line bg-surface md:block">
+                        <table className="erp-table w-full min-w-[900px] text-start text-sm">
+                            <thead className="border-b border-line bg-raised text-xs uppercase tracking-wide text-ink-muted">
                                 <tr>
                                     <th className="px-4 py-3 font-medium">N°</th>
-                                    <th className="px-4 py-3 font-medium">Commande client</th>
-                                    <th className="px-4 py-3 font-medium">Fournisseur</th>
-                                    <th className="px-4 py-3 font-medium">Article</th>
-                                    <th className="px-4 py-3 text-right font-medium">Qté</th>
-                                    <th className="px-4 py-3 font-medium">Statut</th>
-                                    <th className="px-4 py-3 font-medium">Commandé le</th>
-                                    <th className="px-4 py-3 font-medium">Réception prévue</th>
+                                    <th className="px-4 py-3 font-medium">{t('procurement.customerOrder')}</th>
+                                    <th className="px-4 py-3 font-medium">{t('procurement.supplier')}</th><th className="px-4 py-3 font-medium">{t('procurement.item')}</th>
+                                    <th className="px-4 py-3 text-end font-medium">{t('inventory.quantity')}</th><th className="px-4 py-3 font-medium">{t('common.status')}</th>
+                                    <th className="px-4 py-3 font-medium">{t('procurement.orderedOn')}</th><th className="px-4 py-3 font-medium">{t('procurement.expectedReceipt')}</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
@@ -144,16 +127,14 @@ export default function ProcurementIndex({ procurements, filters, can }: Props) 
                                         </td>
                                         <td className="px-4 py-3 text-slate-600">{row.supplier?.name ?? '—'}</td>
                                         <td className="px-4 py-3 text-slate-600">{row.product || '—'}</td>
-                                        <td className="px-4 py-3 text-right tabular-nums">{formatQuantity(row.quantity)}</td>
+                                        <td className="px-4 py-3 text-end tabular-nums">{formatQuantity(row.quantity)}</td>
                                         <td className="px-4 py-3">
-                                            <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${statusClass(row.status)}`}>
-                                                {row.status_label ?? STATUS_LABEL[row.status] ?? row.status}
-                                            </span>
+                                            <StatusBadge status={row.status}>{statusLabel(row.status)}</StatusBadge>
                                         </td>
                                         <td className="px-4 py-3 text-slate-600">{row.ordered_at ? formatDate(row.ordered_at) : '—'}</td>
                                         <td className="px-4 py-3 text-slate-600">
                                             {row.received_at
-                                                ? `Reçu ${formatDate(row.received_at)}`
+                                                ? `${t('procurement.receivedOn')} ${formatDate(row.received_at)}`
                                                 : row.expected_at
                                                   ? formatDate(row.expected_at)
                                                   : '—'}
@@ -173,13 +154,11 @@ export default function ProcurementIndex({ procurements, filters, can }: Props) 
                                         <p className="truncate text-sm font-semibold text-slate-900">{row.procurement_number}</p>
                                         <p className="truncate text-[13px] text-slate-500">{row.product || '—'}</p>
                                     </div>
-                                    <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ${statusClass(row.status)}`}>
-                                        {row.status_label ?? STATUS_LABEL[row.status] ?? row.status}
-                                    </span>
+                                    <StatusBadge status={row.status}>{statusLabel(row.status)}</StatusBadge>
                                 </div>
                                 <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1.5 text-[13px]">
                                     <div className="min-w-0">
-                                        <dt className="text-slate-400">Commande client</dt>
+                                        <dt className="text-ink-faint">{t('procurement.customerOrder')}</dt>
                                         <dd className="truncate">
                                             {row.sales_order ? (
                                                 <Link href={`/sales/orders/${row.sales_order.id}`} className="text-slate-900 underline">
@@ -191,15 +170,15 @@ export default function ProcurementIndex({ procurements, filters, can }: Props) 
                                         </dd>
                                     </div>
                                     <div className="min-w-0">
-                                        <dt className="text-slate-400">Fournisseur</dt>
+                                        <dt className="text-ink-faint">{t('procurement.supplier')}</dt>
                                         <dd className="truncate text-slate-600">{row.supplier?.name ?? '—'}</dd>
                                     </div>
                                     <div className="min-w-0">
-                                        <dt className="text-slate-400">Qté</dt>
+                                        <dt className="text-ink-faint">{t('inventory.quantity')}</dt>
                                         <dd className="tabular-nums text-slate-600">{formatQuantity(row.quantity)}</dd>
                                     </div>
                                     <div className="min-w-0">
-                                        <dt className="text-slate-400">{row.received_at ? 'Reçu le' : 'Réception prévue'}</dt>
+                                        <dt className="text-ink-faint">{row.received_at ? t('procurement.receivedOn') : t('procurement.expectedReceipt')}</dt>
                                         <dd className="text-slate-600">
                                             {row.received_at
                                                 ? formatDate(row.received_at)

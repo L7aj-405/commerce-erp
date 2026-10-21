@@ -2,6 +2,9 @@ import PageHeader from '@/components/ui/PageHeader';
 import Pagination from '@/components/ui/Pagination';
 import SearchInput from '@/components/ui/SearchInput';
 import { Button } from '@/components/ui/Button';
+import EmptyState from '@/components/ui/EmptyState';
+import StatusBadge from '@/components/ui/StatusBadge';
+import { useI18n } from '@/i18n';
 import ProcurementLayout from '@/layouts/ProcurementLayout';
 import { Head, Link, router, useForm } from '@inertiajs/react';
 import type { FormEvent } from 'react';
@@ -27,6 +30,7 @@ type Props = {
 const blank = { name: '', contact_person: '', phone: '', email: '', address: '', notes: '', active: true };
 
 export default function SuppliersIndex({ suppliers, filters, can }: Props) {
+    const { t } = useI18n();
     const [search, setSearch] = useState(filters.search ?? '');
     const [searching, setSearching] = useState(false);
     const [editing, setEditing] = useState<Supplier | null>(null);
@@ -86,73 +90,73 @@ export default function SuppliersIndex({ suppliers, filters, can }: Props) {
 
     return (
         <ProcurementLayout>
-            <Head title="Fournisseurs" />
+            <Head title={t('suppliers.title')} />
             <PageHeader
-                title="Fournisseurs"
-                description="Répertoire minimal des fournisseurs pour les commandes spéciales. Ce n’est pas de la comptabilité fournisseurs."
+                title={t('suppliers.title')}
+                description={t('suppliers.description')}
                 actions={
                     <>
                         <Link
                             href="/procurement"
-                            className="inline-flex min-h-10 items-center rounded-lg border border-slate-300 bg-white px-4 text-sm text-slate-900 hover:bg-slate-50"
+                            className="inline-flex min-h-10 items-center rounded-field border border-line-strong bg-surface px-4 text-sm text-ink hover:bg-raised"
                         >
-                            Approvisionnements
+                            {t('suppliers.procurements')}
                         </Link>
-                        {can.manage && !showForm && <Button onClick={startCreate}>Nouveau fournisseur</Button>}
+                        {can.manage && !showForm && <Button onClick={startCreate}>{t('suppliers.new')}</Button>}
                     </>
                 }
             />
 
             {showForm && (
-                <form onSubmit={submit} className="mb-6 rounded-xl border border-slate-200 bg-white p-5">
-                    <h2 className="mb-3 text-sm font-semibold text-slate-900">
-                        {editing ? `Modifier ${editing.name}` : 'Nouveau fournisseur'}
+                <form onSubmit={submit} className="mb-6 rounded-card border border-line bg-surface p-5">
+                    <h2 className="mb-3 text-sm font-semibold text-ink">
+                        {editing ? `${t('suppliers.edit')} ${editing.name}` : t('suppliers.new')}
                     </h2>
                     <div className="grid gap-4 md:grid-cols-2">
-                        <Field label="Nom" error={form.errors.name}>
+                        <Field label={t('suppliers.name')} error={form.errors.name}>
                             <input
                                 value={form.data.name}
                                 onChange={(e) => form.setData('name', e.target.value)}
-                                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                                className="control-input w-full"
                                 required
                             />
                         </Field>
-                        <Field label="Personne de contact" error={form.errors.contact_person}>
+                        <Field label={t('suppliers.contactPerson')} error={form.errors.contact_person}>
                             <input
                                 value={form.data.contact_person}
                                 onChange={(e) => form.setData('contact_person', e.target.value)}
-                                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                                className="control-input w-full"
                             />
                         </Field>
-                        <Field label="Téléphone" error={form.errors.phone}>
+                        <Field label={t('suppliers.phone')} error={form.errors.phone}>
                             <input
                                 value={form.data.phone}
                                 onChange={(e) => form.setData('phone', e.target.value)}
-                                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                                className="control-input w-full"
                             />
                         </Field>
-                        <Field label="Email" error={form.errors.email}>
+                        <Field label={t('suppliers.email')} error={form.errors.email}>
                             <input
                                 type="email"
                                 value={form.data.email}
                                 onChange={(e) => form.setData('email', e.target.value)}
-                                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                                className="control-input w-full"
                             />
                         </Field>
-                        <Field label="Adresse" error={form.errors.address}>
+                        <Field label={t('suppliers.address')} error={form.errors.address}>
                             <textarea
                                 value={form.data.address}
                                 onChange={(e) => form.setData('address', e.target.value)}
                                 rows={2}
-                                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                                className="control-input w-full"
                             />
                         </Field>
-                        <Field label="Notes" error={form.errors.notes}>
+                        <Field label={t('suppliers.notes')} error={form.errors.notes}>
                             <textarea
                                 value={form.data.notes}
                                 onChange={(e) => form.setData('notes', e.target.value)}
                                 rows={2}
-                                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                                className="control-input w-full"
                             />
                         </Field>
                     </div>
@@ -162,39 +166,35 @@ export default function SuppliersIndex({ suppliers, filters, can }: Props) {
                             checked={form.data.active}
                             onChange={(e) => form.setData('active', e.target.checked)}
                         />
-                        Fournisseur actif
+                        {t('suppliers.active')}
                     </label>
                     <div className="mt-4 flex gap-2">
-                        <Button type="submit" loading={form.processing} loadingText="Enregistrement…">
-                            Enregistrer
+                        <Button type="submit" loading={form.processing} loadingText={t('common.loading')}>
+                            {t('common.save')}
                         </Button>
                         <button type="button" onClick={close} className="rounded-lg px-4 py-2 text-sm text-slate-600">
-                            Annuler
+                            {t('common.cancel')}
                         </button>
                     </div>
                 </form>
             )}
 
             <div className="mb-4">
-                <SearchInput value={search} onChange={setSearch} searching={searching} placeholder="Nom, contact, téléphone" />
+                <SearchInput value={search} onChange={setSearch} searching={searching} placeholder={t('suppliers.searchPlaceholder')} />
             </div>
 
             {suppliers.data.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-10 text-center text-sm text-slate-500">
-                    Aucun fournisseur.
-                </div>
+                <EmptyState title={t('suppliers.empty')} description={t('suppliers.description')} />
             ) : (
                 <>
                     {/* Desktop/tablet: table */}
                     <div className="hidden overflow-x-auto rounded-xl border border-slate-200 bg-white md:block">
-                        <table className="w-full min-w-[720px] text-left text-sm">
+                        <table className="erp-table w-full min-w-[720px] text-start text-sm">
                             <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                                 <tr>
-                                    <th className="px-4 py-3 font-medium">Nom</th>
-                                    <th className="px-4 py-3 font-medium">Contact</th>
-                                    <th className="px-4 py-3 font-medium">Téléphone</th>
-                                    <th className="px-4 py-3 font-medium">Email</th>
-                                    <th className="px-4 py-3 font-medium">Statut</th>
+                                    <th className="px-4 py-3 font-medium">{t('suppliers.name')}</th><th className="px-4 py-3 font-medium">{t('suppliers.contact')}</th>
+                                    <th className="px-4 py-3 font-medium">{t('suppliers.phone')}</th><th className="px-4 py-3 font-medium">{t('suppliers.email')}</th>
+                                    <th className="px-4 py-3 font-medium">{t('common.status')}</th>
                                     {can.manage && <th className="px-4 py-3" />}
                                 </tr>
                             </thead>
@@ -206,22 +206,16 @@ export default function SuppliersIndex({ suppliers, filters, can }: Props) {
                                         <td className="px-4 py-3 text-slate-600">{supplier.phone ?? '—'}</td>
                                         <td className="px-4 py-3 text-slate-600">{supplier.email ?? '—'}</td>
                                         <td className="px-4 py-3">
-                                            <span
-                                                className={`rounded-full px-2.5 py-1 text-xs font-medium ${
-                                                    supplier.active ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'
-                                                }`}
-                                            >
-                                                {supplier.active ? 'Actif' : 'Inactif'}
-                                            </span>
+                                            <StatusBadge status={supplier.active ? 'active' : 'inactive'} />
                                         </td>
                                         {can.manage && (
-                                            <td className="px-4 py-3 text-right">
+                                            <td className="px-4 py-3 text-end">
                                                 <button
                                                     type="button"
                                                     onClick={() => startEdit(supplier)}
                                                     className="text-sm text-slate-900 underline"
                                                 >
-                                                    Modifier
+                                                    {t('suppliers.edit')}
                                                 </button>
                                             </td>
                                         )}
@@ -240,23 +234,17 @@ export default function SuppliersIndex({ suppliers, filters, can }: Props) {
                                         <p className="truncate text-sm font-semibold text-slate-900">{supplier.name}</p>
                                         {supplier.contact_person && <p className="truncate text-[13px] text-slate-500">{supplier.contact_person}</p>}
                                     </div>
-                                    <span
-                                        className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ${
-                                            supplier.active ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'
-                                        }`}
-                                    >
-                                        {supplier.active ? 'Actif' : 'Inactif'}
-                                    </span>
+                                    <StatusBadge status={supplier.active ? 'active' : 'inactive'} />
                                 </div>
                                 <dl className="mt-3 space-y-1 text-[13px]">
                                     <div className="flex gap-1.5">
-                                        <dt className="shrink-0 text-slate-400">Tél.</dt>
+                                        <dt className="shrink-0 text-ink-faint">{t('suppliers.phone')}</dt>
                                         <dd className="min-w-0 truncate text-slate-600">
                                             {supplier.phone ? <a href={`tel:${supplier.phone}`} className="text-slate-900">{supplier.phone}</a> : '—'}
                                         </dd>
                                     </div>
                                     <div className="flex gap-1.5">
-                                        <dt className="shrink-0 text-slate-400">Email</dt>
+                                        <dt className="shrink-0 text-ink-faint">{t('suppliers.email')}</dt>
                                         <dd className="min-w-0 truncate text-slate-600">
                                             {supplier.email ? <a href={`mailto:${supplier.email}`} className="text-slate-900">{supplier.email}</a> : '—'}
                                         </dd>
@@ -268,7 +256,7 @@ export default function SuppliersIndex({ suppliers, filters, can }: Props) {
                                         onClick={() => startEdit(supplier)}
                                         className="mt-3 inline-flex min-h-9 items-center justify-center rounded-lg border border-slate-300 px-3 text-[13px] font-medium text-slate-900 hover:bg-slate-50"
                                     >
-                                        Modifier
+                                        {t('suppliers.edit')}
                                     </button>
                                 )}
                             </li>

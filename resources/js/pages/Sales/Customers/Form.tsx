@@ -1,4 +1,5 @@
 import { Button } from '@/components/ui/Button';
+import { useI18n } from '@/i18n';
 import SalesLayout from '@/layouts/SalesLayout';
 import { Head, Link, useForm } from '@inertiajs/react';
 import type { FormEvent } from 'react';
@@ -18,9 +19,11 @@ type Customer = {
 };
 
 const labelClass = 'block text-[13px] font-medium text-ink';
-const fieldClass = 'mt-1.5 h-10 w-full rounded-field border border-line-strong bg-surface px-3 text-sm text-ink outline-none transition-soft focus:border-primary';
+const fieldClass = 'control-input mt-1.5';
+const selectClass = 'control-select mt-1.5';
 
 export default function CustomerForm({ customer }: { customer: Customer | null }) {
+    const { t } = useI18n();
     const form = useForm({
         type: customer?.type ?? 'individual',
         display_name: customer?.display_name ?? '',
@@ -40,64 +43,64 @@ export default function CustomerForm({ customer }: { customer: Customer | null }
 
     return (
         <SalesLayout>
-            <Head title={customer ? `Modifier ${customer.display_name}` : 'Nouveau client'} />
+            <Head title={customer ? `${t('customers.edit')} · ${customer.display_name}` : t('customers.new')} />
             <form onSubmit={submit} className="mx-auto max-w-3xl">
                 <div className="mb-6">
                     {customer && (
                         <Link href={`/sales/customers/${customer.id}`} className="text-sm text-ink-muted">
-                            ← {customer.display_name}
+                            <span className="directional-icon inline-block">←</span> {customer.display_name}
                         </Link>
                     )}
-                    <h1 className="mt-1 text-2xl font-semibold tracking-tight text-ink">{customer ? 'Modifier le client' : 'Nouveau client'}</h1>
+                    <h1 className="mt-1 text-2xl font-semibold tracking-tight text-ink">{customer ? t('customers.edit') : t('customers.new')}</h1>
                 </div>
 
                 <div className="grid gap-4 rounded-card border border-line bg-surface p-5 md:grid-cols-2">
                     <label className={labelClass}>
-                        Type de client
-                        <select value={form.data.type} onChange={(e) => form.setData('type', e.target.value)} className={fieldClass}>
-                            <option value="individual">Particulier</option>
-                            <option value="company">Entreprise</option>
+                        {t('customers.customerType')}
+                        <select value={form.data.type} onChange={(e) => form.setData('type', e.target.value)} className={selectClass}>
+                            <option value="individual">{t('customers.individual')}</option>
+                            <option value="company">{t('customers.business')}</option>
                         </select>
                     </label>
                     <label className={labelClass}>
-                        Statut
-                        <select value={form.data.status} onChange={(e) => form.setData('status', e.target.value)} className={fieldClass}>
-                            <option value="active">Actif</option>
-                            <option value="inactive">Inactif</option>
+                        {t('common.status')}
+                        <select value={form.data.status} onChange={(e) => form.setData('status', e.target.value)} className={selectClass}>
+                            <option value="active">{t('status.active')}</option>
+                            <option value="inactive">{t('status.inactive')}</option>
                         </select>
                     </label>
                     <label className={labelClass}>
-                        Nom complet
+                        {t('customers.fullName')}
                         <input required value={form.data.display_name} onChange={(e) => form.setData('display_name', e.target.value)} className={fieldClass} />
                         {form.errors.display_name && <p className="mt-1 text-[13px] text-danger">{form.errors.display_name}</p>}
                     </label>
                     <label className={labelClass}>
-                        Société
+                        {t('customers.company')}
                         <input value={form.data.company_name} onChange={(e) => form.setData('company_name', e.target.value)} className={fieldClass} />
                     </label>
                     <label className={labelClass}>
-                        Email
+                        {t('customers.email')}
                         <input type="email" value={form.data.email} onChange={(e) => form.setData('email', e.target.value)} className={fieldClass} />
                     </label>
                     <label className={labelClass}>
-                        Téléphone
+                        {t('customers.phone')}
                         <input value={form.data.phone} onChange={(e) => form.setData('phone', e.target.value)} className={fieldClass} />
                     </label>
                     <label className={labelClass}>
-                        Nom d’utilisateur WhatsApp
+                        {t('customers.whatsapp')}
                         <input value={form.data.whatsapp_username} onChange={(e) => form.setData('whatsapp_username', e.target.value)} placeholder="monentreprise" className={fieldClass} />
-                        <span className="mt-1 block text-xs font-normal text-ink-faint">Optionnel — sans le @</span>
+                        <span className="mt-1 block text-xs font-normal text-ink-faint">{t('customers.whatsappHelp')}</span>
                     </label>
                     <label className={labelClass}>
-                        ICE / identifiant fiscal
+                        {t('customers.taxId')}
                         <input value={form.data.tax_identifier} onChange={(e) => form.setData('tax_identifier', e.target.value)} className={fieldClass} />
                     </label>
                     <label className={labelClass}>
-                        Adresse de facturation
+                        {t('customers.billingAddress')}
                         <textarea rows={2} value={form.data.billing_address} onChange={(e) => form.setData('billing_address', e.target.value)} className={`${fieldClass} h-auto py-2`} />
                     </label>
                     <label className={`${labelClass} md:col-span-2`}>
-                        Notes
+                        {t('customers.notes')}
                         <textarea rows={3} value={form.data.notes} onChange={(e) => form.setData('notes', e.target.value)} className={`${fieldClass} h-auto py-2`} />
                     </label>
                 </div>
@@ -111,12 +114,12 @@ export default function CustomerForm({ customer }: { customer: Customer | null }
                 )}
 
                 <div className="mt-5 flex gap-2">
-                    <Button type="submit" loading={form.processing} loadingText="Enregistrement…">
-                        Enregistrer
+                    <Button type="submit" loading={form.processing} loadingText={t('customers.saving')}>
+                        {t('common.save')}
                     </Button>
                     {customer && (
                         <Link href={`/sales/customers/${customer.id}`} className="inline-flex min-h-10 items-center justify-center rounded-field border border-line-strong bg-surface px-4 text-sm font-medium text-ink transition-soft hover:bg-raised">
-                            Annuler
+                            {t('common.cancel')}
                         </Link>
                     )}
                 </div>

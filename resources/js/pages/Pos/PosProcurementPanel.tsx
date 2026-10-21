@@ -1,5 +1,6 @@
 import { Quantity } from '@/components/pos/primitives';
 import { Spinner } from '@/components/ui/Spinner';
+import { useI18n } from '@/i18n';
 import { useState } from 'react';
 import type { ActiveSale, CartLine, Supplier } from './types';
 
@@ -27,6 +28,7 @@ type Props = {
  * rows. Only lines that company stock cannot fully cover are listed.
  */
 export default function PosProcurementPanel({ sale, suppliers, busy, onSubmit, onClose }: Props) {
+    const { t } = useI18n();
     const deficitLines = sale.lines.filter(
         (line) => line.line_type === 'catalog' && Number(line.to_procure ?? '0') > 0,
     );
@@ -34,9 +36,9 @@ export default function PosProcurementPanel({ sale, suppliers, busy, onSubmit, o
     if (suppliers.length === 0) {
         return (
             <div className="border-t border-line bg-warning-soft/40 p-4 text-[12px] text-warning">
-                Aucun fournisseur actif. Ajoutez-en un dans Achats → Fournisseurs avant d’approvisionner.
-                <button type="button" onClick={onClose} className="ml-2 underline">
-                    Fermer
+                {t('pos.noActiveSupplier')}
+                <button type="button" onClick={onClose} className="ms-2 underline">
+                    {t('common.close')}
                 </button>
             </div>
         );
@@ -45,9 +47,9 @@ export default function PosProcurementPanel({ sale, suppliers, busy, onSubmit, o
     return (
         <div className="border-t border-line bg-raised">
             <div className="flex items-center justify-between px-4 pt-3">
-                <h3 className="text-[12px] font-semibold uppercase tracking-wide text-ink-muted">Approvisionnement fournisseur</h3>
+                <h3 className="text-[12px] font-semibold uppercase tracking-wide text-ink-muted">{t('pos.supplierProcurement')}</h3>
                 <button type="button" onClick={onClose} className="text-[12px] text-ink-muted hover:text-ink">
-                    Fermer
+                    {t('common.close')}
                 </button>
             </div>
             <ul className="max-h-72 divide-y divide-line overflow-y-auto px-2 py-2">
@@ -72,6 +74,7 @@ function ProcurementRow({
     busy: boolean;
     onSubmit: (payload: ProcurementSubmit) => Promise<void>;
 }) {
+    const { t } = useI18n();
     const toProcure = line.to_procure ?? '0';
     const existing = line.procurement ?? null;
     const [supplierId, setSupplierId] = useState<number>(existing?.supplier?.id ?? suppliers[0]?.id ?? 0);
@@ -108,12 +111,12 @@ function ProcurementRow({
                 )}
             </div>
             <p className="mt-0.5 text-ink-muted">
-                Demandé <Quantity value={line.quantity} /> · Couvert société <Quantity value={line.company_covered ?? '0'} /> ·
-                À approvisionner <strong className="text-ink"><Quantity value={toProcure} /></strong>
+                {t('pos.requested')} <Quantity value={line.quantity} /> · {t('pos.companyCovered')} <Quantity value={line.company_covered ?? '0'} /> ·
+                {t('pos.toProcure')} <strong className="text-ink"><Quantity value={toProcure} /></strong>
             </p>
             <div className="mt-1.5 grid grid-cols-2 gap-1.5">
                 <label className="col-span-2">
-                    <span className="text-ink-faint">Fournisseur</span>
+                    <span className="text-ink-faint">{t('pos.supplier')}</span>
                     <select
                         value={supplierId}
                         onChange={(e) => setSupplierId(Number(e.target.value))}
@@ -127,19 +130,19 @@ function ProcurementRow({
                     </select>
                 </label>
                 <label>
-                    <span className="text-ink-faint">Disponibilité</span>
+                    <span className="text-ink-faint">{t('pos.availability')}</span>
                     <select
                         value={availability}
                         onChange={(e) => setAvailability(e.target.value as ProcurementSubmit['supplier_availability_status'])}
                         className="mt-0.5 w-full rounded-field border border-line-strong bg-surface px-2 py-1 text-[12px] outline-none focus:border-primary"
                     >
-                        <option value="confirmed_available">Confirmée</option>
-                        <option value="pending_confirmation">En attente</option>
-                        <option value="unavailable">Indisponible</option>
+                        <option value="confirmed_available">{t('pos.confirmed')}</option>
+                        <option value="pending_confirmation">{t('pos.pending')}</option>
+                        <option value="unavailable">{t('pos.unavailable')}</option>
                     </select>
                 </label>
                 <label>
-                    <span className="text-ink-faint">Quantité confirmée</span>
+                    <span className="text-ink-faint">{t('pos.confirmedQuantity')}</span>
                     <input
                         inputMode="decimal"
                         value={qty}
@@ -148,7 +151,7 @@ function ProcurementRow({
                     />
                 </label>
                 <label className="col-span-2">
-                    <span className="text-ink-faint">Référence fournisseur (opt.)</span>
+                    <span className="text-ink-faint">{t('pos.supplierReferenceOptional')}</span>
                     <input
                         value={reference}
                         onChange={(e) => setReference(e.target.value)}
@@ -163,7 +166,7 @@ function ProcurementRow({
                 className="mt-2 inline-flex items-center gap-1.5 rounded-field bg-primary px-3 py-1.5 text-[12px] font-medium text-primary-fg transition-soft hover:bg-primary-hover disabled:opacity-50"
             >
                 {(submitting || busy) && <Spinner size="xs" />}
-                {existing ? 'Mettre à jour' : 'Enregistrer'}
+                {existing ? t('pos.update') : t('pos.save')}
             </button>
         </div>
     );
