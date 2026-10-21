@@ -6,6 +6,7 @@ import { createRoot } from 'react-dom/client';
 import { ToastProvider } from '@/components/ui/toast';
 import { PRODUCT_NAME } from '@/components/ui/brand';
 import { I18nProvider, initializeLocaleDocument } from '@/i18n';
+import { FreshAuthProvider } from '@/components/auth/FreshAuthProvider';
 
 initializeLocaleDocument();
 
@@ -26,9 +27,11 @@ createInertiaApp({
     setup({ el, App, props }) {
         createRoot(el).render(
             <I18nProvider>
-                <ToastProvider>
-                    <App {...props} />
-                </ToastProvider>
+                <FreshAuthProvider>
+                    <ToastProvider>
+                        <App {...props} />
+                    </ToastProvider>
+                </FreshAuthProvider>
             </I18nProvider>,
         );
     },

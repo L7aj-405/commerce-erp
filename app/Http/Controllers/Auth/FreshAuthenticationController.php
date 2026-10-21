@@ -10,6 +10,7 @@ use App\Services\Security\FreshAuthentication;
 use App\Services\Security\RecoveryCodeService;
 use App\Services\Security\TotpService;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
@@ -20,6 +21,22 @@ use RuntimeException;
 
 final class FreshAuthenticationController extends Controller
 {
+    public function status(Request $request, FreshAuthentication $fresh): JsonResponse
+    {
+        $level = $fresh->requiredLevel($request);
+
+        if ($fresh->isSatisfied($request, $level)) {
+            return response()->json([
+                'confirmed' => true,
+                'requires_password' => false,
+                'requires_mfa' => false,
+                'level' => $level >= FreshAuthentication::LEVEL_TWO_FACTOR ? 'L2' : 'L1',
+            ]);
+        }
+
+        return response()->json(['confirmed' => false, ...$fresh->challenge($request, $level)]);
+    }
+
     public function show(Request $request, FreshAuthentication $fresh): Response|RedirectResponse
     {
         $level = $fresh->requiredLevel($request);
@@ -46,7 +63,7 @@ final class FreshAuthenticationController extends Controller
         Request $request,
         FreshAuthentication $fresh,
         AuditLogger $audit,
-    ): RedirectResponse {
+    ): RedirectResponse|JsonResponse {
         $data = $request->validate(['password' => ['required', 'string']]);
         $user = $request->user();
 
@@ -65,8 +82,12 @@ final class FreshAuthenticationController extends Controller
         TotpService $totp,
         RecoveryCodeService $recovery,
         AuditLogger $audit,
-    ): RedirectResponse {
+    ): RedirectResponse|JsonResponse {
         if (! $fresh->accountIsFresh($request)) {
+            if ($request->expectsJson()) {
+                return response()->json($fresh->challenge($request, $fresh->requiredLevel($request)), 409);
+            }
+
             return redirect()->route('security.confirm');
         }
 
@@ -154,9 +175,17 @@ final class FreshAuthenticationController extends Controller
         FreshAuthentication $fresh,
         AuditLogger $audit,
         string $method,
-    ): RedirectResponse {
+    ): RedirectResponse|JsonResponse {
         $level = $fresh->requiredLevel($request);
         if ($level >= FreshAuthentication::LEVEL_TWO_FACTOR && $request->user()->hasEnabledTwoFactorAuthentication()) {
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'confirmed' => false,
+                    'requires_mfa' => true,
+                    'level' => 'L2',
+                ]);
+            }
+
             return redirect()->route('security.confirm')->with('status', 'Identité confirmée. Saisissez maintenant votre code d’authentification.');
         }
 
@@ -168,15 +197,20 @@ final class FreshAuthenticationController extends Controller
         FreshAuthentication $fresh,
         AuditLogger $audit,
         string $method,
-    ): RedirectResponse {
+    ): RedirectResponse|JsonResponse {
+        $level = $fresh->requiredLevel($request);
         $audit->record(
             'auth.fresh_confirmed',
             $request->user(),
             $request->user()->activeOrganization,
             auditable: $request->user(),
-            newValues: ['level' => $fresh->requiredLevel($request), 'method' => $method],
+            newValues: ['level' => $level, 'method' => $method],
         );
 
-        return redirect($fresh->complete($request));
+        $returnTo = $fresh->complete($request);
+
+        return $request->expectsJson()
+            ? response()->json(['confirmed' => true, 'requires_mfa' => false, 'level' => $level >= FreshAuthentication::LEVEL_TWO_FACTOR ? 'L2' : 'L1'])
+            : redirect($returnTo);
     }
 }

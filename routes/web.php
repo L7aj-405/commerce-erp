@@ -186,6 +186,8 @@ Route::middleware('auth')->group(function () {
     Route::post('/confirm-password', [ConfirmablePasswordController::class, 'store'])->middleware('throttle:6,1');
 
     Route::get('/security/confirm', [FreshAuthenticationController::class, 'show'])->name('security.confirm');
+    Route::get('/security/confirm/status', [FreshAuthenticationController::class, 'status'])
+        ->middleware('throttle:30,1')->name('security.confirm.status');
     Route::post('/security/confirm/password', [FreshAuthenticationController::class, 'password'])
         ->middleware('throttle:6,1')->name('security.confirm.password');
     Route::post('/security/confirm/two-factor', [FreshAuthenticationController::class, 'twoFactor'])

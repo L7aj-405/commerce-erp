@@ -201,10 +201,7 @@ async function apiCall<T>(url: string, method: string, body?: Record<string, unk
         body: body ? JSON.stringify(body) : undefined,
     });
 
-    const data = (await response.json().catch(() => ({}))) as T & { reauthentication_url?: string };
-    if (response.status === 409 && data.reauthentication_url) {
-        window.location.assign(data.reauthentication_url);
-    }
+    const data = (await response.json().catch(() => ({}))) as T;
 
     return { status: response.status, data };
 }

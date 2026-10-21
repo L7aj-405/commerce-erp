@@ -4,6 +4,7 @@ namespace App\Services\Security;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Exceptions\HttpResponseException;
+use App\Models\UserSocialIdentity;
 
 final class FreshAuthentication
 {
@@ -49,9 +50,38 @@ final class FreshAuthentication
         $this->require($request, $level);
         $url = route('security.confirm');
 
-        throw new HttpResponseException($request->expectsJson()
-            ? response()->json(['message' => 'Confirmation de sécurité requise.', 'reauthentication_url' => $url], 409)
+        throw new HttpResponseException($this->usesStructuredChallenge($request)
+            ? response()->json($this->challenge($request, $level), 409)
             : redirect($url));
+    }
+
+    /**
+     * Stable response contract consumed by the global Inertia fresh-auth flow.
+     * The authenticated session remains authoritative; this metadata only tells
+     * the client which existing verification step must be displayed.
+     *
+     * @return array<string, bool|int|string>
+     */
+    public function challenge(Request $request, int $level): array
+    {
+        $normalizedLevel = $this->normalizeLevel($level);
+        $user = $request->user();
+        $accountConfirmed = $this->accountIsFresh($request);
+
+        return [
+            'code' => 'FRESH_AUTH_REQUIRED',
+            'level' => $normalizedLevel >= self::LEVEL_TWO_FACTOR ? 'L2' : 'L1',
+            'level_value' => $normalizedLevel,
+            'requires_password' => ! $accountConfirmed,
+            'requires_mfa' => $normalizedLevel >= self::LEVEL_TWO_FACTOR
+                && (bool) $user?->hasEnabledTwoFactorAuthentication(),
+            'has_password' => $user?->password !== null,
+            'google_connected' => (bool) $user?->socialIdentities()
+                ->where('provider', UserSocialIdentity::PROVIDER_GOOGLE)
+                ->exists(),
+            'timeout_minutes' => $this->timeoutMinutes(),
+            'reauthentication_url' => route('security.confirm'),
+        ];
     }
 
     public function requiredLevel(Request $request): int
@@ -107,6 +137,11 @@ final class FreshAuthentication
     private function normalizeLevel(int $level): int
     {
         return $level >= self::LEVEL_TWO_FACTOR ? self::LEVEL_TWO_FACTOR : self::LEVEL_ACCOUNT;
+    }
+
+    private function usesStructuredChallenge(Request $request): bool
+    {
+        return $request->expectsJson() || $request->headers->has('X-Inertia');
     }
 
     private function safeReturnUrl(Request $request): string

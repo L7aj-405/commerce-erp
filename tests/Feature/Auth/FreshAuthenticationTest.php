@@ -177,4 +177,87 @@ class FreshAuthenticationTest extends PlatformTestCase
             ->assertForbidden();
         $this->assertDatabaseMissing('roles', ['organization_id' => $organization->getKey(), 'name' => 'Forbidden Role']);
     }
+
+    public function test_stale_inertia_request_receives_the_structured_fresh_auth_contract(): void
+    {
+        $user = $this->enabledUser();
+
+        $response = $this->actingAs($user)
+            ->withHeader('X-Inertia', 'true')
+            ->delete(route('security.trusted-devices.destroy-all'));
+
+        $response->assertStatus(409)->assertJson([
+            'code' => 'FRESH_AUTH_REQUIRED',
+            'level' => 'L2',
+            'level_value' => 2,
+            'requires_password' => true,
+            'requires_mfa' => true,
+            'has_password' => true,
+            'timeout_minutes' => 15,
+        ]);
+    }
+
+    public function test_json_password_then_mfa_confirmation_refreshes_both_levels(): void
+    {
+        $user = $this->enabledUser();
+        $this->actingAs($user)
+            ->deleteJson(route('security.trusted-devices.destroy-all'))
+            ->assertStatus(409);
+
+        $this->postJson(route('security.confirm.password'), ['password' => 'password'])
+            ->assertOk()
+            ->assertJson(['confirmed' => false, 'requires_mfa' => true, 'level' => 'L2']);
+
+        $this->postJson(route('security.confirm.two-factor'), ['code' => self::RECOVERY_CODE])
+            ->assertOk()
+            ->assertJson(['confirmed' => true, 'requires_mfa' => false, 'level' => 'L2']);
+
+        $this->deleteJson(route('security.trusted-devices.destroy-all'))->assertRedirect();
+        $this->assertDatabaseHas('audit_logs', ['event' => 'auth.fresh_confirmed', 'actor_id' => $user->getKey()]);
+    }
+
+    public function test_invalid_json_credentials_are_rejected_without_refreshing_the_window(): void
+    {
+        $user = $this->enabledUser();
+        $this->actingAs($user)
+            ->deleteJson(route('security.trusted-devices.destroy-all'))
+            ->assertStatus(409);
+
+        $this->postJson(route('security.confirm.password'), ['password' => 'incorrect'])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('password');
+
+        $this->deleteJson(route('security.trusted-devices.destroy-all'))
+            ->assertStatus(409)
+            ->assertJson(['requires_password' => true]);
+    }
+
+    public function test_role_creation_is_not_duplicated_when_the_original_request_is_retried(): void
+    {
+        $owner = User::factory()->create();
+        $organization = $this->createOrganization($owner);
+        $this->activate($owner, $organization);
+        $payload = ['name' => 'Resumable Role', 'permission_ids' => []];
+
+        $this->actingAs($owner)->postJson(route('roles.store'), $payload)
+            ->assertStatus(409)
+            ->assertJson(['code' => 'FRESH_AUTH_REQUIRED', 'level' => 'L2']);
+        $this->assertDatabaseMissing('roles', ['organization_id' => $organization->getKey(), 'name' => 'Resumable Role']);
+
+        $this->postJson(route('security.confirm.password'), ['password' => 'password'])
+            ->assertOk()
+            ->assertJson(['confirmed' => true]);
+
+        $this->post(route('roles.store'), $payload)->assertRedirect();
+
+        $this->assertSame(1, $organization->roles()->where('name', 'Resumable Role')->count());
+        $this->assertSame(1, $organization->auditLogs()->where('event', 'role.created')->count());
+    }
+
+    public function test_expired_login_session_is_not_reported_as_a_fresh_auth_challenge(): void
+    {
+        $this->deleteJson(route('security.sessions.destroy-others'))
+            ->assertUnauthorized()
+            ->assertJsonMissing(['code' => 'FRESH_AUTH_REQUIRED']);
+    }
 }

@@ -97,12 +97,16 @@ class FinanceMonthlySituationPageTest extends PaymentTestCase
             'allocations' => [['obligation_id' => $obligation->id, 'amount' => '1000.0000']],
         ];
 
-        $this->actingAs($owner)->post(route('finance.monthly-situation.payments.store'), $payload)
-            ->assertRedirect(route('security.confirm'));
+        $this->actingAs($owner)->postJson(route('finance.monthly-situation.payments.store'), $payload)
+            ->assertStatus(409)
+            ->assertJson(['code' => 'FRESH_AUTH_REQUIRED', 'level' => 'L1']);
         $this->assertDatabaseCount('finance_outgoing_payments', 0);
 
-        $this->withFreshAuthentication(level: 1)->actingAs($owner)
-            ->post(route('finance.monthly-situation.payments.store'), $payload)->assertRedirect();
+        $this->postJson(route('security.confirm.password'), ['password' => 'password'])
+            ->assertOk()
+            ->assertJson(['confirmed' => true, 'level' => 'L1']);
+
+        $this->post(route('finance.monthly-situation.payments.store'), $payload)->assertRedirect();
         $this->assertDatabaseCount('finance_outgoing_payments', 1);
     }
 
