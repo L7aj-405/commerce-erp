@@ -1,4 +1,5 @@
 import { Button } from '@/components/ui/Button';
+import { useFreshAuth } from '@/components/auth/FreshAuthProvider';
 import { FormBanner, TextField } from '@/components/ui/form';
 import { useI18n } from '@/i18n';
 import { router } from '@inertiajs/react';
@@ -30,6 +31,7 @@ type Props = {
 
 export default function RoleEditor({ permissionGroups, presets, actorPermissions, role, canAssignPermissions, onClose }: Props) {
     const { t } = useI18n();
+    const { submit: submitProtected } = useFreshAuth();
     const groupLabels: Record<string, string> = {
         organizations: t('roles.group.organizations'), settings: t('roles.group.settings'), stores: t('roles.group.stores'), members: t('roles.group.members'),
         'store-memberships': t('roles.group.storeMemberships'), roles: t('roles.group.roles'), catalog: t('roles.group.catalog'), products: t('roles.group.products'),
@@ -99,20 +101,19 @@ export default function RoleEditor({ permissionGroups, presets, actorPermissions
         setProcessing(true);
 
         if (isCreate) {
-            router.post(
-                '/roles',
-                {
+            void submitProtected({
+                method: 'post',
+                url: '/roles',
+                data: {
                     name,
                     preset_slug: presetSlug,
                     permission_ids: permissionIdsFor(checked),
                 },
-                {
-                    preserveScroll: true,
-                    onSuccess: () => onClose(),
-                    onError: (errors) => setError(Object.values(errors)[0] as string),
-                    onFinish: () => setProcessing(false),
-                },
-            );
+                preserveScroll: true,
+                onSuccess: onClose,
+                onError: (errors) => setError(Object.values(errors)[0] as string),
+                onFinish: () => setProcessing(false),
+            });
             return;
         }
 
@@ -127,16 +128,15 @@ export default function RoleEditor({ permissionGroups, presets, actorPermissions
         }
 
         if (!matrixLocked) {
-            router.put(
-                `/roles/${role!.id}/permissions`,
-                { permission_ids: permissionIdsFor(checked) },
-                {
-                    preserveScroll: true,
-                    onSuccess: () => onClose(),
-                    onError: (errors) => setError(Object.values(errors)[0] as string),
-                    onFinish: () => setProcessing(false),
-                },
-            );
+            void submitProtected({
+                method: 'put',
+                url: `/roles/${role!.id}/permissions`,
+                data: { permission_ids: permissionIdsFor(checked) },
+                preserveScroll: true,
+                onSuccess: onClose,
+                onError: (errors) => setError(Object.values(errors)[0] as string),
+                onFinish: () => setProcessing(false),
+            });
         } else {
             setProcessing(false);
             if (nameChanged) onClose();
@@ -148,7 +148,7 @@ export default function RoleEditor({ permissionGroups, presets, actorPermissions
     const destroy = () => {
         if (!role) return;
         if (!window.confirm(t('roles.deleteConfirm').replace('{name}', role.name))) return;
-        router.delete(`/roles/${role.id}`, { preserveScroll: true, onSuccess: () => onClose() });
+        void submitProtected({ method: 'delete', url: `/roles/${role.id}`, preserveScroll: true, onSuccess: onClose });
     };
 
     return (

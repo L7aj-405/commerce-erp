@@ -1,10 +1,12 @@
 import { Button } from '@/components/ui/Button';
+import { useFreshAuth } from '@/components/auth/FreshAuthProvider';
 import AccountLayout from '@/layouts/AccountLayout';
 import { useI18n } from '@/i18n';
 import { Head, router } from '@inertiajs/react';
 import { toCanvas } from 'qrcode';
 import type { FormEvent } from 'react';
 import { useEffect, useRef, useState } from 'react';
+import axios, { type AxiosRequestConfig, type AxiosResponse } from 'axios';
 
 type TrustedDeviceRow = {
     id: string;
@@ -39,6 +41,7 @@ function PasswordSection({
     onCredentialsChanged: () => void;
 }) {
     const { t } = useI18n();
+    const { request } = useFreshAuth();
     const [open, setOpen] = useState(false);
     const [hasPassword, setHasPassword] = useState(initialHasPassword);
     const [currentPassword, setCurrentPassword] = useState('');
@@ -64,7 +67,7 @@ function PasswordSection({
         setDone(false);
         setDoneMessage(null);
         const isInitialSetup = !hasPassword;
-        const { status, data } = await apiCall<{ message?: string; errors?: { current_password?: string[]; password?: string[] } }>(
+        const { status, data } = await apiCall<{ message?: string; errors?: { current_password?: string[]; password?: string[] } }>(request,
             isInitialSetup ? '/account/password/initial' : '/account/password',
             isInitialSetup ? 'POST' : 'PATCH',
             isInitialSetup
@@ -189,25 +192,26 @@ function xsrfToken(): string {
     return decodeURIComponent(document.cookie.match(/XSRF-TOKEN=([^;]+)/)?.[1] ?? '');
 }
 
-async function apiCall<T>(url: string, method: string, body?: Record<string, unknown>): Promise<{ status: number; data: T }> {
-    const response = await fetch(url, {
-        method,
-        headers: {
-            Accept: 'application/json',
-            'Content-Type': 'application/json',
-            'X-XSRF-TOKEN': xsrfToken(),
-        },
-        credentials: 'same-origin',
-        body: body ? JSON.stringify(body) : undefined,
-    });
-
-    const data = (await response.json().catch(() => ({}))) as T;
-
-    return { status: response.status, data };
+async function apiCall<T>(
+    request: (config: AxiosRequestConfig) => Promise<AxiosResponse<unknown>>,
+    url: string,
+    method: string,
+    body?: Record<string, unknown>,
+): Promise<{ status: number; data: T }> {
+    try {
+        const response = await request({ url, method, data: body, headers: { 'X-XSRF-TOKEN': xsrfToken() } });
+        return { status: response.status, data: response.data as T };
+    } catch (error) {
+        if (axios.isAxiosError(error) && error.response) {
+            return { status: error.response.status, data: error.response.data as T };
+        }
+        throw error;
+    }
 }
 
 export default function Security({ status, twoFactorEnabled, hasPassword, googleAuthConnected, recoveryCodesRemaining, trustedDevices }: Props) {
     const { locale, t } = useI18n();
+    const { request, submit: submitProtected } = useFreshAuth();
     const dateLocale = locale === 'ar' ? 'ar-MA' : 'fr-FR';
     const [enabled, setEnabled] = useState(twoFactorEnabled);
     const [codesRemaining, setCodesRemaining] = useState(recoveryCodesRemaining);
@@ -234,16 +238,13 @@ export default function Security({ status, twoFactorEnabled, hasPassword, google
 
     const revokeAllDevices = () => {
         setRevokingDevice('all');
-        router.delete('/security/trusted-devices', {
-            preserveScroll: true,
-            onFinish: () => setRevokingDevice(null),
-        });
+        void submitProtected({ method: 'delete', url: '/security/trusted-devices', preserveScroll: true, onFinish: () => setRevokingDevice(null) });
     };
 
     const startEnrollment = async () => {
         setError(null);
         setBusy(true);
-        const { status, data } = await apiCall<{ secret: string; otpauth_uri: string }>('/two-factor-authentication', 'POST');
+        const { status, data } = await apiCall<{ secret: string; otpauth_uri: string }>(request, '/two-factor-authentication', 'POST');
         setBusy(false);
         if (status !== 200) {
             setError(t('security.startError'));
@@ -259,7 +260,7 @@ export default function Security({ status, twoFactorEnabled, hasPassword, google
         event.preventDefault();
         setError(null);
         setBusy(true);
-        const { status, data } = await apiCall<{ recovery_codes?: string[]; errors?: { code?: string[] } }>(
+        const { status, data } = await apiCall<{ recovery_codes?: string[]; errors?: { code?: string[] } }>(request,
             '/two-factor-authentication/confirm',
             'POST',
             { code },
@@ -279,7 +280,7 @@ export default function Security({ status, twoFactorEnabled, hasPassword, google
     const disable = async () => {
         setError(null);
         setBusy(true);
-        const { status } = await apiCall<Record<string, never>>('/two-factor-authentication', 'DELETE');
+        const { status } = await apiCall<Record<string, never>>(request, '/two-factor-authentication', 'DELETE');
         setBusy(false);
         if (status >= 400) {
             if (status !== 409) setError(t('security.disableError'));
@@ -294,7 +295,7 @@ export default function Security({ status, twoFactorEnabled, hasPassword, google
     const regenerateCodes = async () => {
         setError(null);
         setBusy(true);
-        const { status, data } = await apiCall<{ recovery_codes?: string[] }>('/two-factor-recovery-codes', 'POST');
+        const { status, data } = await apiCall<{ recovery_codes?: string[] }>(request, '/two-factor-recovery-codes', 'POST');
         setBusy(false);
         if (status !== 200 || !data.recovery_codes) {
             if (status !== 409) setError(t('security.regenerateError'));

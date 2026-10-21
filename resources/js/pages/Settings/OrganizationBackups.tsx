@@ -1,4 +1,5 @@
 import { Button } from '@/components/ui/Button';
+import { useFreshAuth } from '@/components/auth/FreshAuthProvider';
 import PageHeader from '@/components/ui/PageHeader';
 import { useI18n } from '@/i18n';
 import SalesLayout from '@/layouts/SalesLayout';
@@ -82,6 +83,7 @@ type Props = {
 
 export default function OrganizationBackups({ organization, validatedBackup, settings, history, googleDrive, can }: Props) {
     const { t } = useI18n();
+    const { submit: submitProtected } = useFreshAuth();
     const { props } = usePage<{ errors?: Record<string, string>; flash?: { status?: string; success?: string } }>();
     const [confirmRestore, setConfirmRestore] = useState(false);
     const [actionProcessing, setActionProcessing] = useState<string | null>(null);
@@ -110,11 +112,11 @@ export default function OrganizationBackups({ organization, validatedBackup, set
     const submitRestore = () => {
         if (!validatedBackup || restoring) return;
         setRestoring(true);
-        router.post(
-            '/organization-backups/restore',
-            { token: validatedBackup.token, confirm: true },
-            { preserveScroll: true, onFinish: () => setRestoring(false) },
-        );
+        void submitProtected({
+            method: 'post', url: '/organization-backups/restore',
+            data: { token: validatedBackup.token, confirm: true }, preserveScroll: true,
+            onFinish: () => setRestoring(false),
+        });
     };
 
     const postAction = (key: string, url: string) => {
@@ -126,6 +128,10 @@ export default function OrganizationBackups({ organization, validatedBackup, set
     const deleteAction = (key: string, url: string) => {
         if (actionProcessing) return;
         setActionProcessing(key);
+        if (url === '/organization-backups/google-drive') {
+            void submitProtected({ method: 'delete', url, preserveScroll: true, onFinish: () => setActionProcessing(null) });
+            return;
+        }
         router.delete(url, { preserveScroll: true, onFinish: () => setActionProcessing(null) });
     };
 

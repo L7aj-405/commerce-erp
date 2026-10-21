@@ -141,7 +141,11 @@ final class FreshAuthentication
 
     private function usesStructuredChallenge(Request $request): bool
     {
-        return $request->expectsJson() || $request->headers->has('X-Inertia');
+        if ($request->headers->has('X-Inertia')) {
+            return false;
+        }
+
+        return $request->expectsJson() || $request->header('X-Fresh-Auth-Transport') === '1';
     }
 
     private function safeReturnUrl(Request $request): string

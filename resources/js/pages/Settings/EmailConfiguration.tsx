@@ -1,4 +1,5 @@
 import { Button } from '@/components/ui/Button';
+import { useFreshAuth } from '@/components/auth/FreshAuthProvider';
 import ApplicationShell from '@/layouts/ApplicationShell';
 import { useI18n } from '@/i18n';
 import { Head, useForm } from '@inertiajs/react';
@@ -39,6 +40,8 @@ const STATUS_STYLE: Record<Status, string> = {
 
 export default function EmailConfiguration({ organization, setting, status, canUpdate }: Props) {
     const { t } = useI18n();
+    const { submit: submitProtected } = useFreshAuth();
+    const [saving, setSaving] = useState(false);
     const statusLabels: Record<Status, string> = { not_configured: t('emailSettings.notConfigured'), configured: t('emailSettings.configured'), verified: t('emailSettings.verified') };
     const form = useForm({
         sender_name: setting?.sender_name ?? organization.name,
@@ -55,9 +58,13 @@ export default function EmailConfiguration({ organization, setting, status, canU
 
     const submit = (event: FormEvent) => {
         event.preventDefault();
-        form.put('/email-settings', {
-            preserveScroll: true,
+        form.clearErrors();
+        void submitProtected({
+            method: 'put', url: '/email-settings', data: form.data, preserveScroll: true,
+            onStart: () => setSaving(true),
             onSuccess: () => form.setData('smtp_password', ''),
+            onError: (errors) => form.setError(errors),
+            onFinish: () => setSaving(false),
         });
     };
 
@@ -172,7 +179,7 @@ export default function EmailConfiguration({ organization, setting, status, canU
                             {t('emailSettings.active')}
                         </label>
 
-                        <Button type="submit" loading={form.processing} loadingText={t('common.saving')}>
+                        <Button type="submit" loading={saving} loadingText={t('common.saving')}>
                             {t('emailSettings.save')}
                         </Button>
                     </fieldset>

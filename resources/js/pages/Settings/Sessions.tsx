@@ -1,4 +1,5 @@
 import { Button } from '@/components/ui/Button';
+import { useFreshAuth } from '@/components/auth/FreshAuthProvider';
 import AccountLayout from '@/layouts/AccountLayout';
 import { useI18n } from '@/i18n';
 import { formatDateTime } from '@/utils/format';
@@ -18,6 +19,7 @@ type SessionRow = {
 
 export default function Sessions({ sessions }: { sessions: SessionRow[] }) {
     const { t } = useI18n();
+    const { submit: submitProtected } = useFreshAuth();
     const [processing, setProcessing] = useState<string | 'all' | null>(null);
     const otherSessions = sessions.filter((session) => !session.isCurrent);
 
@@ -31,10 +33,7 @@ export default function Sessions({ sessions }: { sessions: SessionRow[] }) {
 
     const revokeAll = () => {
         setProcessing('all');
-        router.delete('/security/sessions', {
-            preserveScroll: true,
-            onFinish: () => setProcessing(null),
-        });
+        void submitProtected({ method: 'delete', url: '/security/sessions', preserveScroll: true, onFinish: () => setProcessing(null) });
     };
 
     return (

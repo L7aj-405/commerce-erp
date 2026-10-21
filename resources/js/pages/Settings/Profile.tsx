@@ -1,9 +1,11 @@
 import { Button } from '@/components/ui/Button';
+import { useFreshAuth } from '@/components/auth/FreshAuthProvider';
 import { TextField } from '@/components/ui/form';
 import AccountLayout from '@/layouts/AccountLayout';
 import { useI18n } from '@/i18n';
 import { Head, useForm } from '@inertiajs/react';
 import type { FormEvent } from 'react';
+import { useState } from 'react';
 
 type Props = {
     user: { name: string; email: string };
@@ -13,14 +15,20 @@ type Props = {
 
 export default function Profile({ user, emailVerified, status }: Props) {
     const { t } = useI18n();
+    const { submit: submitProtected } = useFreshAuth();
+    const [saving, setSaving] = useState(false);
     const form = useForm({ name: user.name, email: user.email });
     const resendForm = useForm({});
     const emailChanged = form.data.email !== user.email;
 
     const submit = (event: FormEvent) => {
         event.preventDefault();
-        form.patch('/account/profile', {
-            preserveScroll: true,
+        form.clearErrors();
+        void submitProtected({
+            method: 'patch', url: '/account/profile', data: form.data, preserveScroll: true,
+            onStart: () => setSaving(true),
+            onError: (errors) => form.setError(errors),
+            onFinish: () => setSaving(false),
         });
     };
 
@@ -95,7 +103,7 @@ export default function Profile({ user, emailVerified, status }: Props) {
                     )}
 
                     <div className="flex justify-end">
-                        <Button type="submit" loading={form.processing} loadingText={t('common.saving')} className="w-full sm:w-auto">
+                        <Button type="submit" loading={saving} loadingText={t('common.saving')} className="w-full sm:w-auto">
                             {t('common.save')}
                         </Button>
                     </div>

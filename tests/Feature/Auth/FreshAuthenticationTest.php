@@ -178,7 +178,7 @@ class FreshAuthenticationTest extends PlatformTestCase
         $this->assertDatabaseMissing('roles', ['organization_id' => $organization->getKey(), 'name' => 'Forbidden Role']);
     }
 
-    public function test_stale_inertia_request_receives_the_structured_fresh_auth_contract(): void
+    public function test_stale_inertia_request_never_receives_plain_challenge_json(): void
     {
         $user = $this->enabledUser();
 
@@ -186,7 +186,26 @@ class FreshAuthenticationTest extends PlatformTestCase
             ->withHeader('X-Inertia', 'true')
             ->delete(route('security.trusted-devices.destroy-all'));
 
-        $response->assertStatus(409)->assertJson([
+        $response->assertRedirect(route('security.confirm'));
+        $this->assertStringNotContainsString('application/json', (string) $response->headers->get('Content-Type'));
+
+        $this->actingAs($user)
+            ->withHeader('X-Inertia', 'true')
+            ->get(route('security.confirm'))
+            ->assertOk()
+            ->assertHeader('X-Inertia', 'true')
+            ->assertJsonPath('component', 'Auth/SecurityConfirmation');
+    }
+
+    public function test_non_inertia_protected_transport_receives_the_structured_contract(): void
+    {
+        $user = $this->enabledUser();
+
+        $this->actingAs($user)
+            ->withHeaders(['Accept' => 'application/json', 'X-Fresh-Auth-Transport' => '1'])
+            ->delete(route('security.trusted-devices.destroy-all'))
+            ->assertStatus(409)
+            ->assertJson([
             'code' => 'FRESH_AUTH_REQUIRED',
             'level' => 'L2',
             'level_value' => 2,
@@ -248,10 +267,39 @@ class FreshAuthenticationTest extends PlatformTestCase
             ->assertOk()
             ->assertJson(['confirmed' => true]);
 
-        $this->post(route('roles.store'), $payload)->assertRedirect();
+        $this->withHeaders(['Accept' => 'application/json', 'X-Fresh-Auth-Transport' => '1'])
+            ->post(route('roles.store'), $payload)
+            ->assertOk()
+            ->assertJsonStructure(['redirect_to']);
 
         $this->assertSame(1, $organization->roles()->where('name', 'Resumable Role')->count());
         $this->assertSame(1, $organization->auditLogs()->where('event', 'role.created')->count());
+    }
+
+    public function test_validation_errors_after_confirmation_remain_a_normal_422_response(): void
+    {
+        $owner = User::factory()->create();
+        $organization = $this->createOrganization($owner);
+        $this->activate($owner, $organization);
+        $payload = ['name' => '', 'permission_ids' => []];
+
+        $this->actingAs($owner)
+            ->withHeaders(['Accept' => 'application/json', 'X-Fresh-Auth-Transport' => '1'])
+            ->post(route('roles.store'), $payload)
+            ->assertStatus(409)
+            ->assertJson(['code' => 'FRESH_AUTH_REQUIRED']);
+
+        $this->postJson(route('security.confirm.password'), ['password' => 'password'])
+            ->assertOk()
+            ->assertJson(['confirmed' => true]);
+
+        $this->withHeaders(['Accept' => 'application/json', 'X-Fresh-Auth-Transport' => '1'])
+            ->post(route('roles.store'), $payload)
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('name')
+            ->assertJsonMissing(['code' => 'FRESH_AUTH_REQUIRED']);
+
+        $this->assertSame(0, $organization->roles()->where('name', '')->count());
     }
 
     public function test_expired_login_session_is_not_reported_as_a_fresh_auth_challenge(): void

@@ -2,6 +2,7 @@ import { Button } from '@/components/ui/Button';
 import { PasswordField, TextField } from '@/components/ui/form';
 import { useI18n } from '@/i18n';
 import axios, { AxiosError, CanceledError, type AxiosRequestConfig, type AxiosResponse } from 'axios';
+import { router } from '@inertiajs/react';
 import {
     createContext,
     useCallback,
@@ -40,6 +41,20 @@ type PendingRequest = {
 type FreshAuthContextValue = {
     active: boolean;
     cancel: () => void;
+    request: <T = unknown>(config: AxiosRequestConfig) => Promise<AxiosResponse<T>>;
+    submit: (options: ProtectedSubmitOptions) => Promise<void>;
+};
+
+export type ProtectedSubmitOptions = {
+    method: 'post' | 'put' | 'patch' | 'delete';
+    url: string;
+    data?: unknown;
+    preserveScroll?: boolean;
+    preserveState?: boolean;
+    onStart?: () => void;
+    onSuccess?: () => void;
+    onError?: (errors: Record<string, string>) => void;
+    onFinish?: () => void;
 };
 
 const FreshAuthContext = createContext<FreshAuthContextValue | null>(null);
@@ -309,34 +324,7 @@ export function FreshAuthProvider({ children }: PropsWithChildren) {
             });
         });
 
-        const nativeFetch = window.fetch.bind(window);
-        window.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-            const response = await nativeFetch(input, init);
-            if (response.status !== 409 || pendingRef.current) return response;
-
-            let data: unknown;
-            try {
-                data = await response.clone().json();
-            } catch {
-                return response;
-            }
-            if (!isFreshAuthChallenge(data)) return response;
-
-            return new Promise<Response>((resolve, reject) => {
-                pendingRef.current = {
-                    execute: () => nativeFetch(input, init),
-                    resolve: (retriedResponse) => resolve(retriedResponse as Response),
-                    reject,
-                    cancel: () => resolve(response),
-                };
-                setChallenge(data);
-            });
-        };
-
-        return () => {
-            axios.interceptors.response.eject(interceptor);
-            window.fetch = nativeFetch;
-        };
+        return () => axios.interceptors.response.eject(interceptor);
     }, []);
 
     const cancel = useCallback(() => {
@@ -363,8 +351,57 @@ export function FreshAuthProvider({ children }: PropsWithChildren) {
         }
     }, []);
 
+    const request = useCallback(<T,>(config: AxiosRequestConfig): Promise<AxiosResponse<T>> => axios.request<T>({
+        ...config,
+        headers: {
+            Accept: 'application/json',
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-Fresh-Auth-Transport': '1',
+            ...config.headers,
+        },
+        withCredentials: true,
+    }), []);
+
+    const submit = useCallback(async (options: ProtectedSubmitOptions): Promise<void> => {
+        let navigationStarted = false;
+        options.onStart?.();
+        try {
+            const response = await request<{ redirect_to?: string }>({
+                method: options.method,
+                url: options.url,
+                data: options.data,
+            });
+            const redirectTo = response.data.redirect_to;
+            if (redirectTo) {
+                navigationStarted = true;
+                router.visit(redirectTo, {
+                    method: 'get',
+                    preserveScroll: options.preserveScroll ?? true,
+                    preserveState: options.preserveState ?? true,
+                    onSuccess: () => options.onSuccess?.(),
+                    onFinish: () => options.onFinish?.(),
+                });
+                return;
+            }
+            options.onSuccess?.();
+        } catch (error) {
+            if (axios.isAxiosError(error) && error.response?.status === 422) {
+                const rawErrors = error.response.data?.errors as Record<string, string[] | string> | undefined;
+                const errors = Object.fromEntries(Object.entries(rawErrors ?? {}).map(([key, value]) => [
+                    key,
+                    Array.isArray(value) ? value[0] : value,
+                ]));
+                options.onError?.(errors);
+            } else if (!axios.isCancel(error)) {
+                throw error;
+            }
+        } finally {
+            if (!navigationStarted) options.onFinish?.();
+        }
+    }, [request]);
+
     return (
-        <FreshAuthContext.Provider value={{ active: challenge !== null, cancel }}>
+        <FreshAuthContext.Provider value={{ active: challenge !== null, cancel, request, submit }}>
             {children}
             {challenge && (
                 <FreshAuthModal

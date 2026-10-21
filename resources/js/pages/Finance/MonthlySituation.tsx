@@ -1,6 +1,7 @@
 import FinanceFilters, {
     type FinanceStore,
 } from "@/components/finance/FinanceFilters";
+import { useFreshAuth } from "@/components/auth/FreshAuthProvider";
 import { Button, ButtonLink, DownloadLink } from "@/components/ui/Button";
 import EmptyState from "@/components/ui/EmptyState";
 import { MetricCard } from "@/components/ui/MetricCard";
@@ -236,6 +237,7 @@ const subtractExact = (left: string, right: string) => {
 
 export default function MonthlySituation(props: Props) {
     const { t } = useI18n();
+    const { submit: submitProtected } = useFreshAuth();
     const {
         period,
         storeId,
@@ -268,6 +270,7 @@ export default function MonthlySituation(props: Props) {
     const [search, setSearch] = useState(props.filters.search ?? "");
     const [closingMonth, setClosingMonth] = useState(false);
     const [reopeningMonth, setReopeningMonth] = useState(false);
+    const [protectedProcessing, setProtectedProcessing] = useState<string | null>(null);
 
     const obligationForm = useForm(emptyObligation(currencyCode));
     const paymentForm = useForm({
@@ -426,9 +429,12 @@ export default function MonthlySituation(props: Props) {
     };
     const submitPayment = (event: FormEvent) => {
         event.preventDefault();
-        paymentForm.post("/finance/situation-fin-de-mois/outgoing-payments", {
-            preserveScroll: true,
-            onSuccess: () => setPaying(null),
+        paymentForm.clearErrors();
+        void submitProtected({
+            method: "post", url: "/finance/situation-fin-de-mois/outgoing-payments", data: paymentForm.data,
+            preserveScroll: true, onStart: () => setProtectedProcessing("payment"),
+            onSuccess: () => setPaying(null), onError: (errors) => paymentForm.setError(errors),
+            onFinish: () => setProtectedProcessing(null),
         });
     };
     const hasRows = obligations.data.length > 0;
@@ -1498,13 +1504,12 @@ export default function MonthlySituation(props: Props) {
                                                         <Button
                                                             size="sm"
                                                             onClick={() =>
-                                                                router.post(
-                                                                    `/finance/situation-fin-de-mois/instruments/${i.id}/clear`,
-                                                                    {},
-                                                                    {
-                                                                        preserveScroll: true,
-                                                                    },
-                                                                )
+                                                                void submitProtected({
+                                                                    method: "post",
+                                                                    url: `/finance/situation-fin-de-mois/instruments/${i.id}/clear`,
+                                                                    data: {},
+                                                                    preserveScroll: true,
+                                                                })
                                                             }
                                                         >
                                                             {t(
@@ -1629,7 +1634,7 @@ export default function MonthlySituation(props: Props) {
                         <Button
                             form="payment-form"
                             type="submit"
-                            loading={paymentForm.processing}
+                            loading={protectedProcessing === "payment"}
                         >
                             Comptabiliser
                         </Button>
@@ -1740,20 +1745,17 @@ export default function MonthlySituation(props: Props) {
                 title={t("finance.monthEnd.reversePayment")}
                 open={!!reversing}
                 onClose={() => setReversing(null)}
-                form={reverseForm}
+                form={{ ...reverseForm, processing: protectedProcessing === "reverse" }}
                 onSubmit={(e: FormEvent) => {
                     e.preventDefault();
                     if (!reversing) return;
-                    reverseForm.post(
-                        `/finance/situation-fin-de-mois/outgoing-payments/${reversing.payment_id}/reverse`,
-                        {
-                            preserveScroll: true,
-                            onSuccess: () => {
-                                setReversing(null);
-                                setDetail(null);
-                            },
-                        },
-                    );
+                    reverseForm.clearErrors();
+                    void submitProtected({
+                        method: "post", url: `/finance/situation-fin-de-mois/outgoing-payments/${reversing.payment_id}/reverse`,
+                        data: reverseForm.data, preserveScroll: true, onStart: () => setProtectedProcessing("reverse"),
+                        onSuccess: () => { setReversing(null); setDetail(null); },
+                        onError: (errors) => reverseForm.setError(errors), onFinish: () => setProtectedProcessing(null),
+                    });
                 }}
             />
             <Sheet
@@ -1875,20 +1877,17 @@ export default function MonthlySituation(props: Props) {
                 title={t("finance.monthEnd.cancelInstrument")}
                 open={!!cancellingInstrument}
                 onClose={() => setCancellingInstrument(null)}
-                form={instrumentCancelForm}
+                form={{ ...instrumentCancelForm, processing: protectedProcessing === "instrument-cancel" }}
                 onSubmit={(e: FormEvent) => {
                     e.preventDefault();
                     if (!cancellingInstrument) return;
-                    instrumentCancelForm.post(
-                        `/finance/situation-fin-de-mois/instruments/${cancellingInstrument.id}/cancel`,
-                        {
-                            preserveScroll: true,
-                            onSuccess: () => {
-                                setCancellingInstrument(null);
-                                setDetail(null);
-                            },
-                        },
-                    );
+                    instrumentCancelForm.clearErrors();
+                    void submitProtected({
+                        method: "post", url: `/finance/situation-fin-de-mois/instruments/${cancellingInstrument.id}/cancel`,
+                        data: instrumentCancelForm.data, preserveScroll: true, onStart: () => setProtectedProcessing("instrument-cancel"),
+                        onSuccess: () => { setCancellingInstrument(null); setDetail(null); },
+                        onError: (errors) => instrumentCancelForm.setError(errors), onFinish: () => setProtectedProcessing(null),
+                    });
                 }}
             />
             <Sheet
@@ -2139,7 +2138,7 @@ export default function MonthlySituation(props: Props) {
                         <Button
                             form="close-month-form"
                             type="submit"
-                            loading={closeForm.processing}
+                            loading={protectedProcessing === "close"}
                         >
                             {t("finance.monthEnd.close")}
                         </Button>
@@ -2151,9 +2150,12 @@ export default function MonthlySituation(props: Props) {
                     className="grid gap-4 p-5"
                     onSubmit={(e) => {
                         e.preventDefault();
-                        closeForm.post("/finance/situation-fin-de-mois/close", {
-                            preserveScroll: true,
-                            onSuccess: () => setClosingMonth(false),
+                        closeForm.clearErrors();
+                        void submitProtected({
+                            method: "post", url: "/finance/situation-fin-de-mois/close", data: closeForm.data,
+                            preserveScroll: true, onStart: () => setProtectedProcessing("close"),
+                            onSuccess: () => setClosingMonth(false), onError: (errors) => closeForm.setError(errors),
+                            onFinish: () => setProtectedProcessing(null),
                         });
                     }}
                 >
@@ -2209,7 +2211,7 @@ export default function MonthlySituation(props: Props) {
                         <Button
                             form="reopen-month-form"
                             type="submit"
-                            loading={reopenForm.processing}
+                            loading={protectedProcessing === "reopen"}
                         >
                             {t("finance.monthEnd.reopen")}
                         </Button>
@@ -2221,13 +2223,13 @@ export default function MonthlySituation(props: Props) {
                     className="p-5"
                     onSubmit={(e) => {
                         e.preventDefault();
-                        reopenForm.post(
-                            "/finance/situation-fin-de-mois/reopen",
-                            {
-                                preserveScroll: true,
-                                onSuccess: () => setReopeningMonth(false),
-                            },
-                        );
+                        reopenForm.clearErrors();
+                        void submitProtected({
+                            method: "post", url: "/finance/situation-fin-de-mois/reopen", data: reopenForm.data,
+                            preserveScroll: true, onStart: () => setProtectedProcessing("reopen"),
+                            onSuccess: () => setReopeningMonth(false), onError: (errors) => reopenForm.setError(errors),
+                            onFinish: () => setProtectedProcessing(null),
+                        });
                     }}
                 >
                     <TextArea

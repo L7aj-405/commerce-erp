@@ -1,4 +1,5 @@
 import CommissionTabs from "@/components/finance/CommissionTabs";
+import { useFreshAuth } from "@/components/auth/FreshAuthProvider";
 import { Button } from "@/components/ui/Button";
 import PageHeader from "@/components/ui/PageHeader";
 import { useI18n } from "@/i18n";
@@ -72,6 +73,7 @@ export default function CommissionRules({
     can,
 }: Props) {
     const { t } = useI18n();
+    const { submit: submitProtected } = useFreshAuth();
     const [editing, setEditing] = useState<RuleSet | null>(null);
     const form = useForm({
         name: "",
@@ -247,13 +249,12 @@ export default function CommissionRules({
                                                 <Button
                                                     size="sm"
                                                     onClick={() =>
-                                                        router.post(
-                                                            `/finance/commissions/rules/${set.id}/activate`,
-                                                            {},
-                                                            {
-                                                                preserveScroll: true,
-                                                            },
-                                                        )
+                                                        void submitProtected({
+                                                            method: "post",
+                                                            url: `/finance/commissions/rules/${set.id}/activate`,
+                                                            data: {},
+                                                            preserveScroll: true,
+                                                        })
                                                     }
                                                 >
                                                     {t(

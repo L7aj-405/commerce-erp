@@ -1,4 +1,5 @@
 import CommissionTabs from '@/components/finance/CommissionTabs';
+import { useFreshAuth } from '@/components/auth/FreshAuthProvider';
 import { useCommissionLabels } from '@/components/finance/CommissionFilters';
 import { Button } from '@/components/ui/Button';
 import PageHeader from '@/components/ui/PageHeader';
@@ -27,6 +28,7 @@ type Props = {
 
 export default function CommissionLedger({ organization, entries, filters, stores, salespeople, summary, reconciliation, can }: Props) {
     const { t } = useI18n();
+    const { submit: submitProtected } = useFreshAuth();
     const { statuses, types } = useCommissionLabels();
     const reasons: Record<string, string> = {
         eligible_missing: t('commissions.reasonEligibleMissing'), missing_salesperson: t('commissions.reasonMissingSalesperson'), missing_cost: t('commissions.reasonMissingCost'),
@@ -37,7 +39,14 @@ export default function CommissionLedger({ organization, entries, filters, store
     const [selected, setSelected] = useState<number[]>([]);
     const [processing, setProcessing] = useState(false);
     const apply = () => router.get('/finance/commissions/ledger', local, { preserveState: true, replace: true });
-    const post = (path: string, data: any) => { setProcessing(true); router.post(path, data, { preserveScroll: true, onFinish: () => setProcessing(false), onSuccess: () => setSelected([]) }); };
+    const post = (path: string, data: any) => {
+        setProcessing(true);
+        if (path.endsWith('/mark-paid') || path.endsWith('/reconcile')) {
+            void submitProtected({ method: 'post', url: path, data, preserveScroll: true, onFinish: () => setProcessing(false), onSuccess: () => setSelected([]) });
+            return;
+        }
+        router.post(path, data, { preserveScroll: true, onFinish: () => setProcessing(false), onSuccess: () => setSelected([]) });
+    };
     const allVisible = entries.data.length > 0 && entries.data.every((entry) => selected.includes(entry.id));
     const allSelectedHaveStatus = (status: string) => selected.length > 0 && selected.every((id) => entries.data.find((entry) => entry.id === id)?.status === status);
 

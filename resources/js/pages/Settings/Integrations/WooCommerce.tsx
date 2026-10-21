@@ -1,4 +1,5 @@
 import { Button } from '@/components/ui/Button';
+import { useFreshAuth } from '@/components/auth/FreshAuthProvider';
 import { Checkbox, FormBanner, PasswordField, TextField } from '@/components/ui/form';
 import PageHeader from '@/components/ui/PageHeader';
 import { InlineLoader } from '@/components/ui/Spinner';
@@ -63,6 +64,7 @@ const priceModeValue = (v: boolean | null) => (v === null ? '' : v ? 'ttc' : 'ht
 
 export default function WooCommerceSettings({ integration, runs, warehouses, stores, can }: Props) {
     const { t } = useI18n();
+    const { submit: submitProtected } = useFreshAuth();
     const statusLabels: Record<string, string> = { running: t('woo.statusRunning'), completed: t('woo.statusCompleted'), completed_with_errors: t('woo.statusCompletedErrors'), failed: t('woo.statusFailed') };
     const creating = integration === null;
     const form = useForm({
@@ -89,6 +91,7 @@ export default function WooCommerceSettings({ integration, runs, warehouses, sto
     const [confirmSync, setConfirmSync] = useState(false);
     const [awaitingRun, setAwaitingRun] = useState(false);
     const [pollError, setPollError] = useState('');
+    const [saving, setSaving] = useState(false);
 
     const latestRun = runs[0] ?? null;
     const [liveRun, setLiveRun] = useState<SyncRun | null>(latestRun);
@@ -146,14 +149,18 @@ export default function WooCommerceSettings({ integration, runs, warehouses, sto
 
     const submit = (event: FormEvent) => {
         event.preventDefault();
-        const options = { preserveScroll: true, onSuccess: () => { form.setData('consumer_secret', ''); setReplaceSecret(false); } };
-        if (creating) {
-            form.post('/integrations/woocommerce', options);
-            return;
-        }
-        // Only send a secret when the operator explicitly chose to replace it.
-        form.transform((data) => (replaceSecret ? data : { ...data, consumer_secret: '' }));
-        form.patch(`/integrations/woocommerce/${integration.id}`, options);
+        form.clearErrors();
+        const data = creating || replaceSecret ? form.data : { ...form.data, consumer_secret: '' };
+        void submitProtected({
+            method: creating ? 'post' : 'patch',
+            url: creating ? '/integrations/woocommerce' : `/integrations/woocommerce/${integration!.id}`,
+            data,
+            preserveScroll: true,
+            onStart: () => setSaving(true),
+            onSuccess: () => { form.setData('consumer_secret', ''); setReplaceSecret(false); },
+            onError: (errors) => form.setError(errors),
+            onFinish: () => setSaving(false),
+        });
     };
 
     const runTest = async () => {
@@ -309,7 +316,7 @@ export default function WooCommerceSettings({ integration, runs, warehouses, sto
                     {Object.keys(form.errors).length > 0 && <FormBanner>{t('woo.correctFields')}</FormBanner>}
 
                     {can.manage && (
-                        <Button type="submit" loading={form.processing} loadingText={t('common.saving')}>
+                        <Button type="submit" loading={saving} loadingText={t('common.saving')}>
                             {creating ? t('woo.saveIntegration') : t('woo.saveChanges')}
                         </Button>
                     )}

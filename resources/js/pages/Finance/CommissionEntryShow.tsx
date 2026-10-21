@@ -1,4 +1,5 @@
 import { Button, ButtonLink } from '@/components/ui/Button';
+import { useFreshAuth } from '@/components/auth/FreshAuthProvider';
 import PageHeader from '@/components/ui/PageHeader';
 import ApplicationShell from '@/layouts/ApplicationShell';
 import { useI18n } from '@/i18n';
@@ -10,8 +11,16 @@ import type { ReactNode } from 'react';
 type Entry = any;
 export default function CommissionEntryShow({ entry, can }: { entry: Entry; can: { approve: boolean; markPaid: boolean } }) {
     const { t } = useI18n();
+    const { submit: submitProtected } = useFreshAuth();
     const [processing, setProcessing] = useState(false);
-    const action = (path: string) => { setProcessing(true); router.post(path, { entry_ids: [entry.id] }, { preserveScroll: true, onFinish: () => setProcessing(false) }); };
+    const action = (path: string) => {
+        setProcessing(true);
+        if (path.endsWith('/mark-paid')) {
+            void submitProtected({ method: 'post', url: path, data: { entry_ids: [entry.id] }, preserveScroll: true, onFinish: () => setProcessing(false) });
+            return;
+        }
+        router.post(path, { entry_ids: [entry.id] }, { preserveScroll: true, onFinish: () => setProcessing(false) });
+    };
     return <ApplicationShell>
         <Head title={`${t('commissions.commission')} #${entry.id}`} />
         <PageHeader title={<>{t('commissions.entryTitle')} <bdi>#{entry.id}</bdi></>} description={`${entry.salesperson_name_snapshot ?? t('commissions.unattributedSalesperson')} · ${formatDateTime(entry.occurred_at)}`} actions={<><ButtonLink href="/finance/commissions/ledger" variant="secondary">{t('commissions.backLedger')}</ButtonLink>{entry.status === 'pending' && can.approve && <Button loading={processing} onClick={() => action('/finance/commissions/ledger/approve')}>{t('commissions.approve')}</Button>}{entry.status === 'approved' && can.markPaid && <Button loading={processing} onClick={() => action('/finance/commissions/ledger/mark-paid')}>{t('commissions.markPaid')}</Button>}</>} />

@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/Button";
+import { useFreshAuth } from "@/components/auth/FreshAuthProvider";
 import EmptyState from "@/components/ui/EmptyState";
 import PageHeader from "@/components/ui/PageHeader";
 import { useI18n } from "@/i18n";
@@ -297,6 +298,8 @@ function OpeningPositionForm({
     onDone: () => void;
 }) {
     const { t } = useI18n();
+    const { submit: submitProtected } = useFreshAuth();
+    const [saving, setSaving] = useState(false);
     const form = useForm({
         effective_date:
             position?.effective_date ?? new Date().toISOString().slice(0, 10),
@@ -309,9 +312,11 @@ function OpeningPositionForm({
         <form
             onSubmit={(e) => {
                 e.preventDefault();
-                form.put(`/financial-accounts/${account.id}/opening-position`, {
-                    preserveScroll: true,
-                    onSuccess: onDone,
+                form.clearErrors();
+                void submitProtected({
+                    method: "put", url: `/financial-accounts/${account.id}/opening-position`, data: form.data,
+                    preserveScroll: true, onStart: () => setSaving(true), onSuccess: onDone,
+                    onError: (errors) => form.setError(errors), onFinish: () => setSaving(false),
                 });
             }}
             className="grid gap-4 rounded-field border border-line bg-surface p-4 sm:grid-cols-2"
@@ -375,7 +380,7 @@ function OpeningPositionForm({
                 />
             </label>
             <div className="flex gap-2 sm:col-span-2">
-                <Button type="submit" loading={form.processing}>
+                <Button type="submit" loading={saving}>
                     {t("common.save")}
                 </Button>
                 <Button type="button" variant="secondary" onClick={onDone}>

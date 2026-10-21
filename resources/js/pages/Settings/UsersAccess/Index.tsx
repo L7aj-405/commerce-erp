@@ -1,4 +1,5 @@
 import { Button } from '@/components/ui/Button';
+import { useFreshAuth } from '@/components/auth/FreshAuthProvider';
 import { FormBanner, TextField } from '@/components/ui/form';
 import PageHeader from '@/components/ui/PageHeader';
 import StatusBadge from '@/components/ui/StatusBadge';
@@ -192,6 +193,7 @@ function InvitationUrlBanner({ url }: { url: string }) {
 
 function AddMemberPanel({ organizationId, roles }: { organizationId: number; roles: RoleSummary[] }) {
     const { t } = useI18n();
+    const { submit: submitProtected } = useFreshAuth();
     const [mode, setMode] = useState<'existing' | 'invite'>('existing');
     const [email, setEmail] = useState('');
     const [roleId, setRoleId] = useState<number | ''>(roles[0]?.id ?? '');
@@ -206,16 +208,12 @@ function AddMemberPanel({ organizationId, roles }: { organizationId: number; rol
 
         const url = mode === 'existing' ? `/organizations/${organizationId}/memberships` : `/organizations/${organizationId}/invitations`;
 
-        router.post(
-            url,
-            { email, role_id: roleId },
-            {
-                preserveScroll: true,
-                onSuccess: () => setEmail(''),
-                onError: (errors) => setError((Object.values(errors)[0] as string) ?? t('usersAccess.genericError')),
-                onFinish: () => setProcessing(false),
-            },
-        );
+        void submitProtected({
+            method: 'post', url, data: { email, role_id: roleId }, preserveScroll: true,
+            onSuccess: () => setEmail(''),
+            onError: (errors) => setError((Object.values(errors)[0] as string) ?? t('usersAccess.genericError')),
+            onFinish: () => setProcessing(false),
+        });
     };
 
     return (
@@ -302,15 +300,15 @@ function DefaultWarehouseField({
     fullWidth?: boolean;
 }) {
     const { t } = useI18n();
+    const { submit: submitProtected } = useFreshAuth();
     const current = member.default_warehouse;
     const unavailable = current !== null && !current.available;
 
     const change = (value: string) => {
-        router.patch(
-            `/organization-memberships/${member.id}`,
-            { default_warehouse_id: value === '' ? null : Number(value) },
-            { preserveScroll: true },
-        );
+        void submitProtected({
+            method: 'patch', url: `/organization-memberships/${member.id}`,
+            data: { default_warehouse_id: value === '' ? null : Number(value) }, preserveScroll: true,
+        });
     };
 
     if (!editable) {
@@ -355,20 +353,21 @@ function DefaultWarehouseField({
 /** Shared state/handlers for a membership row, reused by both the desktop `<tr>` and the mobile `<li>` card. */
 function useMemberRowActions(member: Member) {
     const { t } = useI18n();
+    const { submit: submitProtected } = useFreshAuth();
     const [managingStores, setManagingStores] = useState(false);
 
     const changeRole = (roleId: number) => {
-        router.patch(`/organization-memberships/${member.id}`, { role_id: roleId }, { preserveScroll: true });
+        void submitProtected({ method: 'patch', url: `/organization-memberships/${member.id}`, data: { role_id: roleId }, preserveScroll: true });
     };
 
     const toggleStatus = () => {
         const next = member.status === 'active' ? 'suspended' : 'active';
-        router.patch(`/organization-memberships/${member.id}`, { status: next }, { preserveScroll: true });
+        void submitProtected({ method: 'patch', url: `/organization-memberships/${member.id}`, data: { status: next }, preserveScroll: true });
     };
 
     const remove = () => {
         if (!window.confirm(t('usersAccess.removeMemberConfirm').replace('{name}', member.user.name))) return;
-        router.delete(`/organization-memberships/${member.id}`, { preserveScroll: true });
+        void submitProtected({ method: 'delete', url: `/organization-memberships/${member.id}`, preserveScroll: true });
     };
 
     const memberStoreIds = new Set(member.store_memberships.map((sm) => sm.store.id));
