@@ -186,13 +186,18 @@ class RolePresetTest extends PlatformTestCase
         $role = Role::query()->where('organization_id', $organization->getKey())->where('name', 'GA via admin')->firstOrFail();
         $permissions = $role->permissions()->pluck('key')->sort()->values()->all();
         $adminPermissions = $adminRole->permissions()->pluck('key')->sort()->values()->all();
+        $presetPermissions = collect(config('platform.presets.general_admin.permissions'));
+        $expectedPermissions = collect($adminPermissions)->intersect($presetPermissions)->sort()->values()->all();
 
         // The protected `admin` system role does NOT hold finance.*/settings.view
         // (business decision 4/9), so the escalation guard must silently narrow
         // the preset to what the actor actually holds — never grant the rest.
-        $this->assertSame($adminPermissions, $permissions);
+        // Conversely, high-impact permissions held by Admin but intentionally
+        // absent from the General Admin preset must not leak into the custom role.
+        $this->assertSame($expectedPermissions, $permissions);
         $this->assertNotContains('finance.view', $permissions);
         $this->assertNotContains('finance.export', $permissions);
+        $this->assertNotContains('system.data_reset', $permissions);
         $this->assertNotContains('settings.view', $permissions);
     }
 

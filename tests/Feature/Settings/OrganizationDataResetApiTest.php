@@ -5,11 +5,13 @@ namespace Tests\Feature\Settings;
 use App\Models\Customer;
 use App\Models\FinanceRecurringObligationTemplate;
 use App\Models\Organization;
+use App\Models\OrganizationContact;
 use App\Models\Supplier;
 use App\Models\User;
 use App\Services\OrganizationDataReset\OrganizationDataResetConfirmation;
 use App\Services\OrganizationDataReset\OrganizationDataResetPreviewService;
 use App\Services\OrganizationDataReset\OrganizationDataResetScope;
+use Illuminate\Support\Facades\DB;
 use Tests\Support\PlatformTestCase;
 
 class OrganizationDataResetApiTest extends PlatformTestCase
@@ -111,6 +113,13 @@ class OrganizationDataResetApiTest extends PlatformTestCase
         $this->addOrganizationMember($organization, $admin, ['system.data_reset'], roleName: 'Data Reset Administrator');
         $this->activate($admin, $organization);
         $customer = $this->customer($organization, 'Disposable customer');
+        $contact = new OrganizationContact;
+        $contact->organization_id = $organization->id;
+        $contact->customer_id = $customer->id;
+        $contact->full_name = 'Preserved address-book contact';
+        $contact->contact_type = 'client';
+        $contact->active = true;
+        $contact->save();
 
         $preview = $this->actingAs($admin)->postJson(route('settings.data-reset.preview'), [
             'scope' => OrganizationDataResetScope::Customers->value,
@@ -119,20 +128,49 @@ class OrganizationDataResetApiTest extends PlatformTestCase
             ->assertJsonMissingPath('data.operations')
             ->assertJsonMissingPath('data.tables')
             ->json('data');
+        $this->assertSame(2, $preview['affected_records']);
 
-        $this->actingAs($admin)->withFreshAuthentication()->postJson(route('settings.data-reset.execute'), [
+        $response = $this->actingAs($admin)->withFreshAuthentication()->postJson(route('settings.data-reset.execute'), [
             'scope' => OrganizationDataResetScope::Customers->value,
             'fingerprint' => $preview['fingerprint'],
             'confirmation_phrase' => $preview['confirmation_phrase'],
             'organization_name' => $organization->name,
         ])->assertOk()->assertJsonPath('data.completed', true);
+        $this->assertSame($preview['affected_records'], $response->json('data.affected_records'));
 
         $this->assertDatabaseMissing('customers', ['id' => $customer->id]);
+        $this->assertDatabaseHas('organization_contacts', ['id' => $contact->id, 'customer_id' => null]);
         $this->assertDatabaseHas('audit_logs', [
             'organization_id' => $organization->id,
             'actor_id' => $admin->id,
             'event' => 'organization.data_reset.completed',
         ]);
+    }
+
+    public function test_same_zero_effect_preview_cannot_be_executed_twice_and_audits_exactly_once(): void
+    {
+        [$owner, $organization] = $this->ownerFixture('Idempotent reset tenant');
+        $preview = $this->actingAs($owner)->postJson(route('settings.data-reset.preview'), [
+            'scope' => OrganizationDataResetScope::Customers->value,
+        ])->assertOk()->json('data');
+        $this->assertSame(0, $preview['affected_records']);
+        $payload = [
+            'scope' => OrganizationDataResetScope::Customers->value,
+            'fingerprint' => $preview['fingerprint'],
+            'confirmation_phrase' => $preview['confirmation_phrase'],
+            'organization_name' => $organization->name,
+        ];
+
+        $this->actingAs($owner)->withFreshAuthentication()->postJson(route('settings.data-reset.execute'), $payload)
+            ->assertOk();
+        $this->actingAs($owner)->withFreshAuthentication()->postJson(route('settings.data-reset.execute'), $payload)
+            ->assertStatus(409)
+            ->assertJson(['code' => 'RESET_ALREADY_EXECUTED']);
+
+        $this->assertSame(1, DB::table('audit_logs')
+            ->where('organization_id', $organization->id)
+            ->where('event', 'organization.data_reset.completed')
+            ->count());
     }
 
     public function test_supplier_reset_stays_blocked_but_full_reset_unlinks_preserved_recurring_template(): void
