@@ -257,7 +257,7 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
         ->middleware('throttle:20,1')
         ->name('settings.data-reset.preview');
     Route::post('/settings/data-reset/execute', [OrganizationDataResetController::class, 'execute'])
-        ->middleware('throttle:3,10')
+        ->middleware('throttle:data-reset-execute')
         ->name('settings.data-reset.execute');
     Route::post('/email-settings/test', [OrganizationMailSettingController::class, 'test'])
         ->middleware('throttle:6,1')->name('email-settings.test');

@@ -10,7 +10,7 @@ import ApplicationShell from '@/layouts/ApplicationShell';
 import { formatDateTime, formatInteger } from '@/utils/format';
 import { Head, router } from '@inertiajs/react';
 import axios from 'axios';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 type ResetScope =
     | 'sales_and_documents'
@@ -115,7 +115,18 @@ export default function DataReset({ organization }: Props) {
     const [confirmationPhrase, setConfirmationPhrase] = useState('');
     const [errors, setErrors] = useState<Record<string, string>>({});
     const [executing, setExecuting] = useState(false);
+    const [retryAfterSeconds, setRetryAfterSeconds] = useState(0);
     const [completed, setCompleted] = useState<{ scope: ResetScope; affected: number } | null>(null);
+    const executionInFlightRef = useRef(false);
+    const rateLimitMessage = retryAfterSeconds > 0
+        ? t('dataReset.rateLimited').replace('{minutes}', String(Math.max(1, Math.ceil(retryAfterSeconds / 60))))
+        : '';
+
+    useEffect(() => {
+        if (retryAfterSeconds <= 0) return;
+        const timer = window.setTimeout(() => setRetryAfterSeconds((seconds) => Math.max(0, seconds - 1)), 1_000);
+        return () => window.clearTimeout(timer);
+    }, [retryAfterSeconds]);
 
     const loadPreview = async (scope: ResetScope) => {
         if (previewing || executing) return;
@@ -155,7 +166,7 @@ export default function DataReset({ organization }: Props) {
     };
 
     const execute = async () => {
-        if (!preview || executing) return;
+        if (!preview || executionInFlightRef.current || retryAfterSeconds > 0) return;
         const nextErrors: Record<string, string> = {};
         if (organizationName !== organization.name) nextErrors.organization_name = t('dataReset.confirmMismatch');
         if (confirmationPhrase !== preview.confirmation_phrase) nextErrors.confirmation_phrase = t('dataReset.confirmMismatch');
@@ -164,6 +175,7 @@ export default function DataReset({ organization }: Props) {
             return;
         }
 
+        executionInFlightRef.current = true;
         setExecuting(true);
         setErrors({});
         try {
@@ -182,9 +194,17 @@ export default function DataReset({ organization }: Props) {
         } catch (error) {
             if (axios.isCancel(error)) return;
             if (axios.isAxiosError(error)) {
-                const payload = error.response?.data as { code?: string; errors?: Record<string, string[] | string> } | undefined;
+                const payload = error.response?.data as { code?: string; retry_after?: number; errors?: Record<string, string[] | string> } | undefined;
                 if (error.response?.status === 422 && payload?.errors) {
                     setErrors(Object.fromEntries(Object.entries(payload.errors).map(([key, value]) => [key, Array.isArray(value) ? value[0] : value])));
+                    return;
+                }
+                if (error.response?.status === 429) {
+                    const rawRetryAfter = Number(error.response.headers['retry-after'] ?? payload?.retry_after ?? 0);
+                    const seconds = Number.isFinite(rawRetryAfter) && rawRetryAfter > 0 ? Math.ceil(rawRetryAfter) : 60;
+                    setRetryAfterSeconds(seconds);
+                    const message = t('dataReset.rateLimited').replace('{minutes}', String(Math.max(1, Math.ceil(seconds / 60))));
+                    toast.warning(message);
                     return;
                 }
                 if (payload?.code === 'STALE_RESET_PREVIEW') {
@@ -202,6 +222,7 @@ export default function DataReset({ organization }: Props) {
             }
             toast.error(t('dataReset.executeError'));
         } finally {
+            executionInFlightRef.current = false;
             setExecuting(false);
         }
     };
@@ -272,7 +293,7 @@ export default function DataReset({ organization }: Props) {
                         <Button type="button" variant="secondary" disabled={executing} onClick={closeModal}>{t('common.close')}</Button>
                         {previewError && <Button type="button" variant="secondary" disabled={executing || previewing !== null} onClick={() => void loadPreview(selectedScope)}>{t('dataReset.retryPreview')}</Button>}
                         {preview?.executable && !completed && (
-                            <Button type="button" variant="danger" loading={executing} loadingText={t('dataReset.executing')} onClick={() => void execute()}>
+                            <Button type="button" variant="danger" disabled={retryAfterSeconds > 0} loading={executing} loadingText={t('dataReset.executing')} onClick={() => void execute()}>
                                 {t('dataReset.execute')}
                             </Button>
                         )}
@@ -323,6 +344,11 @@ export default function DataReset({ organization }: Props) {
                                         {errors.confirmation_phrase && <span className="mt-1 block text-xs text-danger">{errors.confirmation_phrase}</span>}
                                     </label>
                                 </div>
+                                {rateLimitMessage && (
+                                    <p className="mt-4 rounded-field border border-warning/25 bg-warning-soft px-4 py-3 text-sm text-warning" role="alert">
+                                        {rateLimitMessage}
+                                    </p>
+                                )}
                             </div>
                         )}
                     </div>

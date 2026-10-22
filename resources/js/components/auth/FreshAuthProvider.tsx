@@ -297,6 +297,7 @@ export function FreshAuthProvider({ children }: PropsWithChildren) {
     const [challenge, setChallenge] = useState<FreshAuthChallenge | null>(null);
     const [retrying, setRetrying] = useState(false);
     const pendingRef = useRef<PendingRequest | null>(null);
+    const retryingRef = useRef(false);
 
     useEffect(() => {
         const interceptor = axios.interceptors.response.use(undefined, (error: AxiosError) => {
@@ -332,12 +333,14 @@ export function FreshAuthProvider({ children }: PropsWithChildren) {
         pendingRef.current = null;
         setChallenge(null);
         setRetrying(false);
+        retryingRef.current = false;
         pending?.cancel();
     }, []);
 
     const retryPending = useCallback(async () => {
         const pending = pendingRef.current;
-        if (!pending) return;
+        if (!pending || retryingRef.current) return;
+        retryingRef.current = true;
         setRetrying(true);
         try {
             const response = await pending.execute();
@@ -346,6 +349,7 @@ export function FreshAuthProvider({ children }: PropsWithChildren) {
             pending.reject(error);
         } finally {
             pendingRef.current = null;
+            retryingRef.current = false;
             setRetrying(false);
             setChallenge(null);
         }

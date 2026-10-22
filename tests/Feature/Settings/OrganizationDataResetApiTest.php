@@ -53,6 +53,54 @@ class OrganizationDataResetApiTest extends PlatformTestCase
             ->assertJson(['code' => 'FRESH_AUTH_REQUIRED', 'level' => 'L2']);
     }
 
+    public function test_fresh_auth_challenge_and_single_resume_execute_the_reset_exactly_once(): void
+    {
+        [$owner, $organization] = $this->ownerFixture('Fresh Auth resume tenant');
+        $customer = $this->customer($organization, 'Disposable customer');
+        $plan = $this->preview($organization, OrganizationDataResetScope::Customers);
+        $payload = $this->executionPayload($organization, $plan->fingerprint);
+
+        $this->actingAs($owner)->postJson(route('settings.data-reset.execute'), $payload)
+            ->assertStatus(409)
+            ->assertJson(['code' => 'FRESH_AUTH_REQUIRED']);
+
+        $this->actingAs($owner)->withFreshAuthentication()->postJson(route('settings.data-reset.execute'), $payload)
+            ->assertOk()
+            ->assertJsonPath('data.completed', true);
+
+        $this->assertDatabaseMissing('customers', ['id' => $customer->id]);
+        $this->assertSame(1, DB::table('audit_logs')
+            ->where('organization_id', $organization->id)
+            ->where('event', 'organization.data_reset.completed')
+            ->count());
+    }
+
+    public function test_execute_rate_limit_returns_a_structured_retry_after_response(): void
+    {
+        [$owner, $organization] = $this->ownerFixture('Rate limited reset tenant');
+        $plan = $this->preview($organization, OrganizationDataResetScope::Customers);
+        $payload = array_replace($this->executionPayload($organization, $plan->fingerprint), [
+            'confirmation_phrase' => 'WRONG CONFIRMATION',
+        ]);
+
+        $this->actingAs($owner)->withFreshAuthentication();
+        for ($attempt = 0; $attempt < 6; $attempt++) {
+            $this->postJson(route('settings.data-reset.execute'), $payload)
+                ->assertUnprocessable();
+        }
+
+        $response = $this->postJson(route('settings.data-reset.execute'), $payload)
+            ->assertTooManyRequests()
+            ->assertJson(['code' => 'DATA_RESET_RATE_LIMITED']);
+
+        $this->assertGreaterThan(0, (int) $response->headers->get('Retry-After'));
+        $this->assertGreaterThan(0, (int) $response->json('retry_after'));
+        $this->assertDatabaseMissing('audit_logs', [
+            'organization_id' => $organization->id,
+            'event' => 'organization.data_reset.completed',
+        ]);
+    }
+
     public function test_execution_rejects_wrong_confirmation_phrase_and_organization_name(): void
     {
         [$owner, $organization] = $this->ownerFixture();

@@ -12,8 +12,11 @@ use App\Services\Security\SystemDnsResolver;
 use App\Services\Security\TenantSmtpTransportFactory;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Auth\Listeners\SendEmailVerificationNotification;
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
 
@@ -51,6 +54,20 @@ class AppServiceProvider extends ServiceProvider
         // predictable substitutions. Applies everywhere `Password::defaults()`
         // is used (registration, invitation acceptance, password reset).
         Password::defaults(fn () => Password::min(10));
+
+        // A Fresh Auth challenge and its automatic resume both pass through
+        // the execute route. Six attempts allow three complete challenge /
+        // resume flows while keeping this privileged destructive endpoint
+        // tightly limited per authenticated actor.
+        RateLimiter::for('data-reset-execute', function (Request $request) {
+            return Limit::perMinutes(10, 6)
+                ->by('data-reset-execute:'.($request->user()?->getAuthIdentifier() ?? $request->ip()))
+                ->response(fn (Request $request, array $headers) => response()->json([
+                    'code' => 'DATA_RESET_RATE_LIMITED',
+                    'message' => 'Too many organization data reset attempts. Try again later.',
+                    'retry_after' => (int) ($headers['Retry-After'] ?? 60),
+                ], 429, $headers));
+        });
 
         // Sprint 1.1 §1 — DNS-rebinding-resistant SMTP transport for TENANT
         // (organization-supplied) SMTP hosts only. See TenantSmtpTransportFactory
