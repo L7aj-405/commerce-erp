@@ -79,17 +79,19 @@ class OrganizationDataResetPlanner
         $blockers = [];
 
         if ($has(OrganizationDataResetScope::SalesAndDocuments) && ! $has(OrganizationDataResetScope::CatalogAndStock)) {
-            $count = $this->count($organizationId, 'sales_order_inventory_allocations')
-                + $this->countWhereNotNull($organizationId, 'transfer_requests', 'sales_order_id')
-                + $this->countWhereNotNull($organizationId, 'customer_returns', 'received_at');
+            $count = DB::table('transfer_requests as sales_requests')
+                ->join('transfer_requests as retained_requests', function ($join) {
+                    $join->on('retained_requests.organization_id', '=', 'sales_requests.organization_id')
+                        ->on('retained_requests.stock_transfer_id', '=', 'sales_requests.stock_transfer_id');
+                })
+                ->where('sales_requests.organization_id', $organizationId)
+                ->whereNotNull('sales_requests.sales_order_id')
+                ->whereNotNull('sales_requests.stock_transfer_id')
+                ->whereNull('retained_requests.sales_order_id')
+                ->distinct('sales_requests.stock_transfer_id')
+                ->count('sales_requests.stock_transfer_id');
             if ($count > 0) {
-                $blockers[] = new OrganizationDataResetBlocker('sales.inventory_dependencies', 'Sales records have reservations, transfers or received-return inventory effects.', $count, [OrganizationDataResetScope::CatalogAndStock->value]);
-            }
-        }
-        if ($has(OrganizationDataResetScope::SalesAndDocuments) && ! $has(OrganizationDataResetScope::SuppliersAndPurchasing)) {
-            $count = $this->count($organizationId, 'sales_order_procurements');
-            if ($count > 0) {
-                $blockers[] = new OrganizationDataResetBlocker('sales.procurement_dependencies', 'Sales records have purchasing dependencies.', $count, [OrganizationDataResetScope::SuppliersAndPurchasing->value]);
+                $blockers[] = new OrganizationDataResetBlocker('sales.shared_stock_transfer', 'A completed stock transfer is shared with retained non-sales logistics data.', $count, [OrganizationDataResetScope::CatalogAndStock->value]);
             }
         }
         if ($has(OrganizationDataResetScope::TransactionalFinance) && ! $has(OrganizationDataResetScope::SalesAndDocuments)) {

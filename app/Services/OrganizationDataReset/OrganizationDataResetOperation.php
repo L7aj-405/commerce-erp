@@ -11,6 +11,12 @@ final readonly class OrganizationDataResetOperation
     public const DELETE_CUSTOM_ROLE_PERMISSIONS = 'delete_custom_role_permissions';
     public const DELETE_CUSTOM_ROLES = 'delete_custom_roles';
     public const CLEAR_NON_OWNER_ACTIVE_CONTEXT = 'clear_non_owner_active_context';
+    public const DELETE_SALES_INVENTORY_RESERVATIONS = 'delete_sales_inventory_reservations';
+    public const DELETE_SALES_INVENTORY_MOVEMENTS = 'delete_sales_inventory_movements';
+    public const DELETE_SALES_WOOCOMMERCE_STOCK_TASKS = 'delete_sales_woocommerce_stock_tasks';
+    public const DELETE_SALES_TRANSFER_REQUEST_LINES = 'delete_sales_transfer_request_lines';
+    public const DELETE_SALES_STOCK_TRANSFER_LINES = 'delete_sales_stock_transfer_lines';
+    public const DELETE_SALES_TRANSFER_GRAPH = 'delete_sales_transfer_graph';
 
     public function __construct(
         public string $key,

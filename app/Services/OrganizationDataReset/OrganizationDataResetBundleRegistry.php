@@ -10,6 +10,13 @@ class OrganizationDataResetBundleRegistry
         $operations = [];
         foreach ($requestedScope->expanded() as $scope) {
             foreach ($this->bundle($scope) as $operation) {
+                if ($requestedScope === OrganizationDataResetScope::FullOrganization
+                    && str_starts_with($operation->action, 'delete_sales_')) {
+                    // The Full reset includes Catalog & Stock, whose broader
+                    // operations already remove these rows. Avoid overlapping
+                    // selective operations and affected-count drift.
+                    continue;
+                }
                 $identity = implode('|', [$operation->table, $operation->action, $operation->column ?? '']);
                 $operations[$identity] ??= $operation;
             }
@@ -33,7 +40,7 @@ class OrganizationDataResetBundleRegistry
     private function bundle(OrganizationDataResetScope $scope): array
     {
         return match ($scope) {
-            OrganizationDataResetScope::SalesAndDocuments => $this->tables($scope, [
+            OrganizationDataResetScope::SalesAndDocuments => array_merge($this->tables($scope, [
                 'finance_expected_collection_matches',
                 'document_stamp_appositions',
                 'payment_refunds', 'payment_allocations',
@@ -46,6 +53,7 @@ class OrganizationDataResetBundleRegistry
                 'quotation_lines', 'quotations',
                 'out_of_stock_articles',
                 'sales_order_inventory_allocations',
+                'sales_order_procurements',
                 'sales_order_revisions', 'sales_order_addenda',
                 'sales_order_lines', 'sales_orders',
             ], [
@@ -53,6 +61,13 @@ class OrganizationDataResetBundleRegistry
                 ['quotations.unlink_revision_root', 'quotations', 'root_quotation_id'],
                 ['quotations.unlink_revision_parent', 'quotations', 'revised_from_quotation_id'],
                 ['sales_orders.unlink_current_revision', 'sales_orders', 'current_revision_id'],
+            ]), [
+                new OrganizationDataResetOperation('sales_and_documents.woocommerce_stock_tasks', $scope, 'woocommerce_stock_tasks', OrganizationDataResetOperation::DELETE_SALES_WOOCOMMERCE_STOCK_TASKS),
+                new OrganizationDataResetOperation('sales_and_documents.stock_transfer_lines', $scope, 'stock_transfer_lines', OrganizationDataResetOperation::DELETE_SALES_STOCK_TRANSFER_LINES),
+                new OrganizationDataResetOperation('sales_and_documents.transfer_request_lines', $scope, 'transfer_request_lines', OrganizationDataResetOperation::DELETE_SALES_TRANSFER_REQUEST_LINES),
+                new OrganizationDataResetOperation('sales_and_documents.inventory_movements', $scope, 'inventory_movements', OrganizationDataResetOperation::DELETE_SALES_INVENTORY_MOVEMENTS),
+                new OrganizationDataResetOperation('sales_and_documents.inventory_reservations', $scope, 'inventory_reservations', OrganizationDataResetOperation::DELETE_SALES_INVENTORY_RESERVATIONS),
+                new OrganizationDataResetOperation('sales_and_documents.transfer_graph', $scope, 'transfer_requests', OrganizationDataResetOperation::DELETE_SALES_TRANSFER_GRAPH),
             ]),
             OrganizationDataResetScope::TransactionalFinance => $this->tables($scope, [
                 'finance_expected_collection_matches',

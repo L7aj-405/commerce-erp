@@ -22,7 +22,7 @@ class OrganizationDataResetDependencyGraph
         'sales_order_inventory_allocations',
         'product_import_rows', 'product_cost_import_rows',
         'product_channel_identifiers', 'woocommerce_stock_tasks', 'woocommerce_category_mappings', 'woocommerce_sync_runs',
-        'inventory_reservations', 'inventory_movements', 'inventory_balances',
+        'inventory_movements', 'inventory_reservations', 'inventory_balances',
         'finance_expected_collections', 'payments',
         'finance_outgoing_payments', 'finance_obligations', 'finance_supplier_installment_plans',
         'financial_account_opening_positions', 'finance_month_reviews', 'commission_entries',

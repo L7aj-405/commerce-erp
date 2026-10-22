@@ -1,15 +1,16 @@
 import { useFreshAuth } from '@/components/auth/FreshAuthProvider';
 import { Button } from '@/components/ui/Button';
+import { Dialog } from '@/components/ui/Dialog';
 import PageHeader from '@/components/ui/PageHeader';
-import { Sheet } from '@/components/ui/Sheet';
+import { Spinner } from '@/components/ui/Spinner';
 import { useToast } from '@/components/ui/toast';
 import { useI18n } from '@/i18n';
 import type { TranslationKey } from '@/i18n/translations';
 import ApplicationShell from '@/layouts/ApplicationShell';
 import { formatDateTime, formatInteger } from '@/utils/format';
-import { Head } from '@inertiajs/react';
+import { Head, router } from '@inertiajs/react';
 import axios from 'axios';
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 
 type ResetScope =
     | 'sales_and_documents'
@@ -80,9 +81,7 @@ const scopeKeys: Record<ResetScope, TranslationKey> = {
 };
 
 const blockerKeys: Record<string, TranslationKey> = {
-    'sales.finance_dependencies': 'dataReset.blocker.sales.finance_dependencies',
-    'sales.inventory_dependencies': 'dataReset.blocker.sales.inventory_dependencies',
-    'sales.procurement_dependencies': 'dataReset.blocker.sales.procurement_dependencies',
+    'sales.shared_stock_transfer': 'dataReset.blocker.sales.shared_stock_transfer',
     'finance.sales_dependencies': 'dataReset.blocker.finance.sales_dependencies',
     'catalog.sales_dependencies': 'dataReset.blocker.catalog.sales_dependencies',
     'catalog.procurement_dependencies': 'dataReset.blocker.catalog.procurement_dependencies',
@@ -107,11 +106,11 @@ export default function DataReset({ organization }: Props) {
     const { t } = useI18n();
     const { request } = useFreshAuth();
     const toast = useToast();
-    const previewRef = useRef<HTMLDivElement>(null);
     const [selectedScope, setSelectedScope] = useState<ResetScope | null>(null);
+    const [modalOpen, setModalOpen] = useState(false);
     const [preview, setPreview] = useState<ResetPreview | null>(null);
     const [previewing, setPreviewing] = useState<ResetScope | null>(null);
-    const [confirmOpen, setConfirmOpen] = useState(false);
+    const [previewError, setPreviewError] = useState('');
     const [organizationName, setOrganizationName] = useState('');
     const [confirmationPhrase, setConfirmationPhrase] = useState('');
     const [errors, setErrors] = useState<Record<string, string>>({});
@@ -122,8 +121,10 @@ export default function DataReset({ organization }: Props) {
         if (previewing || executing) return;
         setPreviewing(scope);
         setSelectedScope(scope);
+        setModalOpen(true);
         setPreview(null);
         setCompleted(null);
+        setPreviewError('');
         setErrors({});
         try {
             const response = await request<{ data: ResetPreview }>({
@@ -132,20 +133,25 @@ export default function DataReset({ organization }: Props) {
                 data: { scope },
             });
             setPreview(response.data.data);
-            window.setTimeout(() => previewRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
         } catch {
-            toast.error(t('dataReset.previewError'));
+            setPreviewError(t('dataReset.previewError'));
         } finally {
             setPreviewing(null);
         }
     };
 
-    const openConfirmation = () => {
-        if (!preview?.executable) return;
+    const closeModal = () => {
+        if (executing) return;
+        const shouldRefresh = completed !== null;
+        setModalOpen(false);
+        setSelectedScope(null);
+        setPreview(null);
+        setPreviewError('');
         setOrganizationName('');
         setConfirmationPhrase('');
         setErrors({});
-        setConfirmOpen(true);
+        setCompleted(null);
+        if (shouldRefresh) router.reload();
     };
 
     const execute = async () => {
@@ -172,9 +178,6 @@ export default function DataReset({ organization }: Props) {
                 },
             });
             setCompleted({ scope: response.data.data.scope, affected: response.data.data.affected_records });
-            setConfirmOpen(false);
-            setPreview(null);
-            setSelectedScope(null);
             toast.success(t('dataReset.success'));
         } catch (error) {
             if (axios.isCancel(error)) return;
@@ -185,14 +188,14 @@ export default function DataReset({ organization }: Props) {
                     return;
                 }
                 if (payload?.code === 'STALE_RESET_PREVIEW') {
-                    setConfirmOpen(false);
                     setPreview(null);
+                    setPreviewError(t('dataReset.stale'));
                     toast.warning(t('dataReset.stale'));
                     return;
                 }
                 if (payload?.code === 'RESET_BLOCKED') {
-                    setConfirmOpen(false);
                     setPreview(null);
+                    setPreviewError(t('dataReset.stale'));
                     toast.warning(t('dataReset.stale'));
                     return;
                 }
@@ -213,20 +216,11 @@ export default function DataReset({ organization }: Props) {
                 <p>{t('dataReset.warning')}</p>
             </div>
 
-            {completed && (
-                <section className="mb-6 rounded-card border border-success/25 bg-success-soft p-5 text-success" role="status">
-                    <h2 className="font-semibold">{t('dataReset.success')}</h2>
-                    <p className="mt-1 text-sm">
-                        {t(scopeKeys[completed.scope])} · {t('dataReset.successAffected').replace('{count}', formatInteger(completed.affected))}
-                    </p>
-                </section>
-            )}
-
             <div className="grid gap-4 lg:grid-cols-2">
                 {scopes.map((scope) => {
                     const full = scope === 'full_organization';
                     const keys = contentKeys[scope];
-                    const active = selectedScope === scope;
+                    const active = modalOpen && selectedScope === scope;
                     return (
                         <article
                             key={scope}
@@ -266,69 +260,82 @@ export default function DataReset({ organization }: Props) {
                 })}
             </div>
 
-            {preview && (
-                <div ref={previewRef} className="scroll-mt-6 pt-6">
-                    <PreviewPanel preview={preview} onConfirm={openConfirmation} />
-                </div>
-            )}
-
-            <Sheet
-                open={confirmOpen && preview !== null}
-                onClose={() => { if (!executing) setConfirmOpen(false); }}
-                title={t('dataReset.confirmTitle')}
-                description={t('dataReset.confirmDescription')}
-                widthClassName="max-w-lg"
-                footer={(
+            <Dialog
+                open={modalOpen && selectedScope !== null}
+                onClose={closeModal}
+                title={selectedScope ? `${t('dataReset.previewTitle')} · ${t(scopeKeys[selectedScope])}` : t('dataReset.previewTitle')}
+                description={selectedScope ? t(contentKeys[selectedScope].description) : undefined}
+                dismissible={!executing}
+                danger={selectedScope === 'full_organization'}
+                footer={selectedScope ? (
                     <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-                        <Button type="button" variant="secondary" disabled={executing} onClick={() => setConfirmOpen(false)}>{t('common.cancel')}</Button>
-                        <Button type="button" variant="danger" loading={executing} loadingText={t('dataReset.executing')} onClick={() => void execute()}>
-                            {t('dataReset.execute')}
-                        </Button>
+                        <Button type="button" variant="secondary" disabled={executing} onClick={closeModal}>{t('common.close')}</Button>
+                        {previewError && <Button type="button" variant="secondary" disabled={executing || previewing !== null} onClick={() => void loadPreview(selectedScope)}>{t('dataReset.retryPreview')}</Button>}
+                        {preview?.executable && !completed && (
+                            <Button type="button" variant="danger" loading={executing} loadingText={t('dataReset.executing')} onClick={() => void execute()}>
+                                {t('dataReset.execute')}
+                            </Button>
+                        )}
                     </div>
-                )}
+                ) : undefined}
             >
-                {preview && (
-                    <div className="space-y-5 p-5">
-                        <div className="rounded-field border border-danger/25 bg-danger-soft p-4 text-sm text-danger">
-                            <p className="font-semibold">{t(scopeKeys[preview.scope])}</p>
-                            <p className="mt-1">{formatInteger(preview.affected_records)} {t('dataReset.affected').toLocaleLowerCase()}</p>
-                        </div>
-                        <label className="block text-sm font-medium text-ink">
-                            {t('dataReset.organizationName')}
-                            <span className="mt-1 block text-xs font-normal text-ink-muted">{t('dataReset.organizationNameHelp').replace('{name}', organization.name)}</span>
-                            <input
-                                value={organizationName}
-                                onChange={(event) => setOrganizationName(event.target.value)}
-                                autoComplete="off"
-                                className="control-input mt-2 w-full"
-                                aria-invalid={Boolean(errors.organization_name)}
-                            />
-                            {errors.organization_name && <span className="mt-1 block text-xs text-danger">{errors.organization_name}</span>}
-                        </label>
-                        <label className="block text-sm font-medium text-ink">
-                            {t('dataReset.phrase')}
-                            <span className="mt-1 block text-xs font-normal text-ink-muted">{t('dataReset.phraseHelp').replace('{phrase}', preview.confirmation_phrase)}</span>
-                            <input
-                                value={confirmationPhrase}
-                                onChange={(event) => setConfirmationPhrase(event.target.value)}
-                                autoComplete="off"
-                                dir="ltr"
-                                className="control-input mt-2 w-full font-mono"
-                                aria-invalid={Boolean(errors.confirmation_phrase)}
-                            />
-                            {errors.confirmation_phrase && <span className="mt-1 block text-xs text-danger">{errors.confirmation_phrase}</span>}
-                        </label>
+                {previewing !== null && (
+                    <div className="flex min-h-64 flex-col items-center justify-center gap-3 p-8 text-center text-ink-muted" role="status">
+                        <Spinner size="lg" />
+                        <p className="text-sm">{t('dataReset.previewing')}</p>
                     </div>
                 )}
-            </Sheet>
+                {!previewing && previewError && (
+                    <div className="m-5 rounded-field border border-danger/25 bg-danger-soft p-5 text-sm text-danger" role="alert">
+                        {previewError}
+                    </div>
+                )}
+                {!previewing && completed && (
+                    <div className="flex min-h-64 flex-col items-center justify-center p-6 text-center" role="status">
+                        <span className="flex size-12 items-center justify-center rounded-full bg-success-soft text-success"><CheckIcon /></span>
+                        <h3 className="mt-4 text-lg font-semibold text-success">{t('dataReset.success')}</h3>
+                        <p className="mt-2 text-sm text-ink-muted">
+                            {t(scopeKeys[completed.scope])} · {t('dataReset.successAffected').replace('{count}', formatInteger(completed.affected))}
+                        </p>
+                    </div>
+                )}
+                {!previewing && preview && !completed && (
+                    <div className="p-4 sm:p-6">
+                        {preview.scope === 'full_organization' && (
+                            <p className="mb-5 rounded-field border border-danger/25 bg-danger-soft px-4 py-3 text-sm font-medium text-danger">{t('dataReset.fullDanger')}</p>
+                        )}
+                        <PreviewPanel preview={preview} />
+                        {preview.executable && (
+                            <div className="mt-6 border-t border-line pt-6">
+                                <h3 className="font-semibold text-ink">{t('dataReset.confirmTitle')}</h3>
+                                <p className="mt-1 text-sm text-ink-muted">{t('dataReset.confirmDescription')}</p>
+                                <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                                    <label className="block text-sm font-medium text-ink">
+                                        {t('dataReset.organizationName')}
+                                        <span className="mt-1 block text-xs font-normal text-ink-muted">{t('dataReset.organizationNameHelp').replace('{name}', organization.name)}</span>
+                                        <input data-autofocus value={organizationName} onChange={(event) => setOrganizationName(event.target.value)} autoComplete="off" disabled={executing} className="control-input mt-2 w-full" aria-invalid={Boolean(errors.organization_name)} />
+                                        {errors.organization_name && <span className="mt-1 block text-xs text-danger">{errors.organization_name}</span>}
+                                    </label>
+                                    <label className="block text-sm font-medium text-ink">
+                                        {t('dataReset.phrase')}
+                                        <span className="mt-1 block text-xs font-normal text-ink-muted">{t('dataReset.phraseHelp').replace('{phrase}', preview.confirmation_phrase)}</span>
+                                        <input value={confirmationPhrase} onChange={(event) => setConfirmationPhrase(event.target.value)} autoComplete="off" disabled={executing} dir="ltr" className="control-input mt-2 w-full font-mono" aria-invalid={Boolean(errors.confirmation_phrase)} />
+                                        {errors.confirmation_phrase && <span className="mt-1 block text-xs text-danger">{errors.confirmation_phrase}</span>}
+                                    </label>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
+            </Dialog>
         </ApplicationShell>
     );
 }
 
-function PreviewPanel({ preview, onConfirm }: { preview: ResetPreview; onConfirm: () => void }) {
+function PreviewPanel({ preview }: { preview: ResetPreview }) {
     const { t } = useI18n();
     return (
-        <section className="rounded-card border border-line bg-surface p-5 shadow-soft sm:p-6">
+        <section>
             <div className="flex flex-col gap-3 border-b border-line pb-5 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                     <h2 className="text-lg font-semibold text-ink">{t('dataReset.previewTitle')} · {t(scopeKeys[preview.scope])}</h2>
@@ -391,11 +398,7 @@ function PreviewPanel({ preview, onConfirm }: { preview: ResetPreview; onConfirm
                         ))}
                     </ul>
                 </div>
-            ) : (
-                <div className="mt-6 flex justify-end">
-                    <Button type="button" variant="danger" onClick={onConfirm}>{t('dataReset.openConfirmation')}</Button>
-                </div>
-            )}
+            ) : null}
         </section>
     );
 }

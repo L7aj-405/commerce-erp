@@ -4,6 +4,9 @@ namespace Tests\Feature\Settings;
 
 use App\Actions\Quotations\CreateQuotationAction;
 use App\Actions\Sales\ConfirmSalesOrderAction;
+use App\Actions\Sales\FulfillSalesOrderAction;
+use App\Actions\Inventory\CreateStockTransferAction;
+use App\Models\InventoryMovement;
 use App\Models\Customer;
 use App\Models\FinanceRecurringObligationTemplate;
 use App\Models\Organization;
@@ -29,8 +32,16 @@ class OrganizationDataResetEngineTest extends DocumentTestCase
         $organization = $this->createOrganization($owner, 'Commercial reset');
         $store = $this->createStore($organization, $owner);
         $warehouse = $this->createWarehouse($organization);
+        $destinationWarehouse = $this->createWarehouse($organization, 'Destination warehouse');
         $customer = $this->createCustomer($organization, 'Preserved customer');
         $product = $this->createProduct($organization, 'Preserved product');
+        $variant = $product->variants->firstOrFail();
+        $this->activate($owner, $organization, $store);
+        $this->openStock($owner, $organization, $warehouse, $variant, '10.0000');
+        $openingMovementId = (int) DB::table('inventory_movements')
+            ->where('organization_id', $organization->id)
+            ->where('movement_type', 'opening')
+            ->value('id');
         $account = $this->createFinancialAccount($organization);
         $order = $this->createDraftOrder($owner, $organization, $store, $customer);
         $line = $this->addCustomLine($owner, $order, ['unit_price_excl_tax' => '100.0000']);
@@ -42,6 +53,107 @@ class OrganizationDataResetEngineTest extends DocumentTestCase
         $quotation = app(CreateQuotationAction::class)->execute($owner, $organization, $store, [
             'currency_code' => 'MAD',
             'quotation_date' => now()->toDateString(),
+        ]);
+        $stockOrder = $this->createDraftOrder($owner, $organization, $store, $customer);
+        $stockLine = $this->addCatalogLine($owner, $stockOrder, $variant, $warehouse);
+        $stockOrder = app(ConfirmSalesOrderAction::class)->execute($owner, $stockOrder)->fresh();
+        $reservationId = (int) DB::table('sales_order_inventory_allocations')
+            ->where('organization_id', $organization->id)
+            ->where('sales_order_line_id', $stockLine->id)
+            ->value('inventory_reservation_id');
+        $stockOrder = app(FulfillSalesOrderAction::class)->execute($owner, $stockOrder)->fresh();
+        $saleMovementId = (int) DB::table('inventory_movements')
+            ->where('organization_id', $organization->id)
+            ->where('reference_type', \App\Models\InventoryReservation::class)
+            ->where('reference_id', $reservationId)
+            ->value('id');
+        DB::table('woocommerce_stock_tasks')->insert([
+            'organization_id' => $organization->id,
+            'store_id' => $store->id,
+            'product_id' => $product->id,
+            'product_variant_id' => $variant->id,
+            'warehouse_id' => $warehouse->id,
+            'quantity_delta' => -1,
+            'source_type' => InventoryMovement::class,
+            'source_id' => $saleMovementId,
+            'source_reference' => $stockOrder->order_number,
+            'reason' => 'Sales reset fixture',
+            'status' => 'pending',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $stockTransfer = app(CreateStockTransferAction::class)->execute(
+            $owner,
+            $organization,
+            $warehouse,
+            $destinationWarehouse,
+            [['variant' => $variant, 'quantity' => '1.0000']],
+            'Sales-linked transfer fixture',
+        );
+        $transferRequestId = DB::table('transfer_requests')->insertGetId([
+            'organization_id' => $organization->id,
+            'request_number' => 'TRQ-RESET-001',
+            'source_warehouse_id' => $warehouse->id,
+            'destination_warehouse_id' => $destinationWarehouse->id,
+            'status' => 'received',
+            'sales_order_id' => $stockOrder->id,
+            'stock_transfer_id' => $stockTransfer->id,
+            'requested_by_user_id' => $owner->id,
+            'requested_at' => now(),
+            'received_by_user_id' => $owner->id,
+            'received_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('transfer_request_lines')->insert([
+            'organization_id' => $organization->id,
+            'transfer_request_id' => $transferRequestId,
+            'product_variant_id' => $variant->id,
+            'quantity' => 1,
+            'reason' => 'order_fulfillment',
+            'sales_order_line_id' => $stockLine->id,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $supplierId = DB::table('suppliers')->insertGetId([
+            'organization_id' => $organization->id,
+            'name' => 'Preserved supplier',
+            'active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $procurementId = DB::table('sales_order_procurements')->insertGetId([
+            'organization_id' => $organization->id,
+            'store_id' => $store->id,
+            'procurement_number' => 'APV-RESET-001',
+            'supplier_id' => $supplierId,
+            'sales_order_id' => $stockOrder->id,
+            'sales_order_line_id' => $stockLine->id,
+            'product_variant_id' => $variant->id,
+            'quantity' => 1,
+            'status' => 'received',
+            'supplier_availability_status' => 'confirmed_available',
+            'received_at' => now(),
+            'receiving_warehouse_id' => $warehouse->id,
+            'created_by_user_id' => $owner->id,
+            'received_by_user_id' => $owner->id,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $procurementMovementId = DB::table('inventory_movements')->insertGetId([
+            'organization_id' => $organization->id,
+            'warehouse_id' => $warehouse->id,
+            'product_variant_id' => $variant->id,
+            'movement_type' => 'supplier_receipt',
+            'quantity' => 1,
+            'quantity_before' => 8,
+            'quantity_after' => 9,
+            'reference_type' => \App\Models\SalesOrderProcurement::class,
+            'reference_id' => $procurementId,
+            'reference' => $stockOrder->order_number,
+            'reason' => 'Sales procurement fixture',
+            'performed_by_user_id' => $owner->id,
+            'created_at' => now(),
         ]);
 
         $returnId = DB::table('customer_returns')->insertGetId([
@@ -205,15 +317,29 @@ class OrganizationDataResetEngineTest extends DocumentTestCase
         $this->assertTrue($plan->isExecutable(), json_encode($plan->blockers));
         $this->assertSame(1, $plan->counts['sales_and_documents.payment_refunds']);
         $this->assertSame(1, $plan->counts['sales_and_documents.finance_expected_collection_matches']);
+        $this->assertGreaterThanOrEqual(3, $plan->counts['sales_and_documents.inventory_movements']);
+        $this->assertSame(1, $plan->counts['sales_and_documents.inventory_reservations']);
+        $this->assertSame(2, $plan->counts['sales_and_documents.transfer_graph']);
         app(OrganizationDataResetExecutor::class)->execute($organization, $owner, $plan);
 
         foreach (['sales_orders', 'quotations', 'invoices', 'credit_notes', 'payments', 'payment_refunds', 'delivery_notes', 'customer_returns', 'customer_exchanges', 'commission_entries', 'finance_expected_collections'] as $table) {
             $this->assertSame(0, DB::table($table)->where('organization_id', $organization->id)->count(), $table.' was not reset.');
         }
         $this->assertDatabaseHas('products', ['id' => $product->id, 'organization_id' => $organization->id]);
+        $this->assertDatabaseHas('product_variants', ['id' => $variant->id, 'organization_id' => $organization->id]);
         $this->assertDatabaseHas('customers', ['id' => $customer->id, 'organization_id' => $organization->id]);
+        $this->assertDatabaseHas('suppliers', ['id' => $supplierId, 'organization_id' => $organization->id]);
         $this->assertDatabaseHas('financial_accounts', ['id' => $account->id, 'organization_id' => $organization->id]);
         $this->assertDatabaseHas('stores', ['id' => $store->id, 'organization_id' => $organization->id]);
+        $this->assertDatabaseHas('warehouses', ['id' => $warehouse->id, 'organization_id' => $organization->id]);
+        $this->assertDatabaseHas('inventory_movements', ['id' => $openingMovementId, 'organization_id' => $organization->id]);
+        $this->assertDatabaseMissing('inventory_movements', ['id' => $saleMovementId]);
+        $this->assertDatabaseMissing('inventory_movements', ['id' => $procurementMovementId]);
+        $this->assertDatabaseMissing('inventory_reservations', ['id' => $reservationId]);
+        $this->assertDatabaseMissing('woocommerce_stock_tasks', ['source_id' => $saleMovementId]);
+        $this->assertDatabaseMissing('transfer_requests', ['id' => $transferRequestId]);
+        $this->assertDatabaseMissing('stock_transfers', ['id' => $stockTransfer->id]);
+        $this->assertDatabaseMissing('sales_order_procurements', ['id' => $procurementId]);
         $this->assertSame($sequenceBefore, DB::table('sales_order_sequences')->where('organization_id', $organization->id)->value('next_number'));
         $this->assertDatabaseMissing('quotations', ['id' => $quotation->id]);
         $this->assertDatabaseMissing('delivery_notes', ['id' => $deliveryNote->id]);
@@ -272,6 +398,61 @@ class OrganizationDataResetEngineTest extends DocumentTestCase
         $this->assertSame($sequences, app(\App\Services\OrganizationDataReset\OrganizationDataResetSequenceGuard::class)->snapshot($organization));
     }
 
+    public function test_sales_reset_blocks_only_a_stock_transfer_shared_with_retained_non_sales_logistics(): void
+    {
+        $owner = User::factory()->create();
+        $organization = $this->createOrganization($owner);
+        $store = $this->createStore($organization, $owner);
+        $source = $this->createWarehouse($organization, 'Shared source');
+        $destination = $this->createWarehouse($organization, 'Shared destination');
+        $customer = $this->createCustomer($organization);
+        $order = $this->createDraftOrder($owner, $organization, $store, $customer);
+        $this->addCustomLine($owner, $order);
+        $order = app(ConfirmSalesOrderAction::class)->execute($owner, $order)->fresh();
+        $transferId = DB::table('stock_transfers')->insertGetId([
+            'organization_id' => $organization->id,
+            'source_warehouse_id' => $source->id,
+            'destination_warehouse_id' => $destination->id,
+            'transfer_number' => 'TRF-SHARED-001',
+            'status' => 'completed',
+            'reason' => 'Shared reset fixture',
+            'product_count' => 0,
+            'unit_count' => 0,
+            'performed_by_user_id' => $owner->id,
+            'transferred_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        foreach ([
+            ['number' => 'TRQ-SALES-SHARED', 'sales_order_id' => $order->id],
+            ['number' => 'TRQ-RETAINED-SHARED', 'sales_order_id' => null],
+        ] as $request) {
+            DB::table('transfer_requests')->insert([
+                'organization_id' => $organization->id,
+                'request_number' => $request['number'],
+                'source_warehouse_id' => $source->id,
+                'destination_warehouse_id' => $destination->id,
+                'status' => 'received',
+                'sales_order_id' => $request['sales_order_id'],
+                'stock_transfer_id' => $transferId,
+                'requested_by_user_id' => $owner->id,
+                'requested_at' => now(),
+                'received_by_user_id' => $owner->id,
+                'received_at' => now(),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+
+        $plan = app(OrganizationDataResetPreviewService::class)->preview($organization, OrganizationDataResetScope::SalesAndDocuments);
+
+        $this->assertFalse($plan->isExecutable());
+        $this->assertContains('sales.shared_stock_transfer', array_column($plan->blockers, 'code'));
+        $this->assertSame(1, collect($plan->blockers)->firstWhere('code', 'sales.shared_stock_transfer')['count']);
+        $this->assertDatabaseHas('sales_orders', ['id' => $order->id]);
+        $this->assertDatabaseHas('stock_transfers', ['id' => $transferId]);
+    }
+
     public function test_catalog_reset_blocks_commercial_references_then_removes_inventory_and_preserves_infrastructure(): void
     {
         $owner = User::factory()->create();
@@ -291,9 +472,6 @@ class OrganizationDataResetEngineTest extends DocumentTestCase
         $this->assertFalse($blocked->isExecutable());
         $this->assertContains('catalog.sales_dependencies', array_column($blocked->blockers, 'code'));
 
-        // Remove the deliberately-created cross-domain stock allocation so the
-        // companion Sales reset can clear the commercial reference first.
-        DB::table('sales_order_inventory_allocations')->where('organization_id', $organization->id)->delete();
         $salesPlan = app(OrganizationDataResetPreviewService::class)->preview($organization, OrganizationDataResetScope::SalesAndDocuments);
         $this->assertTrue($salesPlan->isExecutable(), json_encode($salesPlan->blockers));
         app(OrganizationDataResetExecutor::class)->execute($organization, $owner, $salesPlan);
