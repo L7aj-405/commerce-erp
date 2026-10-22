@@ -242,6 +242,7 @@ export default function ApplicationShell({ children, wide = false, flush = false
                 { href: '/return-policy', label: t('nav.returnPolicy'), permission: ['settings.view', 'settings.update'], icon: <IconRotateBack /> },
                 { href: '/email-settings', label: t('nav.email'), permission: ['settings.view', 'settings.update'], icon: <IconMail /> },
                 { href: '/organization-backups', label: t('nav.backups'), permission: 'organization_backups.view', icon: <IconShield /> },
+                { href: '/settings/data-reset', label: t('nav.dataReset'), permission: 'system.data_reset', icon: <IconTrash /> },
                 { href: '/account/notifications', label: t('common.notifications'), icon: <IconBell /> },
                 { href: '/catalog/tax-rates', label: t('nav.taxes'), permission: 'tax_rates.view', icon: <IconPercent /> },
             ],
@@ -647,6 +648,7 @@ function IconPlug() { return <svg {...s}><path d="M9 2v6M15 2v6M7 8h10v3a5 5 0 0
 function IconSync() { return <svg {...s}><path d="M4 12a8 8 0 0 1 13.7-5.7L20 8M20 4v4h-4M20 12a8 8 0 0 1-13.7 5.7L4 16M4 20v-4h4" /></svg>; }
 function IconShield() { return <svg {...s}><path d="M12 3 5 6v5c0 4.5 2.8 8 7 10 4.2-2 7-5.5 7-10V6l-7-3Z" /></svg>; }
 function IconSettings() { return <svg {...s}><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z" /><path d="M3 12h2M19 12h2M12 3v2M12 19v2M5.6 5.6 7 7M17 17l1.4 1.4M18.4 5.6 17 7M7 17l-1.4 1.4" /></svg>; }
+function IconTrash() { return <svg {...s}><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5" /></svg>; }
 function IconFolder() { return <svg {...s}><path d="M3 6h7l2 3h9v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6Z" /></svg>; }
 function IconPercent() { return <svg {...s}><path d="M19 5 5 19" /><circle cx="7" cy="7" r="2" /><circle cx="17" cy="17" r="2" /></svg>; }
 function IconMail() { return <svg {...s}><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m4 7 8 6 8-6" /></svg>; }

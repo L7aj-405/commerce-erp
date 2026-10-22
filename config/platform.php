@@ -144,6 +144,7 @@ return [
         'audit.view' => 'View organization activity and audit history',
         'system.health.view' => 'View system operations and health',
         'system.health.manage' => 'Manage system operations',
+        'system.data_reset' => 'Preview and execute organization data resets',
     ],
 
     'default_roles' => [
@@ -284,6 +285,7 @@ return [
                 'commissions.export',
                 'audit.view',
                 'system.health.view',
+                'system.data_reset',
             ],
         ],
         'sales-employee' => [

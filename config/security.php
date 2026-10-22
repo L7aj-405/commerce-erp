@@ -12,5 +12,6 @@ return [
         'roles.assign-permissions',
         'organization_backups.restore',
         'system.health.manage',
+        'system.data_reset',
     ],
 ];

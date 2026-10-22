@@ -87,6 +87,7 @@ use App\Http\Controllers\Settings\OrganizationDocumentStampController;
 use App\Http\Controllers\Settings\OrganizationMailSettingController;
 use App\Http\Controllers\Settings\OrganizationBackupController;
 use App\Http\Controllers\Settings\OrganizationBackupCloudController;
+use App\Http\Controllers\Settings\OrganizationDataResetController;
 use App\Http\Controllers\Settings\PasswordController;
 use App\Http\Controllers\Settings\ProfileController;
 use App\Http\Controllers\Settings\TwoFactorAuthenticationController;
@@ -250,6 +251,14 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
     Route::post('/organization-backups/restore', [OrganizationBackupController::class, 'restore'])
         ->middleware('throttle:3,10')
         ->name('organization-backups.restore');
+    Route::get('/settings/data-reset', [OrganizationDataResetController::class, 'index'])
+        ->name('settings.data-reset.index');
+    Route::post('/settings/data-reset/preview', [OrganizationDataResetController::class, 'preview'])
+        ->middleware('throttle:20,1')
+        ->name('settings.data-reset.preview');
+    Route::post('/settings/data-reset/execute', [OrganizationDataResetController::class, 'execute'])
+        ->middleware('throttle:3,10')
+        ->name('settings.data-reset.execute');
     Route::post('/email-settings/test', [OrganizationMailSettingController::class, 'test'])
         ->middleware('throttle:6,1')->name('email-settings.test');
 
