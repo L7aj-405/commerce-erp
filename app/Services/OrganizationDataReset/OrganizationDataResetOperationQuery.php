@@ -3,11 +3,16 @@
 namespace App\Services\OrganizationDataReset;
 
 use App\Models\CustomerReturn;
+use App\Models\CustomerExchange;
+use App\Models\DeliveryNote;
 use App\Models\InventoryMovement;
 use App\Models\InventoryReservation;
 use App\Models\Organization;
+use App\Models\SalesOrder;
+use App\Models\SalesOrderLine;
 use App\Models\SalesOrderInventoryAllocation;
 use App\Models\SalesOrderProcurement;
+use App\Support\InventoryQuantity;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -23,6 +28,9 @@ class OrganizationDataResetOperationQuery
         if ($operation->action === OrganizationDataResetOperation::DELETE_SALES_TRANSFER_GRAPH) {
             return $this->salesTransferGraphRows((int) $organization->getKey())->count();
         }
+        if ($operation->action === OrganizationDataResetOperation::DELETE_SALES_RESERVATION_GRAPH) {
+            return $this->salesReservationGraphRows((int) $organization->getKey())->count();
+        }
 
         return $this->query($organization, $operation)->count();
     }
@@ -35,6 +43,9 @@ class OrganizationDataResetOperationQuery
 
         if ($operation->action === OrganizationDataResetOperation::DELETE_SALES_TRANSFER_GRAPH) {
             return $this->deleteSalesTransferGraph((int) $organization->getKey());
+        }
+        if ($operation->action === OrganizationDataResetOperation::DELETE_SALES_RESERVATION_GRAPH) {
+            return $this->deleteSalesReservationGraph((int) $organization->getKey());
         }
 
         $query = $this->query($organization, $operation);
@@ -55,9 +66,11 @@ class OrganizationDataResetOperationQuery
             return hash('sha256', 'missing');
         }
 
-        $rows = $operation->action === OrganizationDataResetOperation::DELETE_SALES_TRANSFER_GRAPH
-            ? $this->salesTransferGraphRows((int) $organization->getKey())
-            : $this->query($organization, $operation)->get();
+        $rows = match ($operation->action) {
+            OrganizationDataResetOperation::DELETE_SALES_TRANSFER_GRAPH => $this->salesTransferGraphRows((int) $organization->getKey()),
+            OrganizationDataResetOperation::DELETE_SALES_RESERVATION_GRAPH => $this->salesReservationGraphRows((int) $organization->getKey()),
+            default => $this->query($organization, $operation)->get(),
+        };
         $rowHashes = $rows
             ->map(function (object $row): string {
                 $values = (array) $row;
@@ -100,9 +113,6 @@ class OrganizationDataResetOperationQuery
             OrganizationDataResetOperation::DELETE_CUSTOM_ROLES => DB::table('roles')
                 ->where('organization_id', $organizationId)
                 ->where('is_system', false),
-            OrganizationDataResetOperation::DELETE_SALES_INVENTORY_RESERVATIONS => DB::table('inventory_reservations')
-                ->where('organization_id', $organizationId)
-                ->where('reference_type', SalesOrderInventoryAllocation::class),
             OrganizationDataResetOperation::DELETE_SALES_INVENTORY_MOVEMENTS => $this->salesInventoryMovements($organizationId),
             OrganizationDataResetOperation::DELETE_SALES_WOOCOMMERCE_STOCK_TASKS => DB::table('woocommerce_stock_tasks')
                 ->where('organization_id', $organizationId)
@@ -138,6 +148,100 @@ class OrganizationDataResetOperationQuery
         return $requests->concat($transfers);
     }
 
+    private function salesReservationGraphRows(int $organizationId): \Illuminate\Support\Collection
+    {
+        $allocations = DB::table('sales_order_inventory_allocations')
+            ->where('organization_id', $organizationId)
+            ->get()
+            ->map(function (object $row): object {
+                $row->__reset_table = 'sales_order_inventory_allocations';
+
+                return $row;
+            });
+        $reservations = $this->salesReservations($organizationId)
+            ->get()
+            ->map(function (object $row): object {
+                $row->__reset_table = 'inventory_reservations';
+
+                return $row;
+            });
+
+        return $allocations->concat($reservations);
+    }
+
+    private function deleteSalesReservationGraph(int $organizationId): int
+    {
+        $reservations = $this->salesReservations($organizationId)
+            ->lockForUpdate()
+            ->get(['id', 'warehouse_id', 'product_variant_id', 'quantity', 'status']);
+        $active = $reservations->where('status', 'active')
+            ->groupBy(fn (object $reservation) => $reservation->warehouse_id.'|'.$reservation->product_variant_id);
+
+        foreach ($active as $group) {
+            $first = $group->first();
+            $balance = DB::table('inventory_balances')
+                ->where('organization_id', $organizationId)
+                ->where('warehouse_id', $first->warehouse_id)
+                ->where('product_variant_id', $first->product_variant_id)
+                ->lockForUpdate()
+                ->first(['id', 'reserved']);
+            if (! $balance) {
+                throw new OrganizationDataResetException('A Sales reservation has no inventory balance projection.');
+            }
+            $quantity = $group->reduce(
+                fn (string $carry, object $reservation) => InventoryQuantity::add($carry, (string) $reservation->quantity),
+                '0.0000',
+            );
+            if (InventoryQuantity::compare((string) $balance->reserved, $quantity) < 0) {
+                throw new OrganizationDataResetException('A Sales reservation exceeds its inventory balance projection.');
+            }
+            DB::table('inventory_balances')->where('id', $balance->id)->update([
+                'reserved' => InventoryQuantity::subtract((string) $balance->reserved, $quantity),
+                'updated_at' => now(),
+            ]);
+        }
+
+        $reservationIds = $reservations->pluck('id');
+        $allocations = DB::table('sales_order_inventory_allocations')
+            ->where('organization_id', $organizationId)
+            ->delete();
+        $deletedReservations = $reservationIds->isEmpty()
+            ? 0
+            : DB::table('inventory_reservations')
+                ->where('organization_id', $organizationId)
+                ->whereIn('id', $reservationIds)
+                ->delete();
+
+        return $allocations + $deletedReservations;
+    }
+
+    private function salesReservations(int $organizationId): Builder
+    {
+        $salesTypes = [
+            SalesOrderInventoryAllocation::class,
+            SalesOrder::class,
+            SalesOrderLine::class,
+            DeliveryNote::class,
+            CustomerReturn::class,
+            CustomerExchange::class,
+            'sales_order',
+            'sales_order_line',
+            'delivery_note',
+            'customer_return',
+            'customer_exchange',
+        ];
+
+        return DB::table('inventory_reservations')
+            ->where('organization_id', $organizationId)
+            ->where(function (Builder $query) use ($organizationId, $salesTypes) {
+                $query->whereIn('reference_type', $salesTypes)
+                    ->orWhereIn('id', DB::table('sales_order_inventory_allocations')
+                        ->select('inventory_reservation_id')
+                        ->where('organization_id', $organizationId)
+                        ->whereNotNull('inventory_reservation_id'));
+            });
+    }
+
     private function deleteSalesTransferGraph(int $organizationId): int
     {
         $transferIds = $this->salesStockTransferIds($organizationId)->pluck('stock_transfer_id');
@@ -171,10 +275,7 @@ class OrganizationDataResetOperationQuery
                 $query->where(function (Builder $reservationMovements) use ($organizationId) {
                     $reservationMovements
                         ->where('reference_type', InventoryReservation::class)
-                        ->whereIn('reference_id', DB::table('inventory_reservations')
-                            ->select('id')
-                            ->where('organization_id', $organizationId)
-                            ->where('reference_type', SalesOrderInventoryAllocation::class));
+                        ->whereIn('reference_id', $this->salesReservations($organizationId)->select('id'));
                 })->orWhere(function (Builder $returnMovements) use ($organizationId) {
                     $returnMovements
                         ->where('reference_type', CustomerReturn::class)

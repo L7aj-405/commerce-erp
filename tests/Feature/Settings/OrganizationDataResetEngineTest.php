@@ -318,7 +318,7 @@ class OrganizationDataResetEngineTest extends DocumentTestCase
         $this->assertSame(1, $plan->counts['sales_and_documents.payment_refunds']);
         $this->assertSame(1, $plan->counts['sales_and_documents.finance_expected_collection_matches']);
         $this->assertGreaterThanOrEqual(3, $plan->counts['sales_and_documents.inventory_movements']);
-        $this->assertSame(1, $plan->counts['sales_and_documents.inventory_reservations']);
+        $this->assertSame(2, $plan->counts['sales_and_documents.inventory_reservations']);
         $this->assertSame(2, $plan->counts['sales_and_documents.transfer_graph']);
         app(OrganizationDataResetExecutor::class)->execute($organization, $owner, $plan);
 

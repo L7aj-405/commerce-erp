@@ -47,6 +47,11 @@ class SyncWooCommerceProductsAction
 {
     private ?WooCommerceClient $clientOverride = null;
 
+    /** @var list<string> */
+    private array $stockReconciliationMessages = [];
+
+    private int $stockReconciliationsOmitted = 0;
+
     public function __construct(
         private readonly WooCommerceProductNormalizer $normalizer,
         private readonly WooTaxClassResolver $taxResolver,
@@ -67,6 +72,9 @@ class SyncWooCommerceProductsAction
 
     public function execute(WooCommerceIntegration $integration, User $actor, string $mode = 'full'): WooCommerceSyncRun
     {
+        $this->stockReconciliationMessages = [];
+        $this->stockReconciliationsOmitted = 0;
+
         $lock = Cache::lock('woocommerce-sync:'.$integration->getKey(), 3900);
         if (! $lock->get()) {
             throw ValidationException::withMessages(['sync' => 'Une synchronisation est déjà en cours pour cette intégration.']);
@@ -150,6 +158,12 @@ class SyncWooCommerceProductsAction
                 : WooCommerceSyncRun::STATUS_COMPLETED;
             $run->message = "Prix WooCommerce interprétés comme {$priceMeaning['label']}"
                 .($priceMeaning['detected'] ? ' (détecté depuis les réglages de la boutique).' : ' (réglage non détecté — valeur par défaut).');
+            if ($this->stockReconciliationMessages !== []) {
+                $run->message .= "\nStock :\n".implode("\n", $this->stockReconciliationMessages);
+                if ($this->stockReconciliationsOmitted > 0) {
+                    $run->message .= "\n+ {$this->stockReconciliationsOmitted} autre(s) rapprochement(s) de stock.";
+                }
+            }
             $run->completed_at = now();
             $run->save();
 
@@ -541,32 +555,21 @@ class SyncWooCommerceProductsAction
         $balances = InventoryBalance::query()
             ->where('organization_id', $organization->getKey())
             ->where('product_variant_id', $variant->getKey())
+            ->whereHas('warehouse', fn ($query) => $query
+                ->where('organization_id', $organization->getKey())
+                ->where('status', 'active'))
             ->orderBy('warehouse_id')
             ->lockForUpdate()
-            ->get(['warehouse_id', 'on_hand']);
+            ->get(['warehouse_id', 'on_hand', 'reserved']);
 
         $current = $balances->reduce(
-            fn (string $carry, InventoryBalance $balance) => InventoryQuantity::add($carry, $balance->on_hand),
+            fn (string $carry, InventoryBalance $balance) => InventoryQuantity::add($carry, $balance->available),
             '0.0000',
         );
 
-        $syncWarehouseOnHand = $balances
-            ->firstWhere('warehouse_id', $warehouse->getKey())
-            ?->on_hand ?? '0.0000';
-
         $delta = InventoryQuantity::subtract($target, $current);
         if (InventoryQuantity::compare($delta, '0.0000') === 0) {
-            return;
-        }
-
-        if (InventoryQuantity::compare($delta, '0.0000') < 0
-            && InventoryQuantity::compare($syncWarehouseOnHand, ltrim($delta, '-')) < 0) {
-            $this->recordIssue(
-                $run,
-                null,
-                'Stock WooCommerce non réconcilié pour '.($variant->sku ?? "variante #{$variant->getKey()}").' : '
-                .'l’écart négatif dépasse le stock physique disponible dans l’entrepôt de synchronisation.',
-            );
+            $this->recordStockReconciliation($variant, $target, $current, $delta, [], $target);
 
             return;
         }
@@ -575,17 +578,80 @@ class SyncWooCommerceProductsAction
         $reason = 'Synchronisation WooCommerce';
 
         try {
-            $isIncrease = InventoryQuantity::compare($delta, '0.0000') > 0;
-            $this->adjustInventory->execute(
-                $actor, $organization, $warehouse, $variant,
-                $isIncrease ? InventoryMovementType::AdjustmentIn : InventoryMovementType::AdjustmentOut,
-                $isIncrease ? $delta : ltrim($delta, '-'),
-                $reason, $reference,
-            );
-            $run->increment('stock_adjustments');
+            /** @var list<array{warehouse:string,quantity:string}> $adjustments */
+            $adjustments = DB::transaction(function () use ($actor, $organization, $warehouse, $variant, $run, $balances, $delta, $reason, $reference): array {
+                if (InventoryQuantity::compare($delta, '0.0000') > 0) {
+                    $this->adjustInventory->execute(
+                        $actor, $organization, $warehouse, $variant,
+                        InventoryMovementType::AdjustmentIn, $delta, $reason, $reference,
+                    );
+                    $run->increment('stock_adjustments');
+
+                    return [['warehouse' => $warehouse->name, 'quantity' => '+'.$delta]];
+                }
+
+                $remaining = ltrim($delta, '-');
+                $warehouseIds = $balances->pluck('warehouse_id')->map(fn ($id) => (int) $id)->all();
+                $warehouses = Warehouse::query()
+                    ->where('organization_id', $organization->getKey())
+                    ->whereIn('id', $warehouseIds)
+                    ->where('status', 'active')
+                    ->get()
+                    ->keyBy('id');
+                $orderedBalances = $balances->sortBy(fn (InventoryBalance $balance) => (int) $balance->warehouse_id === (int) $warehouse->getKey()
+                    ? -1
+                    : (int) $balance->warehouse_id);
+                $applied = [];
+
+                foreach ($orderedBalances as $balance) {
+                    if (InventoryQuantity::compare($remaining, '0.0000') === 0) {
+                        break;
+                    }
+                    $available = $balance->available;
+                    if (InventoryQuantity::compare($available, '0.0000') <= 0) {
+                        continue;
+                    }
+                    $quantity = InventoryQuantity::compare($available, $remaining) >= 0 ? $remaining : $available;
+                    $targetWarehouse = $warehouses->get((int) $balance->warehouse_id);
+                    if (! $targetWarehouse) {
+                        continue;
+                    }
+                    $this->adjustInventory->execute(
+                        $actor, $organization, $targetWarehouse, $variant,
+                        InventoryMovementType::AdjustmentOut, $quantity, $reason, $reference,
+                    );
+                    $run->increment('stock_adjustments');
+                    $applied[] = ['warehouse' => $targetWarehouse->name, 'quantity' => '-'.$quantity];
+                    $remaining = InventoryQuantity::subtract($remaining, $quantity);
+                }
+
+                if (InventoryQuantity::compare($remaining, '0.0000') !== 0) {
+                    throw ValidationException::withMessages(['quantity' => 'Le stock disponible total ne permet pas le rapprochement WooCommerce.']);
+                }
+
+                return $applied;
+            });
+            $this->recordStockReconciliation($variant, $target, $current, $delta, $adjustments, $target);
         } catch (ValidationException $exception) {
             $this->recordIssue($run, null, 'Stock non réconcilié pour '.($variant->sku ?? "variante #{$variant->getKey()}").' : '.$this->firstMessage($exception));
         }
+    }
+
+    /** @param list<array{warehouse:string,quantity:string}> $adjustments */
+    private function recordStockReconciliation(ProductVariant $variant, string $woo, string $before, string $delta, array $adjustments, string $after): void
+    {
+        if (count($this->stockReconciliationMessages) >= 50) {
+            $this->stockReconciliationsOmitted++;
+
+            return;
+        }
+
+        $adjustmentText = $adjustments === []
+            ? 'aucun ajustement'
+            : implode(', ', array_map(fn (array $adjustment) => $adjustment['warehouse'].' '.$adjustment['quantity'], $adjustments));
+        $signedDelta = InventoryQuantity::compare($delta, '0.0000') > 0 ? '+'.$delta : $delta;
+        $this->stockReconciliationMessages[] = ($variant->sku ?? "variante #{$variant->getKey()}")
+            ." — Woo {$woo}; ERP avant {$before}; écart {$signedDelta}; {$adjustmentText}; ERP après {$after}.";
     }
 
     private function stockSyncEnabled(WooCommerceIntegration $integration, User $actor): bool

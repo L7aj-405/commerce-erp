@@ -21,7 +21,7 @@ use Illuminate\Support\Str;
  * touches the network. The default secret is deliberately distinctive so a test
  * can assert it never leaks into an Inertia payload, a log line or an exception.
  */
-abstract class WooCommerceTestCase extends InventoryTestCase
+abstract class WooCommerceTestCase extends SalesTestCase
 {
     protected string $secret = 'cs_super_secret_do_not_leak_1234567890';
 

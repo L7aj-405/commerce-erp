@@ -3,6 +3,7 @@
 namespace App\Services\OrganizationDataReset;
 
 use App\Models\Organization;
+use App\Support\InventoryQuantity;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
@@ -55,6 +56,10 @@ class OrganizationDataResetPostconditionValidator
 
         $this->assertNoProtectedOrphans($organization);
 
+        if (collect($operations)->contains(fn (OrganizationDataResetOperation $operation) => $operation->action === OrganizationDataResetOperation::DELETE_SALES_RESERVATION_GRAPH)) {
+            $this->assertNoSalesReservationOrphans($organization);
+        }
+
         if (DB::connection()->getDriverName() === 'sqlite' && DB::select('PRAGMA foreign_key_check') !== []) {
             throw new OrganizationDataResetException('Reset left invalid database foreign-key references.');
         }
@@ -95,6 +100,34 @@ class OrganizationDataResetPostconditionValidator
 
         if ($missingStoreMembership || $missingWooReference) {
             throw new OrganizationDataResetException('Reset would leave protected tenant access or integration references orphaned.');
+        }
+    }
+
+    private function assertNoSalesReservationOrphans(Organization $organization): void
+    {
+        $organizationId = (int) $organization->getKey();
+        if (DB::table('sales_order_inventory_allocations')->where('organization_id', $organizationId)->exists()) {
+            throw new OrganizationDataResetException('Reset left a Sales inventory allocation behind.');
+        }
+
+        $activeReservations = DB::table('inventory_reservations')
+            ->where('organization_id', $organizationId)
+            ->where('status', 'active')
+            ->get(['warehouse_id', 'product_variant_id', 'quantity'])
+            ->groupBy(fn (object $reservation) => $reservation->warehouse_id.'|'.$reservation->product_variant_id)
+            ->map(fn ($group) => $group->reduce(
+                fn (string $carry, object $reservation) => InventoryQuantity::add($carry, (string) $reservation->quantity),
+                '0.0000',
+            ));
+
+        $balances = DB::table('inventory_balances')
+            ->where('organization_id', $organizationId)
+            ->get(['warehouse_id', 'product_variant_id', 'reserved']);
+        foreach ($balances as $balance) {
+            $expected = $activeReservations->get($balance->warehouse_id.'|'.$balance->product_variant_id, '0.0000');
+            if (InventoryQuantity::compare((string) $balance->reserved, $expected) !== 0) {
+                throw new OrganizationDataResetException('Reset left an inconsistent inventory reservation projection.');
+            }
         }
     }
 }

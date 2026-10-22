@@ -392,7 +392,7 @@ export default function WooCommerceSettings({ integration, runs, warehouses, sto
                                 <div className="flex justify-between"><dt className="text-ink-muted">{t('woo.stockAdjustments')}</dt><dd className="tabular-nums">{liveRun.stock_adjustments}</dd></div>
                                 <div className="flex justify-between"><dt className="text-ink-muted">{t('woo.inError')}</dt><dd className={`tabular-nums ${liveRun.products_failed > 0 ? 'text-danger' : ''}`}>{liveRun.products_failed}</dd></div>
                             </dl>}
-                            {liveRun && !awaitingRun && liveRun.message && <p className="mt-3 text-[12px] text-ink-muted">{liveRun.message}</p>}
+                            {liveRun && !awaitingRun && liveRun.message && <p className="mt-3 whitespace-pre-line text-[12px] text-ink-muted">{liveRun.message}</p>}
                             {liveRun && !awaitingRun && (liveRun.errors?.length ?? 0) > 0 && (
                                 <ul className="mt-3 max-h-40 space-y-1 overflow-y-auto rounded-field bg-raised p-2 text-[12px] text-ink-muted">
                                     {liveRun.errors!.slice(0, 50).map((error, index) => (

@@ -52,7 +52,6 @@ class OrganizationDataResetBundleRegistry
                 'invoice_lines', 'invoices', 'invoice_families',
                 'quotation_lines', 'quotations',
                 'out_of_stock_articles',
-                'sales_order_inventory_allocations',
                 'sales_order_procurements',
                 'sales_order_revisions', 'sales_order_addenda',
                 'sales_order_lines', 'sales_orders',
@@ -66,7 +65,7 @@ class OrganizationDataResetBundleRegistry
                 new OrganizationDataResetOperation('sales_and_documents.stock_transfer_lines', $scope, 'stock_transfer_lines', OrganizationDataResetOperation::DELETE_SALES_STOCK_TRANSFER_LINES),
                 new OrganizationDataResetOperation('sales_and_documents.transfer_request_lines', $scope, 'transfer_request_lines', OrganizationDataResetOperation::DELETE_SALES_TRANSFER_REQUEST_LINES),
                 new OrganizationDataResetOperation('sales_and_documents.inventory_movements', $scope, 'inventory_movements', OrganizationDataResetOperation::DELETE_SALES_INVENTORY_MOVEMENTS),
-                new OrganizationDataResetOperation('sales_and_documents.inventory_reservations', $scope, 'inventory_reservations', OrganizationDataResetOperation::DELETE_SALES_INVENTORY_RESERVATIONS),
+                new OrganizationDataResetOperation('sales_and_documents.inventory_reservations', $scope, 'inventory_reservations', OrganizationDataResetOperation::DELETE_SALES_RESERVATION_GRAPH),
                 new OrganizationDataResetOperation('sales_and_documents.transfer_graph', $scope, 'transfer_requests', OrganizationDataResetOperation::DELETE_SALES_TRANSFER_GRAPH),
             ]),
             OrganizationDataResetScope::TransactionalFinance => $this->tables($scope, [
