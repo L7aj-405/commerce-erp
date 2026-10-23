@@ -14,13 +14,13 @@ use App\Models\Customer;
 use App\Models\ProductVariant;
 use App\Models\SalesOrder;
 use App\Models\SalesOrderLine;
+use App\Services\Mcp\McpDryRun;
 use App\Services\Mcp\McpExecutionContext;
 use App\Services\Mcp\McpIdempotencyService;
 use App\Services\Mcp\Products\ProductStockReadService;
 use App\Support\Decimal;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
 use InvalidArgumentException;
@@ -57,6 +57,7 @@ final class McpSalesOrderService
         private readonly ConfirmSalesOrderAction $confirmOrder,
         private readonly ProductStockReadService $stock,
         private readonly McpIdempotencyService $canonical,
+        private readonly McpDryRun $dryRunner,
     ) {}
 
     public static function requiredScope(string $mode): string
@@ -543,25 +544,13 @@ final class McpSalesOrderService
     }
 
     /**
-     * Run inside a transaction that is always rolled back.
-     *
      * @template T
      * @param callable(): T $callback
      * @return T
      */
     private function dryRun(callable $callback): mixed
     {
-        $result = null;
-        try {
-            DB::transaction(function () use ($callback, &$result) {
-                $result = $callback();
-                throw new McpDryRunRollback;
-            });
-        } catch (McpDryRunRollback) {
-            // Expected: nothing the actions wrote is kept.
-        }
-
-        return $result;
+        return $this->dryRunner->run($callback);
     }
 
     /* ------------------------------------------------------------------

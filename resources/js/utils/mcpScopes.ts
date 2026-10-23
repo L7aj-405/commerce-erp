@@ -9,7 +9,9 @@ export const mcpScopeTranslationKeys: Record<string, TranslationKey> = {
     'categories.manage': 'mcp.scope.categoriesManage', 'units.manage': 'mcp.scope.unitsManage',
     'tax_rates.view': 'mcp.scope.taxesView', 'customers.view': 'mcp.scope.customersView',
     'quotations.view': 'mcp.scope.quotationsView', 'quotations.create': 'mcp.scope.quotationsCreate',
-    'quotations.update': 'mcp.scope.quotationsUpdate', 'sales_orders.view': 'mcp.scope.salesOrdersView',
+    'quotations.update': 'mcp.scope.quotationsUpdate', 'quotations.issue': 'mcp.scope.quotationsIssue',
+    'quotations.accept': 'mcp.scope.quotationsAccept', 'quotations.convert': 'mcp.scope.quotationsConvert',
+    'sales_orders.view': 'mcp.scope.salesOrdersView',
     'sales_orders.create': 'mcp.scope.salesOrdersCreate', 'sales_orders.update': 'mcp.scope.salesOrdersUpdate',
     'sales_orders.confirm': 'mcp.scope.salesOrdersConfirm',
 };

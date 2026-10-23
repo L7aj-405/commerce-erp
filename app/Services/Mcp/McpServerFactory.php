@@ -7,6 +7,7 @@ use App\Services\Mcp\Products\ProductOperationTools;
 use App\Services\Mcp\Products\ProductReadTools;
 use App\Services\Mcp\Products\ProductWriteTools;
 use App\Services\Mcp\Sales\SalesAssistantTools;
+use App\Services\Mcp\Sales\QuotationLifecycleTools;
 use App\Services\Mcp\Sales\SalesOrderTools;
 use Mcp\Schema\ToolAnnotations;
 use Mcp\Server;
@@ -22,6 +23,7 @@ final class McpServerFactory
         private readonly ProductOperationTools $operationTools,
         private readonly SalesAssistantTools $salesTools,
         private readonly SalesOrderTools $salesOrderTools,
+        private readonly QuotationLifecycleTools $quotationLifecycleTools,
     ) {}
 
     public function make(): Server
@@ -164,8 +166,56 @@ final class McpServerFactory
         $this->registerProductOperationTools($builder, $readOnly, $outputSchema);
         $this->registerSalesTools($builder, $readOnly, $outputSchema);
         $this->registerSalesOrderTools($builder, $readOnly, $outputSchema);
+        $this->registerQuotationLifecycleTools($builder, $readOnly, $outputSchema);
 
         return $builder->build();
+    }
+
+    /** @param array<string, mixed> $outputSchema */
+    private function registerQuotationLifecycleTools($builder, ToolAnnotations $readOnly, array $outputSchema): void
+    {
+        $byId = ['type' => 'object', 'required' => ['quotation_id'], 'properties' => ['quotation_id' => ['type' => 'integer', 'minimum' => 1]], 'additionalProperties' => false];
+        $withFingerprint = fn (array $extra = []) => [
+            'type' => 'object', 'required' => ['quotation_id', 'preview_fingerprint', ...array_keys($extra)],
+            'properties' => ['quotation_id' => ['type' => 'integer', 'minimum' => 1], 'preview_fingerprint' => ['type' => 'string', 'pattern' => '^[0-9a-f]{64}$'], ...$extra],
+            'additionalProperties' => false,
+        ];
+        $transition = new ToolAnnotations(readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false);
+
+        if ($this->context->allows('quotations.issue')) {
+            $builder->addTool([$this->quotationLifecycleTools, 'previewQuotationIssue'],
+                name: 'preview_quotation_issue', title: 'Preview quotation issue',
+                description: 'Required before issue_quotation. Checks with the ERP issue rules (draft, has lines, validity date, seller profile) whether a draft quotation can be issued, without saving anything. Returns issues and a short-lived single-use preview_fingerprint.',
+                annotations: $readOnly, inputSchema: $byId, outputSchema: $outputSchema);
+            $builder->addTool([$this->quotationLifecycleTools, 'issueQuotation'],
+                name: 'issue_quotation', title: 'Issue quotation',
+                description: 'Issue a draft quotation (allocates its official number, freezes it) with the fingerprint from preview_quotation_issue. Does not accept or convert. Retrying with the same fingerprint after success returns the issued quotation.',
+                annotations: $transition, inputSchema: $withFingerprint(), outputSchema: $outputSchema);
+        }
+
+        if ($this->context->allows('quotations.accept')) {
+            $builder->addTool([$this->quotationLifecycleTools, 'previewQuotationAcceptance'],
+                name: 'preview_quotation_acceptance', title: 'Preview quotation acceptance',
+                description: 'Required before accept_quotation. Checks with the ERP rules whether an issued quotation can be marked accepted, without saving anything. Returns issues and a short-lived single-use preview_fingerprint.',
+                annotations: $readOnly, inputSchema: $byId, outputSchema: $outputSchema);
+            $builder->addTool([$this->quotationLifecycleTools, 'acceptQuotation'],
+                name: 'accept_quotation', title: 'Accept quotation',
+                description: 'Record the customer\'s acceptance of an issued quotation with the fingerprint from preview_quotation_acceptance. Does not convert it or create a Sales Order.',
+                annotations: $transition, inputSchema: $withFingerprint(), outputSchema: $outputSchema);
+        }
+
+        if ($this->context->allows('quotations.convert')) {
+            $builder->addTool([$this->quotationLifecycleTools, 'previewQuotationConversion'],
+                name: 'preview_quotation_conversion', title: 'Preview quotation conversion',
+                description: 'Required before convert_quotation_to_sales_order. Runs the ERP conversion without saving anything and returns the draft Sales Order it would create (customer, lines, prices, taxes, totals), stock warnings, issues, and a short-lived single-use preview_fingerprint. An already converted quotation reports its existing Sales Order.',
+                annotations: $readOnly, inputSchema: $byId, outputSchema: $outputSchema);
+            $builder->addTool([$this->quotationLifecycleTools, 'convertQuotationToSalesOrder'],
+                name: 'convert_quotation_to_sales_order', title: 'Convert quotation to sales order',
+                description: 'Convert an issued or accepted quotation into ONE draft Sales Order built from the quotation itself (no client-supplied lines or prices). Requires the conversion preview fingerprint and an idempotency key. Never confirms the order, reserves stock, issues an invoice or records a payment; a quotation is never converted twice.',
+                annotations: new ToolAnnotations(readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false),
+                inputSchema: $withFingerprint(['idempotency_key' => ['type' => 'string', 'minLength' => 1, 'maxLength' => 128]]),
+                outputSchema: $outputSchema);
+        }
     }
 
     /** @param array<string, mixed> $outputSchema */
