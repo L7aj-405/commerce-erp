@@ -9,26 +9,26 @@ use App\Http\Controllers\Controller;
 use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Services\AuditLogger;
+use App\Services\Catalog\CatalogProductDataValidator;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Validation\Rule;
 
 class ProductVariantController extends Controller
 {
-    public function store(Request $request, Product $product, CreateVariantAction $action): RedirectResponse
+    public function store(Request $request, Product $product, CreateVariantAction $action, CatalogProductDataValidator $validator): RedirectResponse
     {
         $this->authorize('create', [ProductVariant::class, $product]);
         $canManageCost = $request->user()->hasPermission($product->organization_id, 'product_cost.manage');
-        $action->execute($request->user(), $product, $request->validate($this->rules($product->organization_id, null, $canManageCost)));
+        $action->execute($request->user(), $product, $validator->variant($request->all(), $product->organization_id, null, $canManageCost));
 
         return back();
     }
 
-    public function update(Request $request, ProductVariant $variant, UpdateVariantAction $action): RedirectResponse
+    public function update(Request $request, ProductVariant $variant, UpdateVariantAction $action, CatalogProductDataValidator $validator): RedirectResponse
     {
         $this->authorize('update', $variant);
         $canManageCost = $request->user()->hasPermission($variant->organization_id, 'product_cost.manage');
-        $data = $request->validate($this->rules($variant->organization_id, $variant, $canManageCost));
+        $data = $validator->variant($request->all(), $variant->organization_id, $variant, $canManageCost);
         if (! $canManageCost) {
             $data['purchase_price'] = $variant->purchase_price;
         }
@@ -47,24 +47,5 @@ class ProductVariantController extends Controller
             oldValues: ['status' => $oldStatus], newValues: ['status' => CatalogStatus::Inactive->value]);
 
         return back();
-    }
-
-    /** @return array<string, mixed> */
-    private function rules(int $organizationId, ?ProductVariant $variant = null, bool $canManageCost = false): array
-    {
-        return [
-            'label' => ['nullable', 'string', 'max:255'],
-            'sku' => ['required', 'string', 'max:255', Rule::unique('product_variants', 'sku')->where('organization_id', $organizationId)->ignore($variant)],
-            'reference' => ['nullable', 'string', 'max:255'],
-            'barcode' => ['nullable', 'string', 'max:255', Rule::unique('product_variants', 'barcode')->where('organization_id', $organizationId)->ignore($variant)],
-            'purchase_price' => $canManageCost ? ['nullable', 'numeric', 'min:0', 'decimal:0,4'] : ['prohibited'],
-            'public_price_ttc' => ['nullable', 'numeric', 'min:0', 'decimal:0,4', 'required_without_all:regular_sale_price,default_sale_price'],
-            'unit_price_ht' => ['nullable', 'numeric', 'min:0', 'decimal:0,4'],
-            'regular_sale_price' => ['nullable', 'numeric', 'min:0', 'decimal:0,4', 'required_without_all:default_sale_price,public_price_ttc'],
-            'promotional_sale_price' => ['nullable', 'numeric', 'min:0', 'decimal:0,4', 'lte:regular_sale_price'],
-            'default_sale_price' => ['nullable', 'numeric', 'min:0', 'decimal:0,4', 'required_without_all:regular_sale_price,public_price_ttc'],
-            'tax_rate_id' => ['nullable', 'integer', Rule::exists('tax_rates', 'id')->where('organization_id', $organizationId)],
-            'status' => ['required', Rule::enum(CatalogStatus::class)],
-        ];
     }
 }

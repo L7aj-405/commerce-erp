@@ -15,6 +15,7 @@ class AuditLog extends Model
         return [
             'old_values' => 'array',
             'new_values' => 'array',
+            'actor_channel' => 'string',
         ];
     }
 

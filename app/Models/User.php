@@ -71,6 +71,11 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->hasMany(TrustedTwoFactorDevice::class);
     }
 
+    public function mcpConnections(): HasMany
+    {
+        return $this->hasMany(McpConnection::class);
+    }
+
     public function reversedPayments(): HasMany
     {
         return $this->hasMany(Payment::class, 'reversed_by_user_id');

@@ -1,6 +1,8 @@
 <?php
 
 use App\Jobs\RecordQueueWorkerHeartbeatJob;
+use App\Models\McpOperation;
+use App\Models\McpOperationItem;
 use App\Models\ProductImport;
 use App\Models\SystemHealthHeartbeat;
 use App\Models\TrustedTwoFactorDevice;
@@ -84,7 +86,35 @@ Artisan::command('finance:generate-recurring-obligations {--organization=}', fun
     return $failed === 0 ? self::SUCCESS : self::FAILURE;
 })->purpose('Generate the current month recurring Finance obligations idempotently');
 
+Artisan::command('mcp:prune-operations', function () {
+    $expired = McpOperation::query()->where('status', McpOperation::STATUS_PREVIEWED)->where('preview_expires_at', '<', now())
+        ->update(['status' => McpOperation::STATUS_EXPIRED, 'failure_code' => 'preview_expired', 'failure_message' => 'The preview expired before execution.', 'updated_at' => now()]);
+
+    // Per-row payloads are purged after the retention window; the operation
+    // summary row (type, counters, attribution, timestamps) is kept, alongside
+    // the operation-level and per-record audit log entries.
+    $cutoff = now()->subDays(max(1, (int) config('mcp.operations.retention_days', 30)));
+    $purged = 0;
+    McpOperation::query()->whereNull('details_purged_at')
+        ->where(fn ($query) => $query
+            ->where(fn ($terminal) => $terminal->whereIn('status', McpOperation::TERMINAL_STATUSES)->where('updated_at', '<', $cutoff))
+            ->orWhere(fn ($abandoned) => $abandoned->whereIn('status', [McpOperation::STATUS_VALIDATING, McpOperation::STATUS_PREVIEWED])->where('created_at', '<', $cutoff)))
+        ->select(['id'])
+        ->chunkById(100, function ($operations) use (&$purged) {
+            foreach ($operations as $operation) {
+                do {
+                    $deleted = McpOperationItem::query()->where('mcp_operation_id', $operation->getKey())->limit(1000)->delete();
+                } while ($deleted > 0);
+                McpOperation::query()->whereKey($operation->getKey())->update(['details_purged_at' => now(), 'updated_at' => now()]);
+                $purged++;
+            }
+        }, 'id');
+
+    $this->info("MCP operations: {$expired} preview(s) expired, {$purged} operation detail set(s) purged.");
+})->purpose('Expire stale MCP operation previews and purge per-row details past retention');
+
 Schedule::command('catalog:cleanup-product-imports')->daily();
+Schedule::command('mcp:prune-operations')->dailyAt('03:20')->withoutOverlapping();
 Schedule::command('organization-backups:dispatch-due')->everyMinute()->withoutOverlapping();
 Schedule::command('organization-backups:cleanup-temporary-files')->hourly()->withoutOverlapping();
 Schedule::command('security:cleanup-trusted-devices')->daily()->withoutOverlapping();

@@ -88,6 +88,7 @@ use App\Http\Controllers\Settings\OrganizationMailSettingController;
 use App\Http\Controllers\Settings\OrganizationBackupController;
 use App\Http\Controllers\Settings\OrganizationBackupCloudController;
 use App\Http\Controllers\Settings\OrganizationDataResetController;
+use App\Http\Controllers\Settings\McpConnectionController;
 use App\Http\Controllers\Settings\PasswordController;
 use App\Http\Controllers\Settings\ProfileController;
 use App\Http\Controllers\Settings\TwoFactorAuthenticationController;
@@ -259,6 +260,12 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
     Route::post('/settings/data-reset/execute', [OrganizationDataResetController::class, 'execute'])
         ->middleware('throttle:data-reset-execute')
         ->name('settings.data-reset.execute');
+    Route::get('/settings/ai-mcp', [McpConnectionController::class, 'index'])->name('settings.ai-mcp.index');
+    Route::put('/settings/ai-mcp/policy', [McpConnectionController::class, 'policy'])->middleware('fresh-auth:2')->name('settings.ai-mcp.policy');
+    Route::post('/settings/ai-mcp/connections', [McpConnectionController::class, 'store'])->middleware('fresh-auth:2')->name('settings.ai-mcp.store');
+    Route::put('/settings/ai-mcp/connections/{connection}', [McpConnectionController::class, 'update'])->name('settings.ai-mcp.update');
+    Route::post('/settings/ai-mcp/connections/{connection}/rotate', [McpConnectionController::class, 'rotate'])->middleware('fresh-auth:2')->name('settings.ai-mcp.rotate');
+    Route::delete('/settings/ai-mcp/connections/{connection}', [McpConnectionController::class, 'destroy'])->middleware('fresh-auth:2')->name('settings.ai-mcp.destroy');
     Route::post('/email-settings/test', [OrganizationMailSettingController::class, 'test'])
         ->middleware('throttle:6,1')->name('email-settings.test');
 

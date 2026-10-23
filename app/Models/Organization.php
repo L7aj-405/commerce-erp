@@ -80,6 +80,16 @@ class Organization extends Model
         return $this->hasMany(OrganizationCloudBackupConnection::class);
     }
 
+    public function mcpConnections(): HasMany
+    {
+        return $this->hasMany(McpConnection::class);
+    }
+
+    public function allowsMcpConnections(): bool
+    {
+        return (bool) data_get($this->settings, 'allow_mcp_connections', false);
+    }
+
     public function products(): HasMany
     {
         return $this->hasMany(Product::class);

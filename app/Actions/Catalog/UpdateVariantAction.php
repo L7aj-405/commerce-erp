@@ -13,9 +13,9 @@ class UpdateVariantAction
     /** @param array<string, mixed> $data */
     public function execute(User $actor, ProductVariant $variant, array $data): ProductVariant
     {
-        $fields = ['label', 'sku', 'reference', 'barcode', 'purchase_price', 'regular_sale_price', 'promotional_sale_price', 'default_sale_price', 'public_price_ttc', 'unit_price_ht', 'tax_rate_id', 'status'];
+        $fields = ['label', 'sku', 'reference', 'barcode', 'image_url', 'purchase_price', 'regular_sale_price', 'promotional_sale_price', 'default_sale_price', 'public_price_ttc', 'unit_price_ht', 'tax_rate_id', 'status'];
         $oldValues = $variant->only($fields);
-        foreach (['label', 'sku', 'reference', 'barcode', 'purchase_price', 'tax_rate_id', 'status'] as $field) {
+        foreach (['label', 'sku', 'reference', 'barcode', 'image_url', 'purchase_price', 'tax_rate_id', 'status'] as $field) {
             $variant->{$field} = $data[$field] ?? null;
         }
         $publicPrice = $data['public_price_ttc'] ?? $data['default_sale_price'] ?? $data['regular_sale_price'];

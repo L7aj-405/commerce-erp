@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Catalog;
 
 use App\Actions\Catalog\ConfirmProductCostImportAction;
 use App\Actions\Catalog\StageProductCostImportAction;
+use App\Actions\Catalog\UpdateProductPurchasePriceAction;
 use App\Http\Controllers\Controller;
 use App\Models\Brand;
 use App\Models\Category;
@@ -96,7 +97,7 @@ class ProductCostController extends Controller
         return redirect()->route('catalog.product-costs.imports.show', $import)->with('success', 'Prix d’achat mis à jour avec succès.');
     }
 
-    public function update(Request $request, ActiveTenantContext $context, int $variant, AuditLogger $audit): RedirectResponse
+    public function update(Request $request, ActiveTenantContext $context, int $variant, UpdateProductPurchasePriceAction $action): RedirectResponse
     {
         $organization = $context->organizationOrFail();
         abort_unless($request->user()->hasPermission($organization, 'product_cost.manage'), 403);
@@ -106,11 +107,7 @@ class ProductCostController extends Controller
             'organization_id' => ['prohibited'],
             'product_id' => ['prohibited'],
         ]);
-        $old = $productVariant->purchase_price;
-        $productVariant->purchase_price = $data['purchase_price'];
-        $productVariant->save();
-        $audit->record('product_cost.updated', $request->user(), $organization, auditable: $productVariant,
-            oldValues: ['purchase_price' => $old], newValues: ['purchase_price' => $productVariant->purchase_price]);
+        $action->execute($request->user(), $productVariant, (string) $data['purchase_price']);
 
         return back()->with('success', 'Prix d’achat mis à jour.');
     }

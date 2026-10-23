@@ -243,6 +243,7 @@ export default function ApplicationShell({ children, wide = false, flush = false
                 { href: '/email-settings', label: t('nav.email'), permission: ['settings.view', 'settings.update'], icon: <IconMail /> },
                 { href: '/organization-backups', label: t('nav.backups'), permission: 'organization_backups.view', icon: <IconShield /> },
                 { href: '/settings/data-reset', label: t('nav.dataReset'), permission: 'system.data_reset', icon: <IconTrash /> },
+                { href: '/settings/ai-mcp', label: t('nav.aiMcp'), icon: <IconPlug /> },
                 { href: '/account/notifications', label: t('common.notifications'), icon: <IconBell /> },
                 { href: '/catalog/tax-rates', label: t('nav.taxes'), permission: 'tax_rates.view', icon: <IconPercent /> },
             ],

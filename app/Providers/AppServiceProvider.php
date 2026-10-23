@@ -6,6 +6,7 @@ use App\Contracts\ChallengeVerifier;
 use App\Contracts\DnsResolver;
 use App\Contracts\PdfGenerator;
 use App\Services\ActiveTenantContext;
+use App\Services\Mcp\McpExecutionContext;
 use App\Services\Pdf\DompdfPdfGenerator;
 use App\Services\Security\NullChallengeVerifier;
 use App\Services\Security\SystemDnsResolver;
@@ -28,6 +29,7 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->scoped(ActiveTenantContext::class);
+        $this->app->scoped(McpExecutionContext::class);
         $this->app->bind(PdfGenerator::class, DompdfPdfGenerator::class);
         // Tests bind a fake resolver (see Tests\TestCase::setUp()) so SSRF-guard
         // validation never performs a real DNS lookup for `.test`/`.example`
@@ -66,6 +68,18 @@ class AppServiceProvider extends ServiceProvider
                     'code' => 'DATA_RESET_RATE_LIMITED',
                     'message' => 'Too many organization data reset attempts. Try again later.',
                     'retry_after' => (int) ($headers['Retry-After'] ?? 60),
+                ], 429, $headers));
+        });
+
+        RateLimiter::for('mcp', function (Request $request) {
+            return Limit::perMinute(max(1, (int) config('mcp.rate_limit_per_minute', 120)))
+                ->by('mcp:'.($request->attributes->get('mcp_connection_id') ?? $request->ip()))
+                ->response(fn (Request $request, array $headers) => response()->json([
+                    'error' => [
+                        'code' => 'MCP_RATE_LIMITED',
+                        'message' => 'The MCP connection rate limit has been reached.',
+                        'retry_after' => (int) ($headers['Retry-After'] ?? 60),
+                    ],
                 ], 429, $headers));
         });
 

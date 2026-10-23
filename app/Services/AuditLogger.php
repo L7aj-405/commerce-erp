@@ -9,10 +9,14 @@ use App\Models\User;
 use App\Support\SensitiveDataRedactor;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
+use App\Services\Mcp\McpExecutionContext;
 
 class AuditLogger
 {
-    public function __construct(private readonly Request $request) {}
+    public function __construct(
+        private readonly Request $request,
+        private readonly McpExecutionContext $mcpContext,
+    ) {}
 
     /**
      * @param  array<string, mixed>  $oldValues
@@ -28,9 +32,15 @@ class AuditLogger
         array $newValues = [],
     ): AuditLog {
         $log = new AuditLog;
+        $mcpConnection = $this->mcpContext->connection();
+        $organization ??= $mcpConnection?->organization;
+        $actor ??= $mcpConnection?->user;
         $log->organization_id = $organization?->getKey();
         $log->store_id = $store?->getKey();
         $log->actor_id = $actor?->getKey();
+        $log->actor_channel = $mcpConnection ? 'mcp' : 'web';
+        $log->mcp_connection_id = $mcpConnection?->getKey();
+        $log->mcp_connection_name = $mcpConnection?->name;
         $log->event = $event;
         $log->auditable_type = $auditable?->getMorphClass();
         $log->auditable_id = $auditable?->getKey();

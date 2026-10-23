@@ -15,6 +15,7 @@ use App\Models\ProductImport;
 use App\Models\TaxRate;
 use App\Models\UnitOfMeasure;
 use App\Services\ActiveTenantContext;
+use App\Services\Catalog\CatalogProductDataValidator;
 use App\Services\ProductPriceResolver;
 use App\Support\InventoryQuantity;
 use Illuminate\Http\RedirectResponse;
@@ -110,12 +111,12 @@ class ProductController extends Controller
         ]);
     }
 
-    public function store(Request $request, ActiveTenantContext $context, CreateProductAction $action): RedirectResponse
+    public function store(Request $request, ActiveTenantContext $context, CreateProductAction $action, CatalogProductDataValidator $validator): RedirectResponse
     {
         $organization = $context->organizationOrFail();
         $this->authorize('create', [Product::class, $organization]);
         $canManageCost = $request->user()->hasPermission($organization, 'product_cost.manage');
-        $product = $action->execute($request->user(), $organization, $request->validate($this->rules($organization->id, $canManageCost)));
+        $product = $action->execute($request->user(), $organization, $validator->product($request->all(), $organization->id, true, $canManageCost));
 
         return redirect()->route('catalog.products.show', $product)->with('success', 'Produit créé avec succès.');
     }
@@ -211,15 +212,10 @@ class ProductController extends Controller
         ]);
     }
 
-    public function update(Request $request, Product $product, UpdateProductAction $action): RedirectResponse
+    public function update(Request $request, Product $product, UpdateProductAction $action, CatalogProductDataValidator $validator): RedirectResponse
     {
         $this->authorize('update', $product);
-        $productRules = array_filter(
-            $this->rules($product->organization_id),
-            fn (string $key) => ! str_starts_with($key, 'variant'),
-            ARRAY_FILTER_USE_KEY,
-        );
-        $data = $request->validate($productRules);
+        $data = $validator->product($request->all(), $product->organization_id, false, false);
         $action->execute($request->user(), $product, $data);
 
         return redirect()->route('catalog.products.show', $product);
@@ -244,30 +240,4 @@ class ProductController extends Controller
         ];
     }
 
-    /** @return array<string, mixed> */
-    private function rules(int $organizationId, bool $canManageCost = false): array
-    {
-        return [
-            'name' => ['required', 'string', 'max:255'],
-            'description' => ['nullable', 'string'],
-            'image_url' => ['nullable', 'url:http,https', 'max:'.config('catalog_imports.image_url_max_length')],
-            'brand_id' => ['nullable', 'integer', Rule::exists('brands', 'id')->where('organization_id', $organizationId)],
-            'category_id' => ['nullable', 'integer', Rule::exists('categories', 'id')->where('organization_id', $organizationId)],
-            'unit_id' => ['nullable', 'integer', Rule::exists('units_of_measure', 'id')->where('organization_id', $organizationId)],
-            'status' => ['required', Rule::enum(CatalogStatus::class)],
-            'variant' => ['required', 'array'],
-            'variant.label' => ['nullable', 'string', 'max:255'],
-            'variant.sku' => ['required', 'string', 'max:255', Rule::unique('product_variants', 'sku')->where('organization_id', $organizationId)],
-            'variant.reference' => ['nullable', 'string', 'max:255'],
-            'variant.barcode' => ['nullable', 'string', 'max:255', Rule::unique('product_variants', 'barcode')->where('organization_id', $organizationId)],
-            'variant.purchase_price' => $canManageCost ? ['nullable', 'numeric', 'min:0', 'decimal:0,4'] : ['prohibited'],
-            'variant.public_price_ttc' => ['nullable', 'numeric', 'min:0', 'decimal:0,4', 'required_without_all:variant.regular_sale_price,variant.default_sale_price'],
-            'variant.unit_price_ht' => ['nullable', 'numeric', 'min:0', 'decimal:0,4'],
-            'variant.regular_sale_price' => ['nullable', 'numeric', 'min:0', 'decimal:0,4', 'required_without_all:variant.default_sale_price,variant.public_price_ttc'],
-            'variant.promotional_sale_price' => ['nullable', 'numeric', 'min:0', 'decimal:0,4', 'lte:variant.default_sale_price'],
-            'variant.default_sale_price' => ['nullable', 'numeric', 'min:0', 'decimal:0,4', 'required_without_all:variant.regular_sale_price,variant.public_price_ttc'],
-            'variant.tax_rate_id' => ['nullable', 'integer', Rule::exists('tax_rates', 'id')->where('organization_id', $organizationId)],
-            'variant.status' => ['sometimes', Rule::enum(CatalogStatus::class)],
-        ];
-    }
 }
