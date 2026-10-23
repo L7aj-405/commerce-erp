@@ -6,6 +6,7 @@ use App\Services\Mcp\Products\McpProductChangeService;
 use App\Services\Mcp\Products\ProductOperationTools;
 use App\Services\Mcp\Products\ProductReadTools;
 use App\Services\Mcp\Products\ProductWriteTools;
+use App\Services\Mcp\Sales\SalesAssistantTools;
 use Mcp\Schema\ToolAnnotations;
 use Mcp\Server;
 use Mcp\Server\Session\FileSessionLock;
@@ -18,6 +19,7 @@ final class McpServerFactory
         private readonly ProductReadTools $productTools,
         private readonly ProductWriteTools $productWriteTools,
         private readonly ProductOperationTools $operationTools,
+        private readonly SalesAssistantTools $salesTools,
     ) {}
 
     public function make(): Server
@@ -131,8 +133,167 @@ final class McpServerFactory
 
         $this->registerProductWriteTools($builder, $readOnly, $outputSchema);
         $this->registerProductOperationTools($builder, $readOnly, $outputSchema);
+        $this->registerSalesTools($builder, $readOnly, $outputSchema);
 
         return $builder->build();
+    }
+
+    /** @param array<string, mixed> $outputSchema */
+    private function registerSalesTools($builder, ToolAnnotations $readOnly, array $outputSchema): void
+    {
+        $id = ['type' => 'integer', 'minimum' => 1];
+        $page = ['type' => 'integer', 'minimum' => 1, 'maximum' => 100000, 'default' => 1];
+        $perPage = ['type' => 'integer', 'minimum' => 1, 'maximum' => 100, 'default' => 25];
+        $date = ['type' => 'string', 'pattern' => '^\\d{4}-\\d{2}-\\d{2}$'];
+
+        if ($this->context->allows('customers.view')) {
+            $builder->addTool(
+                [$this->salesTools, 'searchCustomers'],
+                name: 'search_customers', title: 'Search customers',
+                description: 'Search this organization\'s customers by name, company, email, phone, or WhatsApp username with bounded deterministic pagination (display name, then id).',
+                annotations: $readOnly,
+                inputSchema: [
+                    'type' => 'object',
+                    'properties' => [
+                        'query' => ['type' => 'string', 'maxLength' => 255],
+                        'status' => ['type' => 'string', 'enum' => ['active', 'inactive']],
+                        'page' => $page,
+                        'per_page' => $perPage,
+                    ],
+                    'additionalProperties' => false,
+                ],
+                outputSchema: $outputSchema,
+            );
+            $builder->addTool(
+                [$this->salesTools, 'getCustomer'],
+                name: 'get_customer', title: 'Get customer',
+                description: 'Return one customer\'s identity, contact and billing data. Internal notes are not exposed.',
+                annotations: $readOnly,
+                inputSchema: ['type' => 'object', 'required' => ['customer_id'], 'properties' => ['customer_id' => $id], 'additionalProperties' => false],
+                outputSchema: $outputSchema,
+            );
+            $builder->addTool(
+                [$this->salesTools, 'getCustomerBalanceSummary'],
+                name: 'get_customer_balance_summary', title: 'Get customer balance summary',
+                description: 'Read-only sales/receivable summary shown on the ERP customer profile: confirmed sales, issued invoices, posted payments, outstanding, last activity. Decimal strings.',
+                annotations: $readOnly,
+                inputSchema: ['type' => 'object', 'required' => ['customer_id'], 'properties' => ['customer_id' => $id], 'additionalProperties' => false],
+                outputSchema: $outputSchema,
+            );
+        }
+
+        if ($this->context->allows('quotations.view')) {
+            $builder->addTool(
+                [$this->salesTools, 'searchQuotations'],
+                name: 'search_quotations', title: 'Search quotations',
+                description: 'Search quotations (devis) in the stores the connection user belongs to, by number or customer snapshot, newest first.',
+                annotations: $readOnly,
+                inputSchema: [
+                    'type' => 'object',
+                    'properties' => [
+                        'query' => ['type' => 'string', 'maxLength' => 255],
+                        'status' => ['type' => 'string', 'enum' => ['draft', 'issued', 'accepted', 'rejected', 'expired', 'converted', 'superseded']],
+                        'customer_id' => $id,
+                        'store_id' => $id,
+                        'date_from' => $date,
+                        'date_to' => $date,
+                        'page' => $page,
+                        'per_page' => $perPage,
+                    ],
+                    'additionalProperties' => false,
+                ],
+                outputSchema: $outputSchema,
+            );
+            $builder->addTool(
+                [$this->salesTools, 'getQuotation'],
+                name: 'get_quotation', title: 'Get quotation',
+                description: 'Return one quotation with header, customer snapshot, priced lines, totals, and a version token.',
+                annotations: $readOnly,
+                inputSchema: ['type' => 'object', 'required' => ['quotation_id'], 'properties' => ['quotation_id' => $id], 'additionalProperties' => false],
+                outputSchema: $outputSchema,
+            );
+        }
+
+        $canCreate = $this->context->allows('quotations.create');
+        $canUpdate = $this->context->allows('quotations.update');
+        if (! $canCreate && ! $canUpdate) return;
+
+        $mutation = new ToolAnnotations(readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false);
+        $decimal = ['type' => ['string', 'null'], 'pattern' => '^\\d+(?:\\.\\d{1,4})?$'];
+        $item = [
+            'type' => 'object',
+            'properties' => [
+                'line_id' => [...$id, 'description' => 'Update only: existing line to keep/modify. Omitted fields keep the line\'s current values. Lines not listed are removed.'],
+                'variant_id' => [...$id, 'description' => 'Catalog product variant (see search_products).'],
+                'non_stock_item_id' => [...$id, 'description' => 'Existing non-stock library article.'],
+                'quantity' => ['type' => 'string', 'pattern' => '^[1-9]\\d*(?:\\.0{1,4})?$'],
+                'price_input_mode' => ['type' => 'string', 'enum' => ['ht', 'ttc']],
+                'unit_price' => [...$decimal, 'description' => 'Optional unit price override in price_input_mode; omitted = catalog default.'],
+                'discount_type' => ['type' => 'string', 'enum' => ['none', 'fixed', 'percentage']],
+                'discount_value' => $decimal,
+            ],
+            'additionalProperties' => false,
+        ];
+        $max = (int) config('mcp.quotations.max_items', 200);
+        $header = [
+            'customer_id' => $id,
+            'quotation_date' => $date,
+            'valid_until' => ['type' => ['string', 'null'], 'pattern' => '^\\d{4}-\\d{2}-\\d{2}$'],
+            'notes' => ['type' => ['string', 'null'], 'maxLength' => 5000],
+            'terms' => ['type' => ['string', 'null'], 'maxLength' => 5000],
+            'items' => ['type' => 'array', 'minItems' => 1, 'maxItems' => $max, 'items' => $item],
+        ];
+        $createQuotation = ['type' => 'object', 'properties' => ['store_id' => [...$id, 'description' => 'Required when the user belongs to several stores.'], ...$header], 'additionalProperties' => false];
+        $updateQuotation = ['type' => 'object', 'minProperties' => 1, 'properties' => $header, 'additionalProperties' => false];
+        $fingerprint = ['type' => 'string', 'pattern' => '^[0-9a-f]{64}$'];
+
+        $builder->addTool(
+            [$this->salesTools, 'previewQuotation'],
+            name: 'preview_quotation', title: 'Preview quotation draft',
+            description: 'Validate and price a candidate quotation draft without mutation: resolved customer and items, HT/TTC unit prices, discounts, taxes and totals, validation issues, and informational stock. '
+                .'Omit quotation_id to preview a new draft; pass it to preview changes to an existing draft (current vs proposed). Issues a short-lived single-use preview_fingerprint when valid.',
+            annotations: $readOnly,
+            inputSchema: [
+                'type' => 'object', 'required' => ['quotation'],
+                'properties' => ['quotation_id' => $id, 'quotation' => ['type' => 'object', 'properties' => $createQuotation['properties'], 'additionalProperties' => false]],
+                'additionalProperties' => false,
+            ],
+            outputSchema: $outputSchema,
+        );
+
+        if ($canCreate) {
+            $builder->addTool(
+                [$this->salesTools, 'createQuotationDraft'],
+                name: 'create_quotation_draft', title: 'Create quotation draft',
+                description: 'Create a DRAFT quotation exactly as previewed (same quotation object and its preview_fingerprint). Never issues, accepts, converts, or reserves stock. Requires an idempotency key.',
+                annotations: $mutation,
+                inputSchema: [
+                    'type' => 'object', 'required' => ['quotation', 'preview_fingerprint', 'idempotency_key'],
+                    'properties' => [
+                        'quotation' => [...$createQuotation, 'required' => ['customer_id', 'items']],
+                        'preview_fingerprint' => $fingerprint,
+                        'idempotency_key' => ['type' => 'string', 'minLength' => 1, 'maxLength' => 128],
+                    ],
+                    'additionalProperties' => false,
+                ],
+                outputSchema: $outputSchema,
+            );
+        }
+
+        if ($canUpdate) {
+            $builder->addTool(
+                [$this->salesTools, 'updateQuotationDraft'],
+                name: 'update_quotation_draft', title: 'Update quotation draft',
+                description: 'Apply previewed changes to a draft quotation (same quotation_id and quotation object as the preview). If items is given it is the complete desired line list. Rejected when the draft changed or is no longer editable.',
+                annotations: $mutation,
+                inputSchema: [
+                    'type' => 'object', 'required' => ['quotation_id', 'quotation', 'preview_fingerprint'],
+                    'properties' => ['quotation_id' => $id, 'quotation' => $updateQuotation, 'preview_fingerprint' => $fingerprint],
+                    'additionalProperties' => false,
+                ],
+                outputSchema: $outputSchema,
+            );
+        }
     }
 
     /** @param array<string, mixed> $outputSchema */

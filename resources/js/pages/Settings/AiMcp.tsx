@@ -3,24 +3,17 @@ import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
 import PageHeader from '@/components/ui/PageHeader';
 import { useI18n } from '@/i18n';
-import type { TranslationKey } from '@/i18n/translations';
 import ApplicationShell from '@/layouts/ApplicationShell';
+import { mcpScopeTranslationKeys } from '@/utils/mcpScopes';
 import { Head, router } from '@inertiajs/react';
 import axios from 'axios';
 import { useMemo, useState } from 'react';
 
-type Connection = { id: string; name: string; status: string; scopes: string[]; expires_at: string | null; last_used_at: string | null; created_at: string; owner: { name: string; email: string } | null; is_own: boolean };
+type Connection = { id: string; name: string; status: string; scopes: string[]; expires_at: string | null; last_used_at: string | null; created_at: string; owner: { name: string; email: string } | null; is_own: boolean; auth_mode: 'token' | 'oauth'; oauth_client: string | null };
 type Scope = { key: string; label: string; available: boolean; permission: string };
 type Props = { organization: { id: number; name: string }; enabled: boolean; canAdminister: boolean; connections: Connection[]; availableScopes: Scope[]; presets: Record<string, string[]> };
 
-const scopeTranslationKeys: Record<string, TranslationKey> = {
-    'products.view': 'mcp.scope.productsView', 'products.create': 'mcp.scope.productsCreate',
-    'products.update': 'mcp.scope.productsUpdate', 'products.archive': 'mcp.scope.productsArchive',
-    'product_cost.view': 'mcp.scope.costView', 'product_cost.manage': 'mcp.scope.costManage',
-    'inventory.view': 'mcp.scope.inventoryView', 'brands.manage': 'mcp.scope.brandsManage',
-    'categories.manage': 'mcp.scope.categoriesManage', 'units.manage': 'mcp.scope.unitsManage',
-    'tax_rates.view': 'mcp.scope.taxesView',
-};
+const scopeTranslationKeys = mcpScopeTranslationKeys;
 
 export default function AiMcp({ organization, enabled, canAdminister, connections, availableScopes, presets }: Props) {
     const { t, locale } = useI18n();
@@ -99,11 +92,11 @@ export default function AiMcp({ organization, enabled, canAdminister, connection
                 <div className="flex items-center justify-between gap-3 border-b border-line p-5"><div><h2 className="font-semibold text-ink">{t('mcp.connections')}</h2><p className="text-sm text-ink-muted">{organization.name}</p></div><Button type="button" disabled={!enabled} onClick={openCreate}>{t('mcp.create')}</Button></div>
                 {connections.length === 0 ? <div className="p-8 text-center text-sm text-ink-muted">{t('mcp.empty')}</div> : <div className="divide-y divide-line">
                     {connections.map((connection) => <article key={connection.id} className="p-5">
-                        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h3 className="font-semibold text-ink">{connection.name}</h3><span className={`rounded-full px-2 py-0.5 text-xs ${connection.status === 'active' ? 'bg-success-soft text-success' : 'bg-danger-soft text-danger'}`}>{connection.status === 'active' ? t('mcp.active') : t('mcp.revoked')}</span></div>
+                        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h3 className="font-semibold text-ink">{connection.name}</h3><span className={`rounded-full px-2 py-0.5 text-xs ${connection.status === 'active' ? 'bg-success-soft text-success' : 'bg-danger-soft text-danger'}`}>{connection.status === 'active' ? t('mcp.active') : t('mcp.revoked')}</span>{connection.auth_mode === 'oauth' && <span className="rounded-full border border-line bg-raised px-2 py-0.5 text-xs text-ink-muted">{t('mcp.oauthBadge')}{connection.oauth_client ? <> · <bdi>{connection.oauth_client}</bdi></> : null}</span>}</div>
                             {connection.owner && <p className="mt-1 text-xs text-ink-muted">{connection.owner.name} · <bdi>{connection.owner.email}</bdi></p>}
                             <div className="mt-3 flex flex-wrap gap-1.5">{connection.scopes.map((scope) => <span key={scope} className="rounded-full border border-line bg-raised px-2 py-1 text-xs text-ink-muted"><bdi>{scope}</bdi></span>)}</div>
                             <p className="mt-3 text-xs text-ink-faint">{t('mcp.lastUsed')}: {connection.last_used_at ? new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(connection.last_used_at)) : t('mcp.never')}</p>
-                        </div><div className="flex shrink-0 flex-wrap gap-2">{connection.is_own && connection.status === 'active' && <><Button type="button" variant="secondary" size="sm" disabled={busy} onClick={() => openEdit(connection)}>{t('common.edit')}</Button><Button type="button" variant="secondary" size="sm" disabled={busy} onClick={() => rotate(connection)}>{t('mcp.rotate')}</Button></>} {connection.status === 'active' && <Button type="button" variant="danger" size="sm" disabled={busy} onClick={() => revoke(connection)}>{t('mcp.revoke')}</Button>}</div></div>
+                        </div><div className="flex shrink-0 flex-wrap gap-2">{connection.is_own && connection.status === 'active' && <><Button type="button" variant="secondary" size="sm" disabled={busy} onClick={() => openEdit(connection)}>{t('common.edit')}</Button>{connection.auth_mode !== 'oauth' && <Button type="button" variant="secondary" size="sm" disabled={busy} onClick={() => rotate(connection)}>{t('mcp.rotate')}</Button>}</>} {connection.status === 'active' && <Button type="button" variant="danger" size="sm" disabled={busy} onClick={() => revoke(connection)}>{t('mcp.revoke')}</Button>}</div></div>
                     </article>)}
                 </div>}
             </section>

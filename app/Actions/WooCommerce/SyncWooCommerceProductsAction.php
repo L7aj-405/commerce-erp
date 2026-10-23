@@ -18,6 +18,7 @@ use App\Models\Warehouse;
 use App\Models\WooCommerceIntegration;
 use App\Models\WooCommerceSyncRun;
 use App\Services\AuditLogger;
+use App\Services\Catalog\VariantReferenceUniqueness;
 use App\Services\Notifications\OperationalNotificationProducer;
 use App\Services\WooCommerce\NormalizedWooProduct;
 use App\Services\WooCommerce\NormalizedWooVariant;
@@ -60,6 +61,7 @@ class SyncWooCommerceProductsAction
         private readonly AdjustInventoryAction $adjustInventory,
         private readonly AuditLogger $audit,
         private readonly OperationalNotificationProducer $notifications,
+        private readonly VariantReferenceUniqueness $references,
     ) {}
 
     /** Test seam: inject a fake client. */
@@ -235,7 +237,7 @@ class SyncWooCommerceProductsAction
                 'category_id' => $categoryId,
                 'unit_id' => null,
                 'status' => $woo->erpStatus(),
-                'variant' => $this->variantPayload($firstVariant, $woo, $tax['tax_rate_id'], $priceMeaning, $organization),
+                'variant' => $this->variantPayload($firstVariant, $woo, $tax['tax_rate_id'], $priceMeaning, $organization, $run),
             ]);
             $run->increment('products_created');
 
@@ -248,7 +250,7 @@ class SyncWooCommerceProductsAction
                 if ($variantTax['warning']) {
                     $this->recordIssue($run, $woo->remoteId, $variantTax['warning']);
                 }
-                $erpVariant = $this->createVariant->execute($actor, $product, $this->variantPayload($wooVariant, $woo, $variantTax['tax_rate_id'], $priceMeaning, $organization));
+                $erpVariant = $this->createVariant->execute($actor, $product, $this->variantPayload($wooVariant, $woo, $variantTax['tax_rate_id'], $priceMeaning, $organization, $run));
                 $this->linkChannel($integration, $product, $erpVariant, $woo, $wooVariant);
                 $run->increment('variants_synced');
             }
@@ -275,7 +277,7 @@ class SyncWooCommerceProductsAction
                     $this->applyVariantValues($erpVariant, $wooVariant, $woo, $tax['tax_rate_id'], $priceMeaning);
                     $erpVariant->save();
                 } else {
-                    $erpVariant = $this->createVariant->execute($actor, $product, $this->variantPayload($wooVariant, $woo, $tax['tax_rate_id'], $priceMeaning, $organization));
+                    $erpVariant = $this->createVariant->execute($actor, $product, $this->variantPayload($wooVariant, $woo, $tax['tax_rate_id'], $priceMeaning, $organization, $run));
                 }
                 $this->linkChannel($integration, $product, $erpVariant, $woo, $woo->isVariable() ? $wooVariant : null);
                 $seenVariantIds[] = $erpVariant->getKey();
@@ -398,7 +400,7 @@ class SyncWooCommerceProductsAction
      * ---------------------------------------------------------------------- */
 
     /** @return array<string, mixed> */
-    private function variantPayload(NormalizedWooVariant $v, NormalizedWooProduct $woo, ?int $taxRateId, array $priceMeaning, Organization $organization): array
+    private function variantPayload(NormalizedWooVariant $v, NormalizedWooProduct $woo, ?int $taxRateId, array $priceMeaning, Organization $organization, WooCommerceSyncRun $run): array
     {
         $effective = $v->effectivePrice ?? $v->regularPrice ?? '0.0000';
         $regular = $v->regularPrice ?? $effective;
@@ -407,7 +409,7 @@ class SyncWooCommerceProductsAction
         $payload = [
             'label' => $woo->isVariable() ? ($v->label() ?? ($v->sku ?? null)) : null,
             'sku' => $v->sku,
-            'reference' => $v->reference,
+            'reference' => $this->incomingReference($v, $woo, $organization, $run),
             'barcode' => null,
             // Variation's own Woo image, already falling back to the parent's main
             // image inside the normalizer when the variation has none (see
@@ -429,6 +431,27 @@ class SyncWooCommerceProductsAction
         }
 
         return $payload;
+    }
+
+    /**
+     * A Woo reference already held by another variant of the organization is
+     * dropped (variant created with a NULL reference) and reported as a sync
+     * warning — never overwritten, never duplicated, never a product failure.
+     */
+    private function incomingReference(NormalizedWooVariant $v, NormalizedWooProduct $woo, Organization $organization, WooCommerceSyncRun $run): ?string
+    {
+        $reference = $this->references->normalize($v->reference);
+        if ($reference === null || ! $this->references->conflicts((int) $organization->getKey(), $reference)) {
+            return $reference;
+        }
+
+        $remoteEntityId = $v->remoteVariationId ?? $woo->remoteId;
+        $this->recordIssue($run, $woo->remoteId, SensitiveDataRedactor::text(
+            "duplicate_reference_skipped : la référence « ".Str::limit($reference, 80)." » (Woo #{$remoteEntityId}) appartient déjà à une autre variante ; variante synchronisée sans référence.",
+            400,
+        ));
+
+        return null;
     }
 
     private function applyVariantValues(ProductVariant $variant, NormalizedWooVariant $v, NormalizedWooProduct $woo, ?int $taxRateId, array $priceMeaning): void

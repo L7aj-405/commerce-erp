@@ -14,6 +14,11 @@ final class McpConnection extends Model
     public const STATUS_ACTIVE = 'active';
     public const STATUS_REVOKED = 'revoked';
 
+    /** Opaque `10xmcp_` bearer secret shown once in Settings. */
+    public const AUTH_TOKEN = 'token';
+    /** Created by an OAuth consent; reachable only through OAuth access tokens. */
+    public const AUTH_OAUTH = 'oauth';
+
     protected $guarded = ['*'];
     protected $hidden = ['token_hash'];
 
@@ -29,6 +34,7 @@ final class McpConnection extends Model
     public function organization(): BelongsTo { return $this->belongsTo(Organization::class); }
     public function user(): BelongsTo { return $this->belongsTo(User::class); }
     public function scopeRecords(): HasMany { return $this->hasMany(McpConnectionScope::class); }
+    public function oauthClient(): BelongsTo { return $this->belongsTo(McpOAuthClient::class, 'oauth_client_id'); }
 
     /** @return list<string> */
     public function scopeKeys(): array
@@ -43,5 +49,10 @@ final class McpConnection extends Model
         return $this->status === self::STATUS_ACTIVE
             && $this->revoked_at === null
             && ($this->expires_at === null || $this->expires_at->isFuture());
+    }
+
+    public function isOAuth(): bool
+    {
+        return $this->auth_mode === self::AUTH_OAUTH;
     }
 }

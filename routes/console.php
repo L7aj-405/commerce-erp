@@ -113,7 +113,19 @@ Artisan::command('mcp:prune-operations', function () {
     $this->info("MCP operations: {$expired} preview(s) expired, {$purged} operation detail set(s) purged.");
 })->purpose('Expire stale MCP operation previews and purge per-row details past retention');
 
+Artisan::command('mcp:prune-oauth', function () {
+    // Codes live minutes; tokens are kept a week past their last possible use
+    // so replay detection still sees recently rotated/revoked refresh tokens.
+    $codes = \App\Models\McpOAuthAuthorizationCode::query()->where('expires_at', '<', now()->subDay())->delete();
+    $tokens = \App\Models\McpOAuthToken::query()
+        ->where('access_expires_at', '<', now()->subDays(7))
+        ->where(fn ($query) => $query->whereNull('refresh_expires_at')->orWhere('refresh_expires_at', '<', now()->subDays(7)))
+        ->delete();
+    $this->info("MCP OAuth: {$codes} code(s) and {$tokens} token row(s) pruned.");
+})->purpose('Delete expired MCP OAuth authorization codes and long-dead tokens');
+
 Schedule::command('catalog:cleanup-product-imports')->daily();
+Schedule::command('mcp:prune-oauth')->dailyAt('03:35')->withoutOverlapping();
 Schedule::command('mcp:prune-operations')->dailyAt('03:20')->withoutOverlapping();
 Schedule::command('organization-backups:dispatch-due')->everyMinute()->withoutOverlapping();
 Schedule::command('organization-backups:cleanup-temporary-files')->hourly()->withoutOverlapping();

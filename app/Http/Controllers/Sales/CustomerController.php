@@ -5,8 +5,6 @@ namespace App\Http\Controllers\Sales;
 use App\Enums\CustomerStatus;
 use App\Enums\CustomerType;
 use App\Enums\InvoiceStatus;
-use App\Enums\PaymentStatus;
-use App\Enums\SalesOrderStatus;
 use App\Http\Controllers\Controller;
 use App\Models\Customer;
 use App\Models\DeliveryNote;
@@ -16,12 +14,11 @@ use App\Models\Quotation;
 use App\Models\SalesOrder;
 use App\Rules\ValidWhatsAppUsername;
 use App\Services\ActiveTenantContext;
+use App\Services\CustomerFinancialSummary;
 use App\Services\CustomerManager;
 use App\Services\WhatsAppContactLinkResolver;
-use App\Support\Decimal;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -53,53 +50,18 @@ class CustomerController extends Controller
      * over payment_allocations, the same pattern FinanceReceivablesService
      * already uses for the exact same "paid so far" question.
      */
-    public function show(Customer $customer, WhatsAppContactLinkResolver $whatsapp): Response
+    public function show(Customer $customer, WhatsAppContactLinkResolver $whatsapp, CustomerFinancialSummary $financialSummary): Response
     {
         $this->authorize('view', $customer);
         $organizationId = $customer->organization_id;
         $customerId = $customer->getKey();
-
-        $salesTotal = Decimal::normalize((string) SalesOrder::query()
-            ->where('organization_id', $organizationId)
-            ->where('customer_id', $customerId)
-            ->where('status', SalesOrderStatus::Confirmed->value)
-            ->sum('total_incl_tax'));
-
-        $invoicedTotal = Decimal::normalize((string) Invoice::query()
-            ->where('organization_id', $organizationId)
-            ->where('customer_id', $customerId)
-            ->where('status', InvoiceStatus::Issued->value)
-            ->sum('total_incl_tax'));
-
-        $paidTotal = Decimal::normalize((string) DB::table('payment_allocations')
-            ->join('payments', 'payments.id', '=', 'payment_allocations.payment_id')
-            ->join('sales_orders', 'sales_orders.id', '=', 'payment_allocations.sales_order_id')
-            ->where('sales_orders.organization_id', $organizationId)
-            ->where('sales_orders.customer_id', $customerId)
-            ->where('payments.status', PaymentStatus::Posted->value)
-            ->sum('payment_allocations.amount'));
-
-        $outstanding = Decimal::compare($invoicedTotal, $paidTotal) > 0
-            ? Decimal::subtract($invoicedTotal, $paidTotal)
-            : '0.0000';
-
-        $lastActivity = SalesOrder::query()
-            ->where('organization_id', $organizationId)
-            ->where('customer_id', $customerId)
-            ->max('sale_date');
 
         $recentLimit = 15;
 
         return Inertia::render('Sales/Customers/Show', [
             'customer' => $customer,
             'whatsappDestination' => $whatsapp->resolve($customer->whatsapp_username, $customer->phone),
-            'summary' => [
-                'sales_total' => $salesTotal,
-                'invoiced_total' => $invoicedTotal,
-                'paid_total' => $paidTotal,
-                'outstanding' => $outstanding,
-                'last_activity' => $lastActivity,
-            ],
+            'summary' => $financialSummary->forCustomer($customer),
             'orders' => SalesOrder::query()
                 ->where('organization_id', $organizationId)->where('customer_id', $customerId)
                 ->orderByDesc('sale_date')->limit($recentLimit)

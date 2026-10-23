@@ -7,6 +7,7 @@ use App\Http\Middleware\ResolveTenantContext;
 use App\Http\Middleware\RequireFreshAuthentication;
 use App\Http\Middleware\SecurityHeaders;
 use App\Http\Middleware\AuthenticateMcpConnection;
+use App\Http\Middleware\McpOAuthEndpoint;
 use App\Support\TrustedProxyRanges;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -22,6 +23,8 @@ return Application::configure(basePath: dirname(__DIR__))
         then: function (): void {
             Route::middleware(['mcp.authenticate', 'throttle:mcp'])
                 ->group(base_path('routes/mcp.php'));
+            Route::middleware([McpOAuthEndpoint::class])
+                ->group(base_path('routes/mcp-oauth.php'));
         },
     )
     ->withMiddleware(function (Middleware $middleware): void {

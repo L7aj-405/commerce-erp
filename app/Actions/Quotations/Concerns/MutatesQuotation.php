@@ -5,7 +5,7 @@ namespace App\Actions\Quotations\Concerns;
 use App\Enums\QuotationStatus;
 use App\Models\Quotation;
 use App\Models\QuotationLine;
-use App\Support\Decimal;
+use App\Services\QuotationTotals;
 use Illuminate\Validation\ValidationException;
 
 trait MutatesQuotation
@@ -45,21 +45,9 @@ trait MutatesQuotation
     {
         $quotation->load('lines');
 
-        $subtotal = '0.0000';
-        $discount = '0.0000';
-        $tax = '0.0000';
-        $total = '0.0000';
-        foreach ($quotation->lines as $line) {
-            $subtotal = Decimal::add($subtotal, $line->subtotal_excl_tax);
-            $discount = Decimal::add($discount, $line->discount_amount);
-            $tax = Decimal::add($tax, $line->tax_amount);
-            $total = Decimal::add($total, $line->total_incl_tax);
+        foreach (QuotationTotals::sum($quotation->lines) as $field => $value) {
+            $quotation->{$field} = $value;
         }
-
-        $quotation->subtotal_excl_tax = $subtotal;
-        $quotation->discount_total = $discount;
-        $quotation->tax_total = $tax;
-        $quotation->total_incl_tax = $total;
         $quotation->save();
     }
 

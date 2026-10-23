@@ -4,6 +4,8 @@ namespace App\Services\Mcp;
 
 use App\Models\McpConnection;
 use App\Models\McpConnectionScope;
+use App\Models\McpOAuthClient;
+use App\Models\McpOAuthToken;
 use App\Models\Organization;
 use App\Models\User;
 use App\Services\AuditLogger;
@@ -14,16 +16,23 @@ final class McpConnectionCredentials
 {
     public function __construct(private readonly AuditLogger $auditLogger) {}
 
-    /** @param list<string> $scopes @return array{connection:McpConnection,secret:string} */
-    public function issue(User $user, Organization $organization, string $name, array $scopes, ?string $expiresAt): array
+    /**
+     * With an OAuth client the connection is OAuth-only: the generated opaque
+     * secret is never shown and is rejected by the MCP endpoint anyway.
+     *
+     * @param list<string> $scopes @return array{connection:McpConnection,secret:string}
+     */
+    public function issue(User $user, Organization $organization, string $name, array $scopes, ?string $expiresAt, ?McpOAuthClient $oauthClient = null): array
     {
-        return DB::transaction(function () use ($user, $organization, $name, $scopes, $expiresAt) {
+        return DB::transaction(function () use ($user, $organization, $name, $scopes, $expiresAt, $oauthClient) {
             $connection = new McpConnection;
             $connection->id = (string) Str::ulid();
             $connection->organization_id = $organization->getKey();
             $connection->user_id = $user->getKey();
             $connection->name = $name;
             $connection->status = McpConnection::STATUS_ACTIVE;
+            $connection->auth_mode = $oauthClient ? McpConnection::AUTH_OAUTH : McpConnection::AUTH_TOKEN;
+            $connection->oauth_client_id = $oauthClient?->getKey();
             $secret = $this->newSecret($connection->id);
             $connection->token_hash = hash('sha256', $secret);
             $connection->expires_at = $expiresAt;
@@ -34,6 +43,8 @@ final class McpConnectionCredentials
                 'name' => $connection->name,
                 'scopes' => $scopes,
                 'expires_at' => $connection->expires_at?->toIso8601String(),
+                'auth_mode' => $connection->auth_mode,
+                'oauth_client_id' => $connection->oauth_client_id,
             ]);
 
             return ['connection' => $connection->load('scopeRecords'), 'secret' => $secret];
@@ -61,6 +72,9 @@ final class McpConnectionCredentials
             $connection->status = McpConnection::STATUS_REVOKED;
             $connection->revoked_at = now();
             $connection->save();
+            // The endpoint already refuses any token of a revoked connection;
+            // revoking the OAuth rows too keeps the token store truthful.
+            McpOAuthToken::query()->where('mcp_connection_id', $connection->getKey())->whereNull('revoked_at')->update(['revoked_at' => now()]);
             $this->auditLogger->record('mcp.connection_revoked', $actor, $connection->organization, auditable: $connection, newValues: ['name' => $connection->name]);
         });
     }

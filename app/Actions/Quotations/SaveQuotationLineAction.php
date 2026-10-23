@@ -4,17 +4,15 @@ namespace App\Actions\Quotations;
 
 use App\Actions\Catalog\CreateNonStockItemAction;
 use App\Actions\Quotations\Concerns\MutatesQuotation;
-use App\Enums\CatalogStatus;
 use App\Enums\QuotationLineType;
 use App\Models\NonStockItem;
-use App\Models\ProductVariant;
 use App\Models\Quotation;
 use App\Models\QuotationLine;
 use App\Models\User;
 use App\Services\AuditLogger;
 use App\Services\QuotationLinePricing;
+use App\Services\QuotationLineSourceResolver;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Validation\ValidationException;
 
 /**
  * Add or update ONE Devis line. Handles all three article sources:
@@ -31,6 +29,7 @@ class SaveQuotationLineAction
 
     public function __construct(
         private readonly QuotationLinePricing $pricing,
+        private readonly QuotationLineSourceResolver $sources,
         private readonly CreateNonStockItemAction $createNonStock,
         private readonly AuditLogger $audit,
     ) {}
@@ -50,14 +49,7 @@ class SaveQuotationLineAction
             $previousNonStockId = $line?->non_stock_item_id;
 
             if ($type === QuotationLineType::Catalog) {
-                $variant = ProductVariant::query()
-                    ->where('organization_id', $quotation->organization_id)
-                    ->whereKey($data['product_variant_id'])
-                    ->with(['product.defaultUnit', 'taxRate'])
-                    ->firstOrFail();
-                if ($variant->status !== CatalogStatus::Active || $variant->product->status !== CatalogStatus::Active) {
-                    throw ValidationException::withMessages(['product_variant_id' => 'Seuls les produits actifs du catalogue peuvent être ajoutés.']);
-                }
+                $variant = $this->sources->catalogVariant((int) $quotation->organization_id, $data['product_variant_id']);
                 $columns = $this->pricing->forCatalog($variant, $quotation->store, $data);
                 $usedNonStock = null;
             } else {
@@ -95,15 +87,7 @@ class SaveQuotationLineAction
     private function resolveNonStockItem(User $actor, Quotation $quotation, array $data): NonStockItem
     {
         if (! empty($data['non_stock_item_id'])) {
-            $item = NonStockItem::query()
-                ->where('organization_id', $quotation->organization_id)
-                ->whereKey($data['non_stock_item_id'])
-                ->firstOrFail();
-            if ($item->status !== CatalogStatus::Active) {
-                throw ValidationException::withMessages(['non_stock_item_id' => 'Cet article hors stock est désactivé.']);
-            }
-
-            return $item;
+            return $this->sources->nonStockItem((int) $quotation->organization_id, $data['non_stock_item_id']);
         }
 
         // Brand-new article: persist to the reusable library first, so it does

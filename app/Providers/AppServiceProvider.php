@@ -83,6 +83,16 @@ class AppServiceProvider extends ServiceProvider
                 ], 429, $headers));
         });
 
+        // MCP-6 OAuth endpoints: anonymous by nature, so keyed by client IP.
+        $oauthLimited = fn (Request $request, array $headers) => response()->json([
+            'error' => 'temporarily_unavailable',
+            'error_description' => 'Too many requests. Try again later.',
+        ], 429, $headers);
+        RateLimiter::for('mcp-oauth-token', fn (Request $request) => Limit::perMinute(max(1, (int) config('mcp.oauth.token_per_minute', 30)))
+            ->by('mcp-oauth-token:'.$request->ip())->response($oauthLimited));
+        RateLimiter::for('mcp-oauth-register', fn (Request $request) => Limit::perHour(max(1, (int) config('mcp.oauth.register_per_hour', 20)))
+            ->by('mcp-oauth-register:'.$request->ip())->response($oauthLimited));
+
         // Sprint 1.1 §1 — DNS-rebinding-resistant SMTP transport for TENANT
         // (organization-supplied) SMTP hosts only. See TenantSmtpTransportFactory
         // for why this must never be the platform's own `smtp` transport.

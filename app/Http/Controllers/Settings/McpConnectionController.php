@@ -23,7 +23,7 @@ final class McpConnectionController extends Controller
         $organization = $tenant->organizationOrFail();
         $canAdminister = $this->isOrganizationAdministrator($request, $organization);
         $connections = McpConnection::query()
-            ->with(['user:id,name,email', 'scopeRecords'])
+            ->with(['user:id,name,email', 'scopeRecords', 'oauthClient:id,name'])
             ->where('organization_id', $organization->getKey())
             ->when(! $canAdminister, fn ($query) => $query->where('user_id', $request->user()->getKey()))
             ->latest()->get()
@@ -99,6 +99,8 @@ final class McpConnectionController extends Controller
     {
         $model = $this->ownedConnection($connection, $tenant->organizationOrFail(), $request);
         abort_unless($model->isUsable(), 409, 'Only an active connection can be rotated.');
+        // An OAuth connection must never gain a static secret that bypasses OAuth.
+        abort_if($model->isOAuth(), 409, 'OAuth connections have no secret to rotate.');
         $issued = $credentials->rotate($model, $request->user());
 
         return response()->json(['data' => ['connection' => $this->present($issued['connection'], $request), 'secret' => $issued['secret'], 'secret_display_once' => true]]);
@@ -162,6 +164,8 @@ final class McpConnectionController extends Controller
             'last_used_at' => $connection->last_used_at?->toIso8601String(), 'created_at' => $connection->created_at?->toIso8601String(),
             'owner' => $connection->relationLoaded('user') ? $connection->user?->only(['id', 'name', 'email']) : null,
             'is_own' => (int) $connection->user_id === (int) $request->user()->getKey(),
+            'auth_mode' => $connection->auth_mode ?? McpConnection::AUTH_TOKEN,
+            'oauth_client' => $connection->isOAuth() && $connection->relationLoaded('oauthClient') ? $connection->oauthClient?->name : null,
         ];
     }
 }

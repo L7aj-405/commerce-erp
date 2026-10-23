@@ -43,6 +43,30 @@ return [
         'categories.manage' => ['permission' => 'categories.manage', 'label' => 'Manage categories'],
         'units.manage' => ['permission' => 'units.manage', 'label' => 'Manage units'],
         'tax_rates.view' => ['permission' => 'tax_rates.view', 'label' => 'View tax rates'],
+        'customers.view' => ['permission' => 'customers.view', 'label' => 'View customers and their sales summary'],
+        'quotations.view' => ['permission' => 'quotations.view', 'label' => 'View quotations'],
+        'quotations.create' => ['permission' => 'quotations.create', 'label' => 'Create quotation drafts'],
+        'quotations.update' => ['permission' => 'quotations.update', 'label' => 'Update quotation drafts'],
+    ],
+
+    // OAuth 2.1 authorization server for remote MCP clients (MCP-6). The issuer
+    // and protected resource derive from APP_URL, which must be https in
+    // production. Opaque `10xmcp_` connection secrets keep working alongside.
+    'oauth' => [
+        'enabled' => (bool) env('MCP_OAUTH_ENABLED', true),
+        'dynamic_client_registration' => (bool) env('MCP_OAUTH_DYNAMIC_REGISTRATION', true),
+        'authorization_code_ttl_seconds' => 120,
+        'authorization_request_ttl_seconds' => 600,
+        'access_token_ttl_seconds' => (int) env('MCP_OAUTH_ACCESS_TOKEN_TTL_SECONDS', 900),
+        'refresh_token_ttl_days' => (int) env('MCP_OAUTH_REFRESH_TOKEN_TTL_DAYS', 30),
+        'max_redirect_uris' => 10,
+        'register_per_hour' => (int) env('MCP_OAUTH_REGISTER_PER_HOUR', 20),
+        'token_per_minute' => (int) env('MCP_OAUTH_TOKEN_PER_MINUTE', 30),
+    ],
+
+    // Sales assistant (MCP-5) quotation drafts.
+    'quotations' => [
+        'max_items' => 200,
     ],
 
     'presets' => [

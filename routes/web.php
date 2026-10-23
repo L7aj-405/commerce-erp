@@ -89,6 +89,7 @@ use App\Http\Controllers\Settings\OrganizationBackupController;
 use App\Http\Controllers\Settings\OrganizationBackupCloudController;
 use App\Http\Controllers\Settings\OrganizationDataResetController;
 use App\Http\Controllers\Settings\McpConnectionController;
+use App\Http\Controllers\Mcp\OAuth\McpOAuthAuthorizationController;
 use App\Http\Controllers\Settings\PasswordController;
 use App\Http\Controllers\Settings\ProfileController;
 use App\Http\Controllers\Settings\TwoFactorAuthenticationController;
@@ -266,6 +267,12 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
     Route::put('/settings/ai-mcp/connections/{connection}', [McpConnectionController::class, 'update'])->name('settings.ai-mcp.update');
     Route::post('/settings/ai-mcp/connections/{connection}/rotate', [McpConnectionController::class, 'rotate'])->middleware('fresh-auth:2')->name('settings.ai-mcp.rotate');
     Route::delete('/settings/ai-mcp/connections/{connection}', [McpConnectionController::class, 'destroy'])->middleware('fresh-auth:2')->name('settings.ai-mcp.destroy');
+    // MCP-6 OAuth consent (stateless token/discovery endpoints: routes/mcp-oauth.php).
+    Route::get('/oauth/authorize', [McpOAuthAuthorizationController::class, 'show'])->middleware('throttle:30,1')->name('mcp.oauth.authorize');
+    Route::post('/oauth/authorize/{requestId}/approve', [McpOAuthAuthorizationController::class, 'approve'])
+        ->middleware(['fresh-auth:2', 'throttle:10,1'])->where('requestId', '[A-Za-z0-9]{40}')->name('mcp.oauth.approve');
+    Route::post('/oauth/authorize/{requestId}/deny', [McpOAuthAuthorizationController::class, 'deny'])
+        ->middleware('throttle:10,1')->where('requestId', '[A-Za-z0-9]{40}')->name('mcp.oauth.deny');
     Route::post('/email-settings/test', [OrganizationMailSettingController::class, 'test'])
         ->middleware('throttle:6,1')->name('email-settings.test');
 
