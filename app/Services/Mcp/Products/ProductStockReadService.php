@@ -75,6 +75,24 @@ final class ProductStockReadService
     }
 
     /**
+     * Organization-wide totals for many variants in one query (same balance
+     * source and arithmetic as variant()/product()).
+     *
+     * @param list<int> $variantIds
+     * @return array<int, array{on_hand: string, reserved: string, available: string}>
+     */
+    public function variantTotals(Organization $organization, array $variantIds): array
+    {
+        $byVariant = $this->balances($organization, $variantIds);
+        $totals = [];
+        foreach ($variantIds as $variantId) {
+            $totals[$variantId] = array_reduce($byVariant[$variantId] ?? [], fn (array $carry, array $warehouse) => $this->addTotals($carry, $warehouse), $this->zeroTotals());
+        }
+
+        return $totals;
+    }
+
+    /**
      * @param list<int> $variantIds
      * @return array<int, list<array<string, mixed>>>
      */

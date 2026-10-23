@@ -18,6 +18,7 @@ final class ProductReadTools
         private readonly McpExecutionContext $context,
         private readonly ProductCatalogReadService $catalog,
         private readonly ProductStockReadService $stock,
+        private readonly PurchaseCostCoverageService $coverage,
         private readonly AuditLogger $audit,
     ) {}
 
@@ -116,6 +117,33 @@ final class ProductReadTools
 
             return $result;
         }, 'MCP_STOCK_TARGET_NOT_FOUND');
+    }
+
+    public function getPurchaseCostCoverage(
+        string $stock_basis = 'available',
+        ?string $status = null,
+        string $purchase_cost_status = 'all',
+        ?string $query = null,
+        int $page = 1,
+        int $per_page = 25,
+    ): CallToolResult {
+        return $this->execute('get_purchase_cost_coverage', function () use ($stock_basis, $status, $purchase_cost_status, $query, $page, $per_page) {
+            $this->context->authorize('products.view');
+            $this->context->authorize('inventory.view');
+            $this->context->authorize('product_cost.view');
+            $result = $this->coverage->coverage($this->context->organization(), [
+                'stock_basis' => $stock_basis, 'status' => $status, 'purchase_cost_status' => $purchase_cost_status,
+                'query' => $query, 'page' => $page, 'per_page' => $per_page,
+            ]);
+            $this->auditRead('mcp.purchase_cost_coverage.viewed', [
+                'stock_basis' => $stock_basis, 'status' => $status, 'purchase_cost_status' => $purchase_cost_status,
+                'has_query' => is_string($query) && trim($query) !== '', 'page' => $page, 'per_page' => $per_page,
+                'total_in_stock_variants' => $result['summary']['total_in_stock_variants'],
+                'result_count' => count($result['items']),
+            ]);
+
+            return $result;
+        });
     }
 
     /**

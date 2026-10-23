@@ -128,6 +128,33 @@ final class McpServerFactory
                     ],
                     outputSchema: $outputSchema,
                 );
+
+                if ($this->context->allows('product_cost.view')) {
+                    $builder->addTool(
+                        [$this->productTools, 'getPurchaseCostCoverage'],
+                        name: 'get_purchase_cost_coverage',
+                        title: 'Get purchase cost coverage of in-stock variants',
+                        description: 'PREFERRED tool for purchase-cost completeness questions, e.g. "Show me all products currently available in stock that are missing a purchase price" '
+                            .'or "what share of in-stock variants have a cost?". One call returns, at variant level, a summary over ALL matching in-stock variants '
+                            .'(total, with/without purchase cost, coverage_percent) plus a paginated list with SKU, reference, barcode, purchase_cost (null = missing; 0.0000 is a recorded cost) '
+                            .'and organization-wide stock. In stock means available > 0 by default (stock_basis "on_hand" uses on-hand quantity). '
+                            .'Use purchase_cost_status "without_cost" to list only the gaps. Do not loop over search_products/get_product_stock for this.',
+                        annotations: $readOnly,
+                        inputSchema: [
+                            'type' => 'object',
+                            'properties' => [
+                                'stock_basis' => ['type' => 'string', 'enum' => ['available', 'on_hand'], 'default' => 'available'],
+                                'status' => ['type' => 'string', 'enum' => ['active', 'inactive'], 'description' => 'Variant status filter.'],
+                                'purchase_cost_status' => ['type' => 'string', 'enum' => ['all', 'with_cost', 'without_cost'], 'default' => 'all', 'description' => 'Filters the items list only; the summary always covers all matching in-stock variants.'],
+                                'query' => ['type' => 'string', 'maxLength' => 255, 'description' => 'Matches product name, SKU, reference, or barcode.'],
+                                'page' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 100000, 'default' => 1],
+                                'per_page' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 100, 'default' => 25],
+                            ],
+                            'additionalProperties' => false,
+                        ],
+                        outputSchema: $outputSchema,
+                    );
+                }
             }
         }
 
