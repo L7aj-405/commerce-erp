@@ -11,6 +11,7 @@ export const mcpScopeTranslationKeys: Record<string, TranslationKey> = {
     'quotations.view': 'mcp.scope.quotationsView', 'quotations.create': 'mcp.scope.quotationsCreate',
     'quotations.update': 'mcp.scope.quotationsUpdate', 'quotations.issue': 'mcp.scope.quotationsIssue',
     'quotations.accept': 'mcp.scope.quotationsAccept', 'quotations.convert': 'mcp.scope.quotationsConvert',
+    'quotations.email': 'mcp.scope.quotationsEmail',
     'sales_orders.view': 'mcp.scope.salesOrdersView',
     'sales_orders.create': 'mcp.scope.salesOrdersCreate', 'sales_orders.update': 'mcp.scope.salesOrdersUpdate',
     'sales_orders.confirm': 'mcp.scope.salesOrdersConfirm',

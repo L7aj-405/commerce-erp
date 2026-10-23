@@ -50,10 +50,16 @@ return [
         'quotations.issue' => ['permission' => 'quotations.issue', 'label' => 'Issue quotations'],
         'quotations.accept' => ['permission' => 'quotations.accept', 'label' => 'Record quotation acceptance'],
         'quotations.convert' => ['permission' => 'quotations.convert', 'label' => 'Convert quotations into draft sales orders'],
+        'quotations.email' => ['permission' => 'quotations.email', 'label' => 'Email issued quotations'],
         'sales_orders.view' => ['permission' => 'sales_orders.view', 'label' => 'View sales orders'],
         'sales_orders.create' => ['permission' => 'sales_orders.create', 'label' => 'Create draft sales orders'],
         'sales_orders.update' => ['permission' => 'sales_orders.update', 'label' => 'Update draft sales orders'],
         'sales_orders.confirm' => ['permission' => 'sales_orders.confirm', 'label' => 'Confirm sales orders'],
+    ],
+
+    // Quotation documents (MCP-8): signed, connection-bound PDF links.
+    'documents' => [
+        'link_ttl_seconds' => (int) env('MCP_DOCUMENT_LINK_TTL_SECONDS', 600),
     ],
 
     // Sales Orders (MCP-7).

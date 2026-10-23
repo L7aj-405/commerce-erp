@@ -85,6 +85,52 @@ final class QuotationLifecycleTools
         });
     }
 
+    public function previewQuotationRevision(int $quotation_id, string $reason): CallToolResult
+    {
+        return $this->execute('preview_quotation_revision', function () use ($quotation_id, $reason) {
+            $this->context->authorize(McpQuotationLifecycleService::REVISION_SCOPE);
+            if ($quotation_id < 1 || trim($reason) === '' || mb_strlen($reason) > 2000) throw new InvalidArgumentException('invalid_arguments');
+            $preview = $this->lifecycle->previewRevision($quotation_id, $reason);
+            $this->audit->record(event: 'mcp.quotation_revision.previewed', actor: $this->context->user(), organization: $this->context->organization(), newValues: [
+                'quotation_id' => $quotation_id, 'valid' => $preview['valid'],
+                'issue_codes' => array_values(array_unique(array_column($preview['issues'], 'code'))),
+                'fingerprint_issued' => $preview['preview_fingerprint'] !== null,
+            ]);
+
+            return $preview;
+        });
+    }
+
+    public function createQuotationRevision(int $quotation_id, string $preview_fingerprint, string $idempotency_key): CallToolResult
+    {
+        return $this->execute('create_quotation_revision', function () use ($quotation_id, $preview_fingerprint, $idempotency_key) {
+            $this->context->authorize(McpQuotationLifecycleService::REVISION_SCOPE);
+            if ($quotation_id < 1) throw new InvalidArgumentException('invalid_id');
+
+            // Same key + same source quotation replays: never two revisions.
+            return $this->idempotency->execute('create_quotation_revision', $idempotency_key, ['quotation_id' => $quotation_id], function () use ($quotation_id, $preview_fingerprint) {
+                ['source' => $source, 'revision' => $revision] = $this->lifecycle->createRevision($quotation_id, $preview_fingerprint);
+                // The canonical `quotation.revision_started` audit is written by the ERP action.
+                $this->audit->record('mcp.sales_tool_executed', $this->context->user(), $this->context->organization(), $revision->store, $revision, newValues: [
+                    'tool' => 'create_quotation_revision',
+                    'target' => ['type' => 'quotation', 'id' => $revision->getKey()],
+                    'source_quotation' => ['id' => $source->getKey(), 'quotation_number' => $source->quotation_number],
+                    'revision_number' => (int) $revision->revision_number,
+                ]);
+
+                return [
+                    'target' => ['type' => 'quotation', 'id' => $revision->getKey()],
+                    'source_quotation' => ['id' => $source->getKey(), 'quotation_number' => $source->quotation_number, 'status' => $source->status->value],
+                    'revision' => [
+                        'id' => $revision->getKey(), 'revision_number' => (int) $revision->revision_number,
+                        'status' => $revision->status->value, 'editable' => $revision->status->isEditable(),
+                        'totals' => $this->quotations->present($revision)['totals'],
+                    ],
+                ];
+            });
+        });
+    }
+
     private function preview(string $transition, int $quotationId): CallToolResult
     {
         return $this->execute("preview_quotation_{$transition}", function () use ($transition, $quotationId) {

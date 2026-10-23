@@ -7,6 +7,9 @@ use App\Services\Mcp\Products\ProductOperationTools;
 use App\Services\Mcp\Products\ProductReadTools;
 use App\Services\Mcp\Products\ProductWriteTools;
 use App\Services\Mcp\Sales\SalesAssistantTools;
+use App\Services\Mcp\Sales\McpQuotationDocumentService;
+use App\Services\Mcp\Sales\McpQuotationLifecycleService;
+use App\Services\Mcp\Sales\QuotationDocumentTools;
 use App\Services\Mcp\Sales\QuotationLifecycleTools;
 use App\Services\Mcp\Sales\SalesOrderTools;
 use Mcp\Schema\ToolAnnotations;
@@ -24,6 +27,7 @@ final class McpServerFactory
         private readonly SalesAssistantTools $salesTools,
         private readonly SalesOrderTools $salesOrderTools,
         private readonly QuotationLifecycleTools $quotationLifecycleTools,
+        private readonly QuotationDocumentTools $quotationDocumentTools,
     ) {}
 
     public function make(): Server
@@ -191,6 +195,68 @@ final class McpServerFactory
                 name: 'issue_quotation', title: 'Issue quotation',
                 description: 'Issue a draft quotation (allocates its official number, freezes it) with the fingerprint from preview_quotation_issue. Does not accept or convert. Retrying with the same fingerprint after success returns the issued quotation.',
                 annotations: $transition, inputSchema: $withFingerprint(), outputSchema: $outputSchema);
+        }
+
+        if ($this->context->allows(McpQuotationLifecycleService::REVISION_SCOPE)) {
+            $builder->addTool([$this->quotationLifecycleTools, 'previewQuotationRevision'],
+                name: 'preview_quotation_revision', title: 'Preview quotation revision',
+                description: 'Required before create_quotation_revision. An issued/accepted quotation is immutable; to change it, open a revision: a NEW draft copied from it (same customer, lines, prices), linked to it, numbered -R{n} when issued. Runs the ERP revision action without saving anything. reason is required by the ERP.',
+                annotations: $readOnly,
+                inputSchema: [
+                    'type' => 'object', 'required' => ['quotation_id', 'reason'],
+                    'properties' => ['quotation_id' => ['type' => 'integer', 'minimum' => 1], 'reason' => ['type' => 'string', 'minLength' => 1, 'maxLength' => 2000]],
+                    'additionalProperties' => false,
+                ],
+                outputSchema: $outputSchema);
+            $builder->addTool([$this->quotationLifecycleTools, 'createQuotationRevision'],
+                name: 'create_quotation_revision', title: 'Create quotation revision',
+                description: 'Create the previewed revision draft (the reason is taken from the preview). The source quotation is not modified. Then edit the new draft with preview_quotation/update_quotation_draft and issue it with issue_quotation. Requires an idempotency key.',
+                annotations: new ToolAnnotations(readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false),
+                inputSchema: $withFingerprint(['idempotency_key' => ['type' => 'string', 'minLength' => 1, 'maxLength' => 128]]),
+                outputSchema: $outputSchema);
+        }
+
+        if ($this->context->allows('quotations.view')) {
+            $builder->addTool([$this->quotationDocumentTools, 'getQuotationDocument'],
+                name: 'get_quotation_document', title: 'Get quotation PDF',
+                description: 'Generate the ERP quotation PDF (drafts carry the BROUILLON watermark) without changing anything, and return metadata plus a short-lived signed download_url the user can open. include_company_stamp reports whether the stamp apposed on the quotation is rendered; it never applies one.',
+                annotations: $readOnly,
+                inputSchema: [
+                    'type' => 'object', 'required' => ['quotation_id'],
+                    'properties' => [
+                        'quotation_id' => ['type' => 'integer', 'minimum' => 1],
+                        'format' => ['type' => 'string', 'enum' => ['pdf'], 'default' => 'pdf'],
+                        'include_company_stamp' => ['type' => 'boolean', 'default' => false],
+                    ],
+                    'additionalProperties' => false,
+                ],
+                outputSchema: $outputSchema);
+        }
+
+        if ($this->context->allows(McpQuotationDocumentService::EMAIL_SCOPE)) {
+            $builder->addTool([$this->quotationDocumentTools, 'previewQuotationEmail'],
+                name: 'preview_quotation_email', title: 'Preview quotation email',
+                description: 'Required before send_quotation_email. Validates an email of an ISSUED quotation (recipient, subject, message, PDF attachment, mail configuration) with the ERP rules and template, without sending. recipient_mode "customer" uses the quotation\'s customer email; "custom" needs recipient_email.',
+                annotations: $readOnly,
+                inputSchema: [
+                    'type' => 'object', 'required' => ['quotation_id'],
+                    'properties' => [
+                        'quotation_id' => ['type' => 'integer', 'minimum' => 1],
+                        'recipient_mode' => ['type' => 'string', 'enum' => ['customer', 'custom'], 'default' => 'customer'],
+                        'recipient_email' => ['type' => 'string', 'maxLength' => 254],
+                        'subject' => ['type' => 'string', 'maxLength' => 255],
+                        'message' => ['type' => 'string', 'maxLength' => 5000],
+                        'include_company_stamp' => ['type' => 'boolean', 'default' => false],
+                    ],
+                    'additionalProperties' => false,
+                ],
+                outputSchema: $outputSchema);
+            $builder->addTool([$this->quotationDocumentTools, 'sendQuotationEmail'],
+                name: 'send_quotation_email', title: 'Send quotation email',
+                description: 'Send exactly the previewed email (recipient, subject, message, PDF) through the ERP. The fingerprint is single-use and the idempotency key replays the recorded outcome, so a retry never sends twice. Sending is synchronous: "sent" means accepted by the mail server, not delivered.',
+                annotations: new ToolAnnotations(readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true),
+                inputSchema: $withFingerprint(['idempotency_key' => ['type' => 'string', 'minLength' => 1, 'maxLength' => 128]]),
+                outputSchema: $outputSchema);
         }
 
         if ($this->context->allows('quotations.accept')) {

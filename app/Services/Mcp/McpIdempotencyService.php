@@ -19,6 +19,32 @@ final class McpIdempotencyService
      */
     public function execute(string $tool, string $key, array $request, callable $operation): array
     {
+        return $this->run($tool, $key, $request, $operation, transactional: true);
+    }
+
+    /**
+     * For operations with an external side effect (e.g. sending an email) whose
+     * own ERP records must survive a failure: the operation is NOT wrapped in a
+     * database transaction, and whatever it returns — success or failure — is
+     * stored, so a retry with the same key replays instead of repeating it.
+     * Serialised per key by the cache lock.
+     *
+     * @param array<string, mixed> $request
+     * @param callable(): array<string, mixed> $operation
+     * @return array<string, mixed>
+     */
+    public function executeExternal(string $tool, string $key, array $request, callable $operation): array
+    {
+        return $this->run($tool, $key, $request, $operation, transactional: false);
+    }
+
+    /**
+     * @param array<string, mixed> $request
+     * @param callable(): array<string, mixed> $operation
+     * @return array<string, mixed>
+     */
+    private function run(string $tool, string $key, array $request, callable $operation, bool $transactional): array
+    {
         $connection = $this->context->connectionOrFail();
         $key = trim($key);
         if ($key === '' || mb_strlen($key) > 128) {
@@ -26,15 +52,14 @@ final class McpIdempotencyService
         }
         $requestHash = hash('sha256', $this->canonicalJson($request));
 
-        $lock = Cache::lock('mcp:idempotency:'.hash('sha256', $connection->getKey().'|'.$tool.'|'.$key), 30);
-
-        return $lock->block(5, fn () => DB::transaction(function () use ($tool, $key, $requestHash, $operation, $connection) {
+        $lock = Cache::lock('mcp:idempotency:'.hash('sha256', $connection->getKey().'|'.$tool.'|'.$key), $transactional ? 30 : 120);
+        $body = function () use ($tool, $key, $requestHash, $operation, $connection, $transactional) {
             $existing = McpIdempotencyRecord::query()
                 ->where('organization_id', $connection->organization_id)
                 ->where('mcp_connection_id', $connection->getKey())
                 ->where('tool', $tool)
                 ->where('idempotency_key', $key)
-                ->lockForUpdate()
+                ->when($transactional, fn ($query) => $query->lockForUpdate())
                 ->first();
 
             if ($existing) {
@@ -59,7 +84,9 @@ final class McpIdempotencyService
             $record->save();
 
             return [...$response, 'idempotent_replay' => false];
-        }));
+        };
+
+        return $lock->block(5, fn () => $transactional ? DB::transaction($body) : $body());
     }
 
     /** @param array<string, mixed> $value */

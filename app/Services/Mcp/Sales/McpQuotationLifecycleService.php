@@ -5,6 +5,7 @@ namespace App\Services\Mcp\Sales;
 use App\Actions\Quotations\ConvertQuotationToSalesOrderAction;
 use App\Actions\Quotations\DecideQuotationAction;
 use App\Actions\Quotations\IssueQuotationAction;
+use App\Actions\Quotations\StartQuotationRevisionAction;
 use App\Enums\QuotationLineType;
 use App\Enums\QuotationStatus;
 use App\Models\Customer;
@@ -38,6 +39,9 @@ final class McpQuotationLifecycleService
         'convert' => ['quotations.convert', 'converted'],
     ];
 
+    /** StartQuotationRevisionAction is authorized by the ERP permission quotations.issue. */
+    public const REVISION_SCOPE = 'quotations.issue';
+
     public function __construct(
         private readonly McpExecutionContext $context,
         private readonly QuotationReadService $quotations,
@@ -45,6 +49,7 @@ final class McpQuotationLifecycleService
         private readonly IssueQuotationAction $issueAction,
         private readonly DecideQuotationAction $decideAction,
         private readonly ConvertQuotationToSalesOrderAction $convertAction,
+        private readonly StartQuotationRevisionAction $reviseAction,
         private readonly McpDryRun $dryRun,
         private readonly McpIdempotencyService $canonical,
     ) {}
@@ -181,6 +186,115 @@ final class McpQuotationLifecycleService
             'stock_warnings' => $outcome['stock_warnings'] ?? [],
             'replay' => false,
         ];
+    }
+
+    /* ------------------------------------------------------------------
+     |  Revisions (StartQuotationRevisionAction; ERP permission quotations.issue)
+     * ---------------------------------------------------------------- */
+
+    /** @return array<string, mixed> */
+    public function previewRevision(int $quotationId, string $reason): array
+    {
+        $reason = trim($reason);
+        $result = $this->dryRun->run(function () use ($quotationId, $reason) {
+            $source = $this->quotations->find($this->context->organization(), $quotationId, lock: true);
+            $state = $this->state('revise', $source);
+            $summary = $this->summary($source);
+            $issues = [];
+            $revision = null;
+            try {
+                $revision = $this->revisionOutcome($this->reviseAction->execute($this->context->user(), $source, $reason));
+            } catch (ValidationException $exception) {
+                $issues[] = ['path' => 'quotation', 'code' => 'revision_rejected', 'message' => mb_substr((string) (collect($exception->errors())->flatten()->first() ?? 'Rejected.'), 0, 300)];
+            } catch (HttpExceptionInterface) {
+                $issues[] = ['path' => 'quotation', 'code' => 'not_permitted', 'message' => 'The ERP refused the revision for this user.'];
+            }
+
+            return compact('state', 'summary', 'issues', 'revision');
+        });
+
+        $fingerprint = null;
+        $expiresAt = null;
+        if ($result['issues'] === []) {
+            $fingerprint = bin2hex(random_bytes(32));
+            $expires = now()->addSeconds((int) config('mcp.preview_ttl_seconds', 300));
+            Cache::put($this->previewKey($fingerprint), [
+                'organization_id' => (int) $this->context->organization()->getKey(),
+                'connection_id' => (string) $this->context->connectionOrFail()->getKey(),
+                'transition' => 'revise',
+                'quotation_id' => $quotationId,
+                'required_scopes' => [self::REVISION_SCOPE],
+                'state_hash' => $result['state'],
+                'outcome_hash' => $result['revision']['hash'],
+                // The reason is fixed by the preview; execution never takes a new one.
+                'reason' => $reason,
+            ], $expires);
+            $expiresAt = $expires->toIso8601String();
+        }
+
+        return [
+            'source_quotation' => $result['summary'],
+            'revision_preview' => $result['revision']['preview'] ?? null,
+            'reason' => $reason,
+            'valid' => $result['issues'] === [],
+            'issues' => $result['issues'],
+            'required_scopes' => [self::REVISION_SCOPE],
+            'preview_fingerprint' => $fingerprint,
+            'expires_at' => $expiresAt,
+            'note' => 'A revision is a NEW draft quotation copied from the issued one; the source stays immutable until the revision is issued (then it becomes superseded). Nothing is issued, sent, accepted or converted.',
+        ];
+    }
+
+    /**
+     * Must run inside the caller's transaction (idempotency wrapper).
+     *
+     * @return array{source: Quotation, revision: Quotation}
+     */
+    public function createRevision(int $quotationId, string $fingerprint): array
+    {
+        $source = $this->quotations->find($this->context->organization(), $quotationId, lock: true);
+        $stored = preg_match('/^[0-9a-f]{64}$/', $fingerprint) ? Cache::get($this->previewKey($fingerprint)) : null;
+        if (! is_array($stored)
+            || (int) ($stored['organization_id'] ?? 0) !== (int) $this->context->organization()->getKey()
+            || ! hash_equals((string) ($stored['connection_id'] ?? ''), (string) $this->context->connectionOrFail()->getKey())
+            || ($stored['transition'] ?? null) !== 'revise'
+            || (int) ($stored['quotation_id'] ?? 0) !== $quotationId
+            || ($stored['required_scopes'] ?? null) !== [self::REVISION_SCOPE]
+            || ! hash_equals((string) ($stored['state_hash'] ?? ''), $this->state('revise', $source))) {
+            throw new InvalidArgumentException('stale_or_invalid_preview');
+        }
+
+        $revision = $this->reviseAction->execute($this->context->user(), $source, (string) $stored['reason']);
+        if (! hash_equals((string) $stored['outcome_hash'], $this->revisionOutcome($revision)['hash'])) {
+            throw new InvalidArgumentException('stale_or_invalid_preview');
+        }
+        Cache::forget($this->previewKey($fingerprint));
+
+        return [
+            'source' => $this->quotations->find($this->context->organization(), $quotationId),
+            'revision' => $this->quotations->find($this->context->organization(), (int) $revision->getKey()),
+        ];
+    }
+
+    /** @return array{preview: array<string, mixed>, hash: string} */
+    private function revisionOutcome(Quotation $revision): array
+    {
+        $presented = $this->quotations->present($revision->fresh(['lines', 'store']));
+        $preview = [
+            'status' => $presented['status'],
+            'editable' => $presented['editable'],
+            'revision_number' => $presented['revision_number'],
+            'store' => $presented['store'],
+            'customer' => $presented['customer'],
+            'quotation_date' => $presented['quotation_date'],
+            'valid_until' => $presented['valid_until'],
+            'currency_code' => $presented['currency_code'],
+            'lines' => array_map(fn (array $line) => array_diff_key($line, ['line_id' => true]), $presented['lines']),
+            'totals' => $presented['totals'],
+        ];
+
+        // The new quotation's id is not part of the outcome: it differs per run.
+        return ['preview' => $preview, 'hash' => hash('sha256', $this->canonical->canonicalJson($preview))];
     }
 
     /** @return array<string, mixed> */
