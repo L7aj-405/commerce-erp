@@ -47,6 +47,15 @@ return [
         'quotations.view' => ['permission' => 'quotations.view', 'label' => 'View quotations'],
         'quotations.create' => ['permission' => 'quotations.create', 'label' => 'Create quotation drafts'],
         'quotations.update' => ['permission' => 'quotations.update', 'label' => 'Update quotation drafts'],
+        'sales_orders.view' => ['permission' => 'sales_orders.view', 'label' => 'View sales orders'],
+        'sales_orders.create' => ['permission' => 'sales_orders.create', 'label' => 'Create draft sales orders'],
+        'sales_orders.update' => ['permission' => 'sales_orders.update', 'label' => 'Update draft sales orders'],
+        'sales_orders.confirm' => ['permission' => 'sales_orders.confirm', 'label' => 'Confirm sales orders'],
+    ],
+
+    // Sales Orders (MCP-7).
+    'sales_orders' => [
+        'max_items' => 200,
     ],
 
     // OAuth 2.1 authorization server for remote MCP clients (MCP-6). The issuer

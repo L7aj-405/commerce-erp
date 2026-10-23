@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Actions\Concerns\MatchesActorTenant;
 use App\Enums\CatalogStatus;
 use App\Enums\InventoryMovementType;
 use App\Enums\InventoryReservationStatus;
@@ -18,6 +19,8 @@ use Illuminate\Validation\ValidationException;
 
 class InventoryReservationManager
 {
+    use MatchesActorTenant;
+
     public function __construct(private readonly InventoryBalanceLocker $balances, private readonly AuditLogger $audit) {}
 
     public function reserve(User $actor, Organization $organization, Warehouse $warehouse, ProductVariant $variant, int|float|string $quantity, ?string $referenceType = null, ?int $referenceId = null, ?string $reference = null, mixed $expiresAt = null): InventoryReservation
@@ -188,7 +191,7 @@ class InventoryReservationManager
     private function assertContext(User $actor, Organization $organization): void
     {
         abort_unless(
-            $actor->active_organization_id === $organization->getKey()
+            $this->actorOrganizationMatches($actor, $organization)
             && $organization->status === 'active'
             && $actor->organizationMemberships()->where('organization_id', $organization->getKey())->where('status', 'active')->exists(),
             403

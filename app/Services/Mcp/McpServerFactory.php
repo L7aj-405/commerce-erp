@@ -7,6 +7,7 @@ use App\Services\Mcp\Products\ProductOperationTools;
 use App\Services\Mcp\Products\ProductReadTools;
 use App\Services\Mcp\Products\ProductWriteTools;
 use App\Services\Mcp\Sales\SalesAssistantTools;
+use App\Services\Mcp\Sales\SalesOrderTools;
 use Mcp\Schema\ToolAnnotations;
 use Mcp\Server;
 use Mcp\Server\Session\FileSessionLock;
@@ -20,6 +21,7 @@ final class McpServerFactory
         private readonly ProductWriteTools $productWriteTools,
         private readonly ProductOperationTools $operationTools,
         private readonly SalesAssistantTools $salesTools,
+        private readonly SalesOrderTools $salesOrderTools,
     ) {}
 
     public function make(): Server
@@ -161,8 +163,151 @@ final class McpServerFactory
         $this->registerProductWriteTools($builder, $readOnly, $outputSchema);
         $this->registerProductOperationTools($builder, $readOnly, $outputSchema);
         $this->registerSalesTools($builder, $readOnly, $outputSchema);
+        $this->registerSalesOrderTools($builder, $readOnly, $outputSchema);
 
         return $builder->build();
+    }
+
+    /** @param array<string, mixed> $outputSchema */
+    private function registerSalesOrderTools($builder, ToolAnnotations $readOnly, array $outputSchema): void
+    {
+        $id = ['type' => 'integer', 'minimum' => 1];
+        $date = ['type' => 'string', 'pattern' => '^\\d{4}-\\d{2}-\\d{2}$'];
+        $fingerprint = ['type' => 'string', 'pattern' => '^[0-9a-f]{64}$'];
+
+        if ($this->context->allows('sales_orders.view')) {
+            $builder->addTool(
+                [$this->salesOrderTools, 'searchSalesOrders'],
+                name: 'search_sales_orders', title: 'Search sales orders',
+                description: 'Search Sales Orders in the stores the connection user belongs to, by order number or customer snapshot (name, company, phone, email). Newest first. Includes payment status and paid/remaining amounts.',
+                annotations: $readOnly,
+                inputSchema: [
+                    'type' => 'object',
+                    'properties' => [
+                        'query' => ['type' => 'string', 'maxLength' => 255],
+                        'status' => ['type' => 'string', 'enum' => ['draft', 'confirmed', 'cancelled']],
+                        'payment_status' => ['type' => 'string', 'enum' => ['unpaid', 'partially_paid', 'paid']],
+                        'customer_id' => $id,
+                        'store_id' => $id,
+                        'date_from' => [...$date, 'description' => 'Sale date lower bound (inclusive).'],
+                        'date_to' => [...$date, 'description' => 'Sale date upper bound (inclusive).'],
+                        'page' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 100000, 'default' => 1],
+                        'per_page' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 100, 'default' => 25],
+                    ],
+                    'additionalProperties' => false,
+                ],
+                outputSchema: $outputSchema,
+            );
+            $builder->addTool(
+                [$this->salesOrderTools, 'getSalesOrder'],
+                name: 'get_sales_order', title: 'Get sales order',
+                description: 'Return one Sales Order: header, customer snapshot, priced lines (HT/TTC, discounts, taxes), totals, status, editable flag, confirmation, payment summary, version token. Stock allocations/reservations are included when inventory.view is granted.',
+                annotations: $readOnly,
+                inputSchema: ['type' => 'object', 'required' => ['sales_order_id'], 'properties' => ['sales_order_id' => $id], 'additionalProperties' => false],
+                outputSchema: $outputSchema,
+            );
+        }
+
+        $canCreate = $this->context->allows('sales_orders.create');
+        $canUpdate = $this->context->allows('sales_orders.update');
+        $mutation = new ToolAnnotations(readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false);
+        $decimal = ['type' => ['string', 'null'], 'pattern' => '^\\d+(?:\\.\\d{1,4})?$'];
+        $item = [
+            'type' => 'object',
+            'properties' => [
+                'line_id' => [...$id, 'description' => 'Update only: existing line to keep/modify. Omitted fields keep the line\'s values, except an omitted catalog unit_price, which means the current catalog price. Lines not listed are removed.'],
+                'variant_id' => [...$id, 'description' => 'Catalog product variant (see search_products).'],
+                'description' => ['type' => 'string', 'maxLength' => 255, 'description' => 'Custom (non-catalog) line label. Use instead of variant_id.'],
+                'reference' => ['type' => ['string', 'null'], 'maxLength' => 255, 'description' => 'Custom lines only.'],
+                'unit_label' => ['type' => ['string', 'null'], 'maxLength' => 255, 'description' => 'Custom lines only.'],
+                'tax_rate_id' => [...$id, 'description' => 'Custom lines, or a catalog line whose tax is unresolved.'],
+                'quantity' => ['type' => 'string', 'pattern' => '^[1-9]\\d*(?:\\.0{1,4})?$'],
+                'price_input_mode' => ['type' => 'string', 'enum' => ['ht', 'ttc'], 'description' => 'Custom lines: HT or TTC entry. Catalog overrides are HT only.'],
+                'unit_price' => [...$decimal, 'description' => 'Catalog: HT override (needs the ERP price-override permission). Custom: the line price.'],
+                'discount_type' => ['type' => 'string', 'enum' => ['none', 'fixed', 'percentage'], 'description' => 'Discounts need the ERP apply-discount permission.'],
+                'discount_value' => $decimal,
+            ],
+            'additionalProperties' => false,
+        ];
+        $header = [
+            'customer_id' => ['type' => ['integer', 'null'], 'minimum' => 1],
+            'order_date' => [...$date, 'description' => 'Sale date; defaults to today on create.'],
+            'notes' => ['type' => ['string', 'null'], 'maxLength' => 5000],
+            'items' => ['type' => 'array', 'minItems' => 1, 'maxItems' => (int) config('mcp.sales_orders.max_items', 200), 'items' => $item],
+        ];
+        $createOrder = ['type' => 'object', 'properties' => ['store_id' => [...$id, 'description' => 'Required when the user belongs to several stores.'], ...$header], 'additionalProperties' => false];
+        $updateOrder = ['type' => 'object', 'minProperties' => 1, 'properties' => $header, 'additionalProperties' => false];
+
+        if ($canCreate || $canUpdate) {
+            $builder->addTool(
+                [$this->salesOrderTools, 'previewSalesOrder'],
+                name: 'preview_sales_order', title: 'Preview sales order draft',
+                description: 'Validate and price a candidate Sales Order draft with the ERP\'s own rules, without saving anything: resolved customer, lines (HT/TTC, discounts, taxes), totals, validation issues, informational stock. '
+                    .'Omit sales_order_id for a new draft; pass it to preview changes to an existing draft. Issues a short-lived single-use preview_fingerprint when valid. Never confirms, reserves, invoices or records payments.',
+                annotations: $readOnly,
+                inputSchema: [
+                    'type' => 'object', 'required' => ['sales_order'],
+                    'properties' => ['sales_order_id' => $id, 'sales_order' => ['type' => 'object', 'properties' => $createOrder['properties'], 'additionalProperties' => false]],
+                    'additionalProperties' => false,
+                ],
+                outputSchema: $outputSchema,
+            );
+        }
+        if ($canCreate) {
+            $builder->addTool(
+                [$this->salesOrderTools, 'createSalesOrderDraft'],
+                name: 'create_sales_order_draft', title: 'Create sales order draft',
+                description: 'Create a DRAFT Sales Order exactly as previewed (same sales_order object and its preview_fingerprint). Requires an idempotency key. Does not confirm, invoice or record payments.',
+                annotations: $mutation,
+                inputSchema: [
+                    'type' => 'object', 'required' => ['sales_order', 'preview_fingerprint', 'idempotency_key'],
+                    'properties' => [
+                        'sales_order' => $createOrder,
+                        'preview_fingerprint' => $fingerprint,
+                        'idempotency_key' => ['type' => 'string', 'minLength' => 1, 'maxLength' => 128],
+                    ],
+                    'additionalProperties' => false,
+                ],
+                outputSchema: $outputSchema,
+            );
+        }
+        if ($canUpdate) {
+            $builder->addTool(
+                [$this->salesOrderTools, 'updateSalesOrderDraft'],
+                name: 'update_sales_order_draft', title: 'Update sales order draft',
+                description: 'Apply previewed changes to a draft Sales Order (same sales_order_id and sales_order object as the preview). If items is given it is the complete desired line list. Rejected when the draft changed or is no longer editable.',
+                annotations: $mutation,
+                inputSchema: [
+                    'type' => 'object', 'required' => ['sales_order_id', 'sales_order', 'preview_fingerprint'],
+                    'properties' => ['sales_order_id' => $id, 'sales_order' => $updateOrder, 'preview_fingerprint' => $fingerprint],
+                    'additionalProperties' => false,
+                ],
+                outputSchema: $outputSchema,
+            );
+        }
+
+        if ($this->context->allows('sales_orders.confirm')) {
+            $builder->addTool(
+                [$this->salesOrderTools, 'previewSalesOrderConfirmation'],
+                name: 'preview_sales_order_confirmation', title: 'Preview sales order confirmation',
+                description: 'Required before confirm_sales_order. Runs the ERP confirmation checks (lines, taxes, stock coverage, supplier procurements) without committing anything and returns the stock reservation plan, issues, and a short-lived single-use preview_fingerprint.',
+                annotations: $readOnly,
+                inputSchema: ['type' => 'object', 'required' => ['sales_order_id'], 'properties' => ['sales_order_id' => $id], 'additionalProperties' => false],
+                outputSchema: $outputSchema,
+            );
+            $builder->addTool(
+                [$this->salesOrderTools, 'confirmSalesOrder'],
+                name: 'confirm_sales_order', title: 'Confirm sales order',
+                description: 'Confirm a draft Sales Order with the fingerprint from preview_sales_order_confirmation. Reserves company stock and makes the order an official commitment; everything is re-checked at execution. Does NOT issue an invoice or record a payment. Retrying with the same fingerprint after success returns the confirmed order.',
+                annotations: new ToolAnnotations(readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false),
+                inputSchema: [
+                    'type' => 'object', 'required' => ['sales_order_id', 'preview_fingerprint'],
+                    'properties' => ['sales_order_id' => $id, 'preview_fingerprint' => $fingerprint],
+                    'additionalProperties' => false,
+                ],
+                outputSchema: $outputSchema,
+            );
+        }
     }
 
     /** @param array<string, mixed> $outputSchema */

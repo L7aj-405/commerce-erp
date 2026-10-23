@@ -475,12 +475,7 @@ class SalesOrderController extends Controller
     /** @return array<string, mixed> */
     private function headerRules(int $organizationId): array
     {
-        return [
-            'customer_id' => ['nullable', 'integer', Rule::exists('customers', 'id')->where(fn ($query) => $query->where('organization_id', $organizationId)->where('status', 'active'))],
-            'sale_date' => ['required', 'date'], 'currency_code' => ['required', 'string', 'size:3', 'uppercase'],
-            'notes' => ['nullable', 'string', 'max:5000'],
-            'salesperson_id' => ['nullable', 'integer'],
-        ];
+        return \App\Http\Requests\Sales\SalesOrderRules::header($organizationId);
     }
 
     /**

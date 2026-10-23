@@ -2,6 +2,7 @@
 
 namespace App\Actions\Sales\Concerns;
 
+use App\Actions\Concerns\MatchesActorTenant;
 use App\Models\Organization;
 use App\Models\SalesOrder;
 use App\Models\Store;
@@ -9,11 +10,12 @@ use App\Models\User;
 
 trait AuthorizesSalesAction
 {
+    use MatchesActorTenant;
+
     private function authorizeSales(User $actor, Organization $organization, Store $store, string $permission): void
     {
         abort_unless(
-            $actor->active_organization_id === $organization->getKey()
-            && $actor->active_store_id === $store->getKey()
+            $this->actorTenantMatches($actor, $organization, $store)
             && $organization->status === 'active'
             && $store->organization_id === $organization->getKey()
             && $store->status === 'active'
