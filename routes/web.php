@@ -53,6 +53,7 @@ use App\Http\Controllers\Inventory\StockTransferController;
 use App\Http\Controllers\Inventory\TransferRequestController;
 use App\Http\Controllers\Inventory\WarehouseController;
 use App\Http\Controllers\Inventory\WarehouseReplenishmentController;
+use App\Http\Controllers\FollowUps\FollowUpController;
 use App\Http\Controllers\OrganizationController;
 use App\Http\Controllers\OrganizationInvitationController;
 use App\Http\Controllers\OrganizationMembershipController;
@@ -222,6 +223,10 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
     Route::get('/contacts/lookup', [OrganizationContactController::class, 'lookup'])->name('contacts.lookup');
     Route::resource('contacts', OrganizationContactController::class)->except(['destroy']);
     Route::delete('/contacts/{contact}', [OrganizationContactController::class, 'destroy'])->name('contacts.destroy');
+    Route::get('/work', [FollowUpController::class, 'index'])->name('follow-ups.index');
+    Route::post('/work', [FollowUpController::class, 'store'])->name('follow-ups.store');
+    Route::patch('/work/{followUp}', [FollowUpController::class, 'update'])->name('follow-ups.update');
+    Route::post('/work/{followUp}/transition', [FollowUpController::class, 'transition'])->name('follow-ups.transition');
     Route::get('/document-profile', [DocumentProfileController::class, 'edit'])->name('document-profile.edit');
     Route::put('/document-profile', [DocumentProfileController::class, 'update'])->name('document-profile.update');
     Route::put('/organization-timezone', [OrganizationTimezoneController::class, 'update'])->name('organization-timezone.update');

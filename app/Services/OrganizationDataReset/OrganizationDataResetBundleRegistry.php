@@ -60,6 +60,9 @@ class OrganizationDataResetBundleRegistry
                 ['quotations.unlink_revision_root', 'quotations', 'root_quotation_id'],
                 ['quotations.unlink_revision_parent', 'quotations', 'revised_from_quotation_id'],
                 ['sales_orders.unlink_current_revision', 'sales_orders', 'current_revision_id'],
+                // Follow-ups are work items, not sales documents: they survive
+                // the reset and only lose the quotation link.
+                ['follow_ups.unlink_quotation', 'follow_ups', 'quotation_id'],
             ]), [
                 new OrganizationDataResetOperation('sales_and_documents.woocommerce_stock_tasks', $scope, 'woocommerce_stock_tasks', OrganizationDataResetOperation::DELETE_SALES_WOOCOMMERCE_STOCK_TASKS),
                 new OrganizationDataResetOperation('sales_and_documents.stock_transfer_lines', $scope, 'stock_transfer_lines', OrganizationDataResetOperation::DELETE_SALES_STOCK_TRANSFER_LINES),
@@ -99,6 +102,7 @@ class OrganizationDataResetBundleRegistry
             ]),
             OrganizationDataResetScope::Customers => [
                 new OrganizationDataResetOperation('contacts.unlink_customer', $scope, 'organization_contacts', OrganizationDataResetOperation::SET_NULL, 'customer_id'),
+                new OrganizationDataResetOperation('follow_ups.unlink_customer', $scope, 'follow_ups', OrganizationDataResetOperation::SET_NULL, 'customer_id'),
                 new OrganizationDataResetOperation('customers.delete', $scope, 'customers'),
             ],
             OrganizationDataResetScope::SuppliersAndPurchasing => array_merge(

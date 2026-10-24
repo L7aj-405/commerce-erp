@@ -1,3 +1,5 @@
+import FollowUpPanel from "@/components/followups/FollowUpPanel";
+import type { FollowUpPanelData } from "@/components/followups/types";
 import DocBadge from "@/components/ui/DocBadge";
 import SalesLayout from "@/layouts/SalesLayout";
 import { useI18n } from "@/i18n";
@@ -92,6 +94,7 @@ type Props = {
     deliveryNotesCount: number;
     can: { update: boolean };
     whatsappDestination: WhatsAppDestination;
+    followUps: FollowUpPanelData;
 };
 
 function SummaryTile({
@@ -164,6 +167,7 @@ export default function CustomerShow({
     deliveryNotesCount,
     can,
     whatsappDestination,
+    followUps,
 }: Props) {
     const { t } = useI18n();
     const title =
@@ -301,6 +305,12 @@ export default function CustomerShow({
                     </a>
                 ))}
             </div>
+
+            {followUps && (
+                <div className="mb-6">
+                    <FollowUpPanel panel={followUps} />
+                </div>
+            )}
 
             <Section
                 id="commandes"

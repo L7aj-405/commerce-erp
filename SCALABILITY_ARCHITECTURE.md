@@ -330,6 +330,12 @@ tables now. New designs must not make offline sync impossible:
 - device identification and per-device sync cursors/checkpoints;
 - the server remains the canonical authority (numbering, stock, finance).
 
+Work Center follow-ups (W1, `follow_ups`) already carry an integer `version`
+(optimistic concurrency, `expected_version` on every write/transition). Before
+offline/desktop creation they will still need a `client_operation_id` (UUID,
+unique per organization) for idempotent creates, a device id, and a sync
+cursor (e.g. `updated_at` + id). Not added in W1.
+
 ---
 
 ## 14. Observability rule (future scale requirements)

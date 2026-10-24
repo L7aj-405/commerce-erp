@@ -1,0 +1,130 @@
+import { Button } from '@/components/ui/Button';
+import { Dialog } from '@/components/ui/Dialog';
+import { useI18n } from '@/i18n';
+import { useForm } from '@inertiajs/react';
+import type { FormEvent } from 'react';
+import type { FollowUpContext, FollowUpItem, FollowUpPriority } from './types';
+
+const fieldClass = 'h-10 w-full rounded-field border border-line-strong bg-surface px-3 text-sm text-ink outline-none transition-soft focus:border-primary';
+
+type FormData = {
+    title: string;
+    note: string;
+    priority: FollowUpPriority;
+    due_date: string;
+    due_time: string;
+    assigned_user_id: number | '';
+    customer_id: number | null;
+    quotation_id: number | null;
+    expected_version?: number;
+};
+
+/** Create (prefilled links) or edit a follow-up. Dates are organization-local; the server converts to UTC. */
+export default function FollowUpFormDialog({
+    open,
+    onClose,
+    context,
+    followUp,
+    prefill,
+}: {
+    open: boolean;
+    onClose: () => void;
+    context: FollowUpContext;
+    followUp?: FollowUpItem | null;
+    prefill?: { customer_id: number | null; quotation_id: number | null };
+}) {
+    const { t } = useI18n();
+    const editing = Boolean(followUp);
+    const form = useForm<FormData>({
+        title: followUp?.title ?? '',
+        note: followUp?.note ?? '',
+        priority: followUp?.priority ?? 'normal',
+        due_date: followUp?.due_date ?? (editing ? '' : context.today),
+        due_time: followUp?.due_time ?? '',
+        assigned_user_id: followUp?.assignee?.id ?? context.current_user_id,
+        customer_id: followUp ? followUp.customer?.id ?? null : prefill?.customer_id ?? null,
+        quotation_id: followUp ? followUp.quotation?.id ?? null : prefill?.quotation_id ?? null,
+        ...(followUp ? { expected_version: followUp.version } : {}),
+    });
+
+    const submit = (event: FormEvent) => {
+        event.preventDefault();
+        const options = { preserveScroll: true, onSuccess: () => { form.reset(); onClose(); } };
+        form.transform((data) => {
+            const payload: Partial<FormData> = { ...data, due_date: data.due_date || undefined, due_time: data.due_date ? data.due_time || undefined : undefined };
+            if (editing) {
+                // Links are kept as-is while editing; reassigning needs manage_all.
+                delete payload.customer_id;
+                delete payload.quotation_id;
+                if (!payload.due_date) Object.assign(payload, { due_date: null, due_time: null });
+            }
+            if (!context.can_manage_all) delete payload.assigned_user_id;
+            return payload;
+        });
+        if (followUp) form.patch(`/work/${followUp.id}`, options);
+        else form.post('/work', options);
+    };
+
+    const errors = form.errors as Record<string, string | undefined>;
+
+    return (
+        <Dialog
+            open={open}
+            onClose={onClose}
+            title={editing ? t('work.editTitle') : t('work.newTitle')}
+            description={context.timezone_configured ? t('work.timezoneHelp').replace('{timezone}', context.timezone) : t('work.timezoneUtc')}
+            footer={
+                <div className="flex justify-end gap-2">
+                    <Button type="button" variant="secondary" onClick={onClose}>{t('common.cancel')}</Button>
+                    <Button type="submit" form="follow-up-form" loading={form.processing} loadingText={t('common.saving')}>{t('common.save')}</Button>
+                </div>
+            }
+        >
+            <form id="follow-up-form" onSubmit={submit} className="space-y-4 px-4 py-4 sm:px-6">
+                {(errors.version || errors.status) && (
+                    <p className="rounded-field border border-danger/30 bg-danger-soft px-3 py-2 text-sm text-danger">{errors.version ?? errors.status}</p>
+                )}
+                <label className="block">
+                    <span className="mb-1 block text-xs font-medium text-ink-muted">{t('work.titleLabel')}</span>
+                    <input data-autofocus required maxLength={200} value={form.data.title} onChange={(e) => form.setData('title', e.target.value)} className={fieldClass} />
+                    {errors.title && <span className="mt-1 block text-xs text-danger">{errors.title}</span>}
+                </label>
+                <div className="grid gap-3 sm:grid-cols-3">
+                    <label className="block">
+                        <span className="mb-1 block text-xs font-medium text-ink-muted">{t('work.dueDate')}</span>
+                        <input type="date" value={form.data.due_date} onChange={(e) => form.setData('due_date', e.target.value)} className={fieldClass} />
+                        {errors.due_date && <span className="mt-1 block text-xs text-danger">{errors.due_date}</span>}
+                    </label>
+                    <label className="block">
+                        <span className="mb-1 block text-xs font-medium text-ink-muted">{t('work.dueTime')}</span>
+                        <input type="time" value={form.data.due_time} disabled={!form.data.due_date} onChange={(e) => form.setData('due_time', e.target.value)} className={fieldClass} />
+                        <span className="mt-1 block text-xs text-ink-faint">{t('work.dueTimeHelp')}</span>
+                        {errors.due_time && <span className="mt-1 block text-xs text-danger">{errors.due_time}</span>}
+                    </label>
+                    <label className="block">
+                        <span className="mb-1 block text-xs font-medium text-ink-muted">{t('work.priority')}</span>
+                        <select value={form.data.priority} onChange={(e) => form.setData('priority', e.target.value as FollowUpPriority)} className={fieldClass}>
+                            <option value="low">{t('work.priorityLow')}</option>
+                            <option value="normal">{t('work.priorityNormal')}</option>
+                            <option value="high">{t('work.priorityHigh')}</option>
+                        </select>
+                    </label>
+                </div>
+                {context.can_manage_all && context.assignees.length > 0 && (
+                    <label className="block">
+                        <span className="mb-1 block text-xs font-medium text-ink-muted">{t('work.assignee')}</span>
+                        <select value={form.data.assigned_user_id} onChange={(e) => form.setData('assigned_user_id', Number(e.target.value))} className={fieldClass}>
+                            {context.assignees.map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}
+                        </select>
+                        {errors.assigned_user_id && <span className="mt-1 block text-xs text-danger">{errors.assigned_user_id}</span>}
+                    </label>
+                )}
+                <label className="block">
+                    <span className="mb-1 block text-xs font-medium text-ink-muted">{t('work.note')}</span>
+                    <textarea rows={3} maxLength={5000} value={form.data.note} onChange={(e) => form.setData('note', e.target.value)} className="w-full rounded-field border border-line-strong bg-surface px-3 py-2 text-sm" />
+                </label>
+                {(errors.customer_id || errors.quotation_id) && <p className="text-xs text-danger">{errors.customer_id ?? errors.quotation_id}</p>}
+            </form>
+        </Dialog>
+    );
+}

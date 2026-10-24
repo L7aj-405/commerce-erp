@@ -14,6 +14,7 @@ use App\Models\SalesOrder;
 use App\Services\ActiveTenantContext;
 use App\Services\CustomerFinancialSummary;
 use App\Services\CustomerManager;
+use App\Services\FollowUps\FollowUpQuery;
 use App\Services\WhatsAppContactLinkResolver;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -48,7 +49,7 @@ class CustomerController extends Controller
      * over payment_allocations, the same pattern FinanceReceivablesService
      * already uses for the exact same "paid so far" question.
      */
-    public function show(Customer $customer, WhatsAppContactLinkResolver $whatsapp, CustomerFinancialSummary $financialSummary): Response
+    public function show(Customer $customer, WhatsAppContactLinkResolver $whatsapp, CustomerFinancialSummary $financialSummary, FollowUpQuery $followUps): Response
     {
         $this->authorize('view', $customer);
         $organizationId = $customer->organization_id;
@@ -95,6 +96,7 @@ class CustomerController extends Controller
                 ->where('organization_id', $organizationId)
                 ->whereHas('salesOrder', fn ($query) => $query->where('customer_id', $customerId))
                 ->count(),
+            'followUps' => $followUps->panel(request()->user(), $customer->organization, 'customer_id', (int) $customerId, ['customer_id' => (int) $customerId, 'quotation_id' => null]),
             'can' => ['update' => request()->user()->can('update', $customer)],
         ]);
     }

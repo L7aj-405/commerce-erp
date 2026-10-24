@@ -21,6 +21,7 @@ use App\Models\Quotation;
 use App\Models\TaxRate;
 use App\Services\ActiveTenantContext;
 use App\Services\DocumentStampRenderer;
+use App\Services\FollowUps\FollowUpQuery;
 use App\Services\OrganizationOutboundMailService;
 use App\Services\ProductPriceResolver;
 use App\Services\QuotationDocumentSettings;
@@ -154,6 +155,7 @@ class QuotationController extends Controller
         OrganizationOutboundMailService $mail,
         DocumentStampRenderer $stampRenderer,
         WhatsAppContactLinkResolver $whatsapp,
+        FollowUpQuery $followUps,
     ): Response
     {
         $this->authorize('view', $quotation);
@@ -214,6 +216,8 @@ class QuotationController extends Controller
             'warehouses' => \App\Models\Warehouse::query()->where('organization_id', $quotation->organization_id)
                 ->where('status', WarehouseStatus::Active->value)->orderBy('name')->get(['id', 'name', 'code']),
             'isPastValidity' => $quotation->isPastValidity(),
+            'followUps' => $followUps->panel($request->user(), $quotation->organization, 'quotation_id', (int) $quotation->getKey(),
+                ['customer_id' => $quotation->customer_id, 'quotation_id' => (int) $quotation->getKey()], (int) $quotation->store_id),
             'isCurrentVersion' => $isCurrentVersion,
             'history' => $history,
             'sharing' => $canShare ? [
