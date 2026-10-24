@@ -2,7 +2,12 @@
 
 namespace App\Services\Mcp;
 
+use App\Enums\CustomerStatus;
+use App\Enums\CustomerType;
+use App\Models\OrganizationContact;
 use App\Services\Documents\DocumentEmailRecipientService;
+use App\Services\Mcp\Parties\CustomerContactTools;
+use App\Services\Mcp\Parties\McpContactChangeService;
 use App\Services\Mcp\Products\McpProductChangeService;
 use App\Services\Mcp\Products\ProductOperationTools;
 use App\Services\Mcp\Products\ProductReadTools;
@@ -29,6 +34,7 @@ final class McpServerFactory
         private readonly SalesOrderTools $salesOrderTools,
         private readonly QuotationLifecycleTools $quotationLifecycleTools,
         private readonly QuotationDocumentTools $quotationDocumentTools,
+        private readonly CustomerContactTools $partyTools,
     ) {}
 
     public function make(): Server
@@ -170,6 +176,7 @@ final class McpServerFactory
         $this->registerProductWriteTools($builder, $readOnly, $outputSchema);
         $this->registerProductOperationTools($builder, $readOnly, $outputSchema);
         $this->registerSalesTools($builder, $readOnly, $outputSchema);
+        $this->registerCustomerContactTools($builder, $readOnly, $outputSchema);
         $this->registerSalesOrderTools($builder, $readOnly, $outputSchema);
         $this->registerQuotationLifecycleTools($builder, $readOnly, $outputSchema);
 
@@ -594,6 +601,168 @@ final class McpServerFactory
                 ],
                 outputSchema: $outputSchema,
             );
+        }
+    }
+
+    /** @param array<string, mixed> $outputSchema */
+    private function registerCustomerContactTools($builder, ToolAnnotations $readOnly, array $outputSchema): void
+    {
+        $id = ['type' => 'integer', 'minimum' => 1];
+        $fingerprint = ['type' => 'string', 'pattern' => '^[0-9a-f]{64}$'];
+        $idempotencyKey = ['type' => 'string', 'minLength' => 1, 'maxLength' => 128];
+        $text = fn (int $max, string $description = '') => ['type' => ['string', 'null'], 'maxLength' => $max, ...($description !== '' ? ['description' => $description] : [])];
+        $mutation = new ToolAnnotations(readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false);
+        $create = new ToolAnnotations(readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false);
+
+        $customerFields = [
+            'type' => ['type' => 'string', 'enum' => array_column(CustomerType::cases(), 'value')],
+            'display_name' => ['type' => 'string', 'minLength' => 1, 'maxLength' => 255, 'description' => 'Name shown on documents (for a company, usually the company name).'],
+            'company_name' => $text(255),
+            'email' => $text(255),
+            'phone' => $text(64),
+            'whatsapp_username' => $text(36, 'WhatsApp username (3-35 of a-z 0-9 . _, not only digits); a leading @ is removed.'),
+            'tax_identifier' => $text(128, 'Tax identifier (ICE).'),
+            'billing_address' => $text(5000),
+            'notes' => $text(5000, 'Internal notes.'),
+            'status' => ['type' => 'string', 'enum' => array_column(CustomerStatus::cases(), 'value'), 'description' => 'Defaults to active on create. "inactive" is how the ERP deactivates a customer (no customer archive exists).'],
+        ];
+        $customerObject = ['type' => 'object', 'properties' => $customerFields, 'additionalProperties' => false];
+
+        $canCreateCustomer = $this->context->allows('customers.create');
+        $canUpdateCustomer = $this->context->allows('customers.update');
+        if ($canCreateCustomer || $canUpdateCustomer) {
+            $builder->addTool([$this->partyTools, 'previewCustomerChanges'],
+                name: 'preview_customer_changes', title: 'Preview customer changes',
+                description: 'Required before create_customer/update_customer. Validates a new customer (omit customer_id; type and display_name are required) or changes to an existing one (customer_id + only the fields to change) with the ERP customer form rules, without saving. '
+                    .'Returns current/proposed values, changed_fields, issues, informational possible_duplicates (same e-mail or name) and a short-lived single-use preview_fingerprint. Creating a customer never creates a contact.',
+                annotations: $readOnly,
+                inputSchema: [
+                    'type' => 'object', 'required' => ['customer'],
+                    'properties' => ['customer_id' => $id, 'customer' => $customerObject],
+                    'additionalProperties' => false,
+                ],
+                outputSchema: $outputSchema);
+        }
+        if ($canCreateCustomer) {
+            $builder->addTool([$this->partyTools, 'createCustomer'],
+                name: 'create_customer', title: 'Create customer',
+                description: 'Create one customer exactly as previewed (same customer object and its preview_fingerprint). Returns the new customer id, usable as customer_id in preview_quotation. Requires an idempotency key: a retry with the same key returns the same customer.',
+                annotations: $create,
+                inputSchema: [
+                    'type' => 'object', 'required' => ['customer', 'preview_fingerprint', 'idempotency_key'],
+                    'properties' => ['customer' => [...$customerObject, 'required' => ['type', 'display_name']], 'preview_fingerprint' => $fingerprint, 'idempotency_key' => $idempotencyKey],
+                    'additionalProperties' => false,
+                ],
+                outputSchema: $outputSchema);
+        }
+        if ($canUpdateCustomer) {
+            $builder->addTool([$this->partyTools, 'updateCustomer'],
+                name: 'update_customer', title: 'Update customer',
+                description: 'Apply previewed changes to a customer (same customer_id and customer object as the preview). Only the given fields change. Rejected when the customer changed since the preview. Existing documents keep their customer snapshot.',
+                annotations: $mutation,
+                inputSchema: [
+                    'type' => 'object', 'required' => ['customer_id', 'customer', 'preview_fingerprint'],
+                    'properties' => ['customer_id' => $id, 'customer' => [...$customerObject, 'minProperties' => 1], 'preview_fingerprint' => $fingerprint],
+                    'additionalProperties' => false,
+                ],
+                outputSchema: $outputSchema);
+        }
+
+        $contactTypes = OrganizationContact::TYPES;
+        if ($this->context->allows('contacts.view')) {
+            $builder->addTool([$this->partyTools, 'searchContacts'],
+                name: 'search_contacts', title: 'Search contacts',
+                description: 'Search the organization address book (contacts are people such as a customer\'s accountant; they are not ERP users and not customers) by name, company, job title, e-mail, phone or WhatsApp. '
+                    .'Filter by contact_type, active, or the linked customer_id/supplier_id. Active first, then name. Use a found contact\'s email/full_name as a recipient in preview_quotation_email.',
+                annotations: $readOnly,
+                inputSchema: [
+                    'type' => 'object',
+                    'properties' => [
+                        'query' => ['type' => 'string', 'maxLength' => 255],
+                        'contact_type' => ['type' => 'string', 'enum' => $contactTypes],
+                        'active' => ['type' => 'boolean'],
+                        'customer_id' => $id,
+                        'supplier_id' => $id,
+                        'page' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 100000, 'default' => 1],
+                        'per_page' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 100, 'default' => 25],
+                    ],
+                    'additionalProperties' => false,
+                ],
+                outputSchema: $outputSchema);
+            $builder->addTool([$this->partyTools, 'getContact'],
+                name: 'get_contact', title: 'Get contact',
+                description: 'Return one organization contact: identity, contact_type, company and job title, e-mail/phone/WhatsApp, linked customer and supplier, notes, active/archived state, other contacts with the same e-mail, and a version token.',
+                annotations: $readOnly,
+                inputSchema: ['type' => 'object', 'required' => ['contact_id'], 'properties' => ['contact_id' => $id], 'additionalProperties' => false],
+                outputSchema: $outputSchema);
+        }
+
+        $contactFields = [
+            'full_name' => ['type' => 'string', 'minLength' => 1, 'maxLength' => 255],
+            'contact_type' => ['type' => 'string', 'enum' => $contactTypes, 'description' => 'client = a customer\'s person, supplier = a supplier\'s person, internal = own staff, other.'],
+            'company_name' => $text(255),
+            'job_title' => $text(255, 'Function, e.g. "Comptable".'),
+            'email' => $text(254),
+            'phone' => $text(64),
+            'whatsapp' => $text(64, 'WhatsApp number.'),
+            'whatsapp_username' => $text(36, 'WhatsApp username (3-35 of a-z 0-9 . _, not only digits); a leading @ is removed.'),
+            'customer_id' => ['type' => ['integer', 'null'], 'minimum' => 1, 'description' => 'Explicit link to a customer of this organization (see search_customers); null unlinks. Never inferred.'],
+            'supplier_id' => ['type' => ['integer', 'null'], 'minimum' => 1, 'description' => 'Explicit link to a supplier of this organization; null unlinks. Never inferred.'],
+            'notes' => $text(5000),
+            'active' => ['type' => 'boolean', 'description' => 'Defaults to true on create.'],
+        ];
+        $contactObject = ['type' => 'object', 'properties' => $contactFields, 'additionalProperties' => false];
+
+        $contactModes = array_keys(array_filter(McpContactChangeService::SCOPES, fn (string $scope) => $this->context->allows($scope)));
+        if ($contactModes !== []) {
+            $builder->addTool([$this->partyTools, 'previewContactChanges'],
+                name: 'preview_contact_changes', title: 'Preview contact changes',
+                description: 'Required before create_contact/update_contact/archive_contact. Only when the user explicitly asks to save/create/change a contact: an ad-hoc e-mail recipient is NOT a reason to create one. '
+                    .'mode create (no contact_id; full_name and contact_type required), update (contact_id + only the fields to change) or archive (contact_id, no contact object); inferred from contact_id when omitted. '
+                    .'Validates with the ERP contact rules (linked customer/supplier must belong to this organization) without saving; returns current/proposed values, changed_fields, issues and a short-lived single-use preview_fingerprint.',
+                annotations: $readOnly,
+                inputSchema: [
+                    'type' => 'object',
+                    'properties' => ['mode' => ['type' => 'string', 'enum' => $contactModes], 'contact_id' => $id, 'contact' => $contactObject],
+                    'additionalProperties' => false,
+                ],
+                outputSchema: $outputSchema);
+        }
+        if ($this->context->allows('contacts.create')) {
+            $builder->addTool([$this->partyTools, 'createContact'],
+                name: 'create_contact', title: 'Create contact',
+                description: 'Create one organization contact exactly as previewed (same contact object and its preview_fingerprint). Creates no customer, supplier or ERP user. Requires an idempotency key: a retry with the same key returns the same contact.',
+                annotations: $create,
+                inputSchema: [
+                    'type' => 'object', 'required' => ['contact', 'preview_fingerprint', 'idempotency_key'],
+                    'properties' => ['contact' => [...$contactObject, 'required' => ['full_name', 'contact_type']], 'preview_fingerprint' => $fingerprint, 'idempotency_key' => $idempotencyKey],
+                    'additionalProperties' => false,
+                ],
+                outputSchema: $outputSchema);
+        }
+        if ($this->context->allows('contacts.update')) {
+            $builder->addTool([$this->partyTools, 'updateContact'],
+                name: 'update_contact', title: 'Update contact',
+                description: 'Apply previewed changes to a contact (same contact_id and contact object as the preview). Only the given fields change. Rejected when the contact changed since the preview.',
+                annotations: $mutation,
+                inputSchema: [
+                    'type' => 'object', 'required' => ['contact_id', 'contact', 'preview_fingerprint'],
+                    'properties' => ['contact_id' => $id, 'contact' => [...$contactObject, 'minProperties' => 1], 'preview_fingerprint' => $fingerprint],
+                    'additionalProperties' => false,
+                ],
+                outputSchema: $outputSchema);
+        }
+        if ($this->context->allows('contacts.archive')) {
+            $builder->addTool([$this->partyTools, 'archiveContact'],
+                name: 'archive_contact', title: 'Archive contact',
+                description: 'Archive a contact with the fingerprint from preview_contact_changes (mode archive): it becomes inactive and is no longer offered as an e-mail recipient. Nothing is deleted. Retrying with the same fingerprint after success returns the archived contact.',
+                annotations: new ToolAnnotations(readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false),
+                inputSchema: [
+                    'type' => 'object', 'required' => ['contact_id', 'preview_fingerprint'],
+                    'properties' => ['contact_id' => $id, 'preview_fingerprint' => $fingerprint],
+                    'additionalProperties' => false,
+                ],
+                outputSchema: $outputSchema);
         }
     }
 

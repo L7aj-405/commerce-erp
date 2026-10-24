@@ -8,7 +8,6 @@ use App\Http\Controllers\Controller;
 use App\Models\Customer;
 use App\Models\OrganizationContact;
 use App\Models\Supplier;
-use App\Rules\ValidWhatsAppUsername;
 use App\Services\ActiveTenantContext;
 use App\Services\WhatsAppContactLinkResolver;
 use Illuminate\Http\JsonResponse;
@@ -157,31 +156,13 @@ class OrganizationContactController extends Controller
     /** @return array<string, mixed> */
     private function rules(int $organizationId): array
     {
-        return [
-            'full_name' => ['required', 'string', 'max:255'],
-            'company_name' => ['nullable', 'string', 'max:255'],
-            'job_title' => ['nullable', 'string', 'max:255'],
-            'email' => ['nullable', 'email:rfc', 'max:254'],
-            'phone' => ['nullable', 'string', 'max:64'],
-            'whatsapp' => ['nullable', 'string', 'max:64'],
-            'whatsapp_username' => ['nullable', 'string', new ValidWhatsAppUsername],
-            'contact_type' => ['required', Rule::in($this->types())],
-            'customer_id' => ['nullable', Rule::exists('customers', 'id')->where('organization_id', $organizationId)],
-            'supplier_id' => ['nullable', Rule::exists('suppliers', 'id')->where('organization_id', $organizationId)],
-            'notes' => ['nullable', 'string', 'max:5000'],
-            'active' => ['sometimes', 'boolean'],
-        ];
+        return SaveOrganizationContactAction::rules($organizationId);
     }
 
     /** @return list<string> */
     private function types(): array
     {
-        return [
-            OrganizationContact::TYPE_CLIENT,
-            OrganizationContact::TYPE_SUPPLIER,
-            OrganizationContact::TYPE_INTERNAL,
-            OrganizationContact::TYPE_OTHER,
-        ];
+        return OrganizationContact::TYPES;
     }
 
     /** @return array<string, mixed> */

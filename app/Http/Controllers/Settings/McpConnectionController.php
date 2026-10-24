@@ -121,7 +121,7 @@ final class McpConnectionController extends Controller
     {
         return $request->validate([
             'name' => ['required', 'string', 'max:100'],
-            'scopes' => ['required', 'array', 'min:1', 'max:25'],
+            'scopes' => ['required', 'array', 'min:1', 'max:50'],
             'scopes.*' => ['required', 'string', 'distinct', Rule::in(array_keys(config('mcp.scopes', [])))],
             'expires_at' => ['nullable', 'date', 'after:now', 'before_or_equal:'.now()->addDays((int) config('mcp.max_expiration_days', 365))->toIso8601String()],
             'organization_id' => ['prohibited'],

@@ -102,7 +102,7 @@ final class McpOAuthAuthorizationController extends Controller
             'organization_id' => ['required', 'integer'],
             'connection_id' => ['nullable', 'string', 'size:26'],
             'connection_name' => ['nullable', 'string', 'max:100'],
-            'scopes' => ['required', 'array', 'min:1', 'max:25'],
+            'scopes' => ['required', 'array', 'min:1', 'max:50'],
             'scopes.*' => ['required', 'string', 'distinct', Rule::in(array_keys(config('mcp.scopes', [])))],
         ]);
 

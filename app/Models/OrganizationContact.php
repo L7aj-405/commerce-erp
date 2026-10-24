@@ -15,6 +15,8 @@ class OrganizationContact extends Model
     public const TYPE_INTERNAL = 'internal';
     public const TYPE_OTHER = 'other';
 
+    public const TYPES = [self::TYPE_CLIENT, self::TYPE_SUPPLIER, self::TYPE_INTERNAL, self::TYPE_OTHER];
+
     protected $guarded = ['*'];
 
     protected function casts(): array

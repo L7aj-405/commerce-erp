@@ -80,6 +80,7 @@ final class CustomerReadService
             'billing_address' => $customer->billing_address,
             'status' => $customer->status->value,
             'can_be_quoted' => $customer->status === CustomerStatus::Active,
+            'version' => $this->version($customer),
             'created_at' => $customer->created_at?->toIso8601String(),
             'updated_at' => $customer->updated_at?->toIso8601String(),
         ];
@@ -104,11 +105,23 @@ final class CustomerReadService
         ];
     }
 
-    private function find(Organization $organization, int $customerId): Customer
+    public function find(Organization $organization, int $customerId, bool $lock = false): Customer
     {
         if ($customerId < 1) throw new InvalidArgumentException('invalid_id');
 
-        return Customer::query()->where('organization_id', $organization->getKey())->whereKey($customerId)->first()
+        return Customer::query()->where('organization_id', $organization->getKey())->whereKey($customerId)
+            ->when($lock, fn ($query) => $query->lockForUpdate())->first()
             ?? throw (new ModelNotFoundException)->setModel(Customer::class, [$customerId]);
+    }
+
+    /** Version token over every editable field (notes included) and the row timestamp. */
+    public function version(Customer $customer): string
+    {
+        $fields = $customer->only(['display_name', 'company_name', 'email', 'phone', 'whatsapp_username', 'tax_identifier', 'billing_address', 'notes']);
+        $fields['type'] = $customer->type?->value;
+        $fields['status'] = $customer->status?->value;
+        ksort($fields);
+
+        return hash('sha256', $customer->getKey().'|'.$customer->updated_at?->format('Y-m-d H:i:s.u').'|'.json_encode($fields, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE));
     }
 }

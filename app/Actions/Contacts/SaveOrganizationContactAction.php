@@ -5,12 +5,38 @@ namespace App\Actions\Contacts;
 use App\Models\Organization;
 use App\Models\OrganizationContact;
 use App\Models\User;
+use App\Rules\ValidWhatsAppUsername;
 use App\Services\AuditLogger;
 use App\Support\WhatsAppUsername;
+use Illuminate\Validation\Rule;
 
 class SaveOrganizationContactAction
 {
     public function __construct(private readonly AuditLogger $audit) {}
+
+    /**
+     * Authoritative contact form rules, shared by the web contact form and MCP.
+     * Linked customers/suppliers must belong to the contact's organization.
+     *
+     * @return array<string, mixed>
+     */
+    public static function rules(int $organizationId): array
+    {
+        return [
+            'full_name' => ['required', 'string', 'max:255'],
+            'company_name' => ['nullable', 'string', 'max:255'],
+            'job_title' => ['nullable', 'string', 'max:255'],
+            'email' => ['nullable', 'email:rfc', 'max:254'],
+            'phone' => ['nullable', 'string', 'max:64'],
+            'whatsapp' => ['nullable', 'string', 'max:64'],
+            'whatsapp_username' => ['nullable', 'string', new ValidWhatsAppUsername],
+            'contact_type' => ['required', Rule::in(OrganizationContact::TYPES)],
+            'customer_id' => ['nullable', Rule::exists('customers', 'id')->where('organization_id', $organizationId)],
+            'supplier_id' => ['nullable', Rule::exists('suppliers', 'id')->where('organization_id', $organizationId)],
+            'notes' => ['nullable', 'string', 'max:5000'],
+            'active' => ['sometimes', 'boolean'],
+        ];
+    }
 
     /** @param array<string, mixed> $data */
     public function execute(User $actor, Organization $organization, array $data, ?OrganizationContact $contact = null): OrganizationContact

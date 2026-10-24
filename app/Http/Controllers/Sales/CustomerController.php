@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Sales;
 
 use App\Enums\CustomerStatus;
-use App\Enums\CustomerType;
 use App\Enums\InvoiceStatus;
 use App\Http\Controllers\Controller;
 use App\Models\Customer;
@@ -12,7 +11,6 @@ use App\Models\Invoice;
 use App\Models\Payment;
 use App\Models\Quotation;
 use App\Models\SalesOrder;
-use App\Rules\ValidWhatsAppUsername;
 use App\Services\ActiveTenantContext;
 use App\Services\CustomerFinancialSummary;
 use App\Services\CustomerManager;
@@ -113,7 +111,7 @@ class CustomerController extends Controller
     {
         $organization = $context->organizationOrFail();
         $this->authorize('create', [Customer::class, $organization]);
-        $customer = $manager->create($request->user(), $organization, $request->validate($this->rules()));
+        $customer = $manager->create($request->user(), $organization, $request->validate(CustomerManager::rules()));
 
         return redirect()->route('sales.customers.show', $customer);
     }
@@ -128,21 +126,8 @@ class CustomerController extends Controller
     public function update(Request $request, Customer $customer, CustomerManager $manager): RedirectResponse
     {
         $this->authorize('update', $customer);
-        $manager->update($request->user(), $customer, $request->validate($this->rules()));
+        $manager->update($request->user(), $customer, $request->validate(CustomerManager::rules()));
 
         return back();
-    }
-
-    /** @return array<string, mixed> */
-    private function rules(): array
-    {
-        return [
-            'type' => ['required', Rule::enum(CustomerType::class)], 'display_name' => ['required', 'string', 'max:255'],
-            'company_name' => ['nullable', 'string', 'max:255'], 'email' => ['nullable', 'email', 'max:255'],
-            'phone' => ['nullable', 'string', 'max:64'], 'tax_identifier' => ['nullable', 'string', 'max:128'],
-            'whatsapp_username' => ['nullable', 'string', new ValidWhatsAppUsername],
-            'billing_address' => ['nullable', 'string', 'max:5000'], 'notes' => ['nullable', 'string', 'max:5000'],
-            'status' => ['required', Rule::enum(CustomerStatus::class)],
-        ];
     }
 }
