@@ -253,7 +253,7 @@ final class McpServerFactory
                 outputSchema: $outputSchema);
             $builder->addTool([$this->quotationDocumentTools, 'sendQuotationEmail'],
                 name: 'send_quotation_email', title: 'Send quotation email',
-                description: 'Send exactly the previewed email (recipient, subject, message, PDF) through the ERP. The fingerprint is single-use and the idempotency key replays the recorded outcome, so a retry never sends twice. Sending is synchronous: "sent" means accepted by the mail server, not delivered.',
+                description: 'Send ONE quotation by email to an external recipient: the exact email previewed by preview_quotation_email (same recipient, subject, message and quotation PDF). Requires that preview\'s single-use preview_fingerprint; nothing can be changed at send time and no other email can be sent. Idempotent per idempotency_key: a retry with the same key returns the recorded outcome and never sends twice. Sending is synchronous: "sent" means accepted by the mail server, not delivered.',
                 annotations: new ToolAnnotations(readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true),
                 inputSchema: $withFingerprint(['idempotency_key' => ['type' => 'string', 'minLength' => 1, 'maxLength' => 128]]),
                 outputSchema: $outputSchema);
