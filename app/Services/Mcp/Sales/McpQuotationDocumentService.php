@@ -95,10 +95,29 @@ final class McpQuotationDocumentService
      |  Email
      * ---------------------------------------------------------------- */
 
-    /** @return array<string, mixed> */
-    public function previewEmail(int $quotationId, string $mode, ?string $email, ?string $subject, ?string $message, bool $includeStamp): array
+    /**
+     * Recipients come either as explicit `to`/`cc`/`bcc` lists or, for older
+     * clients, as `recipient_mode` + `recipient_email` (which only define
+     * `to`). Mixing `to` with the legacy fields is rejected as ambiguous.
+     *
+     * @param  array{to?: mixed, cc?: mixed, bcc?: mixed, recipient_mode?: ?string, recipient_email?: ?string}  $recipients
+     * @return array<string, mixed>
+     */
+    public function previewEmail(int $quotationId, array $recipients, ?string $subject, ?string $message, bool $includeStamp): array
     {
-        if (! in_array($mode, ['customer', 'custom'], true)) throw new InvalidArgumentException('invalid_recipient_mode');
+        $legacyMode = $recipients['recipient_mode'] ?? null;
+        $legacyEmail = $recipients['recipient_email'] ?? null;
+        if (($recipients['to'] ?? null) !== null) {
+            if ($legacyMode !== null || $legacyEmail !== null) throw new InvalidArgumentException('ambiguous_recipients');
+            $mode = 'explicit';
+        } else {
+            $mode = $legacyMode ?? ($legacyEmail !== null ? 'custom' : 'customer');
+            if (! in_array($mode, ['customer', 'custom'], true)) throw new InvalidArgumentException('invalid_recipient_mode');
+            if ($mode === 'customer' && $legacyEmail !== null) throw new InvalidArgumentException('ambiguous_recipients');
+        }
+        foreach (['to', 'cc', 'bcc'] as $bucket) {
+            if (($recipients[$bucket] ?? null) !== null && ! is_array($recipients[$bucket])) throw new InvalidArgumentException('invalid_recipients');
+        }
         if ($subject !== null && mb_strlen($subject) > 255) throw new InvalidArgumentException('subject_too_long');
         if ($message !== null && mb_strlen($message) > 5000) throw new InvalidArgumentException('message_too_long');
         $subject = $subject !== null && trim($subject) !== '' ? trim($subject) : null;
@@ -117,24 +136,20 @@ final class McpQuotationDocumentService
             $issues[] = $this->issue('mail', 'mail_not_configured', 'Outbound email is not configured for this organization (Settings → email).');
         }
 
-        $recipientEmail = $mode === 'customer' ? $quotation->customer_email : $email;
-        $recipient = null;
-        if ($recipientEmail === null || trim($recipientEmail) === '') {
-            $issues[] = $this->issue('recipient', $mode === 'customer' ? 'customer_email_missing' : 'recipient_email_required', $mode === 'customer'
-                ? 'The quotation has no customer email. Use recipient_mode "custom" with recipient_email.'
-                : 'recipient_email is required with recipient_mode "custom".');
-        } else {
-            try {
-                // ERP recipient validation; never saves a contact from MCP.
-                $envelope = $this->recipients->envelope($this->context->user(), $quotation->organization, ['to' => [[
-                    'email' => $recipientEmail,
-                    'name' => $mode === 'customer' ? $quotation->customer_name : null,
-                ]]]);
-                $recipient = $envelope['to'][0];
-            } catch (ValidationException $exception) {
-                $issues[] = $this->issue('recipient', 'invalid_recipient', (string) (collect($exception->errors())->flatten()->first() ?? 'Invalid email.'));
-            }
+        $to = match ($mode) {
+            'explicit' => $recipients['to'],
+            'customer' => filled($quotation->customer_email) ? [['email' => $quotation->customer_email, 'name' => $quotation->customer_name]] : [],
+            'custom' => filled($legacyEmail) ? [['email' => $legacyEmail]] : [],
+        };
+        if ($to === []) {
+            $issues[] = match ($mode) {
+                'customer' => $this->issue('to', 'customer_email_missing', 'The quotation has no customer email. Pass the recipients in "to".'),
+                'custom' => $this->issue('to', 'recipient_email_required', 'recipient_email is required with recipient_mode "custom".'),
+                default => $this->issue('to', 'recipient_required', 'At least one "to" recipient is required.'),
+            };
         }
+        [$envelope, $recipientIssues, $warnings] = $this->envelope($quotation, ['to' => $to, 'cc' => $recipients['cc'] ?? [], 'bcc' => $recipients['bcc'] ?? []], $to !== []);
+        $issues = [...$issues, ...$recipientIssues];
 
         $effectiveSubject = $subject ?? __('documents.email.quotation_subject', ['number' => $quotation->quotation_number], config('documents.locale'));
         $stamp = $this->stampStatus($quotation, $includeStamp);
@@ -160,8 +175,9 @@ final class McpQuotationDocumentService
                 'quotation_id' => $quotationId,
                 'version' => $this->quotations->version($quotation),
                 'required_scopes' => [self::EMAIL_SCOPE],
-                // Exactly what will be sent; execution accepts nothing else.
-                'recipient' => ['email' => $recipient['email'], 'name' => $recipient['name']],
+                // Exactly what will be sent (the whole To/CC/BCC envelope);
+                // execution accepts nothing else.
+                'envelope' => $envelope,
                 'subject' => $subject,
                 'message' => $message,
                 'include_company_stamp' => $includeStamp,
@@ -176,22 +192,79 @@ final class McpQuotationDocumentService
                 'status' => $quotation->status->value, 'customer' => $quotation->customer_name,
                 'total_incl_tax' => (string) $quotation->total_incl_tax, 'currency_code' => $quotation->currency_code,
             ],
-            'recipient_mode' => $mode,
-            'recipient' => $recipient ? ['email' => $recipient['email'], 'name' => $recipient['name']] : null,
+            'recipient_source' => $mode,
+            'to' => $envelope['to'] ?? [],
+            'cc' => $envelope['cc'] ?? [],
+            'bcc' => $envelope['bcc'] ?? [],
             'subject' => $effectiveSubject,
             'message' => $message,
             'body_preview' => $bodyPreview,
             'attachment' => $attachment,
             'company_stamp_applied' => $stamp['applied'],
-            'warnings' => $stamp['warnings'],
+            'warnings' => [...$warnings, ...$stamp['warnings']],
             'delivery' => 'synchronous',
             'valid' => $issues === [],
             'issues' => $issues,
             'required_scopes' => [self::EMAIL_SCOPE],
             'preview_fingerprint' => $fingerprint,
             'expires_at' => $expiresAt,
-            'note' => 'Nothing was sent. send_quotation_email sends exactly this recipient, subject and message.',
+            'note' => 'Nothing was sent. send_quotation_email sends ONE email to exactly these To/CC/BCC recipients with this subject and message.',
         ];
+    }
+
+    /**
+     * Validates each recipient on its own through the ERP envelope rules (so
+     * every bad address gets its own issue), then builds the whole envelope
+     * with the same service the web dialog uses: lowercased emails, first
+     * occurrence kept across to → cc → bcc, at least one `to`, the ERP
+     * recipient limit. Only email + name are passed: MCP never selects or
+     * saves contacts.
+     *
+     * @param  array{to: mixed, cc: mixed, bcc: mixed}  $groups
+     * @return array{0: ?array{to: list<array{email: string, name: ?string}>, cc: list<array{email: string, name: ?string}>, bcc: list<array{email: string, name: ?string}>}, 1: list<array{path: string, code: string, message: string}>, 2: list<array{code: string, message: string}>}
+     */
+    private function envelope(Quotation $quotation, array $groups, bool $build): array
+    {
+        $issues = [];
+        $warnings = [];
+        $payload = ['to' => [], 'cc' => [], 'bcc' => []];
+        $seen = [];
+
+        foreach (['to', 'cc', 'bcc'] as $bucket) {
+            foreach (array_values(is_array($groups[$bucket]) ? $groups[$bucket] : []) as $index => $entry) {
+                $path = "{$bucket}[{$index}]";
+                $recipient = [
+                    'email' => is_array($entry) && is_string($entry['email'] ?? null) ? trim($entry['email']) : null,
+                    'name' => is_array($entry) && is_string($entry['name'] ?? null) ? trim($entry['name']) : null,
+                ];
+                try {
+                    $normalized = $this->recipients->envelope($this->context->user(), $quotation->organization, ['to' => [$recipient]])['to'][0];
+                } catch (ValidationException $exception) {
+                    $issues[] = $this->issue($path, 'invalid_recipient', (string) (collect($exception->errors())->flatten()->first() ?? 'Adresse email invalide.'));
+
+                    continue;
+                }
+                if (isset($seen[$normalized['email']])) {
+                    $warnings[] = ['code' => 'duplicate_recipient_removed', 'message' => "{$normalized['email']} ({$path}) is already listed at {$seen[$normalized['email']]}; it receives the email once."];
+                } else {
+                    $seen[$normalized['email']] = $path;
+                }
+                $payload[$bucket][] = $recipient;
+            }
+        }
+
+        if (! $build || $issues !== []) {
+            return [null, $issues, $warnings];
+        }
+
+        try {
+            $envelope = $this->recipients->envelope($this->context->user(), $quotation->organization, $payload);
+        } catch (ValidationException $exception) {
+            return [null, [...$issues, $this->issue('to', 'too_many_recipients', (string) (collect($exception->errors())->flatten()->first() ?? 'Too many recipients.'))], $warnings];
+        }
+        $strip = fn (array $list) => array_map(fn (array $r) => ['email' => $r['email'], 'name' => $r['name']], $list);
+
+        return [['to' => $strip($envelope['to']), 'cc' => $strip($envelope['cc']), 'bcc' => $strip($envelope['bcc'])], $issues, $warnings];
     }
 
     /**
@@ -210,7 +283,8 @@ final class McpQuotationDocumentService
             || ! hash_equals((string) ($stored['connection_id'] ?? ''), (string) $this->context->connectionOrFail()->getKey())
             || (int) ($stored['user_id'] ?? 0) !== (int) $this->context->user()->getKey()
             || (int) ($stored['quotation_id'] ?? 0) !== $quotationId
-            || ($stored['required_scopes'] ?? null) !== [self::EMAIL_SCOPE]) {
+            || ($stored['required_scopes'] ?? null) !== [self::EMAIL_SCOPE]
+            || ! is_array($stored['envelope'] ?? null) || ($stored['envelope']['to'] ?? []) === []) {
             throw new InvalidArgumentException('stale_or_invalid_preview');
         }
 
@@ -229,7 +303,9 @@ final class McpQuotationDocumentService
         $result = [
             'quotation_id' => $quotation->getKey(),
             'quotation_number' => $quotation->quotation_number,
-            'recipient' => $stored['recipient'],
+            'to' => $stored['envelope']['to'],
+            'cc' => $stored['envelope']['cc'],
+            'bcc' => $stored['envelope']['bcc'],
             'subject' => $stored['subject'] ?? __('documents.email.quotation_subject', ['number' => $quotation->quotation_number], config('documents.locale')),
             'company_stamp_applied' => $stored['company_stamp_applied'],
         ];
@@ -238,7 +314,8 @@ final class McpQuotationDocumentService
             $this->sendAction->execute(
                 $this->context->user(),
                 $quotation,
-                ['to' => [['email' => $stored['recipient']['email'], 'name' => $stored['recipient']['name']]]],
+                // One email to the whole frozen envelope (one ERP delivery record).
+                ['to' => $stored['envelope']['to'], 'cc' => $stored['envelope']['cc'], 'bcc' => $stored['envelope']['bcc']],
                 $stored['subject'],
                 $stored['message'],
             );

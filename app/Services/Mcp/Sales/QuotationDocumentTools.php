@@ -43,20 +43,27 @@ final class QuotationDocumentTools
 
     public function previewQuotationEmail(
         int $quotation_id,
-        string $recipient_mode = 'customer',
+        ?array $to = null,
+        ?array $cc = null,
+        ?array $bcc = null,
+        ?string $recipient_mode = null,
         ?string $recipient_email = null,
         ?string $subject = null,
         ?string $message = null,
         bool $include_company_stamp = false,
     ): CallToolResult {
-        return $this->execute('preview_quotation_email', function () use ($quotation_id, $recipient_mode, $recipient_email, $subject, $message, $include_company_stamp) {
+        return $this->execute('preview_quotation_email', function () use ($quotation_id, $to, $cc, $bcc, $recipient_mode, $recipient_email, $subject, $message, $include_company_stamp) {
             $this->context->authorize(McpQuotationDocumentService::EMAIL_SCOPE);
             if ($quotation_id < 1) throw new InvalidArgumentException('invalid_id');
-            $preview = $this->documents->previewEmail($quotation_id, $recipient_mode, $recipient_email, $subject, $message, $include_company_stamp);
-            // Compact: recipient domain only, never the body.
+            $preview = $this->documents->previewEmail($quotation_id, [
+                'to' => $to, 'cc' => $cc, 'bcc' => $bcc, 'recipient_mode' => $recipient_mode, 'recipient_email' => $recipient_email,
+            ], $subject, $message, $include_company_stamp);
+            $recipients = [...$preview['to'], ...$preview['cc'], ...$preview['bcc']];
+            // Compact: recipient counts and domains only, never addresses or the body.
             $this->audit->record(event: 'mcp.quotation_email.previewed', actor: $this->context->user(), organization: $this->context->organization(), newValues: [
-                'quotation_id' => $quotation_id, 'recipient_mode' => $recipient_mode,
-                'recipient_domain' => isset($preview['recipient']['email']) ? substr(strrchr($preview['recipient']['email'], '@') ?: '', 1) : null,
+                'quotation_id' => $quotation_id, 'recipient_source' => $preview['recipient_source'],
+                'recipient_counts' => ['to' => count($preview['to']), 'cc' => count($preview['cc']), 'bcc' => count($preview['bcc'])],
+                'recipient_domains' => array_values(array_unique(array_map(fn (array $r) => substr(strrchr($r['email'], '@') ?: '', 1), $recipients))),
                 'custom_subject' => $subject !== null, 'custom_message' => $message !== null,
                 'valid' => $preview['valid'], 'issue_codes' => array_values(array_unique(array_column($preview['issues'], 'code'))),
             ]);
@@ -110,6 +117,7 @@ final class QuotationDocumentTools
                 'stale_or_invalid_preview' => ['MCP_PREVIEW_STALE', 'The email preview is missing, expired, already used, or the quotation changed. Preview again.'],
                 'idempotency_key_payload_mismatch' => ['MCP_IDEMPOTENCY_CONFLICT', 'The idempotency key was already used with a different request.'],
                 'document_unavailable' => ['MCP_DOCUMENT_UNAVAILABLE', 'The quotation document could not be rendered right now.'],
+                'ambiguous_recipients' => ['MCP_INVALID_ARGUMENTS', 'Use either "to" (with optional "cc"/"bcc") or the legacy recipient_mode/recipient_email, not both; recipient_mode "customer" takes no recipient_email.'],
                 default => ['MCP_INVALID_ARGUMENTS', 'The supplied tool arguments are invalid.'],
             };
 

@@ -2,6 +2,7 @@
 
 namespace App\Services\Mcp;
 
+use App\Services\Documents\DocumentEmailRecipientService;
 use App\Services\Mcp\Products\McpProductChangeService;
 use App\Services\Mcp\Products\ProductOperationTools;
 use App\Services\Mcp\Products\ProductReadTools;
@@ -234,16 +235,28 @@ final class McpServerFactory
         }
 
         if ($this->context->allows(McpQuotationDocumentService::EMAIL_SCOPE)) {
+            $recipientLimit = (int) config('documents.email_recipient_limit', DocumentEmailRecipientService::DEFAULT_LIMIT);
+            $recipientList = fn (int $minItems) => [
+                'type' => 'array', 'minItems' => $minItems, 'maxItems' => $recipientLimit,
+                'items' => [
+                    'type' => 'object', 'required' => ['email'],
+                    'properties' => ['email' => ['type' => 'string', 'maxLength' => 254], 'name' => ['type' => 'string', 'maxLength' => 255]],
+                    'additionalProperties' => false,
+                ],
+            ];
             $builder->addTool([$this->quotationDocumentTools, 'previewQuotationEmail'],
                 name: 'preview_quotation_email', title: 'Preview quotation email',
-                description: 'Required before send_quotation_email. Validates an email of an ISSUED quotation (recipient, subject, message, PDF attachment, mail configuration) with the ERP rules and template, without sending. recipient_mode "customer" uses the quotation\'s customer email; "custom" needs recipient_email.',
+                description: "Required before send_quotation_email. Validates ONE email of an ISSUED quotation to one or more recipients (to, cc, bcc: one {email, name?} object per address, never several addresses in one string), plus subject, message, PDF attachment and mail configuration, with the ERP rules and template, without sending. Duplicates are sent once (first occurrence kept, to → cc → bcc); at most {$recipientLimit} recipients in total. Without \"to\", the legacy recipient_mode/recipient_email define the To recipient (\"customer\", the default, uses the quotation's customer email); do not combine them with \"to\". Never saves contacts.",
                 annotations: $readOnly,
                 inputSchema: [
                     'type' => 'object', 'required' => ['quotation_id'],
                     'properties' => [
                         'quotation_id' => ['type' => 'integer', 'minimum' => 1],
-                        'recipient_mode' => ['type' => 'string', 'enum' => ['customer', 'custom'], 'default' => 'customer'],
-                        'recipient_email' => ['type' => 'string', 'maxLength' => 254],
+                        'to' => $recipientList(1),
+                        'cc' => $recipientList(0),
+                        'bcc' => $recipientList(0),
+                        'recipient_mode' => ['type' => 'string', 'enum' => ['customer', 'custom'], 'description' => 'Legacy single recipient; use "to" instead.'],
+                        'recipient_email' => ['type' => 'string', 'maxLength' => 254, 'description' => 'Legacy single recipient; use "to" instead.'],
                         'subject' => ['type' => 'string', 'maxLength' => 255],
                         'message' => ['type' => 'string', 'maxLength' => 5000],
                         'include_company_stamp' => ['type' => 'boolean', 'default' => false],
@@ -253,8 +266,8 @@ final class McpServerFactory
                 outputSchema: $outputSchema);
             $builder->addTool([$this->quotationDocumentTools, 'sendQuotationEmail'],
                 name: 'send_quotation_email', title: 'Send quotation email',
-                description: 'Send ONE quotation by email to an external recipient: the exact email previewed by preview_quotation_email (same recipient, subject, message and quotation PDF). Requires that preview\'s single-use preview_fingerprint; nothing can be changed at send time and no other email can be sent. Idempotent per idempotency_key: a retry with the same key returns the recorded outcome and never sends twice. Sending is synchronous: "sent" means accepted by the mail server, not delivered.',
-                annotations: new ToolAnnotations(readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true),
+                description: 'Send ONE quotation email to external recipients: the exact email previewed by preview_quotation_email (same To/CC/BCC recipients, subject, message and quotation PDF), as a single message. Requires that preview\'s single-use preview_fingerprint; nothing can be changed at send time and no other email can be sent. Idempotent per idempotency_key: a retry with the same key returns the recorded outcome and never sends twice. Sending is synchronous: "sent" means accepted by the mail server, not delivered.',
+                annotations: new ToolAnnotations(readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: true),
                 inputSchema: $withFingerprint(['idempotency_key' => ['type' => 'string', 'minLength' => 1, 'maxLength' => 128]]),
                 outputSchema: $outputSchema);
         }
