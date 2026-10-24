@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\BusinessTime;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -21,6 +22,23 @@ class Organization extends Model
         return [
             'settings' => 'array',
         ];
+    }
+
+    /**
+     * The canonical organization business timezone (IANA), stored in
+     * settings['timezone']. UTC until explicitly configured; never inferred.
+     */
+    public function businessTimezone(): string
+    {
+        $timezone = data_get($this->settings, 'timezone');
+
+        return BusinessTime::isValidTimezone($timezone) ? $timezone : BusinessTime::DEFAULT_TIMEZONE;
+    }
+
+    /** Whether an administrator has explicitly configured a valid business timezone. */
+    public function hasConfiguredTimezone(): bool
+    {
+        return BusinessTime::isValidTimezone(data_get($this->settings, 'timezone'));
     }
 
     public function owner(): BelongsTo

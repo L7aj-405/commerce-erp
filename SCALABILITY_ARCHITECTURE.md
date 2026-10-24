@@ -268,13 +268,33 @@ Rules for code written today:
 
 - Storage timestamps stay canonical **UTC** (`config('app.timezone') = 'UTC'`).
 - Business concepts — *today, tomorrow, overdue, due date, reminder, business
-  day, validity date* — must eventually use an **explicit organization
-  timezone**. Never infer a timezone silently.
-- Clients (web, MCP, desktop) send explicit normalized values: a date
-  (`YYYY-MM-DD`), or a datetime with an explicit offset.
-- The ERP currently has **no organization or user timezone** (only
-  `organization_backup_settings.timezone`). An organization timezone setting
-  is a **prerequisite for the Work Center / Follow-up system**.
+  day, validity date* — use the **explicit organization timezone**. Never
+  infer a timezone (browser, IP, server, language, country).
+- **Implemented (TIME-1):** the organization business timezone is an IANA
+  identifier stored in `organizations.settings['timezone']`, set from
+  Settings → Company (`UpdateOrganizationTimezoneAction`, permission
+  `settings.update`, audited as `organization.settings_changed`). It resolves
+  to **UTC until explicitly configured**.
+  - The only resolver: `Organization::businessTimezone()` (and
+    `hasConfiguredTimezone()`). Never write `$org->settings['timezone'] ?? 'UTC'`.
+  - Validation: `App\Support\BusinessTime::rules()` (`timezone:all`).
+  - Helpers: `BusinessTime::now()`, `today()`, `isBeforeToday()`,
+    `localToUtc()`, `toLocal()`.
+  - Persist: organization-local input → `localToUtc()` → store UTC. Display:
+    stored UTC → `toLocal()`. DATE columns stay calendar dates and are
+    compared as `Y-m-d` against `BusinessTime::today()`, never shifted.
+  - Quotation validity (`Quotation::isPastValidity()`, issue check, list
+    validity filter) already uses it. Other `now()`/`today()` business-date
+    code still uses UTC and moves over feature by feature.
+- **Transport contract (Work Center / follow-ups, MCP, API):** accept either
+  (A) `due_date` `YYYY-MM-DD` with optional `due_time` `HH:MM`, interpreted
+  in the organization timezone, or (B) an ISO 8601 datetime **with an explicit
+  offset**. Reject bare datetimes without an offset. Clients interpret
+  "Monday / tomorrow / in three days" themselves and send normalized values.
+  The business timezone always comes from the server-resolved organization; a
+  client offset only describes that input instant and never overrides it.
+- The timezone is not cached; if it ever is, the key must include the
+  organization id and be invalidated by the update action.
 
 ---
 
@@ -367,5 +387,5 @@ Required-before: `NOW` · `2 APP NODES` · `LARGE SCALE` · `DESKTOP OFFLINE` ·
 | 12 | Heavy exports (Finance ZIP packages, Excel) are built synchronously in the HTTP request in node-local temp. | `app/Services/Finance/Export/*` | LARGE SCALE | P2 |
 | 13 | Document emails are sent synchronously in the request (no queue); MCP has a claim key, web relies on user behaviour. | `SendQuotationEmailAction`, `SendInvoiceEmailAction`, `SendDeliveryNoteEmailAction` | LARGE SCALE | P2 |
 | 14 | Personal-cloud backup upload retry after a partial upload may create a duplicate remote file. | `SyncOrganizationBackupToPersonalCloudJob` | LATER | P2 |
-| 15 | No organization timezone; "today/expired" comparisons use UTC. | `config/app.php`, `Quotation::isPastValidity` | NOW (before Follow-ups) | P1 |
+| 15 | ~~No organization timezone~~ — **resolved in TIME-1** (see §11). Remaining: other business-date defaults (`quotation_date`, sale/payment/invoice dates, Finance "today"/month, commission periods, dashboard "today") still use UTC `now()`. | see §11 | LATER (per feature) | P2 |
 | 16 | Client operation ids exist only for POS/sales/payments/returns; quotations, customers, contacts have none; no device id / sync cursor. | migrations | DESKTOP OFFLINE | P2 |

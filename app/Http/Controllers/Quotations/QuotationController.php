@@ -25,6 +25,7 @@ use App\Services\OrganizationOutboundMailService;
 use App\Services\ProductPriceResolver;
 use App\Services\QuotationDocumentSettings;
 use App\Services\WhatsAppContactLinkResolver;
+use App\Support\BusinessTime;
 use App\Support\Decimal;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -58,8 +59,8 @@ class QuotationController extends Controller
                 ->orWhere('customer_email', 'like', "%{$s}%")))
             ->when($filters['status'] ?? null, fn ($q, string $s) => $q->where('status', $s))
             ->when($filters['quotation_date'] ?? null, fn ($q, string $d) => $q->whereDate('quotation_date', $d))
-            ->when(($filters['validity'] ?? null) === 'expired', fn ($q) => $q->whereNotNull('valid_until')->whereDate('valid_until', '<', now()->toDateString()))
-            ->when(($filters['validity'] ?? null) === 'valid', fn ($q) => $q->where(fn ($q) => $q->whereNull('valid_until')->orWhereDate('valid_until', '>=', now()->toDateString())))
+            ->when(($filters['validity'] ?? null) === 'expired', fn ($q) => $q->whereNotNull('valid_until')->whereDate('valid_until', '<', BusinessTime::today($organization)))
+            ->when(($filters['validity'] ?? null) === 'valid', fn ($q) => $q->where(fn ($q) => $q->whereNull('valid_until')->orWhereDate('valid_until', '>=', BusinessTime::today($organization))))
             ->with(['createdBy:id,name'])
             ->latest('quotation_date')->latest('id')->paginate(20)->withQueryString();
 

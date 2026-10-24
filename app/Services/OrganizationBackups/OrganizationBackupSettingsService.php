@@ -30,9 +30,6 @@ class OrganizationBackupSettingsService
 
     public function organizationTimezone(Organization $organization): string
     {
-        $settings = is_array($organization->settings) ? $organization->settings : [];
-        $timezone = $settings['timezone'] ?? config('app.timezone', 'UTC');
-
-        return in_array($timezone, timezone_identifiers_list(), true) ? $timezone : 'UTC';
+        return $organization->businessTimezone();
     }
 }

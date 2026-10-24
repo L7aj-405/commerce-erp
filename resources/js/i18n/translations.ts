@@ -2873,6 +2873,13 @@ export const fr = {
         "Indiquez le prochain numéro de facture à utiliser pour cette année. Exemple : si la dernière facture existante est 20/2026, saisissez 21.",
     "docProfile.lastAllocatedInvoice":
         "Dernier numéro déjà attribué par l’ERP pour {year} : {number}/{year}.",
+    "orgTimezone.title": "Fuseau horaire de l’organisation",
+    "orgTimezone.help":
+        "Utilisé pour les notions métier « aujourd’hui », « en retard » et « échéance » (validité des devis, futurs rappels). Les dates enregistrées restent en UTC.",
+    "orgTimezone.label": "Fuseau horaire (IANA)",
+    "orgTimezone.notConfigured":
+        "Aucun fuseau horaire n’est configuré : l’ERP utilise UTC. Choisissez explicitement le fuseau de l’organisation.",
+    "orgTimezone.localTime": "Heure actuelle dans ce fuseau : {time}",
     "quotationSettings.headTitle": "Paramètres · Devis",
     "quotationSettings.title": "Documents · Devis",
     "quotationSettings.description":
@@ -6371,6 +6378,13 @@ export const ar: Record<TranslationKey, string> = {
         "أدخل رقم الفاتورة التالي لهذه السنة. مثال: إذا كانت آخر فاتورة 20/2026 فأدخل 21.",
     "docProfile.lastAllocatedInvoice":
         "آخر رقم خصصه ERP لسنة {year}: {number}/{year}.",
+    "orgTimezone.title": "المنطقة الزمنية للمؤسسة",
+    "orgTimezone.help":
+        "تُستخدم لمفاهيم العمل مثل «اليوم» و«متأخر» و«تاريخ الاستحقاق» (صلاحية عروض الأسعار والتذكيرات المستقبلية). تبقى التواريخ المخزنة بتوقيت UTC.",
+    "orgTimezone.label": "المنطقة الزمنية (IANA)",
+    "orgTimezone.notConfigured":
+        "لم يتم ضبط أي منطقة زمنية: يستخدم ERP توقيت UTC. اختر المنطقة الزمنية للمؤسسة صراحةً.",
+    "orgTimezone.localTime": "الوقت الحالي في هذه المنطقة: {time}",
     "quotationSettings.headTitle": "إعدادات · عرض السعر",
     "quotationSettings.title": "المستندات · عرض السعر",
     "quotationSettings.description":

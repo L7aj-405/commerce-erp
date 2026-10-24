@@ -96,6 +96,7 @@ use App\Http\Controllers\Settings\PasswordController;
 use App\Http\Controllers\Settings\ProfileController;
 use App\Http\Controllers\Settings\TwoFactorAuthenticationController;
 use App\Http\Controllers\Settings\TrustedTwoFactorDeviceController;
+use App\Http\Controllers\Settings\OrganizationTimezoneController;
 use App\Http\Controllers\Settings\ReturnPolicyController;
 use App\Http\Controllers\StoreController;
 use App\Http\Controllers\StoreMembershipController;
@@ -223,6 +224,7 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
     Route::delete('/contacts/{contact}', [OrganizationContactController::class, 'destroy'])->name('contacts.destroy');
     Route::get('/document-profile', [DocumentProfileController::class, 'edit'])->name('document-profile.edit');
     Route::put('/document-profile', [DocumentProfileController::class, 'update'])->name('document-profile.update');
+    Route::put('/organization-timezone', [OrganizationTimezoneController::class, 'update'])->name('organization-timezone.update');
     Route::get('/document-profile/studio', [DocumentTemplateStudioController::class, 'edit'])->name('document-profile.studio.edit');
     Route::post('/document-profile/studio/preview', [DocumentTemplateStudioController::class, 'preview'])
         ->middleware('throttle:20,1')
