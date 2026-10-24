@@ -36,10 +36,14 @@ class SecurityHeaders
             'DENY'
         );
 
-        $response->headers->set(
-            'Referrer-Policy',
-            'strict-origin-when-cross-origin'
-        );
+        // A stricter policy set by the response itself (e.g. no-referrer on
+        // signed MCP document links) is kept.
+        if (! $response->headers->has('Referrer-Policy')) {
+            $response->headers->set(
+                'Referrer-Policy',
+                'strict-origin-when-cross-origin'
+            );
+        }
 
         $response->headers->set(
             'Permissions-Policy',

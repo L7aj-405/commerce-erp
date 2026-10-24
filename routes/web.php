@@ -90,6 +90,7 @@ use App\Http\Controllers\Settings\OrganizationBackupCloudController;
 use App\Http\Controllers\Settings\OrganizationDataResetController;
 use App\Http\Controllers\Settings\McpConnectionController;
 use App\Http\Controllers\Mcp\McpQuotationDocumentController;
+use App\Http\Middleware\ValidateMcpDocumentSignature;
 use App\Http\Controllers\Mcp\OAuth\McpOAuthAuthorizationController;
 use App\Http\Controllers\Settings\PasswordController;
 use App\Http\Controllers\Settings\ProfileController;
@@ -720,10 +721,11 @@ Route::get('/invoices/{invoice}/shared-pdf', [DocumentRenderingController::class
     ->name('invoices.shared-pdf');
 
 // MCP-8: short-lived signed PDF link for MCP clients (connection-bound; the
-// connection, scope and permission are re-checked by the controller).
+// connection, scope and permission are re-checked by the controller). The
+// signature ignores client-added tracking parameters (see the middleware).
 Route::get('/mcp/documents/quotations/{quotation}', McpQuotationDocumentController::class)
     ->whereNumber('quotation')
-    ->middleware(['signed', 'throttle:30,1'])
+    ->middleware([ValidateMcpDocumentSignature::class, 'throttle:30,1'])
     ->name('mcp.documents.quotation');
 
 // Public, signature-gated read of one issued Devis PDF (WhatsApp / email sharing).
