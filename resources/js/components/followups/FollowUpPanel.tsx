@@ -4,12 +4,14 @@ import { Link } from '@inertiajs/react';
 import { useState } from 'react';
 import FollowUpFormDialog from './FollowUpFormDialog';
 import FollowUpList from './FollowUpList';
+import RecurringFormDialog from './RecurringFormDialog';
 import type { FollowUpPanelData } from './types';
 
 /** Minimal follow-up section for customer / quotation detail pages (open first, then recent). */
 export default function FollowUpPanel({ panel }: { panel: FollowUpPanelData }) {
     const { t } = useI18n();
     const [creating, setCreating] = useState(false);
+    const [creatingRecurring, setCreatingRecurring] = useState(false);
     if (!panel) return null;
 
     return (
@@ -21,6 +23,7 @@ export default function FollowUpPanel({ panel }: { panel: FollowUpPanelData }) {
                 </div>
                 <div className="flex gap-2">
                     <Link href="/work" className="inline-flex min-h-8 items-center rounded-field px-3 text-xs font-medium text-ink-muted transition-soft hover:bg-sage hover:text-ink">{t('work.openMyWork')}</Link>
+                    {panel.context.can_create && <Button size="sm" variant="secondary" onClick={() => setCreatingRecurring(true)}>{t('work.recNewFromContext')}</Button>}
                     {panel.context.can_create && <Button size="sm" onClick={() => setCreating(true)}>+ {t('work.new')}</Button>}
                 </div>
             </div>
@@ -30,6 +33,10 @@ export default function FollowUpPanel({ panel }: { panel: FollowUpPanelData }) {
                 <FollowUpList items={panel.items} context={panel.context} showAssignee={panel.context.can_manage_all} />
             )}
             {creating && <FollowUpFormDialog open onClose={() => setCreating(false)} context={panel.context} prefill={panel.prefill} />}
+            {creatingRecurring && (
+                <RecurringFormDialog open onClose={() => setCreatingRecurring(false)} context={panel.context}
+                    link={{ ...panel.prefill, customer_name: panel.prefill_labels.customer, quotation_number: panel.prefill_labels.quotation }} />
+            )}
         </section>
     );
 }

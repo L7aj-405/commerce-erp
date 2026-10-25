@@ -174,7 +174,20 @@ class FollowUpQuery
             'items' => $this->linked($user, $organization, $column, $id),
             'context' => $this->formContext($user, $organization, $storeId),
             'prefill' => $prefill,
+            // W3.1: display-only labels for the prefilled links (the ids are revalidated server-side on save).
+            'prefill_labels' => $this->prefillLabels($user, $organization, $prefill),
         ];
+    }
+
+    /** @param array<string, int|null> $prefill @return array{customer: string|null, quotation: string|null} */
+    private function prefillLabels(User $user, Organization $organization, array $prefill): array
+    {
+        $customer = ($prefill['customer_id'] ?? null) && $this->access->allows($user, $organization, 'customers.view')
+            ? Customer::query()->where('organization_id', $organization->getKey())->whereKey($prefill['customer_id'])->value('display_name') : null;
+        $quotation = ($prefill['quotation_id'] ?? null) && $this->access->allows($user, $organization, 'quotations.view')
+            ? Quotation::query()->where('organization_id', $organization->getKey())->whereKey($prefill['quotation_id'])->value('quotation_number') : null;
+
+        return ['customer' => $customer, 'quotation' => $quotation];
     }
 
     /** Recent follow-ups linked to a customer or quotation, for detail-page panels. @return list<array<string, mixed>> */

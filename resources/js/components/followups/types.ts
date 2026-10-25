@@ -85,6 +85,8 @@ export type FollowUpPanelData = {
     items: FollowUpItem[];
     context: FollowUpContext;
     prefill: { customer_id: number | null; quotation_id: number | null };
+    /** W3.1: display labels for the prefilled links (server-resolved). */
+    prefill_labels: { customer: string | null; quotation: string | null };
 } | null;
 
 /** Calendar arithmetic on YYYY-MM-DD strings, independent of the browser timezone. */

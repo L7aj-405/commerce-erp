@@ -21,11 +21,16 @@ type FormData = {
     starts_on: string;
     ends_on: string;
     max_occurrences: number | '';
+    customer_id: number | null;
+    quotation_id: number | null;
     expected_version?: number;
 };
 
+/** Context link shown read-only; the store always derives server-side from the quotation. */
+export type RecurringLink = { customer_id: number | null; quotation_id: number | null; customer_name: string | null; quotation_number: string | null };
+
 /** Create or edit a recurring rule. Dates/times are organization-local; edits apply to future occurrences only. */
-export default function RecurringFormDialog({ open, onClose, context, rule }: { open: boolean; onClose: () => void; context: FollowUpContext; rule?: RecurringRule | null }) {
+export default function RecurringFormDialog({ open, onClose, context, rule, link }: { open: boolean; onClose: () => void; context: FollowUpContext; rule?: RecurringRule | null; link?: RecurringLink }) {
     const { t, locale } = useI18n();
     const editing = Boolean(rule);
     const form = useForm<FormData>({
@@ -41,8 +46,15 @@ export default function RecurringFormDialog({ open, onClose, context, rule }: { 
         starts_on: rule?.starts_on ?? context.today,
         ends_on: rule?.ends_on ?? '',
         max_occurrences: rule?.max_occurrences ?? '',
+        customer_id: rule ? rule.customer?.id ?? null : link?.customer_id ?? null,
+        quotation_id: rule ? rule.quotation?.id ?? null : link?.quotation_id ?? null,
         ...(rule ? { expected_version: rule.version } : {}),
     });
+    const linkLabels = rule
+        ? { customer: rule.customer?.name ?? null, quotation: rule.quotation ? rule.quotation.number ?? t('work.draftQuotation') : null }
+        : { customer: link?.customer_name ?? null, quotation: link?.quotation_id ? link.quotation_number ?? t('work.draftQuotation') : null };
+    const hadLink = Boolean(rule ? rule.customer || rule.quotation : link?.customer_id || link?.quotation_id);
+    const linked = form.data.customer_id !== null || form.data.quotation_id !== null;
 
     const toggleDay = (day: number) => form.setData('weekdays', form.data.weekdays.includes(day) ? form.data.weekdays.filter((d) => d !== day) : [...form.data.weekdays, day].sort());
 
@@ -60,6 +72,11 @@ export default function RecurringFormDialog({ open, onClose, context, rule }: { 
                 max_occurrences: blank(data.max_occurrences),
             };
             if (!context.can_manage_all) delete payload.assigned_user_id;
+            // Links are sent on create, or on edit only when removed; the server revalidates them.
+            if (rule && linked) {
+                delete payload.customer_id;
+                delete payload.quotation_id;
+            }
             return payload;
         });
         const options = { preserveScroll: true, onSuccess: () => { form.reset(); onClose(); } };
@@ -85,6 +102,18 @@ export default function RecurringFormDialog({ open, onClose, context, rule }: { 
         >
             <form id="recurring-form" onSubmit={submit} className="space-y-4 px-4 py-4 sm:px-6">
                 {(errors.version || errors.status) && <p className="rounded-field border border-danger/30 bg-danger-soft px-3 py-2 text-sm text-danger">{errors.version ?? errors.status}</p>}
+                {hadLink && (
+                    <div className="flex flex-wrap items-center justify-between gap-2 rounded-field border border-line bg-raised px-3 py-2 text-sm">
+                        {linked ? (
+                            <span className="flex flex-wrap gap-x-3 text-ink">
+                                {linkLabels.customer && <span>{t('work.recLinkCustomer').replace('{name}', linkLabels.customer)}</span>}
+                                {linkLabels.quotation && <span>{t('work.recLinkQuotation')} <span dir="ltr">{linkLabels.quotation}</span></span>}
+                                {form.data.quotation_id !== null && <span className="text-xs text-ink-faint">{t('work.recLinkStoreDerived')}</span>}
+                            </span>
+                        ) : <span className="text-ink-muted">{t('work.recLinkRemoved')}</span>}
+                        {linked && <button type="button" onClick={() => form.setData((data) => ({ ...data, customer_id: null, quotation_id: null }))} className="text-xs font-medium text-primary hover:underline">{t('work.recLinkRemove')}</button>}
+                    </div>
+                )}
                 <label className="block">
                     <span className="mb-1 block text-xs font-medium text-ink-muted">{t('work.titleLabel')}</span>
                     <input data-autofocus required maxLength={200} value={form.data.title} onChange={(e) => form.setData('title', e.target.value)} className={fieldClass} />
