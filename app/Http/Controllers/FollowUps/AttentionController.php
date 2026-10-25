@@ -5,12 +5,13 @@ namespace App\Http\Controllers\FollowUps;
 use App\Actions\Attention\HandleAttentionItemAction;
 use App\Http\Controllers\Controller;
 use App\Models\AttentionItem;
+use App\Models\Organization;
 use App\Services\ActiveTenantContext;
 use App\Services\Attention\AttentionOwnership;
 use App\Services\Attention\AttentionQuery;
 use App\Services\FollowUps\FollowUpAccess;
 use App\Services\FollowUps\FollowUpQuery;
-use App\Services\FollowUps\QuotationOpener;
+use App\Services\FollowUps\StoreDocumentOpener;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -37,9 +38,23 @@ class AttentionController extends Controller
                 'total' => $page->total(),
             ],
             'context' => $followUps->formContext($user, $organization),
-            // Managers: valid owners with their stores (the server re-validates every assignment).
-            'owners' => $access->canManageAll($user, $organization) ? $ownership->candidates($organization) : [],
+            // Managers: valid owners with their stores and the subjects they may own (the server re-validates every assignment).
+            'owners' => $access->canManageAll($user, $organization) ? $this->owners($organization, $ownership) : [],
         ]);
+    }
+
+    /** @return list<array{id: int, name: string, store_ids: list<int>, subjects: list<string>}> */
+    private function owners(Organization $organization, AttentionOwnership $ownership): array
+    {
+        $owners = [];
+        foreach ([AttentionItem::SUBJECT_QUOTATION, AttentionItem::SUBJECT_INVOICE] as $subject) {
+            foreach ($ownership->candidates($organization, AttentionOwnership::permissionFor($subject)) as $candidate) {
+                $owners[$candidate['id']] ??= [...$candidate, 'subjects' => []];
+                $owners[$candidate['id']]['subjects'][] = $subject;
+            }
+        }
+
+        return array_values($owners);
     }
 
     public function claim(Request $request, ActiveTenantContext $context, AttentionItem $attentionItem, HandleAttentionItemAction $action): RedirectResponse
@@ -77,10 +92,17 @@ class AttentionController extends Controller
         return back()->with('success', 'Suivi créé.');
     }
 
-    public function openQuotation(Request $request, ActiveTenantContext $context, AttentionItem $attentionItem, AttentionQuery $attention, FollowUpAccess $access, QuotationOpener $opener): RedirectResponse
+    public function openQuotation(Request $request, ActiveTenantContext $context, AttentionItem $attentionItem, AttentionQuery $attention, FollowUpAccess $access, StoreDocumentOpener $opener): RedirectResponse
     {
         $access->authorize($attention->canView($request->user(), $attentionItem));
 
-        return $opener->open($request->user(), $context, $attentionItem->quotation_id === null ? null : (int) $attentionItem->quotation_id);
+        return $opener->openQuotation($request->user(), $context, $attentionItem->quotation_id === null ? null : (int) $attentionItem->quotation_id);
+    }
+
+    public function openInvoice(Request $request, ActiveTenantContext $context, AttentionItem $attentionItem, AttentionQuery $attention, FollowUpAccess $access, StoreDocumentOpener $opener): RedirectResponse
+    {
+        $access->authorize($attention->canView($request->user(), $attentionItem));
+
+        return $opener->openInvoice($request->user(), $context, $attentionItem->invoice_id === null ? null : (int) $attentionItem->invoice_id);
     }
 }

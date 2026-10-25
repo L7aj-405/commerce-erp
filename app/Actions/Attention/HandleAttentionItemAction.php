@@ -150,13 +150,17 @@ class HandleAttentionItemAction
     public function createFollowUp(User $actor, Organization $organization, AttentionItem $item, array $data): FollowUp
     {
         $this->access->authorize((int) $item->organization_id === (int) $organization->getKey() && $this->attention->canView($actor, $item));
-        if ($item->quotation_id === null) {
-            throw ValidationException::withMessages(['quotation_id' => 'Le devis lié à cette alerte n’existe plus.']);
+        // The document link always comes from the item (W4.4: quotation or invoice).
+        $link = $item->subject_type === AttentionItem::SUBJECT_INVOICE
+            ? ['invoice_id' => $item->invoice_id === null ? null : (int) $item->invoice_id]
+            : ['quotation_id' => $item->quotation_id === null ? null : (int) $item->quotation_id];
+        if (in_array(null, $link, true)) {
+            throw ValidationException::withMessages([array_key_first($link) => 'Le document lié à cette alerte n’existe plus.']);
         }
 
-        return DB::transaction(function () use ($actor, $organization, $item, $data) {
+        return DB::transaction(function () use ($actor, $organization, $item, $data, $link) {
             $input = array_intersect_key($data, array_flip(self::FOLLOW_UP_INPUT));
-            $followUp = $this->followUps->create($actor, $organization, [...$input, 'quotation_id' => (int) $item->quotation_id]);
+            $followUp = $this->followUps->create($actor, $organization, [...$input, ...$link]);
 
             $locked = AttentionItem::query()->where('organization_id', $organization->getKey())->whereKey($item->getKey())->lockForUpdate()->firstOrFail();
             $metadata = $locked->metadata ?? [];
@@ -164,7 +168,7 @@ class HandleAttentionItemAction
             $locked->metadata = $metadata;
             $locked->save();
             $this->audit->record('attention.follow_up_created', $actor, $organization, null, $locked,
-                newValues: ['attention_item_id' => (int) $locked->getKey(), 'type' => $locked->type->value, 'follow_up_id' => (int) $followUp->getKey(), 'quotation_id' => (int) $locked->quotation_id]);
+                newValues: ['attention_item_id' => (int) $locked->getKey(), 'type' => $locked->type->value, 'follow_up_id' => (int) $followUp->getKey(), ...$link]);
 
             return $followUp;
         });
@@ -173,7 +177,7 @@ class HandleAttentionItemAction
     private function assertOwner(Organization $organization, AttentionItem $item, int $userId): void
     {
         if (! $this->ownership->isValidOwner($organization, $item, $userId)) {
-            throw ValidationException::withMessages(['assigned_user_id' => 'Cette personne ne peut pas voir ce devis (accès au magasin ou aux devis manquant).']);
+            throw ValidationException::withMessages(['assigned_user_id' => 'Cette personne ne peut pas voir ce document (accès au magasin ou au document manquant).']);
         }
     }
 
@@ -183,12 +187,13 @@ class HandleAttentionItemAction
         if (! $assignee) {
             return;
         }
-        $number = (string) ($item->metadata['i18n']['params']['number'] ?? $item->metadata['quotation_number'] ?? '');
+        $number = (string) ($item->metadata['i18n']['params']['number'] ?? $item->metadata['document_number'] ?? $item->metadata['quotation_number'] ?? '');
+        $invoice = $item->subject_type === AttentionItem::SUBJECT_INVOICE;
         $this->publisher->publishToUser($assignee, $organization, NotificationCategory::Sales, NotificationSeverity::Info,
-            "Alerte qui vous est confiée : devis {$number}", "{$actor->name} vous a confié cette alerte.",
+            'Alerte qui vous est confiée : '.($invoice ? 'facture' : 'devis')." {$number}", "{$actor->name} vous a confié cette alerte.",
             '/work/attention?view=all&focus='.$item->getKey(), 'attention_item', $item->getKey(), 'assigned:v'.$item->version,
             ['attention_item_id' => (int) $item->getKey(),
-                'i18n' => ['title' => 'attention.assignedTitle', 'message' => 'attention.assignedMessage', 'params' => ['number' => $number, 'name' => (string) $actor->name]]]);
+                'i18n' => ['title' => $invoice ? 'attention.assignedTitleInvoice' : 'attention.assignedTitle', 'message' => 'attention.assignedMessage', 'params' => ['number' => $number, 'name' => (string) $actor->name]]]);
     }
 
     /** @param array<string, mixed> $data @param callable(AttentionItem): array{0: string, 1: array<string, mixed>} $change */

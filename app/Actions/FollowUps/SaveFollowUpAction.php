@@ -7,6 +7,7 @@ use App\Enums\FollowUpStatus;
 use App\Models\Customer;
 use App\Models\FollowUp;
 use App\Models\FollowUpRecurringRule;
+use App\Models\Invoice;
 use App\Models\Organization;
 use App\Models\Quotation;
 use App\Models\Store;
@@ -65,6 +66,7 @@ class SaveFollowUpAction
             'assigned_user_id' => ['sometimes', 'nullable', 'integer'],
             'customer_id' => ['sometimes', 'nullable', 'integer'],
             'quotation_id' => ['sometimes', 'nullable', 'integer'],
+            'invoice_id' => ['sometimes', 'nullable', 'integer'],
             // No `sometimes`: a due_time sent without a due_date must fail.
             'due_date' => ['nullable', 'date_format:Y-m-d', 'required_with:due_time'],
             'due_time' => ['sometimes', 'nullable', 'date_format:H:i'],
@@ -220,15 +222,40 @@ class SaveFollowUpAction
     /** @param array<string, mixed> $data */
     public function applyLinks(User $actor, Organization $organization, FollowUp|FollowUpRecurringRule $followUp, array $data): void
     {
+        // W4.4: follow-ups (not recurring rules) may link an invoice instead of a quotation.
+        $invoiceSupported = $followUp instanceof FollowUp;
         $quotationChanged = array_key_exists('quotation_id', $data);
         $customerChanged = array_key_exists('customer_id', $data);
-        if (! $quotationChanged && ! $customerChanged) {
+        $invoiceChanged = $invoiceSupported && array_key_exists('invoice_id', $data);
+        if (! $quotationChanged && ! $customerChanged && ! $invoiceChanged) {
             return;
         }
 
         $quotationId = $quotationChanged ? $data['quotation_id'] : $followUp->quotation_id;
         $customerId = $customerChanged ? $data['customer_id'] : $followUp->customer_id;
+        $invoiceId = $invoiceSupported ? ($invoiceChanged ? $data['invoice_id'] : $followUp->invoice_id) : null;
         $quotation = null;
+        $invoice = null;
+
+        if ($quotationId !== null && $invoiceId !== null) {
+            throw ValidationException::withMessages(['invoice_id' => 'Un suivi est lié à un devis ou à une facture, pas aux deux.']);
+        }
+        if ($invoiceId !== null) {
+            $invoice = Invoice::query()->where('organization_id', $organization->getKey())->whereKey((int) $invoiceId)->first(['id', 'organization_id', 'store_id', 'customer_id']);
+            if (! $invoice) {
+                throw ValidationException::withMessages(['invoice_id' => 'Facture introuvable dans cette organisation.']);
+            }
+            if ((int) $invoice->getKey() !== (int) $followUp->invoice_id
+                && (! $actor->hasPermission($organization, 'invoices.view') || ! $this->access->hasStoreAccess($actor, $invoice->store_id))) {
+                throw ValidationException::withMessages(['invoice_id' => 'Vous n’avez pas accès à cette facture.']);
+            }
+            if ($invoice->customer_id !== null) {
+                if ($customerChanged && $customerId !== null && (int) $customerId !== (int) $invoice->customer_id) {
+                    throw ValidationException::withMessages(['customer_id' => 'Le client doit correspondre au client de la facture.']);
+                }
+                $customerId = $invoice->customer_id;
+            }
+        }
 
         if ($quotationId !== null) {
             $quotation = Quotation::query()->where('organization_id', $organization->getKey())->whereKey((int) $quotationId)->first(['id', 'organization_id', 'store_id', 'customer_id']);
@@ -258,8 +285,12 @@ class SaveFollowUpAction
         }
 
         $followUp->quotation_id = $quotation?->getKey();
+        if ($invoiceSupported) {
+            $followUp->invoice_id = $invoice?->getKey();
+        }
         $followUp->customer_id = $customerId !== null ? (int) $customerId : null;
-        $followUp->store_id = $quotation?->store_id;
+        // The store always derives from the linked document, never from the client.
+        $followUp->store_id = $quotation?->store_id ?? $invoice?->store_id;
     }
 
     /**
@@ -351,6 +382,7 @@ class SaveFollowUpAction
             'assigned_user_id' => $this->assigneeId($followUp),
             'customer_id' => $followUp->customer_id,
             'quotation_id' => $followUp->quotation_id,
+            'invoice_id' => $followUp->invoice_id,
         ];
     }
 

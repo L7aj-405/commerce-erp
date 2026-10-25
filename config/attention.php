@@ -18,4 +18,14 @@ return [
         'followup_backlog_critical_count' => 4,
         'followup_backlog_critical_age_days' => 7,
     ],
+
+    // W4.4: issued invoices with an outstanding balance (FinanceInvoiceReadModel).
+    'invoices' => [
+        // due_date within this many local days (today included), not yet past.
+        'due_soon_days' => 2,
+        'followup_backlog_count' => 2,
+        'followup_backlog_age_days' => 3,
+        'followup_backlog_critical_count' => 4,
+        'followup_backlog_critical_age_days' => 7,
+    ],
 ];

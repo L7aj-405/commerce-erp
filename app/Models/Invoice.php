@@ -22,6 +22,8 @@ class Invoice extends Model
             'status' => InvoiceStatus::class,
             'version' => 'integer',
             'invoice_date' => 'date',
+            // W4.4: business-local due date, stamped at issue (IssueInvoiceAction).
+            'due_date' => 'date',
             'subtotal_excl_tax' => 'decimal:4',
             'discount_total' => 'decimal:4',
             'tax_total' => 'decimal:4',

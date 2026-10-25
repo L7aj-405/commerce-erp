@@ -231,6 +231,7 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
     Route::patch('/work/{followUp}', [FollowUpController::class, 'update'])->name('follow-ups.update');
     Route::post('/work/{followUp}/transition', [FollowUpController::class, 'transition'])->name('follow-ups.transition');
     Route::post('/work/{followUp}/open-quotation', [FollowUpController::class, 'openQuotation'])->name('follow-ups.open-quotation');
+    Route::post('/work/{followUp}/open-invoice', [FollowUpController::class, 'openInvoice'])->name('follow-ups.open-invoice');
     Route::get('/work/attention', [AttentionController::class, 'index'])->name('attention.index');
     Route::post('/work/attention/{attentionItem}/snooze', [AttentionController::class, 'snooze'])->name('attention.snooze');
     Route::post('/work/attention/{attentionItem}/dismiss', [AttentionController::class, 'dismiss'])->name('attention.dismiss');
@@ -238,6 +239,7 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
     Route::post('/work/attention/{attentionItem}/assign', [AttentionController::class, 'assign'])->name('attention.assign');
     Route::post('/work/attention/{attentionItem}/follow-up', [AttentionController::class, 'followUp'])->name('attention.follow-up');
     Route::post('/work/attention/{attentionItem}/open-quotation', [AttentionController::class, 'openQuotation'])->name('attention.open-quotation');
+    Route::post('/work/attention/{attentionItem}/open-invoice', [AttentionController::class, 'openInvoice'])->name('attention.open-invoice');
     Route::get('/work/recurring', [FollowUpRecurringController::class, 'index'])->name('follow-ups.recurring.index');
     Route::post('/work/recurring', [FollowUpRecurringController::class, 'store'])->name('follow-ups.recurring.store');
     Route::patch('/work/recurring/{recurringRule}', [FollowUpRecurringController::class, 'update'])->name('follow-ups.recurring.update');

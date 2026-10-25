@@ -19,6 +19,8 @@ export type FollowUpItem = {
     customer: { id: number; name: string } | null;
     /** can_open: the viewer may open it (via /work/{id}/open-quotation, which switches store if needed). */
     quotation: { id: number; number: string | null; store_id: number; can_open: boolean } | null;
+    /** W4.4: linked invoice (exclusive with quotation), opened via /work/{id}/open-invoice. */
+    invoice: { id: number; number: string | null; can_open: boolean } | null;
     completed_at: string | null;
     cancelled_at: string | null;
     outcome_note: string | null;

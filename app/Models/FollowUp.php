@@ -76,6 +76,12 @@ class FollowUp extends Model
         return $this->belongsTo(Quotation::class);
     }
 
+    /** W4.4: the invoice this work is about (exclusive with quotation_id). */
+    public function invoice(): BelongsTo
+    {
+        return $this->belongsTo(Invoice::class);
+    }
+
     /** W3: the recurring rule that generated this occurrence (NULL for manual work). */
     public function recurringRule(): BelongsTo
     {

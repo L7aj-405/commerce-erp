@@ -46,7 +46,7 @@ use Throwable;
 final class AttentionNotifier
 {
     public function __construct(
-        private readonly QuotationAttentionDetector $detector,
+        private readonly AttentionDetectors $detector,
         private readonly AttentionOwnership $ownership,
         private readonly FollowUpAccess $access,
         private readonly NotificationPublisher $publisher,
@@ -105,15 +105,19 @@ final class AttentionNotifier
     private function publish(Organization $organization, User $recipient, AttentionItem $item): int
     {
         $params = $item->metadata['i18n']['params'] ?? [];
-        $number = (string) ($params['number'] ?? $item->metadata['quotation_number'] ?? '');
+        $number = (string) ($params['number'] ?? $item->metadata['document_number'] ?? $item->metadata['quotation_number'] ?? '');
         $customer = $item->customer_id && $this->access->allows($recipient, $organization, 'customers.view')
             ? (string) $item->customer()->value('display_name') : '';
         $params = ['number' => $number, 'customer' => $customer, 'date' => (string) ($params['date'] ?? ''),
             'days' => (string) ($params['days'] ?? ''), 'count' => (string) ($params['count'] ?? '')];
 
-        [$key, $title, $message] = $item->type === AttentionType::QuotationFollowUpBacklog
-            ? ['Backlog', "Suivis en retard sur le devis {$number}", "{$params['count']} suivi(s) en retard, le plus ancien depuis {$params['days']} j."]
-            : ['Expired', "Devis expiré sans décision : {$number}", "Validité dépassée depuis le {$params['date']}."];
+        [$key, $title, $message] = match ($item->type) {
+            AttentionType::QuotationFollowUpBacklog => ['Backlog', "Suivis en retard sur le devis {$number}", "{$params['count']} suivi(s) en retard, le plus ancien depuis {$params['days']} j."],
+            AttentionType::InvoiceOverdueUnpaid => ['InvoiceOverdue', "Facture en retard : {$number}", "Échéance dépassée depuis le {$params['date']}, aucun paiement."],
+            AttentionType::InvoiceOverduePartial => ['InvoicePartial', "Paiement partiel en retard : {$number}", "Échéance dépassée depuis le {$params['date']}, solde partiellement réglé."],
+            AttentionType::InvoicePaymentFollowUpBacklog => ['InvoiceBacklog', "Relances en retard sur la facture {$number}", "{$params['count']} suivi(s) en retard, le plus ancien depuis {$params['days']} j."],
+            default => ['Expired', "Devis expiré sans décision : {$number}", "Validité dépassée depuis le {$params['date']}."],
+        };
         $context = $customer !== '' ? 'Context' : '';
 
         return $this->publisher->publishToUser($recipient, $organization, NotificationCategory::Sales, NotificationSeverity::Critical,

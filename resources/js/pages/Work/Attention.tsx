@@ -16,13 +16,16 @@ import { useState } from 'react';
 
 type AttentionItem = {
     id: number;
-    type: 'quotation_sent_undecided' | 'quotation_expiring_soon' | 'quotation_expired_undecided' | 'quotation_followup_backlog';
+    type: 'quotation_sent_undecided' | 'quotation_expiring_soon' | 'quotation_expired_undecided' | 'quotation_followup_backlog'
+        | 'invoice_due_soon' | 'invoice_overdue_unpaid' | 'invoice_overdue_partial' | 'invoice_payment_followup_backlog';
+    subject_type: 'quotation' | 'invoice';
     severity: 'info' | 'warning' | 'critical';
     status: 'open' | 'snoozed' | 'dismissed' | 'resolved';
     title: string;
     summary: string;
     i18n: { title: string; message: string; params: Record<string, string> } | null;
     quotation: { id: number; number: string | null; can_open: boolean } | null;
+    invoice: { id: number; number: string | null; can_open: boolean } | null;
     customer: { id: number; name: string } | null;
     detected_at: string;
     snoozed_until: string | null;
@@ -44,11 +47,11 @@ type AttentionItem = {
 };
 type LinkData = { url: string | null; label: string; active: boolean };
 type Props = {
-    filters: { view?: string; type?: string; severity?: string; customer_id?: number; quotation_id?: number; focus?: number; assigned?: string; escalated?: string | boolean };
+    filters: { view?: string; type?: string; severity?: string; customer_id?: number; quotation_id?: number; focus?: number; assigned?: string; escalated?: string | boolean; domain?: string };
     items: { data: AttentionItem[]; links: LinkData[]; total: number };
     context: FollowUpContext;
     /** Managers only: valid owners with the stores they can see. */
-    owners: { id: number; name: string; store_ids: number[] }[];
+    owners: { id: number; name: string; store_ids: number[]; subjects: string[] }[];
 };
 
 const fieldClass = 'h-10 rounded-field border border-line-strong bg-surface px-3 text-sm text-ink outline-none transition-soft focus:border-primary';
@@ -111,6 +114,15 @@ export default function WorkAttention({ filters, items, context, owners }: Props
                     <option value="quotation_expiring_soon">{t('attention.typeExpiring')}</option>
                     <option value="quotation_expired_undecided">{t('attention.typeExpired')}</option>
                     <option value="quotation_followup_backlog">{t('attention.typeBacklog')}</option>
+                    <option value="invoice_due_soon">{t('attention.typeInvoiceDueSoon')}</option>
+                    <option value="invoice_overdue_unpaid">{t('attention.typeInvoiceOverdue')}</option>
+                    <option value="invoice_overdue_partial">{t('attention.typeInvoicePartial')}</option>
+                    <option value="invoice_payment_followup_backlog">{t('attention.typeInvoiceBacklog')}</option>
+                </select>
+                <select value={filters.domain ?? ''} onChange={(e) => visit({ domain: e.target.value || undefined })} className={`${fieldClass} flex-1 sm:flex-none`} aria-label={t('attention.domain')}>
+                    <option value="">{t('attention.domainAll')}</option>
+                    <option value="quotation">{t('attention.domainQuotations')}</option>
+                    <option value="invoice">{t('attention.domainInvoices')}</option>
                 </select>
                 <select value={filters.assigned ?? ''} onChange={(e) => visit({ assigned: e.target.value })} className={`${fieldClass} flex-1 sm:flex-none`} aria-label={t('attention.owner')}>
                     <option value="mine_or_unassigned">{t('attention.ownerMineOrUnassigned')}</option>
@@ -157,6 +169,7 @@ export default function WorkAttention({ filters, items, context, owners }: Props
                             </div>
                             <div className="flex shrink-0 flex-wrap gap-2">
                                 {item.quotation?.can_open && <Button size="sm" variant="ghost" onClick={() => router.post(`/work/attention/${item.id}/open-quotation`, {}, { onError })}>{t('attention.openQuotation')}</Button>}
+                                {item.invoice?.can_open && <Button size="sm" variant="ghost" onClick={() => router.post(`/work/attention/${item.id}/open-invoice`, {}, { onError })}>{t('attention.openInvoice')}</Button>}
                                 {item.can_claim && <Button size="sm" variant="secondary" disabled={busy === item.id} onClick={() => post(item, 'claim', {})}>{t('attention.claim')}</Button>}
                                 {item.can_assign && (
                                     <select aria-label={t('attention.reassign')} value="" disabled={busy === item.id}
@@ -164,7 +177,7 @@ export default function WorkAttention({ filters, items, context, owners }: Props
                                         className="h-8 rounded-field border border-line-strong bg-surface px-2 text-xs text-ink">
                                         <option value="">{t('attention.reassign')}</option>
                                         {item.assignee && <option value="none">{t('attention.unassign')}</option>}
-                                        {owners.filter((owner) => owner.id !== item.assignee?.id && (item.store_id === null || owner.store_ids.includes(item.store_id)))
+                                        {owners.filter((owner) => owner.id !== item.assignee?.id && owner.subjects.includes(item.subject_type) && (item.store_id === null || owner.store_ids.includes(item.store_id)))
                                             .map((owner) => <option key={owner.id} value={owner.id}>{owner.name}</option>)}
                                     </select>
                                 )}

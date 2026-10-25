@@ -40,7 +40,7 @@ final class AttentionEscalator
     public const ESCALATION_DAYS = 2;
 
     public function __construct(
-        private readonly QuotationAttentionDetector $detector,
+        private readonly AttentionDetectors $detector,
         private readonly AttentionOwnership $ownership,
         private readonly FollowUpAccess $access,
         private readonly NotificationPublisher $publisher,
@@ -94,7 +94,7 @@ final class AttentionEscalator
 
             $owner = $item->assigned_user_id === null ? null : (int) $item->assigned_user_id;
             $ownerIsManager = $owner !== null && $this->access->allows(User::query()->findOrFail($owner), $organization, 'follow_ups.manage_all');
-            $managerId = $ownerIsManager ? null : $this->ownership->fallbackManager($organization, $item->store_id, $owner);
+            $managerId = $ownerIsManager ? null : $this->ownership->fallbackManager($organization, $item->store_id, $owner, AttentionOwnership::permissionFor($item->subject_type));
 
             $sent = $managerId === null ? 0 : $this->publish($organization, User::query()->findOrFail($managerId), $item);
             $item->escalated_at = $now;
@@ -107,21 +107,22 @@ final class AttentionEscalator
     private function publish(Organization $organization, User $manager, AttentionItem $item): int
     {
         $params = $item->metadata['i18n']['params'] ?? [];
-        $number = (string) ($params['number'] ?? $item->metadata['quotation_number'] ?? '');
+        $number = (string) ($params['number'] ?? $item->metadata['document_number'] ?? $item->metadata['quotation_number'] ?? '');
         $customer = $item->customer_id && $this->access->allows($manager, $organization, 'customers.view')
             ? (string) $item->customer()->value('display_name') : '';
         $owner = $item->assigned_user_id ? (string) User::query()->whereKey($item->assigned_user_id)->value('name') : '';
         $params = ['number' => $number, 'customer' => $customer, 'owner' => $owner];
         $context = implode(' — ', array_filter([$customer, $owner !== '' ? "responsable : {$owner}" : 'non assignée']));
         $key = $owner !== '' ? 'Owner' : 'Unassigned';
+        $invoice = $item->subject_type === AttentionItem::SUBJECT_INVOICE;
 
         return $this->publisher->publishToUser($manager, $organization, NotificationCategory::Sales, NotificationSeverity::Critical,
-            "Attention critique non traitée : devis {$number}", $context,
+            'Attention critique non traitée : '.($invoice ? 'facture' : 'devis')." {$number}", $context,
             '/work/attention?view=all&focus='.$item->getKey(),
             'attention_item', $item->getKey(), 'escalation',
             [
                 'attention_item_id' => (int) $item->getKey(),
-                'i18n' => ['title' => 'attention.escalationTitle', 'message' => 'attention.escalationMessage'.$key.($customer !== '' ? 'Context' : ''), 'params' => $params],
+                'i18n' => ['title' => $invoice ? 'attention.escalationTitleInvoice' : 'attention.escalationTitle', 'message' => 'attention.escalationMessage'.$key.($customer !== '' ? 'Context' : ''), 'params' => $params],
             ]);
     }
 }

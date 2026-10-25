@@ -3,7 +3,6 @@
 namespace App\Services\Attention;
 
 use App\Enums\AttentionSeverity;
-use App\Enums\AttentionStatus;
 use App\Enums\AttentionType;
 use App\Enums\QuotationStatus;
 use App\Models\AttentionItem;
@@ -15,10 +14,8 @@ use App\Services\FollowUps\FollowUpQuery;
 use App\Services\FollowUps\FollowUpRecurringGenerator;
 use App\Support\BusinessTime;
 use Carbon\CarbonImmutable;
-use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\DB;
-use Throwable;
+use LogicException;
 
 /**
  * W4.1 canonical quotation attention rules — detection and resolution only.
@@ -42,47 +39,18 @@ use Throwable;
  *   for at least `followup_backlog_age_days` local days (Work Center overdue
  *   bucket; completed, cancelled, future and customer-only work never count).
  *
- * Episodes: a holding condition updates its active row (one per condition,
- * DB-unique active_key); a dismissed row stays dismissed while the episode
- * lasts; a snoozed row reopens once snoozed_until passes. Every active row not
- * re-confirmed by a complete scan closes (resolved; a dismissed row keeps its
- * status but its episode ends), so a later reappearance opens a new episode.
+ * Episodes, ownership, notification and escalation are shared engine
+ * services (AttentionEpisodes, AttentionOwnership, AttentionNotifier,
+ * AttentionEscalator); this class only describes quotation conditions.
  */
 final class QuotationAttentionDetector
 {
     private const CHUNK = 200;
 
-    public function __construct(private readonly FollowUpQuery $followUps) {}
-
-    /**
-     * Scheduler entry: active organizations in chunks, one failing organization
-     * never stops the scan. `$afterOrganization` (W4.2: critical notifications)
-     * runs on fresh state right after each organization's scan, isolated too.
-     *
-     * @param (callable(Organization, CarbonImmutable): mixed)|null $afterOrganization
-     * @return array{organizations: int, failed: int}
-     */
-    public function scanAll(?CarbonImmutable $now = null, ?callable $afterOrganization = null): array
-    {
-        $result = ['organizations' => 0, 'failed' => 0];
-        Organization::query()->where('status', 'active')->select(['id', 'name', 'status', 'settings'])
-            ->chunkById(100, function ($organizations) use ($now, $afterOrganization, &$result) {
-                foreach ($organizations as $organization) {
-                    try {
-                        $this->scanOrganization($organization, $now);
-                        if ($afterOrganization !== null) {
-                            $afterOrganization($organization, $now ?? CarbonImmutable::now('UTC'));
-                        }
-                        $result['organizations']++;
-                    } catch (Throwable $exception) {
-                        $result['failed']++;
-                        report($exception);
-                    }
-                }
-            });
-
-        return $result;
-    }
+    public function __construct(
+        private readonly FollowUpQuery $followUps,
+        private readonly AttentionEpisodes $episodes,
+    ) {}
 
     /** @return array{detected: int, resolved: int, failed: int} */
     public function scanOrganization(Organization $organization, ?CarbonImmutable $now = null): array
@@ -100,23 +68,23 @@ final class QuotationAttentionDetector
                     $lastSent = $this->lastSent($organization, $quotations->modelKeys());
                     $conditions = [];
                     foreach ($quotations as $quotation) {
-                        $this->guard($result, function () use ($organization, $quotation, $lastSent, $today, &$conditions) {
+                        $this->episodes->guard($result, function () use ($organization, $quotation, $lastSent, $today, &$conditions) {
                             foreach ($this->documentConditions($organization, $quotation, $lastSent->get($quotation->getKey()), $today) as $condition) {
-                                $conditions[] = [$quotation, ...$condition];
+                                $conditions[] = $this->condition($quotation, ...$condition);
                             }
                         });
                     }
-                    $result['detected'] += $this->apply($organization, $conditions, $now, $result);
+                    $result['detected'] += $this->episodes->apply($organization, $conditions, $now, $result);
                 });
         }
 
-        $this->guard($result, function () use ($organization, $today, $now, &$result) {
+        $this->episodes->guard($result, function () use ($organization, $today, $now, &$result) {
             $result['detected'] += $this->detectBacklog($organization, $today, $now, $result);
         });
 
         // Only a complete scan may close episodes (a failed row must not look "resolved").
         if ($result['failed'] === 0) {
-            $result['resolved'] = $this->closeUnconfirmed($organization, $now);
+            $result['resolved'] = $this->episodes->closeUnconfirmed($organization, AttentionItem::SUBJECT_QUOTATION, $now);
         }
 
         return $result;
@@ -163,10 +131,10 @@ final class QuotationAttentionDetector
                 if (! $quotation || ! FollowUpRecurringGenerator::quotationIsActionable($quotation->status)) {
                     continue;
                 }
-                $conditions[] = [$quotation, AttentionType::QuotationFollowUpBacklog, $this->backlogSeverity($group),
-                    ['count' => $group['count'], 'date' => $group['date'], 'days' => $group['days']]];
+                $conditions[] = $this->condition($quotation, AttentionType::QuotationFollowUpBacklog, $this->backlogSeverity($group),
+                    ['count' => $group['count'], 'date' => $group['date'], 'days' => $group['days']]);
             }
-            $detected += $this->apply($organization, $conditions, $now, $result);
+            $detected += $this->episodes->apply($organization, $conditions, $now, $result);
         }
 
         return $detected;
@@ -269,136 +237,14 @@ final class QuotationAttentionDetector
         };
     }
 
-    /**
-     * Confirm a chunk of holding conditions. Unchanged active items are only
-     * re-confirmed (one bulk `last_detected_at` update); new episodes, changed
-     * facts and elapsed snoozes go through the row-locked upsert.
-     *
-     * @param list<array{0: Quotation, 1: AttentionType, 2: AttentionSeverity, 3: array<string, mixed>}> $conditions
-     * @param array<string, int> $result
-     */
-    private function apply(Organization $organization, array $conditions, CarbonImmutable $now, array &$result): int
+    /** Describe one holding quotation condition for AttentionEpisodes. @param array<string, mixed> $facts @return array<string, mixed> */
+    private function condition(Quotation $quotation, AttentionType $type, AttentionSeverity $severity, array $facts): array
     {
-        if ($conditions === []) {
-            return 0;
-        }
-        $key = fn (AttentionType $type, Quotation $quotation) => $type->value.':'.AttentionItem::SUBJECT_QUOTATION.':'.$quotation->getKey();
-        $existing = AttentionItem::query()->where('organization_id', $organization->getKey())
-            ->whereIn('active_key', array_map(fn (array $condition) => $key($condition[1], $condition[0]), $conditions))
-            ->get()->keyBy('active_key');
-
-        $confirm = [];
-        foreach ($conditions as [$quotation, $type, $severity, $facts]) {
-            $item = $existing->get($key($type, $quotation));
-            [$title, $summary] = $this->text($type, $quotation, $facts);
-            $unchanged = $item !== null
-                && $item->severity === $severity && $item->title === $title && $item->summary === $summary
-                && (int) $item->store_id === (int) $quotation->store_id && $item->customer_id === $quotation->customer_id
-                && ($item->metadata['facts'] ?? null) == $facts && (int) $item->urgency === self::urgency($type, $facts)
-                && ! ($item->status === AttentionStatus::Snoozed && $item->snoozed_until !== null && $item->snoozed_until->lessThanOrEqualTo($now));
-            if ($unchanged) {
-                $confirm[] = $item->getKey();
-            } else {
-                $this->guard($result, fn () => $this->upsert($organization, $quotation, $type, $severity, $facts, now: $now));
-            }
-        }
-        if ($confirm !== []) {
-            // Still-active rows only: an episode closed meanwhile is not revived (a new one opens next scan).
-            DB::table('attention_items')->whereIn('id', $confirm)->whereNotNull('active_key')->update(['last_detected_at' => $now]);
-        }
-
-        return count($conditions);
-    }
-
-    /** @param array<string, mixed> $facts */
-    private function upsert(Organization $organization, Quotation $quotation, AttentionType $type, AttentionSeverity $severity, array $facts, CarbonImmutable $now): void
-    {
-        $key = $type->value.':'.AttentionItem::SUBJECT_QUOTATION.':'.$quotation->getKey();
         [$title, $summary, $i18n] = $this->text($type, $quotation, $facts);
 
-        DB::transaction(function () use ($organization, $quotation, $type, $severity, $facts, $now, $key, $title, $summary, $i18n) {
-            $item = AttentionItem::query()->where('organization_id', $organization->getKey())->where('active_key', $key)->lockForUpdate()->first();
-            if ($item === null) {
-                $item = new AttentionItem;
-                $item->organization_id = $organization->getKey();
-                $item->type = $type;
-                $item->subject_type = AttentionItem::SUBJECT_QUOTATION;
-                $item->subject_id = $quotation->getKey();
-                $item->episode = 1 + (int) AttentionItem::query()->where('organization_id', $organization->getKey())->where('type', $type->value)
-                    ->where('subject_type', AttentionItem::SUBJECT_QUOTATION)->where('subject_id', $quotation->getKey())->max('episode');
-                $item->active_key = $key;
-                $item->status = AttentionStatus::Open;
-                $item->detected_at = $now;
-                $item->version = 1;
-            } elseif ($item->status === AttentionStatus::Snoozed && $item->snoozed_until !== null && $item->snoozed_until->lessThanOrEqualTo($now)) {
-                $item->status = AttentionStatus::Open;
-                $item->snoozed_until = null;
-                $item->version = (int) $item->version + 1;
-            }
-
-            $item->store_id = $quotation->store_id;
-            $item->customer_id = $quotation->customer_id;
-            $item->quotation_id = $quotation->getKey();
-            $item->severity = $severity;
-            $item->urgency = self::urgency($type, $facts);
-            // W4.3 escalation clock: first time this episode is critical (never reset within the episode).
-            if ($severity === AttentionSeverity::Critical && $item->critical_since === null) {
-                $item->critical_since = $now;
-            }
-            $item->title = $title;
-            $item->summary = $summary;
-            // Snapshot for display only; follow-ups created from this item are kept.
-            $item->metadata = ['quotation_number' => $quotation->quotation_number, 'facts' => $facts, 'i18n' => $i18n,
-                'follow_up_ids' => $item->metadata['follow_up_ids'] ?? []];
-            $item->last_detected_at = $now;
-
-            try {
-                DB::transaction(fn () => $item->save());
-            } catch (UniqueConstraintViolationException) {
-                // A concurrent detector opened this episode first; it will be refreshed next scan.
-            }
-        });
-    }
-
-    private function closeUnconfirmed(Organization $organization, CarbonImmutable $scanStart): int
-    {
-        $closed = 0;
-        AttentionItem::query()->where('organization_id', $organization->getKey())
-            ->whereNotNull('active_key')->where('last_detected_at', '<', $scanStart)
-            ->select(['id'])->chunkById(self::CHUNK, function ($items) use ($scanStart, &$closed) {
-                foreach ($items as $row) {
-                    $closed += DB::transaction(function () use ($row, $scanStart) {
-                        $item = AttentionItem::query()->whereKey($row->getKey())->lockForUpdate()->first();
-                        if (! $item || $item->active_key === null || $item->last_detected_at->greaterThanOrEqualTo($scanStart)) {
-                            return 0;
-                        }
-                        $item->active_key = null;
-                        $item->resolved_at = $scanStart;
-                        if (in_array($item->status, [AttentionStatus::Open, AttentionStatus::Snoozed], true)) {
-                            // A dismissed episode keeps its status (the person's decision); its episode simply ends.
-                            $item->status = AttentionStatus::Resolved;
-                            $item->snoozed_until = null;
-                        }
-                        $item->version = (int) $item->version + 1;
-                        $item->save();
-
-                        return 1;
-                    });
-                }
-            });
-
-        return $closed;
-    }
-
-    /** @param array<string, mixed> $result */
-    private function guard(array &$result, callable $work): void
-    {
-        try {
-            $work();
-        } catch (Throwable $exception) {
-            $result['failed']++;
-            report($exception);
-        }
+        return ['subject_id' => (int) $quotation->getKey(), 'store_id' => $quotation->store_id, 'customer_id' => $quotation->customer_id,
+            'quotation_id' => (int) $quotation->getKey(), 'number' => $quotation->quotation_number, 'type' => $type, 'severity' => $severity,
+            'facts' => $facts, 'title' => $title, 'summary' => $summary, 'i18n' => $i18n, 'urgency' => self::urgency($type, $facts)];
     }
 
     /** Stored French text (existing convention) + i18n keys for the viewer's language. @param array<string, mixed> $facts @return array{0: string, 1: string, 2: array<string, mixed>} */
@@ -412,12 +258,14 @@ final class QuotationAttentionDetector
             AttentionType::QuotationExpiringSoon => ["Devis {$number} bientôt expiré", "Valable jusqu’au {$date} — {$facts['days']} jour(s) restant(s), sans décision."],
             AttentionType::QuotationExpiredUndecided => ["Devis {$number} expiré sans décision", "Validité dépassée depuis le {$date} ({$facts['days']} j), sans décision du client."],
             AttentionType::QuotationFollowUpBacklog => ["Relances en retard — devis {$number}", "{$facts['count']} suivi(s) en retard, le plus ancien prévu le {$date} ({$facts['days']} j)."],
+            default => throw new LogicException('Not a quotation attention type.'),
         };
         $key = match ($type) {
             AttentionType::QuotationSentUndecided => 'sentUndecided',
             AttentionType::QuotationExpiringSoon => 'expiringSoon',
             AttentionType::QuotationExpiredUndecided => 'expiredUndecided',
             AttentionType::QuotationFollowUpBacklog => 'followupBacklog',
+            default => throw new LogicException('Not a quotation attention type.'),
         };
 
         return [$title, $summary, ['title' => "attention.{$key}Title", 'message' => "attention.{$key}Summary", 'params' => $params]];

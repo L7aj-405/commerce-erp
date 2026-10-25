@@ -13,7 +13,7 @@ final readonly class OrganizationDataResetOperation
     public const CLEAR_NON_OWNER_ACTIVE_CONTEXT = 'clear_non_owner_active_context';
     public const UNASSIGN_NON_OWNER_FOLLOW_UPS = 'unassign_non_owner_follow_ups';
     public const UNASSIGN_NON_OWNER_RECURRING_RULES = 'unassign_non_owner_recurring_rules';
-    public const DELETE_QUOTATION_ATTENTION = 'delete_quotation_attention';
+    public const DELETE_DOCUMENT_ATTENTION = 'delete_document_attention';
     public const UNASSIGN_NON_OWNER_ATTENTION = 'unassign_non_owner_attention';
     public const DELETE_SALES_RESERVATION_GRAPH = 'delete_sales_reservation_graph';
     public const DELETE_SALES_INVENTORY_MOVEMENTS = 'delete_sales_inventory_movements';

@@ -11,6 +11,16 @@ return [
      * Fallback Devis options, used only until an organisation configures its own
      * under Paramètres → Documents → Devis (organization.settings.quotation_profile).
      */
+    /*
+     * Invoice payment term (W4.4): an invoice's due_date is stamped once, when
+     * it is issued, as invoice_date + this many calendar days (a correction
+     * keeps the due date of the invoice it replaces). Changing it never moves
+     * the due date of an already issued invoice.
+     */
+    'invoice' => [
+        'payment_term_days' => (int) env('INVOICE_PAYMENT_TERM_DAYS', 30),
+    ],
+
     'quotation' => [
         'default_validity_days' => 30,
         'default_terms' => null,

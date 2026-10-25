@@ -5,6 +5,7 @@ namespace App\Services\FollowUps;
 use App\Enums\FollowUpStatus;
 use App\Models\Customer;
 use App\Models\FollowUp;
+use App\Models\Invoice;
 use App\Models\Organization;
 use App\Models\Quotation;
 use App\Models\User;
@@ -57,7 +58,7 @@ class FollowUpQuery
     public function search(User $user, Organization $organization, array $filters): LengthAwarePaginator
     {
         $query = $this->filtered($user, $organization, $filters)
-            ->with(['assignee:id,name', 'customer:id,organization_id,display_name', 'quotation:id,organization_id,store_id,quotation_number,status']);
+            ->with(['assignee:id,name', 'customer:id,organization_id,display_name', 'quotation:id,organization_id,store_id,quotation_number,status', 'invoice:id,organization_id,store_id,invoice_number,status']);
 
         if (($filters['status'] ?? null) === FollowUpStatus::Completed->value) {
             $query->orderByDesc('completed_at')->orderByDesc('id');
@@ -91,7 +92,8 @@ class FollowUpQuery
                 $like = '%'.trim((string) $filters['query']).'%';
                 $q->where(fn (Builder $q) => $q->where('title', 'like', $like)
                     ->orWhereHas('customer', fn (Builder $c) => $c->where('display_name', 'like', $like)->orWhere('company_name', 'like', $like))
-                    ->orWhereHas('quotation', fn (Builder $c) => $c->where('quotation_number', 'like', $like)));
+                    ->orWhereHas('quotation', fn (Builder $c) => $c->where('quotation_number', 'like', $like))
+                    ->orWhereHas('invoice', fn (Builder $c) => $c->where('invoice_number', 'like', $like)));
             });
     }
 
@@ -195,7 +197,7 @@ class FollowUpQuery
     {
         return $this->access->visible($user, $organization)
             ->where($column, $id)
-            ->with(['assignee:id,name', 'customer:id,organization_id,display_name', 'quotation:id,organization_id,store_id,quotation_number,status'])
+            ->with(['assignee:id,name', 'customer:id,organization_id,display_name', 'quotation:id,organization_id,store_id,quotation_number,status', 'invoice:id,organization_id,store_id,invoice_number,status'])
             ->orderByRaw("CASE WHEN status = 'open' THEN 0 ELSE 1 END")
             ->orderByRaw('CASE WHEN due_date IS NULL THEN 1 ELSE 0 END')->orderBy('due_date')->orderBy('due_at')->orderByDesc('id')
             ->limit($limit)->get()
@@ -213,6 +215,7 @@ class FollowUpQuery
             : ($followUp->due_date !== null && $followUp->due_date < $today));
         $customer = $followUp->customer instanceof Customer && $this->access->allows($user, $organization, 'customers.view') ? $followUp->customer : null;
         $quotation = $followUp->quotation instanceof Quotation && $this->access->allows($user, $organization, 'quotations.view') ? $followUp->quotation : null;
+        $invoice = $followUp->invoice instanceof Invoice && $this->access->allows($user, $organization, 'invoices.view') ? $followUp->invoice : null;
 
         return [
             'id' => (int) $followUp->getKey(),
@@ -232,6 +235,8 @@ class FollowUpQuery
             'recurring_rule_id' => $followUp->recurring_rule_id === null ? null : (int) $followUp->recurring_rule_id,
             'quotation' => $quotation ? ['id' => (int) $quotation->getKey(), 'number' => $quotation->quotation_number, 'store_id' => (int) $quotation->store_id,
                 'can_open' => $this->access->hasStoreAccess($user, $quotation->store_id)] : null,
+            // W4.4: opened through /work/{id}/open-invoice (same safe store switch as quotations).
+            'invoice' => $invoice ? ['id' => (int) $invoice->getKey(), 'number' => $invoice->invoice_number, 'can_open' => $this->access->hasStoreAccess($user, $invoice->store_id)] : null,
             'completed_at' => $followUp->completed_at?->toIso8601String(),
             'cancelled_at' => $followUp->cancelled_at?->toIso8601String(),
             'outcome_note' => $followUp->outcome_note,

@@ -37,6 +37,7 @@ export default function FollowUpList({ items, context, showAssignee }: { items: 
 
     // Server-side: re-checks access, switches to the quotation's store if needed, then redirects.
     const openQuotation = (item: FollowUpItem) => router.post(`/work/${item.id}/open-quotation`, {}, { onError });
+    const openInvoice = (item: FollowUpItem) => router.post(`/work/${item.id}/open-invoice`, {}, { onError });
 
     const snooze = (item: FollowUpItem, days: number) => {
         setBusy(item.id);
@@ -75,6 +76,11 @@ export default function FollowUpList({ items, context, showAssignee }: { items: 
                                     <button type="button" onClick={() => openQuotation(item)} className="text-primary hover:underline" dir="ltr">{item.quotation.number ?? t('work.draftQuotation')}</button>
                                 ) : (
                                     <span title={t('work.quotationUnavailable')} dir="ltr">{item.quotation.number ?? t('work.draftQuotation')}</span>
+                                ))}
+                                {item.invoice && (item.invoice.can_open ? (
+                                    <button type="button" onClick={() => openInvoice(item)} className="text-primary hover:underline" dir="ltr">{item.invoice.number}</button>
+                                ) : (
+                                    <span title={t('work.invoiceUnavailable')} dir="ltr">{item.invoice.number}</span>
                                 ))}
                                 {showAssignee && item.assignee && <span>{t('work.assignedTo').replace('{name}', item.assignee.name)}</span>}
                                 {!item.assignee && <DocBadge tone="warning">{t('work.unassigned')}</DocBadge>}

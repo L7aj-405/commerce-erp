@@ -18,8 +18,8 @@ use Illuminate\Validation\Rule;
 /**
  * W4.1 single source of attention visibility, search and presentation (web
  * now; MCP later). An item is visible only to users who may see the
- * underlying quotation: quotations.view in the organization AND membership of
- * the item's store. follow_ups.manage_all grants nothing extra here — tenant
+ * underlying document: its view permission (quotations.view, or W4.4
+ * invoices.view) in the organization AND membership of the item's store. follow_ups.manage_all grants nothing extra here — tenant
  * and store security stay authoritative.
  */
 final class AttentionQuery
@@ -34,6 +34,8 @@ final class AttentionQuery
         return [
             'view' => ['nullable', Rule::in(self::VIEWS)],
             'type' => ['nullable', Rule::enum(AttentionType::class)],
+            // W4.4 domain: quotation | invoice
+            'domain' => ['nullable', Rule::in([AttentionItem::SUBJECT_QUOTATION, AttentionItem::SUBJECT_INVOICE])],
             'severity' => ['nullable', Rule::enum(AttentionSeverity::class)],
             'customer_id' => ['nullable', 'integer', 'min:1'],
             'quotation_id' => ['nullable', 'integer', 'min:1'],
@@ -48,13 +50,22 @@ final class AttentionQuery
 
     public function canViewAny(User $user, Organization $organization): bool
     {
-        return $this->access->allows($user, $organization, 'quotations.view');
+        return $this->subjects($user, $organization) !== [];
     }
 
     public function canView(User $user, AttentionItem $item): bool
     {
-        return $this->access->allows($user, (int) $item->organization_id, 'quotations.view')
+        return $this->access->allows($user, (int) $item->organization_id, AttentionOwnership::permissionFor($item->subject_type))
             && $this->access->hasStoreAccess($user, $item->store_id);
+    }
+
+    /** Subject types the user may see (by document view permission). @return list<string> */
+    public function subjects(User $user, Organization $organization): array
+    {
+        return array_keys(array_filter([
+            AttentionItem::SUBJECT_QUOTATION => $this->access->allows($user, $organization, 'quotations.view'),
+            AttentionItem::SUBJECT_INVOICE => $this->access->allows($user, $organization, 'invoices.view'),
+        ]));
     }
 
     public function visible(User $user, Organization $organization): Builder
@@ -63,7 +74,7 @@ final class AttentionQuery
 
         return AttentionItem::query()
             ->where('organization_id', $organization->getKey())
-            ->when(! $this->canViewAny($user, $organization), fn (Builder $query) => $query->whereRaw('1 = 0'))
+            ->whereIn('subject_type', $this->subjects($user, $organization) ?: ['-'])
             ->where(fn (Builder $query) => $query->whereNull('store_id')->orWhereIn('store_id', $storeIds));
     }
 
@@ -72,8 +83,9 @@ final class AttentionQuery
     {
         $now = CarbonImmutable::now('UTC');
         $query = $this->visible($user, $organization)
-            ->with(['customer:id,organization_id,display_name', 'quotation:id,organization_id,store_id,quotation_number,status', 'assignee:id,name'])
+            ->with(['customer:id,organization_id,display_name', 'quotation:id,organization_id,store_id,quotation_number,status', 'invoice:id,organization_id,store_id,invoice_number,status', 'assignee:id,name'])
             ->when($filters['type'] ?? null, fn (Builder $q, string $type) => $q->where('type', $type))
+            ->when($filters['domain'] ?? null, fn (Builder $q, string $domain) => $q->where('subject_type', $domain))
             ->when($filters['severity'] ?? null, fn (Builder $q, string $severity) => $q->where('severity', $severity))
             ->when($filters['customer_id'] ?? null, fn (Builder $q, $id) => $q->where('customer_id', (int) $id))
             ->when($filters['quotation_id'] ?? null, fn (Builder $q, $id) => $q->where('quotation_id', (int) $id))
@@ -129,13 +141,15 @@ final class AttentionQuery
     public function present(User $user, Organization $organization, AttentionItem $item): array
     {
         $quotation = $item->quotation;
+        $invoice = $item->invoice;
         $customer = $item->customer && $this->access->allows($user, $organization, 'customers.view') ? $item->customer : null;
-        $number = $quotation?->quotation_number ?? ($item->metadata['quotation_number'] ?? null);
+        $number = $quotation?->quotation_number ?? $invoice?->invoice_number ?? ($item->metadata['document_number'] ?? $item->metadata['quotation_number'] ?? null);
         $active = $item->active_key !== null;
 
         return [
             'id' => (int) $item->getKey(),
             'type' => $item->type->value,
+            'subject_type' => $item->subject_type,
             'severity' => $item->severity->value,
             'status' => $item->status->value,
             'title' => $item->title,
@@ -143,6 +157,9 @@ final class AttentionQuery
             'i18n' => $item->metadata['i18n'] ?? null,
             'quotation' => $quotation ? ['id' => (int) $quotation->getKey(), 'number' => $number,
                 'can_open' => $this->access->hasStoreAccess($user, $quotation->store_id)] : null,
+            // W4.4: opened through /work/attention/{id}/open-invoice (same safe store switch).
+            'invoice' => $invoice ? ['id' => (int) $invoice->getKey(), 'number' => $number,
+                'can_open' => $this->access->hasStoreAccess($user, $invoice->store_id)] : null,
             'customer' => $customer ? ['id' => (int) $customer->getKey(), 'name' => $customer->display_name] : null,
             'detected_at' => $item->detected_at->toIso8601String(),
             'snoozed_until' => $item->snoozed_until?->toIso8601String(),
@@ -158,7 +175,7 @@ final class AttentionQuery
             'can_assign' => $active && $this->access->canManageAll($user, $organization) && in_array($item->status, [AttentionStatus::Open, AttentionStatus::Snoozed], true),
             'is_active' => $active,
             'can_act' => $active && in_array($item->status, [AttentionStatus::Open, AttentionStatus::Snoozed], true),
-            'can_create_follow_up' => $quotation !== null && $this->access->canCreate($user, $organization),
+            'can_create_follow_up' => ($quotation !== null || $invoice !== null) && $this->access->canCreate($user, $organization),
             'suggestion' => ['title' => $this->suggestedTitle($item, $number), 'due_date' => BusinessTime::today($organization)],
             'version' => (int) $item->version,
         ];
@@ -173,6 +190,10 @@ final class AttentionQuery
             AttentionType::QuotationExpiringSoon => "Relancer avant expiration — devis {$number}",
             AttentionType::QuotationExpiredUndecided => "Proposer une prolongation ou une révision — devis {$number}",
             AttentionType::QuotationFollowUpBacklog => "Traiter les relances en retard — devis {$number}",
+            AttentionType::InvoiceDueSoon => "Rappeler l’échéance au client — facture {$number}",
+            AttentionType::InvoiceOverdueUnpaid => "Relancer le paiement — facture {$number}",
+            AttentionType::InvoiceOverduePartial => "Relancer le solde restant — facture {$number}",
+            AttentionType::InvoicePaymentFollowUpBacklog => "Traiter les relances de paiement — facture {$number}",
         });
     }
 }

@@ -140,9 +140,9 @@ class OrganizationDataResetOperationQuery
                 ->whereNotNull('active_key')
                 ->whereNotNull('assigned_user_id')
                 ->where('assigned_user_id', '!=', $ownerId),
-            OrganizationDataResetOperation::DELETE_QUOTATION_ATTENTION => DB::table('attention_items')
+            OrganizationDataResetOperation::DELETE_DOCUMENT_ATTENTION => DB::table('attention_items')
                 ->where('organization_id', $organizationId)
-                ->where('subject_type', 'quotation'),
+                ->whereIn('subject_type', ['quotation', 'invoice']),
             OrganizationDataResetOperation::DELETE_NON_OWNER_MEMBERSHIPS => DB::table('organization_memberships')
                 ->where('organization_id', $organizationId)
                 ->where('user_id', '!=', $ownerId),

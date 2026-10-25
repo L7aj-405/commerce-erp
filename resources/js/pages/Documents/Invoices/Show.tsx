@@ -58,6 +58,8 @@ type Invoice = {
     version: number;
     status: string;
     invoice_date: string;
+    /** W4.4: business-local due date stamped at issue. */
+    due_date: string | null;
     customer_name: string | null;
     customer_company: string | null;
     customer_email: string | null;
@@ -397,6 +399,7 @@ export default function InvoiceShow({
                             <SummaryRow term="Remboursements" value={`-${formatMoney(relatedOrderPaymentSummary.refunded, currency)}`} />
                             <SummaryRow term={t('invoices.netCollected')} value={formatMoney(relatedOrderPaymentSummary.net, currency)} />
                             <SummaryRow term={t('invoices.remainingReceivable')} value={formatMoney(creditSummary.receivable, currency)} />
+                            {invoice.due_date && <SummaryRow term={t('invoices.dueDate')} value={formatDate(invoice.due_date)} />}
                             <SummaryRow term={t('invoices.customerRefundDue')} value={formatMoney(creditSummary.refund_obligation, currency)} />
                         </dl>
                         <p className="mt-2 text-xs text-ink-faint">{t('invoices.creditRefundDistinct')}</p>

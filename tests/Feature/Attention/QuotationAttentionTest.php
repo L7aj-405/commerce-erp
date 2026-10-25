@@ -331,7 +331,7 @@ class QuotationAttentionTest extends QuotationTestCase
         $this->artisan('attention:scan-quotations')->assertSuccessful();
         $this->assertSame(1, AttentionItem::query()->count());
 
-        $event = collect(app(Schedule::class)->events())->first(fn ($event) => str_contains((string) $event->command, 'attention:scan-quotations'));
+        $event = collect(app(Schedule::class)->events())->first(fn ($event) => str_ends_with((string) $event->command, 'attention:scan')); // W4.4: shared scan (old name kept as alias)
         $this->assertSame('*/15 * * * *', $event->expression);
 
         $plan = app(OrganizationDataResetPreviewService::class)->preview($organization, OrganizationDataResetScope::SalesAndDocuments);

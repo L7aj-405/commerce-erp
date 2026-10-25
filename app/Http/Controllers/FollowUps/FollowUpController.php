@@ -9,7 +9,7 @@ use App\Http\Controllers\Controller;
 use App\Models\FollowUp;
 use App\Services\ActiveTenantContext;
 use App\Services\FollowUps\FollowUpQuery;
-use App\Services\FollowUps\QuotationOpener;
+use App\Services\FollowUps\StoreDocumentOpener;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -20,7 +20,7 @@ class FollowUpController extends Controller
 {
     private const TABS = ['today', 'overdue', 'upcoming', 'completed', 'all'];
 
-    private const INPUT = ['title', 'note', 'priority', 'assigned_user_id', 'customer_id', 'quotation_id', 'due_date', 'due_time', 'due_at', 'expected_version'];
+    private const INPUT = ['title', 'note', 'priority', 'assigned_user_id', 'customer_id', 'quotation_id', 'invoice_id', 'due_date', 'due_time', 'due_at', 'expected_version'];
 
     public function index(Request $request, ActiveTenantContext $context, FollowUpQuery $followUps): Response
     {
@@ -75,11 +75,19 @@ class FollowUpController extends Controller
      * is switched or revealed unless the viewer may see the follow-up, holds
      * quotations.view and is a member of the quotation's active store.
      */
-    public function openQuotation(Request $request, ActiveTenantContext $context, FollowUp $followUp, QuotationOpener $opener): RedirectResponse
+    public function openQuotation(Request $request, ActiveTenantContext $context, FollowUp $followUp, StoreDocumentOpener $opener): RedirectResponse
     {
         $this->authorize('view', $followUp);
 
-        return $opener->open($request->user(), $context, $followUp->quotation_id === null ? null : (int) $followUp->quotation_id);
+        return $opener->openQuotation($request->user(), $context, $followUp->quotation_id === null ? null : (int) $followUp->quotation_id);
+    }
+
+    /** W4.4: same safe store switch, for the follow-up's invoice. */
+    public function openInvoice(Request $request, ActiveTenantContext $context, FollowUp $followUp, StoreDocumentOpener $opener): RedirectResponse
+    {
+        $this->authorize('view', $followUp);
+
+        return $opener->openInvoice($request->user(), $context, $followUp->invoice_id === null ? null : (int) $followUp->invoice_id);
     }
 
     public function transition(Request $request, ActiveTenantContext $context, FollowUp $followUp, TransitionFollowUpAction $action): RedirectResponse

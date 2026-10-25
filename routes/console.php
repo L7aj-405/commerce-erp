@@ -134,8 +134,8 @@ Schedule::command('finance:generate-recurring-obligations')->dailyAt('00:10')->w
 // Correctness does not depend on the mutex: occurrences are claimed under row locks.
 Schedule::command('follow-ups:notify-due')->everyFiveMinutes()->withoutOverlapping();
 Schedule::command('follow-ups:generate-recurring')->everyFiveMinutes()->withoutOverlapping();
-// Read-only on quotations; episodes are DB-unique, so overlap is safe even without the mutex.
-Schedule::command('attention:scan-quotations')->everyFifteenMinutes()->withoutOverlapping();
+// Read-only on business documents; episodes are DB-unique, so overlap is safe even without the mutex.
+Schedule::command('attention:scan')->everyFifteenMinutes()->withoutOverlapping();
 Schedule::call(fn () => SystemHealthHeartbeat::beat('scheduler'))
     ->name('system-health:scheduler-heartbeat')->everyMinute()->withoutOverlapping();
 Schedule::job(new RecordQueueWorkerHeartbeatJob)
