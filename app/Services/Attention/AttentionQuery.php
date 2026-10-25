@@ -37,6 +37,8 @@ final class AttentionQuery
             'severity' => ['nullable', Rule::enum(AttentionSeverity::class)],
             'customer_id' => ['nullable', 'integer', 'min:1'],
             'quotation_id' => ['nullable', 'integer', 'min:1'],
+            // A single item (notification target); still bounded by visible().
+            'focus' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ];
     }
@@ -71,7 +73,8 @@ final class AttentionQuery
             ->when($filters['type'] ?? null, fn (Builder $q, string $type) => $q->where('type', $type))
             ->when($filters['severity'] ?? null, fn (Builder $q, string $severity) => $q->where('severity', $severity))
             ->when($filters['customer_id'] ?? null, fn (Builder $q, $id) => $q->where('customer_id', (int) $id))
-            ->when($filters['quotation_id'] ?? null, fn (Builder $q, $id) => $q->where('quotation_id', (int) $id));
+            ->when($filters['quotation_id'] ?? null, fn (Builder $q, $id) => $q->where('quotation_id', (int) $id))
+            ->when($filters['focus'] ?? null, fn (Builder $q, $id) => $q->whereKey((int) $id));
 
         match ($filters['view'] ?? 'open') {
             // A snooze that has elapsed counts as open right away (the detector confirms it on its next scan).
@@ -83,8 +86,11 @@ final class AttentionQuery
             default => null,
         };
 
-        return $query->orderByRaw("CASE severity WHEN 'critical' THEN 0 WHEN 'warning' THEN 1 ELSE 2 END")
-            ->orderByDesc('last_detected_at')->orderByDesc('id')
+        // Deterministic priority: still-active episodes first, then critical > warning > info,
+        // then business urgency (QuotationAttentionDetector::urgency), oldest detection, id.
+        return $query->orderByRaw('CASE WHEN active_key IS NULL THEN 1 ELSE 0 END')
+            ->orderByRaw("CASE severity WHEN 'critical' THEN 0 WHEN 'warning' THEN 1 ELSE 2 END")
+            ->orderByDesc('urgency')->orderBy('detected_at')->orderBy('id')
             ->paginate((int) ($filters['per_page'] ?? 25))->withQueryString();
     }
 
@@ -118,6 +124,7 @@ final class AttentionQuery
             'dismiss_note' => $item->dismiss_note,
             'resolved_at' => $item->resolved_at?->toIso8601String(),
             'follow_up_count' => count($item->metadata['follow_up_ids'] ?? []),
+            'notified_at' => $item->notified_at?->toIso8601String(),
             'is_active' => $active,
             'can_act' => $active && in_array($item->status, [AttentionStatus::Open, AttentionStatus::Snoozed], true),
             'can_create_follow_up' => $quotation !== null && $this->access->canCreate($user, $organization),

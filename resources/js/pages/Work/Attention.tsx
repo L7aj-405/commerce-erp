@@ -30,6 +30,7 @@ type AttentionItem = {
     dismiss_note: string | null;
     resolved_at: string | null;
     follow_up_count: number;
+    notified_at: string | null;
     is_active: boolean;
     can_act: boolean;
     can_create_follow_up: boolean;
@@ -38,7 +39,7 @@ type AttentionItem = {
 };
 type LinkData = { url: string | null; label: string; active: boolean };
 type Props = {
-    filters: { view?: string; type?: string; severity?: string; customer_id?: number; quotation_id?: number };
+    filters: { view?: string; type?: string; severity?: string; customer_id?: number; quotation_id?: number; focus?: number };
     items: { data: AttentionItem[]; links: LinkData[]; total: number };
     context: FollowUpContext;
 };
@@ -57,7 +58,7 @@ export default function WorkAttention({ filters, items, context }: Props) {
     const [date, setDate] = useState('');
     const [busy, setBusy] = useState<number | null>(null);
     const onError = (errors: Record<string, string>) => toast.error(Object.values(errors)[0] ?? t('work.actionFailed'));
-    const visit = (next: Record<string, unknown>) => router.get('/work/attention', { ...filters, ...next, page: undefined }, { preserveState: true, replace: true });
+    const visit = (next: Record<string, unknown>) => router.get('/work/attention', { ...filters, ...next, focus: undefined, page: undefined }, { preserveState: true, replace: true });
 
     const text = (item: AttentionItem) => {
         const render = (key: string, fallback: string) => (item.i18n && isKey(key) ? t(key).replace(/\{(\w+)\}/g, (_, name: string) => item.i18n?.params[name] ?? '') : fallback);
@@ -89,6 +90,13 @@ export default function WorkAttention({ filters, items, context }: Props) {
                 ))}
             </nav>
 
+            {filters.focus && (
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-field border border-line bg-raised px-3 py-2 text-sm text-ink-muted">
+                    <span>{t('attention.focusTitle')}</span>
+                    <Link href="/work/attention" className="font-medium text-primary hover:underline">{t('attention.focusShowAll')}</Link>
+                </div>
+            )}
+
             <div className="mb-4 flex flex-wrap gap-3 rounded-card border border-line bg-raised p-4">
                 <select value={filters.type ?? ''} onChange={(e) => visit({ type: e.target.value || undefined })} className={`${fieldClass} flex-1 sm:flex-none`} aria-label={t('attention.allTypes')}>
                     <option value="">{t('attention.allTypes')}</option>
@@ -105,11 +113,11 @@ export default function WorkAttention({ filters, items, context }: Props) {
             </div>
 
             {items.data.length === 0 ? (
-                <EmptyState title={t('attention.empty')} description={t('attention.emptyHelp')} />
+                <EmptyState title={filters.focus ? t('attention.focusUnavailable') : t('attention.empty')} description={t('attention.emptyHelp')} />
             ) : (
                 <ul className="divide-y divide-line rounded-card border border-line bg-surface">
                     {items.data.map((item) => (
-                        <li key={item.id} className="flex flex-col gap-3 p-4 lg:flex-row lg:items-start lg:justify-between">
+                        <li key={item.id} className={`flex flex-col gap-3 p-4 lg:flex-row lg:items-start lg:justify-between ${Number(filters.focus) === item.id ? 'bg-sage/30' : ''}`}>
                             <div className="min-w-0 flex-1">
                                 <div className="flex flex-wrap items-center gap-2">
                                     <span className={`text-sm font-semibold ${item.is_active ? 'text-ink' : 'text-ink-muted'}`}>{text(item).title}</span>
@@ -123,6 +131,7 @@ export default function WorkAttention({ filters, items, context }: Props) {
                                     {item.customer && <Link href={`/sales/customers/${item.customer.id}`} className="text-primary hover:underline">{item.customer.name}</Link>}
                                     <span>{t('attention.detected').replace('{date}', formatDate(item.detected_at))}</span>
                                     {item.follow_up_count > 0 && <span>{t('attention.followUpsCreated').replace('{count}', String(item.follow_up_count))}</span>}
+                                    {item.notified_at && <span>{t('attention.notified')}</span>}
                                     {item.dismiss_note && <span>« {item.dismiss_note} »</span>}
                                 </p>
                             </div>

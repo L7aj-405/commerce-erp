@@ -36,6 +36,9 @@ class AttentionItem extends Model
             'resolved_at' => 'datetime',
             'snoozed_until' => 'datetime',
             'dismissed_at' => 'datetime',
+            'notification_processed_at' => 'datetime',
+            'notified_at' => 'datetime',
+            'urgency' => 'integer',
             'version' => 'integer',
         ];
     }

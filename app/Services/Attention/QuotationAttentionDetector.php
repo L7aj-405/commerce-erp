@@ -54,15 +54,25 @@ final class QuotationAttentionDetector
 
     public function __construct(private readonly FollowUpQuery $followUps) {}
 
-    /** Scheduler entry: active organizations in chunks, one failing organization never stops the scan. @return array{organizations: int, failed: int} */
-    public function scanAll(?CarbonImmutable $now = null): array
+    /**
+     * Scheduler entry: active organizations in chunks, one failing organization
+     * never stops the scan. `$afterOrganization` (W4.2: critical notifications)
+     * runs on fresh state right after each organization's scan, isolated too.
+     *
+     * @param (callable(Organization, CarbonImmutable): mixed)|null $afterOrganization
+     * @return array{organizations: int, failed: int}
+     */
+    public function scanAll(?CarbonImmutable $now = null, ?callable $afterOrganization = null): array
     {
         $result = ['organizations' => 0, 'failed' => 0];
         Organization::query()->where('status', 'active')->select(['id', 'name', 'status', 'settings'])
-            ->chunkById(100, function ($organizations) use ($now, &$result) {
+            ->chunkById(100, function ($organizations) use ($now, $afterOrganization, &$result) {
                 foreach ($organizations as $organization) {
                     try {
                         $this->scanOrganization($organization, $now);
+                        if ($afterOrganization !== null) {
+                            $afterOrganization($organization, $now ?? CarbonImmutable::now('UTC'));
+                        }
                         $result['organizations']++;
                     } catch (Throwable $exception) {
                         $result['failed']++;
@@ -87,12 +97,7 @@ final class QuotationAttentionDetector
                 ->where('status', $status->value)
                 ->select(['id', 'organization_id', 'store_id', 'customer_id', 'status', 'valid_until', 'quotation_number'])
                 ->chunkById(self::CHUNK, function (Collection $quotations) use ($organization, $now, $today, &$result) {
-                    $lastSent = DocumentEmailDelivery::query()
-                        ->where('organization_id', $organization->getKey())
-                        ->where('document_type', Quotation::class)->whereIn('document_id', $quotations->modelKeys())
-                        ->where('status', DocumentEmailDelivery::STATUS_SENT)->whereNotNull('sent_at')
-                        ->groupBy('document_id')->selectRaw('document_id, MAX(sent_at) as last_sent_at')
-                        ->pluck('last_sent_at', 'document_id');
+                    $lastSent = $this->lastSent($organization, $quotations->modelKeys());
                     $conditions = [];
                     foreach ($quotations as $quotation) {
                         $this->guard($result, function () use ($organization, $quotation, $lastSent, $today, &$conditions) {
@@ -146,15 +151,7 @@ final class QuotationAttentionDetector
     /** @param array<string, int> $result */
     private function detectBacklog(Organization $organization, string $today, CarbonImmutable $now, array &$result): int
     {
-        $config = config('attention.quotations');
-        $overdue = FollowUp::query()->where('organization_id', $organization->getKey())->whereNotNull('quotation_id');
-        $this->followUps->applyBucket($overdue, $organization, 'overdue');
-        $groups = $overdue->groupBy('quotation_id')
-            ->selectRaw('quotation_id, COUNT(*) as overdue_count, MIN(due_date) as oldest_due')
-            ->orderBy('quotation_id')->get()
-            ->map(fn ($row) => ['quotation_id' => (int) $row->quotation_id, 'count' => (int) $row->overdue_count,
-                'date' => (string) $row->oldest_due, 'days' => (int) CarbonImmutable::parse((string) $row->oldest_due, 'UTC')->diffInDays(CarbonImmutable::parse($today, 'UTC'), false)])
-            ->filter(fn (array $group) => $group['count'] >= (int) $config['followup_backlog_count'] || $group['days'] >= (int) $config['followup_backlog_age_days']);
+        $groups = $this->backlogGroups($organization, $today);
 
         $detected = 0;
         foreach ($groups->chunk(self::CHUNK) as $chunk) {
@@ -166,14 +163,110 @@ final class QuotationAttentionDetector
                 if (! $quotation || ! FollowUpRecurringGenerator::quotationIsActionable($quotation->status)) {
                     continue;
                 }
-                $critical = $group['count'] >= (int) $config['followup_backlog_critical_count'] || $group['days'] >= (int) $config['followup_backlog_critical_age_days'];
-                $conditions[] = [$quotation, AttentionType::QuotationFollowUpBacklog, $critical ? AttentionSeverity::Critical : AttentionSeverity::Warning,
+                $conditions[] = [$quotation, AttentionType::QuotationFollowUpBacklog, $this->backlogSeverity($group),
                     ['count' => $group['count'], 'date' => $group['date'], 'days' => $group['days']]];
             }
             $detected += $this->apply($organization, $conditions, $now, $result);
         }
 
         return $detected;
+    }
+
+    /**
+     * W4.2 canonical pre-delivery check: the severity the item's condition has
+     * right now (NULL = no longer holds), using exactly the scan's rules for
+     * that one quotation. Lets the notifier avoid acting on a stale episode
+     * before the next scan resolves it, without a second copy of the rules.
+     */
+    public function currentSeverity(Organization $organization, AttentionItem $item): ?AttentionSeverity
+    {
+        if ($item->active_key === null || $item->quotation_id === null) {
+            return null;
+        }
+        $quotation = Quotation::query()->where('organization_id', $organization->getKey())->whereKey($item->quotation_id)
+            ->first(['id', 'organization_id', 'store_id', 'customer_id', 'status', 'valid_until', 'quotation_number']);
+        if (! $quotation) {
+            return null;
+        }
+        $today = BusinessTime::today($organization);
+
+        if ($item->type === AttentionType::QuotationFollowUpBacklog) {
+            $group = FollowUpRecurringGenerator::quotationIsActionable($quotation->status)
+                ? $this->backlogGroups($organization, $today, [(int) $quotation->getKey()])->first() : null;
+
+            return $group ? $this->backlogSeverity($group) : null;
+        }
+        if (! in_array($quotation->status, [QuotationStatus::Issued, QuotationStatus::Expired], true)) {
+            return null;
+        }
+        foreach ($this->documentConditions($organization, $quotation, $this->lastSent($organization, [(int) $quotation->getKey()])->get($quotation->getKey()), $today) as [$type, $severity]) {
+            if ($type === $item->type) {
+                return $severity;
+            }
+        }
+
+        return null;
+    }
+
+    /** Last successful email send per quotation. @param list<int> $quotationIds */
+    private function lastSent(Organization $organization, array $quotationIds): Collection
+    {
+        return DocumentEmailDelivery::query()
+            ->where('organization_id', $organization->getKey())
+            ->where('document_type', Quotation::class)->whereIn('document_id', $quotationIds)
+            ->where('status', DocumentEmailDelivery::STATUS_SENT)->whereNotNull('sent_at')
+            ->groupBy('document_id')->selectRaw('document_id, MAX(sent_at) as last_sent_at')
+            ->pluck('last_sent_at', 'document_id');
+    }
+
+    /**
+     * Quotation-linked overdue follow-up groups meeting the backlog threshold.
+     *
+     * @param list<int>|null $quotationIds
+     * @return Collection<int, array{quotation_id: int, count: int, date: string, days: int}>
+     */
+    private function backlogGroups(Organization $organization, string $today, ?array $quotationIds = null): Collection
+    {
+        $config = config('attention.quotations');
+        $overdue = FollowUp::query()->where('organization_id', $organization->getKey())->whereNotNull('quotation_id')
+            ->when($quotationIds !== null, fn ($query) => $query->whereIn('quotation_id', $quotationIds));
+        $this->followUps->applyBucket($overdue, $organization, 'overdue');
+
+        return $overdue->groupBy('quotation_id')
+            ->selectRaw('quotation_id, COUNT(*) as overdue_count, MIN(due_date) as oldest_due')
+            ->orderBy('quotation_id')->get()
+            ->map(fn ($row) => ['quotation_id' => (int) $row->quotation_id, 'count' => (int) $row->overdue_count,
+                'date' => (string) $row->oldest_due, 'days' => (int) CarbonImmutable::parse((string) $row->oldest_due, 'UTC')->diffInDays(CarbonImmutable::parse($today, 'UTC'), false)])
+            ->filter(fn (array $group) => $group['count'] >= (int) $config['followup_backlog_count'] || $group['days'] >= (int) $config['followup_backlog_age_days'])
+            ->values();
+    }
+
+    /** @param array{count: int, days: int} $group */
+    private function backlogSeverity(array $group): AttentionSeverity
+    {
+        $config = config('attention.quotations');
+
+        return $group['count'] >= (int) $config['followup_backlog_critical_count'] || $group['days'] >= (int) $config['followup_backlog_critical_age_days']
+            ? AttentionSeverity::Critical : AttentionSeverity::Warning;
+    }
+
+    /**
+     * W4.2 transparent urgency within a severity (higher = more urgent):
+     * days since the last send (sent), days left subtracted from the window
+     * (expiring: sooner = higher), days past validity (expired), days the
+     * oldest follow-up is overdue × 100 + overdue count (backlog).
+     *
+     * @param array<string, mixed> $facts
+     */
+    public static function urgency(AttentionType $type, array $facts): int
+    {
+        $days = max(0, (int) ($facts['days'] ?? 0));
+
+        return match ($type) {
+            AttentionType::QuotationExpiringSoon => max(0, (int) config('attention.quotations.expiring_soon_days') - $days),
+            AttentionType::QuotationFollowUpBacklog => $days * 100 + min(99, (int) ($facts['count'] ?? 0)),
+            default => $days,
+        };
     }
 
     /**
@@ -201,7 +294,7 @@ final class QuotationAttentionDetector
             $unchanged = $item !== null
                 && $item->severity === $severity && $item->title === $title && $item->summary === $summary
                 && (int) $item->store_id === (int) $quotation->store_id && $item->customer_id === $quotation->customer_id
-                && ($item->metadata['facts'] ?? null) == $facts
+                && ($item->metadata['facts'] ?? null) == $facts && (int) $item->urgency === self::urgency($type, $facts)
                 && ! ($item->status === AttentionStatus::Snoozed && $item->snoozed_until !== null && $item->snoozed_until->lessThanOrEqualTo($now));
             if ($unchanged) {
                 $confirm[] = $item->getKey();
@@ -247,6 +340,7 @@ final class QuotationAttentionDetector
             $item->customer_id = $quotation->customer_id;
             $item->quotation_id = $quotation->getKey();
             $item->severity = $severity;
+            $item->urgency = self::urgency($type, $facts);
             $item->title = $title;
             $item->summary = $summary;
             // Snapshot for display only; follow-ups created from this item are kept.
