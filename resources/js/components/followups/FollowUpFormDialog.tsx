@@ -3,7 +3,8 @@ import { Dialog } from '@/components/ui/Dialog';
 import { useI18n } from '@/i18n';
 import { useForm } from '@inertiajs/react';
 import type { FormEvent } from 'react';
-import type { FollowUpContext, FollowUpItem, FollowUpPriority } from './types';
+import type { FollowUpContext, FollowUpItem, FollowUpPriority, FollowUpTemplate } from './types';
+import { addDays } from './types';
 
 const fieldClass = 'h-10 w-full rounded-field border border-line-strong bg-surface px-3 text-sm text-ink outline-none transition-soft focus:border-primary';
 
@@ -48,6 +49,19 @@ export default function FollowUpFormDialog({
         ...(followUp ? { expected_version: followUp.version } : {}),
     });
 
+    // W3: a template only pre-fills these fields; the server validates the follow-up as usual.
+    const applyTemplate = (template: FollowUpTemplate | undefined) => {
+        if (!template) return;
+        form.setData((data) => ({
+            ...data,
+            title: template.title,
+            note: template.default_note ?? '',
+            priority: template.default_priority,
+            due_date: template.default_due_offset_days !== null ? addDays(context.today, template.default_due_offset_days) : data.due_date,
+            due_time: template.default_time ?? '',
+        }));
+    };
+
     const submit = (event: FormEvent) => {
         event.preventDefault();
         const options = { preserveScroll: true, onSuccess: () => { form.reset(); onClose(); } };
@@ -84,6 +98,15 @@ export default function FollowUpFormDialog({
             <form id="follow-up-form" onSubmit={submit} className="space-y-4 px-4 py-4 sm:px-6">
                 {(errors.version || errors.status) && (
                     <p className="rounded-field border border-danger/30 bg-danger-soft px-3 py-2 text-sm text-danger">{errors.version ?? errors.status}</p>
+                )}
+                {!editing && context.templates.length > 0 && (
+                    <label className="block">
+                        <span className="mb-1 block text-xs font-medium text-ink-muted">{t('work.tplChoose')}</span>
+                        <select defaultValue="" onChange={(e) => applyTemplate(context.templates.find((template) => template.id === Number(e.target.value)))} className={fieldClass}>
+                            <option value="">{t('work.tplNone')}</option>
+                            {context.templates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}
+                        </select>
+                    </label>
                 )}
                 <label className="block">
                     <span className="mb-1 block text-xs font-medium text-ink-muted">{t('work.titleLabel')}</span>

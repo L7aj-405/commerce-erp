@@ -5,6 +5,7 @@ namespace App\Actions\Settings;
 use App\Models\Organization;
 use App\Models\User;
 use App\Services\AuditLogger;
+use App\Services\FollowUps\FollowUpRecurringGenerator;
 use App\Services\FollowUps\FollowUpReminderSchedule;
 use App\Support\BusinessTime;
 use Illuminate\Support\Facades\DB;
@@ -21,6 +22,7 @@ class UpdateOrganizationTimezoneAction
     public function __construct(
         private readonly AuditLogger $audit,
         private readonly FollowUpReminderSchedule $reminders,
+        private readonly FollowUpRecurringGenerator $recurring,
     ) {}
 
     public function execute(User $actor, Organization $organization, string $timezone): Organization
@@ -41,6 +43,8 @@ class UpdateOrganizationTimezoneAction
             $locked->save();
             // Pending date-only follow-up reminders fire at 09:00 local: move them.
             $this->reminders->realignDateOnly($locked);
+            // Recurring rules keep local intent; only their UTC generation gate moves.
+            $this->recurring->rescheduleOrganization($locked);
 
             $this->audit->record(
                 'organization.settings_changed',

@@ -75,4 +75,10 @@ class FollowUp extends Model
     {
         return $this->belongsTo(Quotation::class);
     }
+
+    /** W3: the recurring rule that generated this occurrence (NULL for manual work). */
+    public function recurringRule(): BelongsTo
+    {
+        return $this->belongsTo(FollowUpRecurringRule::class, 'recurring_rule_id');
+    }
 }

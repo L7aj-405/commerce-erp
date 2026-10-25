@@ -63,6 +63,8 @@ class OrganizationDataResetBundleRegistry
                 // Follow-ups are work items, not sales documents: they survive
                 // the reset and only lose the quotation link.
                 ['follow_ups.unlink_quotation', 'follow_ups', 'quotation_id'],
+                // A quotation-linked recurring rule that loses its quotation pauses at its next generation.
+                ['follow_up_rules.unlink_quotation', 'follow_up_recurring_rules', 'quotation_id'],
             ]), [
                 new OrganizationDataResetOperation('sales_and_documents.woocommerce_stock_tasks', $scope, 'woocommerce_stock_tasks', OrganizationDataResetOperation::DELETE_SALES_WOOCOMMERCE_STOCK_TASKS),
                 new OrganizationDataResetOperation('sales_and_documents.stock_transfer_lines', $scope, 'stock_transfer_lines', OrganizationDataResetOperation::DELETE_SALES_STOCK_TRANSFER_LINES),
@@ -103,6 +105,7 @@ class OrganizationDataResetBundleRegistry
             OrganizationDataResetScope::Customers => [
                 new OrganizationDataResetOperation('contacts.unlink_customer', $scope, 'organization_contacts', OrganizationDataResetOperation::SET_NULL, 'customer_id'),
                 new OrganizationDataResetOperation('follow_ups.unlink_customer', $scope, 'follow_ups', OrganizationDataResetOperation::SET_NULL, 'customer_id'),
+                new OrganizationDataResetOperation('follow_up_rules.unlink_customer', $scope, 'follow_up_recurring_rules', OrganizationDataResetOperation::SET_NULL, 'customer_id'),
                 new OrganizationDataResetOperation('customers.delete', $scope, 'customers'),
             ],
             OrganizationDataResetScope::SuppliersAndPurchasing => array_merge(
@@ -119,6 +122,8 @@ class OrganizationDataResetBundleRegistry
                 // Open work of removed members becomes "Unassigned" (never deleted);
                 // completed/cancelled history keeps its assignee.
                 new OrganizationDataResetOperation('follow_ups.unassign_removed_members', $scope, 'follow_ups', OrganizationDataResetOperation::UNASSIGN_NON_OWNER_FOLLOW_UPS),
+                // Their recurring rules become Unassigned and stop generating (paused) until a manager acts.
+                new OrganizationDataResetOperation('follow_up_rules.unassign_removed_members', $scope, 'follow_up_recurring_rules', OrganizationDataResetOperation::UNASSIGN_NON_OWNER_RECURRING_RULES),
                 new OrganizationDataResetOperation('access.store_memberships', $scope, 'store_memberships', OrganizationDataResetOperation::DELETE_NON_OWNER_STORE_MEMBERSHIPS),
                 new OrganizationDataResetOperation('access.invitations', $scope, 'user_invitations'),
                 new OrganizationDataResetOperation('access.memberships', $scope, 'organization_memberships', OrganizationDataResetOperation::DELETE_NON_OWNER_MEMBERSHIPS),

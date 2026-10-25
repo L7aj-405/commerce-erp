@@ -3,6 +3,7 @@
 namespace App\Services\FollowUps;
 
 use App\Models\FollowUp;
+use App\Models\FollowUpRecurringRule;
 use App\Models\Organization;
 use App\Models\StoreMembership;
 use App\Models\User;
@@ -19,6 +20,10 @@ use Illuminate\Database\Eloquent\Builder;
  * - follow_ups.manage_all: see/change everyone's work (including Unassigned
  *   work, assigned_user_id NULL) and assign to others;
  * - a store-linked follow-up additionally requires store membership.
+ *
+ * W3 recurring rules follow exactly the same rules (same columns): own rule
+ * = assigned to the user; anything else (other users, Unassigned) needs
+ * manage_all.
  */
 class FollowUpAccess
 {
@@ -51,7 +56,7 @@ class FollowUpAccess
         return $this->allows($user, $organization, 'follow_ups.manage_all');
     }
 
-    public function canView(User $user, FollowUp $followUp): bool
+    public function canView(User $user, FollowUp|FollowUpRecurringRule $followUp): bool
     {
         $organizationId = (int) $followUp->organization_id;
         $own = (int) $followUp->assigned_user_id === (int) $user->getKey();
@@ -60,7 +65,7 @@ class FollowUpAccess
             && $this->hasStoreAccess($user, $followUp->store_id);
     }
 
-    public function canManage(User $user, FollowUp $followUp): bool
+    public function canManage(User $user, FollowUp|FollowUpRecurringRule $followUp): bool
     {
         $organizationId = (int) $followUp->organization_id;
         $own = (int) $followUp->assigned_user_id === (int) $user->getKey();
@@ -90,6 +95,17 @@ class FollowUpAccess
         $storeIds = $this->storeIds($user, $organization);
 
         return FollowUp::query()
+            ->where('organization_id', $organization->getKey())
+            ->when(! $this->canManageAll($user, $organization), fn (Builder $query) => $query->where('assigned_user_id', $user->getKey()))
+            ->where(fn (Builder $query) => $query->whereNull('store_id')->orWhereIn('store_id', $storeIds));
+    }
+
+    /** Recurring rules the user may see (same scope as visible()). */
+    public function visibleRules(User $user, Organization $organization): Builder
+    {
+        $storeIds = $this->storeIds($user, $organization);
+
+        return FollowUpRecurringRule::query()
             ->where('organization_id', $organization->getKey())
             ->when(! $this->canManageAll($user, $organization), fn (Builder $query) => $query->where('assigned_user_id', $user->getKey()))
             ->where(fn (Builder $query) => $query->whereNull('store_id')->orWhereIn('store_id', $storeIds));

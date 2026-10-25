@@ -32,6 +32,7 @@ class FollowUpQuery
     public function __construct(
         private readonly FollowUpAccess $access,
         private readonly FollowUpAssignees $assignees,
+        private readonly FollowUpRecurringQuery $recurring,
     ) {}
 
     /** @return array<string, mixed> */
@@ -154,6 +155,8 @@ class FollowUpQuery
             'can_manage_all' => $manageAll,
             'current_user_id' => (int) $user->getKey(),
             'assignees' => $manageAll ? $this->assignees->assignable($organization, $storeId, limit: 100)->all() : [],
+            // W3: pre-fill presets for the create form (never bypass SaveFollowUpAction).
+            'templates' => $this->access->canCreate($user, $organization) ? $this->recurring->activeTemplates($organization) : [],
         ];
     }
 
@@ -213,6 +216,7 @@ class FollowUpQuery
             'customer' => $customer ? ['id' => (int) $customer->getKey(), 'name' => $customer->display_name] : null,
             // can_open: the viewer may open the quotation (switching to its store
             // through FollowUpController::openQuotation when needed).
+            'recurring_rule_id' => $followUp->recurring_rule_id === null ? null : (int) $followUp->recurring_rule_id,
             'quotation' => $quotation ? ['id' => (int) $quotation->getKey(), 'number' => $quotation->quotation_number, 'store_id' => (int) $quotation->store_id,
                 'can_open' => $this->access->hasStoreAccess($user, $quotation->store_id)] : null,
             'completed_at' => $followUp->completed_at?->toIso8601String(),

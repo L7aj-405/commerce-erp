@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Organization;
 use App\Services\AuditLogger;
+use App\Services\FollowUps\FollowUpRecurringGenerator;
 use App\Services\FollowUps\FollowUpReminderSchedule;
 use App\Services\OrganizationCreator;
 use App\Support\BusinessTime;
@@ -60,7 +61,7 @@ class OrganizationController extends Controller
         return back();
     }
 
-    public function updateSettings(Request $request, Organization $organization, AuditLogger $audit, FollowUpReminderSchedule $reminders): RedirectResponse
+    public function updateSettings(Request $request, Organization $organization, AuditLogger $audit, FollowUpReminderSchedule $reminders, FollowUpRecurringGenerator $recurring): RedirectResponse
     {
         $this->authorize('updateSettings', $organization);
 
@@ -73,6 +74,7 @@ class OrganizationController extends Controller
         $organization->update(['settings' => $data['settings']]);
         if (($oldSettings['timezone'] ?? null) !== ($data['settings']['timezone'] ?? null)) {
             $reminders->realignDateOnly($organization->fresh());
+            $recurring->rescheduleOrganization($organization->fresh());
         }
 
         $audit->record(

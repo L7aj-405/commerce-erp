@@ -1,5 +1,6 @@
 import FollowUpFormDialog from '@/components/followups/FollowUpFormDialog';
 import FollowUpList from '@/components/followups/FollowUpList';
+import WorkNav from '@/components/followups/WorkNav';
 import type { FollowUpContext, FollowUpItem } from '@/components/followups/types';
 import { Button } from '@/components/ui/Button';
 import EmptyState from '@/components/ui/EmptyState';
@@ -50,6 +51,7 @@ export default function WorkIndex({ tab, filters, followUps, counts, context }: 
                 description={t('work.description')}
                 actions={context.can_create ? <Button onClick={() => setCreating(true)}>+ {t('work.new')}</Button> : undefined}
             />
+            <WorkNav current="work" canManageAll={context.can_manage_all} />
 
             {!context.timezone_configured && (
                 <p className="mb-4 rounded-field border border-line bg-raised px-3 py-2 text-xs text-ink-muted">

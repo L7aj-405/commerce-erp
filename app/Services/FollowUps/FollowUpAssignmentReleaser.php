@@ -2,8 +2,10 @@
 
 namespace App\Services\FollowUps;
 
+use App\Enums\FollowUpRecurringStatus;
 use App\Enums\FollowUpStatus;
 use App\Models\FollowUp;
+use App\Models\FollowUpRecurringRule;
 use App\Models\Organization;
 use App\Models\Store;
 use App\Models\User;
@@ -21,14 +23,19 @@ use Illuminate\Support\Facades\DB;
  * the same rule as one bulk update in OrganizationDataResetOperationQuery,
  * since audit rows are frozen during a reset and the reset's own audit
  * carries the count) — so open work lands in the manager-visible
- * "Unassigned" bucket instead of staying hidden under a departed user. Completed/cancelled history, creator,
- * completer and every tenant/store/customer/quotation link are untouched;
- * nothing is deleted.
+ * "Unassigned" bucket instead of staying hidden under a departed user.
+ * Completed/cancelled history, creator, completer and every
+ * tenant/store/customer/quotation link are untouched; nothing is deleted.
+ *
+ * W3: recurring rules of that user are released on the same paths — the
+ * rule becomes Unassigned and an active rule is paused (assignee_lost), so it
+ * stops generating until a manager reassigns and resumes it.
  *
  * Retry-safe: candidates are re-selected under a row lock with the same
- * predicate, so a follow-up reassigned concurrently to a valid member is left
+ * predicate, so an item reassigned concurrently to a valid member is left
  * alone and a second run releases nothing. Each release bumps `version` (stale
- * tabs are rejected) and is audited as follow_up.reassigned → NULL.
+ * tabs are rejected) and is audited (follow_up.reassigned /
+ * follow_up_recurring.reassigned → NULL).
  */
 class FollowUpAssignmentReleaser
 {
@@ -36,9 +43,11 @@ class FollowUpAssignmentReleaser
 
     public function __construct(private readonly AuditLogger $audit) {}
 
-    /** Release open work whose assignee can no longer hold it (optionally for one user only). */
+    /** Release open work and rules whose assignee can no longer hold them (optionally for one user); returns released follow-ups. */
     public function releaseDeparted(Organization $organization, ?User $actor, string $reason, ?int $userId = null): int
     {
+        $this->releaseRules($organization, $actor, $reason, $userId);
+
         return $this->release($organization, fn () => $this->staleAssignments($organization, $userId), $actor, $reason);
     }
 
@@ -48,25 +57,14 @@ class FollowUpAssignmentReleaser
      */
     public function staleAssignments(Organization $organization, ?int $userId = null): Builder
     {
-        $organizationId = (int) $organization->getKey();
+        return $this->stale(FollowUp::query()->where('follow_ups.status', FollowUpStatus::Open->value), 'follow_ups', $organization, $userId);
+    }
 
-        return $this->openAssigned($organization)
-            ->when($userId !== null, fn (Builder $query) => $query->where('assigned_user_id', $userId))
-            ->where(fn (Builder $query) => $query
-                ->whereNotExists(fn (QueryBuilder $membership) => $membership->selectRaw('1')
-                    ->from('organization_memberships as membership')
-                    ->join('role_permission as role_permission', 'role_permission.role_id', '=', 'membership.role_id')
-                    ->join('permissions as permission', 'permission.id', '=', 'role_permission.permission_id')
-                    ->where('membership.organization_id', $organizationId)
-                    ->whereColumn('membership.user_id', 'follow_ups.assigned_user_id')
-                    ->where('membership.status', 'active')
-                    ->where('permission.key', 'follow_ups.view'))
-                ->orWhere(fn (Builder $query) => $query->whereNotNull('follow_ups.store_id')
-                    ->whereNotExists(fn (QueryBuilder $storeMembership) => $storeMembership->selectRaw('1')
-                        ->from('store_memberships as store_membership')
-                        ->where('store_membership.organization_id', $organizationId)
-                        ->whereColumn('store_membership.store_id', 'follow_ups.store_id')
-                        ->whereColumn('store_membership.user_id', 'follow_ups.assigned_user_id'))));
+    /** Non-ended, assigned recurring rules with the same stale assignee. */
+    public function staleRules(Organization $organization, ?int $userId = null): Builder
+    {
+        return $this->stale(FollowUpRecurringRule::query()->where('follow_up_recurring_rules.status', '!=', FollowUpRecurringStatus::Ended->value),
+            'follow_up_recurring_rules', $organization, $userId);
     }
 
     /** @param callable(): Builder $candidates re-evaluated under lock for every chunk */
@@ -96,11 +94,57 @@ class FollowUpAssignmentReleaser
         });
     }
 
-    private function openAssigned(Organization $organization): Builder
+    private function releaseRules(Organization $organization, ?User $actor, string $reason, ?int $userId): int
     {
-        return FollowUp::query()
-            ->where('follow_ups.organization_id', $organization->getKey())
-            ->where('follow_ups.status', FollowUpStatus::Open->value)
-            ->whereNotNull('follow_ups.assigned_user_id');
+        return DB::transaction(function () use ($organization, $actor, $reason, $userId) {
+            $released = 0;
+            foreach ($this->staleRules($organization, $userId)->orderBy('follow_up_recurring_rules.id')->pluck('follow_up_recurring_rules.id')->chunk(self::CHUNK) as $ids) {
+                $locked = $this->staleRules($organization, $userId)->whereIn('follow_up_recurring_rules.id', $ids->all())
+                    ->orderBy('follow_up_recurring_rules.id')->lockForUpdate()->get();
+                foreach ($locked as $rule) {
+                    $previous = ['assigned_user_id' => (int) $rule->assigned_user_id, 'status' => $rule->status->value];
+                    $rule->assigned_user_id = null;
+                    if ($rule->status === FollowUpRecurringStatus::Active) {
+                        $rule->status = FollowUpRecurringStatus::Paused;
+                        $rule->next_occurrence_on = null;
+                        $rule->next_generate_at = null;
+                    }
+                    $rule->status_reason = 'assignee_lost';
+                    $rule->version = (int) $rule->version + 1;
+                    $rule->save();
+
+                    $this->audit->record('follow_up_recurring.reassigned', $actor, $organization, null, $rule, oldValues: $previous,
+                        newValues: ['recurring_rule_id' => (int) $rule->getKey(), 'assigned_user_id' => null, 'status' => $rule->status->value, 'reason' => $reason]);
+                    $released++;
+                }
+            }
+
+            return $released;
+        });
+    }
+
+    private function stale(Builder $query, string $table, Organization $organization, ?int $userId): Builder
+    {
+        $organizationId = (int) $organization->getKey();
+
+        return $query
+            ->where("{$table}.organization_id", $organizationId)
+            ->whereNotNull("{$table}.assigned_user_id")
+            ->when($userId !== null, fn (Builder $query) => $query->where("{$table}.assigned_user_id", $userId))
+            ->where(fn (Builder $query) => $query
+                ->whereNotExists(fn (QueryBuilder $membership) => $membership->selectRaw('1')
+                    ->from('organization_memberships as membership')
+                    ->join('role_permission as role_permission', 'role_permission.role_id', '=', 'membership.role_id')
+                    ->join('permissions as permission', 'permission.id', '=', 'role_permission.permission_id')
+                    ->where('membership.organization_id', $organizationId)
+                    ->whereColumn('membership.user_id', "{$table}.assigned_user_id")
+                    ->where('membership.status', 'active')
+                    ->where('permission.key', 'follow_ups.view'))
+                ->orWhere(fn (Builder $query) => $query->whereNotNull("{$table}.store_id")
+                    ->whereNotExists(fn (QueryBuilder $storeMembership) => $storeMembership->selectRaw('1')
+                        ->from('store_memberships as store_membership')
+                        ->where('store_membership.organization_id', $organizationId)
+                        ->whereColumn('store_membership.store_id', "{$table}.store_id")
+                        ->whereColumn('store_membership.user_id', "{$table}.assigned_user_id"))));
     }
 }

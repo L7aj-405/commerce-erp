@@ -63,6 +63,7 @@ export default function FollowUpList({ items, context, showAssignee }: { items: 
                                 {item.status === 'cancelled' && <DocBadge tone="neutral">{t('work.statusCancelled')}</DocBadge>}
                                 {item.is_overdue && <DocBadge tone="warning">{t('work.overdueBadge')}</DocBadge>}
                                 {item.status === 'open' && item.notified_at && <span className="text-[11px] text-ink-faint">{t('work.reminded')}</span>}
+                                {item.recurring_rule_id !== null && <span className="text-[11px] text-ink-faint">{t('work.recurringBadge')}</span>}
                             </div>
                             <p className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[13px] text-ink-muted">
                                 <span>

@@ -63,6 +63,15 @@ class OrganizationDataResetOperationQuery
                 'version' => DB::raw('version + 1'),
                 'updated_at' => now(),
             ]),
+            OrganizationDataResetOperation::UNASSIGN_NON_OWNER_RECURRING_RULES => $query->update([
+                'assigned_user_id' => null,
+                'status' => 'paused',
+                'status_reason' => 'assignee_lost',
+                'next_occurrence_on' => null,
+                'next_generate_at' => null,
+                'version' => DB::raw('version + 1'),
+                'updated_at' => now(),
+            ]),
             default => $query->delete(),
         };
     }
@@ -113,6 +122,11 @@ class OrganizationDataResetOperationQuery
             OrganizationDataResetOperation::UNASSIGN_NON_OWNER_FOLLOW_UPS => DB::table('follow_ups')
                 ->where('organization_id', $organizationId)
                 ->where('status', 'open')
+                ->whereNotNull('assigned_user_id')
+                ->where('assigned_user_id', '!=', $ownerId),
+            OrganizationDataResetOperation::UNASSIGN_NON_OWNER_RECURRING_RULES => DB::table('follow_up_recurring_rules')
+                ->where('organization_id', $organizationId)
+                ->where('status', '!=', 'ended')
                 ->whereNotNull('assigned_user_id')
                 ->where('assigned_user_id', '!=', $ownerId),
             OrganizationDataResetOperation::DELETE_NON_OWNER_MEMBERSHIPS => DB::table('organization_memberships')
