@@ -39,6 +39,9 @@ class AttentionItem extends Model
             'notification_processed_at' => 'datetime',
             'notified_at' => 'datetime',
             'urgency' => 'integer',
+            'ownership_resolved_at' => 'datetime',
+            'critical_since' => 'datetime',
+            'escalated_at' => 'datetime',
             'version' => 'integer',
         ];
     }
@@ -46,6 +49,12 @@ class AttentionItem extends Model
     public function organization(): BelongsTo
     {
         return $this->belongsTo(Organization::class);
+    }
+
+    /** W4.3: the user currently responsible (see AttentionOwnership). */
+    public function assignee(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'assigned_user_id');
     }
 
     public function customer(): BelongsTo

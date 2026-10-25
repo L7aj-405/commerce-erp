@@ -31,6 +31,11 @@ type AttentionItem = {
     resolved_at: string | null;
     follow_up_count: number;
     notified_at: string | null;
+    assignee: { id: number; name: string } | null;
+    store_id: number | null;
+    escalated_at: string | null;
+    can_claim: boolean;
+    can_assign: boolean;
     is_active: boolean;
     can_act: boolean;
     can_create_follow_up: boolean;
@@ -39,16 +44,18 @@ type AttentionItem = {
 };
 type LinkData = { url: string | null; label: string; active: boolean };
 type Props = {
-    filters: { view?: string; type?: string; severity?: string; customer_id?: number; quotation_id?: number; focus?: number };
+    filters: { view?: string; type?: string; severity?: string; customer_id?: number; quotation_id?: number; focus?: number; assigned?: string; escalated?: string | boolean };
     items: { data: AttentionItem[]; links: LinkData[]; total: number };
     context: FollowUpContext;
+    /** Managers only: valid owners with the stores they can see. */
+    owners: { id: number; name: string; store_ids: number[] }[];
 };
 
 const fieldClass = 'h-10 rounded-field border border-line-strong bg-surface px-3 text-sm text-ink outline-none transition-soft focus:border-primary';
 const isKey = (value: string): value is TranslationKey => Object.prototype.hasOwnProperty.call(fr, value);
 
 /** W4.1 Attention: detected quotation situations; every action is a human decision. */
-export default function WorkAttention({ filters, items, context }: Props) {
+export default function WorkAttention({ filters, items, context, owners }: Props) {
     const { t, locale } = useI18n();
     const toast = useToast();
     const [following, setFollowing] = useState<AttentionItem | null>(null);
@@ -105,6 +112,17 @@ export default function WorkAttention({ filters, items, context }: Props) {
                     <option value="quotation_expired_undecided">{t('attention.typeExpired')}</option>
                     <option value="quotation_followup_backlog">{t('attention.typeBacklog')}</option>
                 </select>
+                <select value={filters.assigned ?? ''} onChange={(e) => visit({ assigned: e.target.value })} className={`${fieldClass} flex-1 sm:flex-none`} aria-label={t('attention.owner')}>
+                    <option value="mine_or_unassigned">{t('attention.ownerMineOrUnassigned')}</option>
+                    <option value="mine">{t('attention.ownerMine')}</option>
+                    <option value="unassigned">{t('attention.ownerUnassigned')}</option>
+                    {context.can_manage_all && <option value="all">{t('attention.ownerTeam')}</option>}
+                    {context.can_manage_all && owners.filter((owner) => owner.id !== context.current_user_id).map((owner) => <option key={owner.id} value={String(owner.id)}>{owner.name}</option>)}
+                </select>
+                <label className="flex items-center gap-2 text-sm text-ink-muted">
+                    <input type="checkbox" checked={Boolean(filters.escalated) && filters.escalated !== '0'} onChange={(e) => visit({ escalated: e.target.checked ? 1 : undefined })} />
+                    {t('attention.escalatedOnly')}
+                </label>
                 <select value={filters.severity ?? ''} onChange={(e) => visit({ severity: e.target.value || undefined })} className={`${fieldClass} flex-1 sm:flex-none`} aria-label={t('attention.allSeverities')}>
                     <option value="">{t('attention.allSeverities')}</option>
                     <option value="critical">{t('attention.severityCritical')}</option>
@@ -125,10 +143,12 @@ export default function WorkAttention({ filters, items, context }: Props) {
                                     {item.status === 'snoozed' && item.snoozed_until && <DocBadge tone="neutral">{t('attention.statusSnoozed').replace('{date}', formatDate(item.snoozed_until))}</DocBadge>}
                                     {item.status === 'dismissed' && <DocBadge tone="neutral">{t('attention.statusDismissed')}</DocBadge>}
                                     {item.status === 'resolved' && <DocBadge tone="positive">{t('attention.statusResolved')}</DocBadge>}
+                                    {item.escalated_at && <DocBadge tone="danger">{t('attention.escalated')}</DocBadge>}
                                 </div>
                                 <p className="mt-1 text-[13px] text-ink-muted">{text(item).summary}</p>
                                 <p className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[12px] text-ink-faint">
                                     {item.customer && <Link href={`/sales/customers/${item.customer.id}`} className="text-primary hover:underline">{item.customer.name}</Link>}
+                                    <span>{item.assignee ? t('attention.assignedTo').replace('{name}', item.assignee.name) : t('attention.ownerUnassigned')}</span>
                                     <span>{t('attention.detected').replace('{date}', formatDate(item.detected_at))}</span>
                                     {item.follow_up_count > 0 && <span>{t('attention.followUpsCreated').replace('{count}', String(item.follow_up_count))}</span>}
                                     {item.notified_at && <span>{t('attention.notified')}</span>}
@@ -137,6 +157,17 @@ export default function WorkAttention({ filters, items, context }: Props) {
                             </div>
                             <div className="flex shrink-0 flex-wrap gap-2">
                                 {item.quotation?.can_open && <Button size="sm" variant="ghost" onClick={() => router.post(`/work/attention/${item.id}/open-quotation`, {}, { onError })}>{t('attention.openQuotation')}</Button>}
+                                {item.can_claim && <Button size="sm" variant="secondary" disabled={busy === item.id} onClick={() => post(item, 'claim', {})}>{t('attention.claim')}</Button>}
+                                {item.can_assign && (
+                                    <select aria-label={t('attention.reassign')} value="" disabled={busy === item.id}
+                                        onChange={(e) => e.target.value && post(item, 'assign', { assigned_user_id: e.target.value === 'none' ? null : Number(e.target.value) })}
+                                        className="h-8 rounded-field border border-line-strong bg-surface px-2 text-xs text-ink">
+                                        <option value="">{t('attention.reassign')}</option>
+                                        {item.assignee && <option value="none">{t('attention.unassign')}</option>}
+                                        {owners.filter((owner) => owner.id !== item.assignee?.id && (item.store_id === null || owner.store_ids.includes(item.store_id)))
+                                            .map((owner) => <option key={owner.id} value={owner.id}>{owner.name}</option>)}
+                                    </select>
+                                )}
                                 {item.can_act && item.can_create_follow_up && <Button size="sm" onClick={() => setFollowing(item)}>{t('attention.createFollowUp')}</Button>}
                                 {item.can_act && (
                                     <>

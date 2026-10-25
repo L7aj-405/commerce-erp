@@ -9,7 +9,6 @@ use App\Enums\NotificationCategory;
 use App\Enums\NotificationSeverity;
 use App\Models\AttentionItem;
 use App\Models\Organization;
-use App\Models\Quotation;
 use App\Models\User;
 use App\Services\FollowUps\FollowUpAccess;
 use App\Services\Notifications\NotificationPublisher;
@@ -31,12 +30,13 @@ use Throwable;
  * eligible only if it was never processed); a new episode is a new row and
  * may notify again. Warnings never notify.
  *
- * Recipient (conservative, no broadcast, no manager fan-out): the
- * quotation's issuer, else its creator — the first who can still see the
- * item (active membership, quotations.view, store membership) and has Sales
- * notifications enabled (checked by the publisher). Nobody eligible / Sales
- * disabled → processed without delivery (notified_at stays NULL); the item
- * stays in the Attention Center.
+ * Recipient (W4.3): the item's owner (AttentionOwnership — initially the
+ * quotation issuer, else creator, else one fallback manager for critical
+ * items), if still a valid owner, with Sales notifications enabled (checked
+ * by the publisher). No broadcast. No owner / Sales disabled → processed
+ * without delivery (notified_at stays NULL); the item stays in the Attention
+ * Center. An owner who just became invalid is left for the ownership repair
+ * (not processed). Reassigning never re-sends this notification.
  *
  * Before deciding, the condition is re-checked with the detector's own rules
  * (currentSeverity): an episode that is no longer critical is left untouched
@@ -47,7 +47,7 @@ final class AttentionNotifier
 {
     public function __construct(
         private readonly QuotationAttentionDetector $detector,
-        private readonly AttentionQuery $attention,
+        private readonly AttentionOwnership $ownership,
         private readonly FollowUpAccess $access,
         private readonly NotificationPublisher $publisher,
     ) {}
@@ -88,7 +88,10 @@ final class AttentionNotifier
                 return 'skipped'; // Stale until the next scan; no decision recorded.
             }
 
-            $recipient = $this->recipient($organization, $item);
+            $recipient = $item->assigned_user_id === null ? null : User::query()->find($item->assigned_user_id);
+            if ($recipient !== null && ! $this->ownership->isValidOwner($organization, $item, (int) $recipient->getKey())) {
+                return 'skipped'; // The ownership repair re-assigns it first.
+            }
             $sent = $recipient ? $this->publish($organization, $recipient, $item) : 0;
 
             $item->notification_processed_at = $now;
@@ -97,21 +100,6 @@ final class AttentionNotifier
 
             return $sent > 0 ? 'sent' : 'skipped';
         });
-    }
-
-    private function recipient(Organization $organization, AttentionItem $item): ?User
-    {
-        $quotation = Quotation::query()->where('organization_id', $organization->getKey())->whereKey($item->quotation_id)
-            ->first(['id', 'organization_id', 'issued_by_user_id', 'created_by_user_id']);
-        foreach (array_unique(array_filter([$quotation?->issued_by_user_id, $quotation?->created_by_user_id])) as $userId) {
-            $user = User::query()->find($userId);
-            // Active membership is re-checked by the publisher; visibility here.
-            if ($user && $this->attention->canView($user, $item)) {
-                return $user;
-            }
-        }
-
-        return null;
     }
 
     private function publish(Organization $organization, User $recipient, AttentionItem $item): int

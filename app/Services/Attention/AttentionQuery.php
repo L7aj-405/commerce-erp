@@ -39,6 +39,9 @@ final class AttentionQuery
             'quotation_id' => ['nullable', 'integer', 'min:1'],
             // A single item (notification target); still bounded by visible().
             'focus' => ['nullable', 'integer', 'min:1'],
+            // W4.3 ownership: mine | unassigned | mine_or_unassigned | all | {user id} (the last two: manage_all).
+            'assigned' => ['nullable', 'string', 'max:20'],
+            'escalated' => ['nullable', 'boolean'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ];
     }
@@ -69,12 +72,16 @@ final class AttentionQuery
     {
         $now = CarbonImmutable::now('UTC');
         $query = $this->visible($user, $organization)
-            ->with(['customer:id,organization_id,display_name', 'quotation:id,organization_id,store_id,quotation_number,status'])
+            ->with(['customer:id,organization_id,display_name', 'quotation:id,organization_id,store_id,quotation_number,status', 'assignee:id,name'])
             ->when($filters['type'] ?? null, fn (Builder $q, string $type) => $q->where('type', $type))
             ->when($filters['severity'] ?? null, fn (Builder $q, string $severity) => $q->where('severity', $severity))
             ->when($filters['customer_id'] ?? null, fn (Builder $q, $id) => $q->where('customer_id', (int) $id))
             ->when($filters['quotation_id'] ?? null, fn (Builder $q, $id) => $q->where('quotation_id', (int) $id))
-            ->when($filters['focus'] ?? null, fn (Builder $q, $id) => $q->whereKey((int) $id));
+            ->when($filters['focus'] ?? null, fn (Builder $q, $id) => $q->whereKey((int) $id))
+            ->when(! empty($filters['escalated']), fn (Builder $q) => $q->whereNotNull('escalated_at'));
+        if (! isset($filters['focus'])) {
+            $this->applyAssigned($query, $user, $organization, $filters['assigned'] ?? $this->defaultAssigned($user, $organization));
+        }
 
         match ($filters['view'] ?? 'open') {
             // A snooze that has elapsed counts as open right away (the detector confirms it on its next scan).
@@ -86,12 +93,31 @@ final class AttentionQuery
             default => null,
         };
 
-        // Deterministic priority: still-active episodes first, then critical > warning > info,
+        // Deterministic priority: still-active episodes first, then escalated critical > critical > warning > info,
         // then business urgency (QuotationAttentionDetector::urgency), oldest detection, id.
         return $query->orderByRaw('CASE WHEN active_key IS NULL THEN 1 ELSE 0 END')
-            ->orderByRaw("CASE severity WHEN 'critical' THEN 0 WHEN 'warning' THEN 1 ELSE 2 END")
+            ->orderByRaw("CASE WHEN severity = 'critical' AND escalated_at IS NOT NULL THEN 0 WHEN severity = 'critical' THEN 1 WHEN severity = 'warning' THEN 2 ELSE 3 END")
             ->orderByDesc('urgency')->orderBy('detected_at')->orderBy('id')
             ->paginate((int) ($filters['per_page'] ?? 25))->withQueryString();
+    }
+
+    /** Normal users default to their own + claimable work; managers to the whole (accessible) team. */
+    public function defaultAssigned(User $user, Organization $organization): string
+    {
+        return $this->access->canManageAll($user, $organization) ? 'all' : 'mine_or_unassigned';
+    }
+
+    private function applyAssigned(Builder $query, User $user, Organization $organization, string $assigned): void
+    {
+        $manager = $this->access->canManageAll($user, $organization);
+        match (true) {
+            $assigned === 'mine' => $query->where('assigned_user_id', $user->getKey()),
+            $assigned === 'unassigned' => $query->whereNull('assigned_user_id'),
+            $assigned === 'all' && $manager => null,
+            $manager && ctype_digit($assigned) => $query->where('assigned_user_id', (int) $assigned),
+            // Everyone else (incl. a normal user asking for "all"/another user): own + unassigned.
+            default => $query->where(fn (Builder $q) => $q->where('assigned_user_id', $user->getKey())->orWhereNull('assigned_user_id')),
+        };
     }
 
     public function openCount(User $user, Organization $organization): int
@@ -125,6 +151,11 @@ final class AttentionQuery
             'resolved_at' => $item->resolved_at?->toIso8601String(),
             'follow_up_count' => count($item->metadata['follow_up_ids'] ?? []),
             'notified_at' => $item->notified_at?->toIso8601String(),
+            'assignee' => $item->assignee ? ['id' => (int) $item->assignee->getKey(), 'name' => $item->assignee->name] : null,
+            'store_id' => $item->store_id === null ? null : (int) $item->store_id,
+            'escalated_at' => $item->escalated_at?->toIso8601String(),
+            'can_claim' => $active && $item->assigned_user_id === null && in_array($item->status, [AttentionStatus::Open, AttentionStatus::Snoozed], true),
+            'can_assign' => $active && $this->access->canManageAll($user, $organization) && in_array($item->status, [AttentionStatus::Open, AttentionStatus::Snoozed], true),
             'is_active' => $active,
             'can_act' => $active && in_array($item->status, [AttentionStatus::Open, AttentionStatus::Snoozed], true),
             'can_create_follow_up' => $quotation !== null && $this->access->canCreate($user, $organization),

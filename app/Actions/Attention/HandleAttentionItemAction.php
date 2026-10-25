@@ -8,7 +8,11 @@ use App\Models\AttentionItem;
 use App\Models\FollowUp;
 use App\Models\Organization;
 use App\Models\User;
+use App\Enums\NotificationCategory;
+use App\Enums\NotificationSeverity;
+use App\Services\Attention\AttentionOwnership;
 use App\Services\Attention\AttentionQuery;
+use App\Services\Notifications\NotificationPublisher;
 use App\Services\AuditLogger;
 use App\Services\FollowUps\FollowUpAccess;
 use App\Support\BusinessTime;
@@ -29,6 +33,12 @@ use Illuminate\Validation\ValidationException;
  *   it reopens at that moment only if the condition still holds.
  * - dismiss: ends the item for this condition episode (optional note); a new
  *   episode — after the condition disappeared and came back — opens again.
+ * - W4.3 ownership: anyone who can see an unassigned item may claim it
+ *   ("Prendre en charge"); only follow_ups.manage_all may assign it to
+ *   another valid owner (AttentionOwnership) or deliberately unassign it —
+ *   and manage_all never widens quotation/store visibility. A manual
+ *   assignment notifies the new owner once ("assigned:v{version}"); it
+ *   never re-sends the critical alert.
  */
 class HandleAttentionItemAction
 {
@@ -41,6 +51,8 @@ class HandleAttentionItemAction
         private readonly FollowUpAccess $access,
         private readonly SaveFollowUpAction $followUps,
         private readonly AuditLogger $audit,
+        private readonly AttentionOwnership $ownership,
+        private readonly NotificationPublisher $publisher,
     ) {}
 
     /** @param array<string, mixed> $data */
@@ -81,6 +93,52 @@ class HandleAttentionItemAction
         });
     }
 
+    /** @param array<string, mixed> $data */
+    public function claim(User $actor, Organization $organization, AttentionItem $item, array $data = []): AttentionItem
+    {
+        return $this->mutate($actor, $organization, $item, $data, function (AttentionItem $locked) use ($actor, $organization) {
+            if ($locked->assigned_user_id !== null) {
+                throw ValidationException::withMessages(['assigned_user_id' => 'Cette alerte est déjà prise en charge.']);
+            }
+            $this->assertOwner($organization, $locked, (int) $actor->getKey());
+            $locked->assigned_user_id = $actor->getKey();
+            $locked->assignment_source = AttentionOwnership::SOURCE_CLAIM;
+            $locked->ownership_resolved_at ??= now();
+
+            return ['attention.claimed', ['old_user_id' => null, 'new_user_id' => (int) $actor->getKey()]];
+        });
+    }
+
+    /** Manager only: assign to a valid owner, or NULL to deliberately unassign. @param array<string, mixed> $data */
+    public function assign(User $actor, Organization $organization, AttentionItem $item, array $data): AttentionItem
+    {
+        $data = Validator::make($data, [
+            'assigned_user_id' => ['present', 'nullable', 'integer'],
+            'expected_version' => ['sometimes', 'integer', 'min:1'],
+        ])->validate();
+        $this->access->authorize($this->access->canManageAll($actor, $organization));
+        $target = $data['assigned_user_id'] === null ? null : (int) $data['assigned_user_id'];
+        $previous = null;
+
+        $locked = $this->mutate($actor, $organization, $item, $data, function (AttentionItem $locked) use ($organization, $target, &$previous) {
+            $previous = $locked->assigned_user_id === null ? null : (int) $locked->assigned_user_id;
+            if ($target !== null) {
+                $this->assertOwner($organization, $locked, $target);
+            }
+            $locked->assigned_user_id = $target;
+            $locked->assignment_source = AttentionOwnership::SOURCE_MANUAL;
+            $locked->ownership_resolved_at ??= now();
+
+            return [$target === null ? 'attention.unassigned' : 'attention.reassigned', ['old_user_id' => $previous, 'new_user_id' => $target]];
+        });
+
+        if ($target !== null && $target !== $previous && $target !== (int) $actor->getKey()) {
+            $this->notifyAssigned($organization, $actor, $locked);
+        }
+
+        return $locked;
+    }
+
     /**
      * Create a follow-up for the item's quotation through SaveFollowUpAction
      * (all follow-up permission, store, assignment and link rules apply). The
@@ -110,6 +168,27 @@ class HandleAttentionItemAction
 
             return $followUp;
         });
+    }
+
+    private function assertOwner(Organization $organization, AttentionItem $item, int $userId): void
+    {
+        if (! $this->ownership->isValidOwner($organization, $item, $userId)) {
+            throw ValidationException::withMessages(['assigned_user_id' => 'Cette personne ne peut pas voir ce devis (accès au magasin ou aux devis manquant).']);
+        }
+    }
+
+    private function notifyAssigned(Organization $organization, User $actor, AttentionItem $item): void
+    {
+        $assignee = User::query()->find($item->assigned_user_id);
+        if (! $assignee) {
+            return;
+        }
+        $number = (string) ($item->metadata['i18n']['params']['number'] ?? $item->metadata['quotation_number'] ?? '');
+        $this->publisher->publishToUser($assignee, $organization, NotificationCategory::Sales, NotificationSeverity::Info,
+            "Alerte qui vous est confiée : devis {$number}", "{$actor->name} vous a confié cette alerte.",
+            '/work/attention?view=all&focus='.$item->getKey(), 'attention_item', $item->getKey(), 'assigned:v'.$item->version,
+            ['attention_item_id' => (int) $item->getKey(),
+                'i18n' => ['title' => 'attention.assignedTitle', 'message' => 'attention.assignedMessage', 'params' => ['number' => $number, 'name' => (string) $actor->name]]]);
     }
 
     /** @param array<string, mixed> $data @param callable(AttentionItem): array{0: string, 1: array<string, mixed>} $change */

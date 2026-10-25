@@ -63,6 +63,12 @@ class OrganizationDataResetOperationQuery
                 'version' => DB::raw('version + 1'),
                 'updated_at' => now(),
             ]),
+            OrganizationDataResetOperation::UNASSIGN_NON_OWNER_ATTENTION => $query->update([
+                'assigned_user_id' => null,
+                'assignment_source' => null,
+                'version' => DB::raw('version + 1'),
+                'updated_at' => now(),
+            ]),
             OrganizationDataResetOperation::UNASSIGN_NON_OWNER_RECURRING_RULES => $query->update([
                 'assigned_user_id' => null,
                 'status' => 'paused',
@@ -127,6 +133,11 @@ class OrganizationDataResetOperationQuery
             OrganizationDataResetOperation::UNASSIGN_NON_OWNER_RECURRING_RULES => DB::table('follow_up_recurring_rules')
                 ->where('organization_id', $organizationId)
                 ->where('status', '!=', 'ended')
+                ->whereNotNull('assigned_user_id')
+                ->where('assigned_user_id', '!=', $ownerId),
+            OrganizationDataResetOperation::UNASSIGN_NON_OWNER_ATTENTION => DB::table('attention_items')
+                ->where('organization_id', $organizationId)
+                ->whereNotNull('active_key')
                 ->whereNotNull('assigned_user_id')
                 ->where('assigned_user_id', '!=', $ownerId),
             OrganizationDataResetOperation::DELETE_QUOTATION_ATTENTION => DB::table('attention_items')

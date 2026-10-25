@@ -6,6 +6,7 @@ use App\Actions\Attention\HandleAttentionItemAction;
 use App\Http\Controllers\Controller;
 use App\Models\AttentionItem;
 use App\Services\ActiveTenantContext;
+use App\Services\Attention\AttentionOwnership;
 use App\Services\Attention\AttentionQuery;
 use App\Services\FollowUps\FollowUpAccess;
 use App\Services\FollowUps\FollowUpQuery;
@@ -18,13 +19,14 @@ use Inertia\Response;
 /** Work Center "Attention" (W4.1): transport only — rules live in the detector, AttentionQuery and HandleAttentionItemAction. */
 class AttentionController extends Controller
 {
-    public function index(Request $request, ActiveTenantContext $context, AttentionQuery $attention, FollowUpQuery $followUps, FollowUpAccess $access): Response
+    public function index(Request $request, ActiveTenantContext $context, AttentionQuery $attention, FollowUpQuery $followUps, FollowUpAccess $access, AttentionOwnership $ownership): Response
     {
         $organization = $context->organizationOrFail();
         $user = $request->user();
         $access->authorize($attention->canViewAny($user, $organization));
         $filters = array_filter($request->validate(AttentionQuery::rules()), fn ($value) => $value !== null && $value !== '');
         $filters['view'] ??= 'open';
+        $filters['assigned'] ??= $attention->defaultAssigned($user, $organization);
         $page = $attention->search($user, $organization, $filters);
 
         return Inertia::render('Work/Attention', [
@@ -35,7 +37,23 @@ class AttentionController extends Controller
                 'total' => $page->total(),
             ],
             'context' => $followUps->formContext($user, $organization),
+            // Managers: valid owners with their stores (the server re-validates every assignment).
+            'owners' => $access->canManageAll($user, $organization) ? $ownership->candidates($organization) : [],
         ]);
+    }
+
+    public function claim(Request $request, ActiveTenantContext $context, AttentionItem $attentionItem, HandleAttentionItemAction $action): RedirectResponse
+    {
+        $action->claim($request->user(), $context->organizationOrFail(), $attentionItem, $request->only(['expected_version']));
+
+        return back()->with('success', 'Alerte prise en charge.');
+    }
+
+    public function assign(Request $request, ActiveTenantContext $context, AttentionItem $attentionItem, HandleAttentionItemAction $action): RedirectResponse
+    {
+        $action->assign($request->user(), $context->organizationOrFail(), $attentionItem, $request->only(['assigned_user_id', 'expected_version']));
+
+        return back()->with('success', 'Responsable mis à jour.');
     }
 
     public function snooze(Request $request, ActiveTenantContext $context, AttentionItem $attentionItem, HandleAttentionItemAction $action): RedirectResponse

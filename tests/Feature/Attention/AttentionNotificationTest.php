@@ -12,6 +12,7 @@ use App\Models\User;
 use App\Models\UserNotification;
 use App\Models\UserNotificationPreference;
 use App\Services\Attention\AttentionNotifier;
+use App\Services\Attention\AttentionOwnership;
 use App\Services\Attention\QuotationAttentionDetector;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -56,10 +57,11 @@ class AttentionNotificationTest extends QuotationTestCase
         return $quotation->fresh();
     }
 
-    /** One scheduled run: scan, then notify (as attention:scan-quotations does). */
+    /** One scheduled run: scan, owners, then notify (as attention:scan-quotations does). */
     private function tick(Organization $organization): array
     {
         app(QuotationAttentionDetector::class)->scanOrganization($organization->fresh());
+        app(AttentionOwnership::class)->repairOrganization($organization->fresh());
 
         return app(AttentionNotifier::class)->notifyOrganization($organization->fresh());
     }
@@ -179,7 +181,7 @@ class AttentionNotificationTest extends QuotationTestCase
         $preference->save();
         $muted = $this->quotation($owner, $organization, $store, $seller, 'issued', '2026-11-05');
 
-        // Issuer and creator both without access to the store: nobody is notified (no broadcast).
+        // Issuer and creator both without access to the store: W4.3 gives it to one fallback manager (the owner here), no broadcast.
         $orphan = $this->quotation($owner, $organization, $store, $seller, 'issued', '2026-11-05');
         $outsider = User::factory()->create();
         $this->addDefaultSalesEmployee($organization, $store, $outsider);
@@ -187,20 +189,19 @@ class AttentionNotificationTest extends QuotationTestCase
         StoreMembership::query()->where('store_id', $store->getKey())->where('user_id', $outsider->getKey())->delete();
 
         $this->tick($organization);
-        $this->assertSame(0, $this->notifications()->count());
-        foreach ([$muted, $orphan] as $quotation) {
-            $item = AttentionItem::query()->where('quotation_id', $quotation->getKey())->sole();
-            $this->assertSame('open', $item->status->value);
-            $this->assertNotNull($item->notification_processed_at);
-            $this->assertNull($item->notified_at);
-        }
+        $this->assertSame([(int) $owner->getKey()], $this->notifications()->pluck('user_id')->map(fn ($id) => (int) $id)->all());
+        $item = AttentionItem::query()->where('quotation_id', $muted->getKey())->sole();
+        $this->assertSame(['open', (int) $seller->getKey()], [$item->status->value, (int) $item->assigned_user_id]);
+        $this->assertNotNull($item->notification_processed_at);
+        $this->assertNull($item->notified_at);
+        $this->assertSame('fallback', AttentionItem::query()->where('quotation_id', $orphan->getKey())->sole()->assignment_source);
 
         // Stale before the next scan: decided after detection → not notified, not processed.
         $stale = $this->quotation($owner, $organization, $store, $owner, 'issued', '2026-11-05');
         app(QuotationAttentionDetector::class)->scanOrganization($organization);
         DB::table('quotations')->where('id', $stale->getKey())->update(['status' => 'accepted']);
         app(AttentionNotifier::class)->notifyOrganization($organization);
-        $this->assertSame(0, $this->notifications()->count());
+        $this->assertSame(0, $this->notifications()->where('source_id', (string) AttentionItem::query()->where('quotation_id', $stale->getKey())->value('id'))->count());
         $this->assertNull(AttentionItem::query()->where('quotation_id', $stale->getKey())->sole()->notification_processed_at);
     }
 

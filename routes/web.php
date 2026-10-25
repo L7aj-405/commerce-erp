@@ -234,6 +234,8 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
     Route::get('/work/attention', [AttentionController::class, 'index'])->name('attention.index');
     Route::post('/work/attention/{attentionItem}/snooze', [AttentionController::class, 'snooze'])->name('attention.snooze');
     Route::post('/work/attention/{attentionItem}/dismiss', [AttentionController::class, 'dismiss'])->name('attention.dismiss');
+    Route::post('/work/attention/{attentionItem}/claim', [AttentionController::class, 'claim'])->name('attention.claim');
+    Route::post('/work/attention/{attentionItem}/assign', [AttentionController::class, 'assign'])->name('attention.assign');
     Route::post('/work/attention/{attentionItem}/follow-up', [AttentionController::class, 'followUp'])->name('attention.follow-up');
     Route::post('/work/attention/{attentionItem}/open-quotation', [AttentionController::class, 'openQuotation'])->name('attention.open-quotation');
     Route::get('/work/recurring', [FollowUpRecurringController::class, 'index'])->name('follow-ups.recurring.index');

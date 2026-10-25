@@ -341,6 +341,10 @@ final class QuotationAttentionDetector
             $item->quotation_id = $quotation->getKey();
             $item->severity = $severity;
             $item->urgency = self::urgency($type, $facts);
+            // W4.3 escalation clock: first time this episode is critical (never reset within the episode).
+            if ($severity === AttentionSeverity::Critical && $item->critical_since === null) {
+                $item->critical_since = $now;
+            }
             $item->title = $title;
             $item->summary = $summary;
             // Snapshot for display only; follow-ups created from this item are kept.

@@ -127,6 +127,8 @@ class OrganizationDataResetBundleRegistry
                 new OrganizationDataResetOperation('follow_ups.unassign_removed_members', $scope, 'follow_ups', OrganizationDataResetOperation::UNASSIGN_NON_OWNER_FOLLOW_UPS),
                 // Their recurring rules become Unassigned and stop generating (paused) until a manager acts.
                 new OrganizationDataResetOperation('follow_up_rules.unassign_removed_members', $scope, 'follow_up_recurring_rules', OrganizationDataResetOperation::UNASSIGN_NON_OWNER_RECURRING_RULES),
+                // Active attention owned by removed members becomes unassigned; the next scan re-applies the fallback.
+                new OrganizationDataResetOperation('attention.unassign_removed_members', $scope, 'attention_items', OrganizationDataResetOperation::UNASSIGN_NON_OWNER_ATTENTION),
                 new OrganizationDataResetOperation('access.store_memberships', $scope, 'store_memberships', OrganizationDataResetOperation::DELETE_NON_OWNER_STORE_MEMBERSHIPS),
                 new OrganizationDataResetOperation('access.invitations', $scope, 'user_invitations'),
                 new OrganizationDataResetOperation('access.memberships', $scope, 'organization_memberships', OrganizationDataResetOperation::DELETE_NON_OWNER_MEMBERSHIPS),
