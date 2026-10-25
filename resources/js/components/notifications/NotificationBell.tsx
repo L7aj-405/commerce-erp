@@ -2,6 +2,7 @@ import type { AppNotification, NotificationSummary } from '@/types/app';
 import { useI18n } from '@/i18n';
 import { Link, router } from '@inertiajs/react';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { notificationText } from './notificationText';
 
 export default function NotificationBell({ initial }: { initial: NotificationSummary }) {
     const { direction, t } = useI18n();
@@ -52,7 +53,7 @@ export default function NotificationBell({ initial }: { initial: NotificationSum
         <div className="absolute end-0 top-12 z-40 w-[min(24rem,calc(100vw-1.5rem))] rounded-card border border-line bg-surface text-start shadow-pop">
             <div className="flex items-center justify-between gap-3 border-b border-line px-4 py-3"><div><p className="font-semibold text-ink">{t('notifications.title')}</p><p className="text-xs text-ink-muted">{summary.unread_count} {t('notifications.unreadCount')}</p></div>{summary.unread_count > 0 && <button type="button" onClick={markAllRead} className="text-xs font-semibold text-primary">{t('notifications.markAllRead')}</button>}</div>
             <div className="max-h-96 overflow-y-auto">
-                {summary.recent.length === 0 ? <p className="p-6 text-center text-sm text-ink-muted">{t('notifications.empty')}</p> : summary.recent.map((item) => <button key={item.id} type="button" onClick={() => open(item)} className={`flex w-full gap-3 border-b border-line px-4 py-3 text-start transition-soft hover:bg-sage/50 ${item.read_at ? '' : 'bg-sage/30'}`}><span className={`mt-1 size-2 shrink-0 rounded-full ${severityDot[item.severity]}`} /><span className="min-w-0"><span className="block text-sm font-semibold text-ink">{item.title}</span><span className="mt-0.5 line-clamp-2 block text-xs text-ink-muted">{item.message}</span><span className="mt-1 block text-[11px] text-ink-faint">{relativeTime(item.created_at, t)}</span></span></button>)}
+                {summary.recent.length === 0 ? <p className="p-6 text-center text-sm text-ink-muted">{t('notifications.empty')}</p> : summary.recent.map((item) => <button key={item.id} type="button" onClick={() => open(item)} className={`flex w-full gap-3 border-b border-line px-4 py-3 text-start transition-soft hover:bg-sage/50 ${item.read_at ? '' : 'bg-sage/30'}`}><span className={`mt-1 size-2 shrink-0 rounded-full ${severityDot[item.severity]}`} /><span className="min-w-0"><span className="block text-sm font-semibold text-ink">{notificationText(item, t).title}</span><span className="mt-0.5 line-clamp-2 block text-xs text-ink-muted">{notificationText(item, t).message}</span><span className="mt-1 block text-[11px] text-ink-faint">{relativeTime(item.created_at, t)}</span></span></button>)}
             </div>
             <div className="flex items-center justify-between p-3"><Link href="/notifications" className="text-sm font-semibold text-primary">{t('notifications.viewAll')}</Link><Link href="/account/notifications" className="text-xs text-ink-muted hover:text-ink">{t('notifications.preferences')}</Link></div>
         </div>

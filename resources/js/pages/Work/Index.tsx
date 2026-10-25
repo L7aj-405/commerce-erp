@@ -15,7 +15,7 @@ type Tab = 'today' | 'overdue' | 'upcoming' | 'completed' | 'all';
 type LinkData = { url: string | null; label: string; active: boolean };
 type Props = {
     tab: Tab;
-    filters: { assigned_to?: string; query?: string; customer_id?: number; quotation_id?: number; date_from?: string; date_to?: string };
+    filters: { assigned_to?: string; query?: string; customer_id?: number; quotation_id?: number; date_from?: string; date_to?: string; focus?: number };
     followUps: { data: FollowUpItem[]; links: LinkData[]; total: number };
     counts: { today: number; overdue: number; upcoming: number };
     context: FollowUpContext;
@@ -27,7 +27,7 @@ export default function WorkIndex({ tab, filters, followUps, counts, context }: 
     const { t } = useI18n();
     const [creating, setCreating] = useState(false);
     const [query, setQuery] = useState(filters.query ?? '');
-    const visit = (next: Record<string, unknown>) => router.get('/work', { tab, ...filters, ...next, page: undefined }, { preserveState: true, replace: true });
+    const visit = (next: Record<string, unknown>) => router.get('/work', { tab, ...filters, ...next, focus: undefined, page: undefined }, { preserveState: true, replace: true });
 
     const tabs: { key: Tab; label: string; count?: number }[] = [
         { key: 'today', label: t('work.tabToday'), count: counts.today },
@@ -62,7 +62,7 @@ export default function WorkIndex({ tab, filters, followUps, counts, context }: 
                     <button
                         key={item.key}
                         type="button"
-                        onClick={() => router.get('/work', { ...filters, tab: item.key }, { preserveState: true, replace: true })}
+                        onClick={() => router.get('/work', { ...filters, tab: item.key, focus: undefined }, { preserveState: true, replace: true })}
                         aria-current={tab === item.key ? 'page' : undefined}
                         className={`-mb-px flex shrink-0 items-center gap-2 border-b-2 px-3 py-2 text-sm font-medium transition-soft ${tab === item.key ? 'border-primary text-ink' : 'border-transparent text-ink-muted hover:text-ink'}`}
                     >
@@ -73,6 +73,13 @@ export default function WorkIndex({ tab, filters, followUps, counts, context }: 
                     </button>
                 ))}
             </nav>
+
+            {filters.focus && (
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-field border border-line bg-raised px-3 py-2 text-sm text-ink-muted">
+                    <span>{t('work.focusTitle')}</span>
+                    <Link href="/work" className="font-medium text-primary hover:underline">{t('work.focusShowAll')}</Link>
+                </div>
+            )}
 
             <form onSubmit={submit} className="mb-4 flex flex-wrap gap-3 rounded-card border border-line bg-raised p-4">
                 <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t('work.searchPlaceholder')} className={`${fieldClass} w-full min-w-0 flex-1 sm:min-w-72 sm:w-auto`} />
@@ -89,7 +96,7 @@ export default function WorkIndex({ tab, filters, followUps, counts, context }: 
 
             {followUps.data.length === 0 ? (
                 <EmptyState
-                    title={tab === 'today' ? t('work.emptyToday') : t('work.empty')}
+                    title={filters.focus ? t('work.focusUnavailable') : tab === 'today' ? t('work.emptyToday') : t('work.empty')}
                     description={t('work.emptyHelp')}
                     actions={context.can_create ? <Button onClick={() => setCreating(true)}>+ {t('work.new')}</Button> : undefined}
                 />

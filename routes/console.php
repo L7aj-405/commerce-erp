@@ -131,6 +131,8 @@ Schedule::command('organization-backups:dispatch-due')->everyMinute()->withoutOv
 Schedule::command('organization-backups:cleanup-temporary-files')->hourly()->withoutOverlapping();
 Schedule::command('security:cleanup-trusted-devices')->daily()->withoutOverlapping();
 Schedule::command('finance:generate-recurring-obligations')->dailyAt('00:10')->withoutOverlapping();
+// Correctness does not depend on the mutex: occurrences are claimed under row locks.
+Schedule::command('follow-ups:notify-due')->everyFiveMinutes()->withoutOverlapping();
 Schedule::call(fn () => SystemHealthHeartbeat::beat('scheduler'))
     ->name('system-health:scheduler-heartbeat')->everyMinute()->withoutOverlapping();
 Schedule::job(new RecordQueueWorkerHeartbeatJob)

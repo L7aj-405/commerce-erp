@@ -28,6 +28,8 @@ class FollowUp extends Model
             'status' => FollowUpStatus::class,
             'priority' => FollowUpPriority::class,
             'due_at' => 'datetime',
+            'remind_at' => 'datetime',
+            'notified_at' => 'datetime',
             'completed_at' => 'datetime',
             'cancelled_at' => 'datetime',
             'version' => 'integer',

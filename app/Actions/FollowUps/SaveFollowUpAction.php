@@ -13,6 +13,7 @@ use App\Models\User;
 use App\Services\AuditLogger;
 use App\Services\FollowUps\FollowUpAccess;
 use App\Services\FollowUps\FollowUpAssignees;
+use App\Services\FollowUps\FollowUpReminderSchedule;
 use App\Support\BusinessTime;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
@@ -32,6 +33,10 @@ use InvalidArgumentException;
  * Due input contract: either `due_date` (Y-m-d) + optional `due_time` (H:i)
  * in the organization business timezone, or `due_at` as ISO 8601 with an
  * explicit offset. Bare datetimes without an offset are rejected.
+ *
+ * Owns the W2 reminder reset: a changed due value (reschedule, snooze — from
+ * any transport) arms a new reminder occurrence via FollowUpReminderSchedule;
+ * edits that leave the due value unchanged never do.
  */
 class SaveFollowUpAction
 {
@@ -41,6 +46,7 @@ class SaveFollowUpAction
         private readonly FollowUpAccess $access,
         private readonly FollowUpAssignees $assignees,
         private readonly AuditLogger $audit,
+        private readonly FollowUpReminderSchedule $reminders,
     ) {}
 
     /** @return array<string, mixed> */
@@ -82,6 +88,7 @@ class SaveFollowUpAction
             $this->assertAssignee($actor, $organization, $assigneeId, $followUp->store_id);
             $followUp->assigned_user_id = $assigneeId;
             $this->applyDue($organization, $followUp, $data);
+            $followUp->remind_at = $this->reminders->upcoming($organization, $followUp);
             $followUp->save();
 
             $this->audit->record('follow_up.created', $actor, $organization, $this->store($followUp), $followUp, newValues: [
@@ -129,6 +136,11 @@ class SaveFollowUpAction
             $reassigned = $assigneeId !== $before['assignee'];
             if ($changed === [] && ! $rescheduled && ! $reassigned) {
                 return $locked;
+            }
+            if ($rescheduled) {
+                // A new due value is a new reminder occurrence; other edits keep the current one.
+                $locked->remind_at = $this->reminders->upcoming($organization, $locked);
+                $locked->notified_at = null;
             }
 
             $locked->version = (int) $locked->version + 1;

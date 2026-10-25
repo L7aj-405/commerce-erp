@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Services\AuditLogger;
 use App\Services\FollowUps\FollowUpAccess;
 use App\Services\FollowUps\FollowUpAssignees;
+use App\Services\FollowUps\FollowUpReminderSchedule;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
@@ -23,6 +24,10 @@ use Illuminate\Validation\ValidationException;
  *
  * Reopening history whose assignee has since lost access makes the item
  * "Unassigned" (W1.1) instead of recreating invisible work.
+ *
+ * W2 reminders: complete/cancel drop the pending occurrence; reopen arms a
+ * new one only when the reminder instant is still in the future (reopening
+ * overdue work never re-notifies, so repeated reopen cannot loop).
  */
 class TransitionFollowUpAction
 {
@@ -31,6 +36,7 @@ class TransitionFollowUpAction
     public function __construct(
         private readonly FollowUpAccess $access,
         private readonly FollowUpAssignees $assignees,
+        private readonly FollowUpReminderSchedule $reminders,
         private readonly AuditLogger $audit,
     ) {}
 
@@ -90,12 +96,14 @@ class TransitionFollowUpAction
         $followUp->completed_at = now();
         $followUp->completed_by_user_id = $actor->getKey();
         $followUp->outcome_note = $outcome === '' ? null : $outcome;
+        $followUp->remind_at = null;
     }
 
     private function cancel(FollowUp $followUp): void
     {
         $followUp->status = FollowUpStatus::Cancelled;
         $followUp->cancelled_at = now();
+        $followUp->remind_at = null;
     }
 
     private function reopen(Organization $organization, FollowUp $followUp): void
@@ -109,5 +117,9 @@ class TransitionFollowUpAction
         $followUp->completed_by_user_id = null;
         $followUp->cancelled_at = null;
         $followUp->outcome_note = null;
+        $followUp->remind_at = $this->reminders->upcoming($organization, $followUp);
+        if ($followUp->remind_at !== null) {
+            $followUp->notified_at = null;
+        }
     }
 }

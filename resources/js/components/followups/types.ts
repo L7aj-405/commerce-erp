@@ -22,6 +22,8 @@ export type FollowUpItem = {
     completed_at: string | null;
     cancelled_at: string | null;
     outcome_note: string | null;
+    /** W2: when the current occurrence's due reminder was delivered (UTC ISO). */
+    notified_at: string | null;
     version: number;
     can_manage: boolean;
 };

@@ -43,6 +43,8 @@ class FollowUpQuery
             'assigned_to' => ['nullable', 'string', 'max:20'],
             'quotation_id' => ['nullable', 'integer', 'min:1'],
             'customer_id' => ['nullable', 'integer', 'min:1'],
+            // A single follow-up (notification target); still bounded by visible().
+            'focus' => ['nullable', 'integer', 'min:1'],
             'date_from' => ['nullable', 'date_format:Y-m-d'],
             'date_to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:date_from'],
             'query' => ['nullable', 'string', 'max:120'],
@@ -81,6 +83,7 @@ class FollowUpQuery
         return $query
             ->when($filters['quotation_id'] ?? null, fn (Builder $q, $id) => $q->where('quotation_id', (int) $id))
             ->when($filters['customer_id'] ?? null, fn (Builder $q, $id) => $q->where('customer_id', (int) $id))
+            ->when($filters['focus'] ?? null, fn (Builder $q, $id) => $q->whereKey((int) $id))
             ->when($filters['date_from'] ?? null, fn (Builder $q, string $date) => $q->where('due_date', '>=', $date))
             ->when($filters['date_to'] ?? null, fn (Builder $q, string $date) => $q->where('due_date', '<=', $date))
             ->when(trim((string) ($filters['query'] ?? '')) !== '', function (Builder $q) use ($filters) {
@@ -215,6 +218,8 @@ class FollowUpQuery
             'completed_at' => $followUp->completed_at?->toIso8601String(),
             'cancelled_at' => $followUp->cancelled_at?->toIso8601String(),
             'outcome_note' => $followUp->outcome_note,
+            // W2: when the current occurrence's due reminder was delivered.
+            'notified_at' => $followUp->notified_at?->utc()->toIso8601String(),
             'version' => (int) $followUp->version,
             'can_manage' => $this->access->canManage($user, $followUp),
         ];
