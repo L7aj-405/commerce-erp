@@ -46,6 +46,7 @@ class AttentionItem extends Model
             'ownership_resolved_at' => 'datetime',
             'critical_since' => 'datetime',
             'escalated_at' => 'datetime',
+            'escalation_exempt' => 'boolean',
             'version' => 'integer',
         ];
     }

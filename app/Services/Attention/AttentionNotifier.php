@@ -53,7 +53,8 @@ final class AttentionNotifier
     ) {}
 
     /** @return array{sent: int, skipped: int, failed: int} */
-    public function notifyOrganization(Organization $organization, ?CarbonImmutable $now = null): array
+    /** @param list<string> $exceptSubjects domains not yet baselined (W4.5.1) */
+    public function notifyOrganization(Organization $organization, ?CarbonImmutable $now = null, array $exceptSubjects = []): array
     {
         $now ??= CarbonImmutable::now('UTC');
         $result = ['sent' => 0, 'skipped' => 0, 'failed' => 0];
@@ -61,6 +62,7 @@ final class AttentionNotifier
         AttentionItem::query()->where('organization_id', $organization->getKey())
             ->where('status', AttentionStatus::Open->value)->where('severity', AttentionSeverity::Critical->value)
             ->whereNull('notification_processed_at')->whereNotNull('active_key')
+            ->when($exceptSubjects !== [], fn ($query) => $query->whereNotIn('subject_type', $exceptSubjects))
             ->select(['id'])->chunkById(100, function ($items) use ($organization, $now, &$result) {
                 foreach ($items as $row) {
                     try {

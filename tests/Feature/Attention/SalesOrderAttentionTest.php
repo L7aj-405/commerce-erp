@@ -47,6 +47,8 @@ class SalesOrderAttentionTest extends QuotationTestCase
         $store = $this->createStore($organization, $owner, 'Store A');
         $this->activate($owner, $organization, $store);
         $account = $this->createFinancialAccount($organization->fresh(), ['name' => 'Caisse', 'code' => 'CAISSE']);
+        // Onboarded before any order exists: the W4.5.1 rollout baseline is empty, later episodes are new.
+        $this->tick($organization->fresh(), '2026-11-01 08:00:00');
 
         return [$owner, $organization->fresh(), $store, $account];
     }

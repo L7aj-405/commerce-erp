@@ -47,7 +47,8 @@ final class AttentionEscalator
     ) {}
 
     /** @return array{escalated: int, notified: int, failed: int} */
-    public function escalateOrganization(Organization $organization, ?CarbonImmutable $now = null): array
+    /** @param list<string> $exceptSubjects domains not yet baselined (W4.5.1) */
+    public function escalateOrganization(Organization $organization, ?CarbonImmutable $now = null, array $exceptSubjects = []): array
     {
         $now ??= CarbonImmutable::now('UTC');
         $result = ['escalated' => 0, 'notified' => 0, 'failed' => 0];
@@ -57,6 +58,9 @@ final class AttentionEscalator
         AttentionItem::query()->where('organization_id', $organization->getKey())
             ->where('status', AttentionStatus::Open->value)->where('severity', AttentionSeverity::Critical->value)
             ->whereNotNull('active_key')->whereNull('escalated_at')
+            // W4.5.1: historical (baseline) episodes never auto-escalate.
+            ->where('escalation_exempt', false)
+            ->when($exceptSubjects !== [], fn ($query) => $query->whereNotIn('subject_type', $exceptSubjects))
             ->whereNotNull('critical_since')->where('critical_since', '<', $cutoff)
             ->select(['id'])->chunkById(100, function ($items) use ($organization, $now, $cutoff, &$result) {
                 foreach ($items as $row) {
@@ -81,7 +85,7 @@ final class AttentionEscalator
     {
         return DB::transaction(function () use ($organization, $id, $now, $cutoff) {
             $item = AttentionItem::query()->where('organization_id', $organization->getKey())->whereKey($id)->lockForUpdate()->first();
-            if (! $item || $item->active_key === null || $item->escalated_at !== null || $item->status !== AttentionStatus::Open
+            if (! $item || $item->active_key === null || $item->escalated_at !== null || $item->escalation_exempt || $item->status !== AttentionStatus::Open
                 || $item->severity !== AttentionSeverity::Critical || $item->critical_since === null || ! $item->critical_since->lessThan($cutoff)) {
                 return null;
             }
