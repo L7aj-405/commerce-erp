@@ -4,6 +4,7 @@ namespace App\Services\FollowUps;
 
 use App\Models\Invoice;
 use App\Models\Quotation;
+use App\Models\SalesOrder;
 use App\Models\Store;
 use App\Models\User;
 use App\Services\ActiveTenantContext;
@@ -12,9 +13,9 @@ use Illuminate\Http\RedirectResponse;
 
 /**
  * W1.1 safe cross-store navigation to a store-scoped document, shared by Work
- * Center surfaces (follow-ups, attention items): quotations and (W4.4)
- * invoices. The caller has already authorized the item it navigates from.
- * Nothing is switched or revealed unless the user holds the document's view
+ * Center surfaces (follow-ups, attention items): quotations, (W4.4)
+ * invoices and (W4.5) sales orders. The caller has already authorized the
+ * item it navigates from. Nothing is switched or revealed unless the user holds the document's view
  * permission and is a member of the document's active store; the switch
  * itself is the canonical ActiveTenantContext::activateStore.
  */
@@ -28,6 +29,11 @@ final class StoreDocumentOpener
     public function openInvoice(User $user, ActiveTenantContext $context, ?int $invoiceId): RedirectResponse
     {
         return $this->open($user, $context, Invoice::class, $invoiceId, 'invoices.view', 'invoices.show', 'invoice', 'Cette facture n’est pas accessible depuis votre compte.');
+    }
+
+    public function openSalesOrder(User $user, ActiveTenantContext $context, ?int $orderId): RedirectResponse
+    {
+        return $this->open($user, $context, SalesOrder::class, $orderId, 'sales_orders.view', 'sales.orders.show', 'sales_order', 'Cette commande n’est pas accessible depuis votre compte.');
     }
 
     /** @param class-string<Model> $model */

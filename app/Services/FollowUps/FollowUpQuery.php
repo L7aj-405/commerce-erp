@@ -6,6 +6,7 @@ use App\Enums\FollowUpStatus;
 use App\Models\Customer;
 use App\Models\FollowUp;
 use App\Models\Invoice;
+use App\Models\SalesOrder;
 use App\Models\Organization;
 use App\Models\Quotation;
 use App\Models\User;
@@ -58,7 +59,7 @@ class FollowUpQuery
     public function search(User $user, Organization $organization, array $filters): LengthAwarePaginator
     {
         $query = $this->filtered($user, $organization, $filters)
-            ->with(['assignee:id,name', 'customer:id,organization_id,display_name', 'quotation:id,organization_id,store_id,quotation_number,status', 'invoice:id,organization_id,store_id,invoice_number,status']);
+            ->with(['assignee:id,name', 'customer:id,organization_id,display_name', 'quotation:id,organization_id,store_id,quotation_number,status', 'invoice:id,organization_id,store_id,invoice_number,status', 'salesOrder:id,organization_id,store_id,order_number,status']);
 
         if (($filters['status'] ?? null) === FollowUpStatus::Completed->value) {
             $query->orderByDesc('completed_at')->orderByDesc('id');
@@ -93,7 +94,8 @@ class FollowUpQuery
                 $q->where(fn (Builder $q) => $q->where('title', 'like', $like)
                     ->orWhereHas('customer', fn (Builder $c) => $c->where('display_name', 'like', $like)->orWhere('company_name', 'like', $like))
                     ->orWhereHas('quotation', fn (Builder $c) => $c->where('quotation_number', 'like', $like))
-                    ->orWhereHas('invoice', fn (Builder $c) => $c->where('invoice_number', 'like', $like)));
+                    ->orWhereHas('invoice', fn (Builder $c) => $c->where('invoice_number', 'like', $like))
+                    ->orWhereHas('salesOrder', fn (Builder $c) => $c->where('order_number', 'like', $like)));
             });
     }
 
@@ -197,7 +199,7 @@ class FollowUpQuery
     {
         return $this->access->visible($user, $organization)
             ->where($column, $id)
-            ->with(['assignee:id,name', 'customer:id,organization_id,display_name', 'quotation:id,organization_id,store_id,quotation_number,status', 'invoice:id,organization_id,store_id,invoice_number,status'])
+            ->with(['assignee:id,name', 'customer:id,organization_id,display_name', 'quotation:id,organization_id,store_id,quotation_number,status', 'invoice:id,organization_id,store_id,invoice_number,status', 'salesOrder:id,organization_id,store_id,order_number,status'])
             ->orderByRaw("CASE WHEN status = 'open' THEN 0 ELSE 1 END")
             ->orderByRaw('CASE WHEN due_date IS NULL THEN 1 ELSE 0 END')->orderBy('due_date')->orderBy('due_at')->orderByDesc('id')
             ->limit($limit)->get()
@@ -216,6 +218,7 @@ class FollowUpQuery
         $customer = $followUp->customer instanceof Customer && $this->access->allows($user, $organization, 'customers.view') ? $followUp->customer : null;
         $quotation = $followUp->quotation instanceof Quotation && $this->access->allows($user, $organization, 'quotations.view') ? $followUp->quotation : null;
         $invoice = $followUp->invoice instanceof Invoice && $this->access->allows($user, $organization, 'invoices.view') ? $followUp->invoice : null;
+        $order = $followUp->salesOrder instanceof SalesOrder && $this->access->allows($user, $organization, 'sales_orders.view') ? $followUp->salesOrder : null;
 
         return [
             'id' => (int) $followUp->getKey(),
@@ -237,6 +240,8 @@ class FollowUpQuery
                 'can_open' => $this->access->hasStoreAccess($user, $quotation->store_id)] : null,
             // W4.4: opened through /work/{id}/open-invoice (same safe store switch as quotations).
             'invoice' => $invoice ? ['id' => (int) $invoice->getKey(), 'number' => $invoice->invoice_number, 'can_open' => $this->access->hasStoreAccess($user, $invoice->store_id)] : null,
+            // W4.5: opened through /work/{id}/open-sales-order (same safe store switch).
+            'sales_order' => $order ? ['id' => (int) $order->getKey(), 'number' => $order->order_number, 'can_open' => $this->access->hasStoreAccess($user, $order->store_id)] : null,
             'completed_at' => $followUp->completed_at?->toIso8601String(),
             'cancelled_at' => $followUp->cancelled_at?->toIso8601String(),
             'outcome_note' => $followUp->outcome_note,

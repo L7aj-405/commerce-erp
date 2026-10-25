@@ -17,8 +17,9 @@ import { useState } from 'react';
 type AttentionItem = {
     id: number;
     type: 'quotation_sent_undecided' | 'quotation_expiring_soon' | 'quotation_expired_undecided' | 'quotation_followup_backlog'
-        | 'invoice_due_soon' | 'invoice_overdue_unpaid' | 'invoice_overdue_partial' | 'invoice_payment_followup_backlog';
-    subject_type: 'quotation' | 'invoice';
+        | 'invoice_due_soon' | 'invoice_overdue_unpaid' | 'invoice_overdue_partial' | 'invoice_payment_followup_backlog'
+        | 'sales_order_payment_due_soon' | 'sales_order_unpaid_overdue' | 'sales_order_partial_overdue' | 'sales_order_payment_followup_backlog' | 'sales_order_paid_not_invoiced';
+    subject_type: 'quotation' | 'sales_order' | 'invoice';
     severity: 'info' | 'warning' | 'critical';
     status: 'open' | 'snoozed' | 'dismissed' | 'resolved';
     title: string;
@@ -26,6 +27,7 @@ type AttentionItem = {
     i18n: { title: string; message: string; params: Record<string, string> } | null;
     quotation: { id: number; number: string | null; can_open: boolean } | null;
     invoice: { id: number; number: string | null; can_open: boolean } | null;
+    sales_order: { id: number; number: string | null; can_open: boolean } | null;
     customer: { id: number; name: string } | null;
     detected_at: string;
     snoozed_until: string | null;
@@ -114,6 +116,11 @@ export default function WorkAttention({ filters, items, context, owners }: Props
                     <option value="quotation_expiring_soon">{t('attention.typeExpiring')}</option>
                     <option value="quotation_expired_undecided">{t('attention.typeExpired')}</option>
                     <option value="quotation_followup_backlog">{t('attention.typeBacklog')}</option>
+                    <option value="sales_order_payment_due_soon">{t('attention.typeOrderDueSoon')}</option>
+                    <option value="sales_order_unpaid_overdue">{t('attention.typeOrderOverdue')}</option>
+                    <option value="sales_order_partial_overdue">{t('attention.typeOrderPartial')}</option>
+                    <option value="sales_order_payment_followup_backlog">{t('attention.typeOrderBacklog')}</option>
+                    <option value="sales_order_paid_not_invoiced">{t('attention.typeOrderPaidNotInvoiced')}</option>
                     <option value="invoice_due_soon">{t('attention.typeInvoiceDueSoon')}</option>
                     <option value="invoice_overdue_unpaid">{t('attention.typeInvoiceOverdue')}</option>
                     <option value="invoice_overdue_partial">{t('attention.typeInvoicePartial')}</option>
@@ -122,6 +129,7 @@ export default function WorkAttention({ filters, items, context, owners }: Props
                 <select value={filters.domain ?? ''} onChange={(e) => visit({ domain: e.target.value || undefined })} className={`${fieldClass} flex-1 sm:flex-none`} aria-label={t('attention.domain')}>
                     <option value="">{t('attention.domainAll')}</option>
                     <option value="quotation">{t('attention.domainQuotations')}</option>
+                    <option value="sales_order">{t('attention.domainOrders')}</option>
                     <option value="invoice">{t('attention.domainInvoices')}</option>
                 </select>
                 <select value={filters.assigned ?? ''} onChange={(e) => visit({ assigned: e.target.value })} className={`${fieldClass} flex-1 sm:flex-none`} aria-label={t('attention.owner')}>
@@ -169,6 +177,7 @@ export default function WorkAttention({ filters, items, context, owners }: Props
                             </div>
                             <div className="flex shrink-0 flex-wrap gap-2">
                                 {item.quotation?.can_open && <Button size="sm" variant="ghost" onClick={() => router.post(`/work/attention/${item.id}/open-quotation`, {}, { onError })}>{t('attention.openQuotation')}</Button>}
+                                {item.sales_order?.can_open && <Button size="sm" variant="ghost" onClick={() => router.post(`/work/attention/${item.id}/open-sales-order`, {}, { onError })}>{t('attention.openOrder')}</Button>}
                                 {item.invoice?.can_open && <Button size="sm" variant="ghost" onClick={() => router.post(`/work/attention/${item.id}/open-invoice`, {}, { onError })}>{t('attention.openInvoice')}</Button>}
                                 {item.can_claim && <Button size="sm" variant="secondary" disabled={busy === item.id} onClick={() => post(item, 'claim', {})}>{t('attention.claim')}</Button>}
                                 {item.can_assign && (

@@ -21,6 +21,8 @@ export type FollowUpItem = {
     quotation: { id: number; number: string | null; store_id: number; can_open: boolean } | null;
     /** W4.4: linked invoice (exclusive with quotation), opened via /work/{id}/open-invoice. */
     invoice: { id: number; number: string | null; can_open: boolean } | null;
+    /** W4.5: linked sales order (receivable), opened via /work/{id}/open-sales-order. */
+    sales_order: { id: number; number: string | null; can_open: boolean } | null;
     completed_at: string | null;
     cancelled_at: string | null;
     outcome_note: string | null;

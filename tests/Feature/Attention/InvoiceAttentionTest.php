@@ -128,7 +128,8 @@ class InvoiceAttentionTest extends QuotationTestCase
         DB::table('invoices')->where('id', $outstanding->getKey())->update(['status' => 'superseded']);
 
         $this->tick($organization, '2026-12-05 10:00:00');
-        $this->assertSame(0, AttentionItem::query()->count());
+        // (Its sales order, now without an issued invoice and still owing, is W4.5 order attention.)
+        $this->assertSame(0, AttentionItem::query()->where('subject_type', 'invoice')->count());
         $this->assertSame('issued', $paid->fresh()->status->value, 'Detection never mutates invoices.');
     }
 

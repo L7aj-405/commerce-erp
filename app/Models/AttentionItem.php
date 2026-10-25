@@ -23,6 +23,8 @@ class AttentionItem extends Model
 
     public const SUBJECT_INVOICE = 'invoice';
 
+    public const SUBJECT_SALES_ORDER = 'sales_order';
+
     protected $guarded = ['*'];
 
     protected function casts(): array
@@ -67,6 +69,11 @@ class AttentionItem extends Model
     public function quotation(): BelongsTo
     {
         return $this->belongsTo(Quotation::class);
+    }
+
+    public function salesOrder(): BelongsTo
+    {
+        return $this->belongsTo(SalesOrder::class);
     }
 
     public function invoice(): BelongsTo

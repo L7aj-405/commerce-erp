@@ -150,10 +150,12 @@ class HandleAttentionItemAction
     public function createFollowUp(User $actor, Organization $organization, AttentionItem $item, array $data): FollowUp
     {
         $this->access->authorize((int) $item->organization_id === (int) $organization->getKey() && $this->attention->canView($actor, $item));
-        // The document link always comes from the item (W4.4: quotation or invoice).
-        $link = $item->subject_type === AttentionItem::SUBJECT_INVOICE
-            ? ['invoice_id' => $item->invoice_id === null ? null : (int) $item->invoice_id]
-            : ['quotation_id' => $item->quotation_id === null ? null : (int) $item->quotation_id];
+        // The document link always comes from the item (quotation, invoice or sales order).
+        $link = match ($item->subject_type) {
+            AttentionItem::SUBJECT_INVOICE => ['invoice_id' => $item->invoice_id === null ? null : (int) $item->invoice_id],
+            AttentionItem::SUBJECT_SALES_ORDER => ['sales_order_id' => $item->sales_order_id === null ? null : (int) $item->sales_order_id],
+            default => ['quotation_id' => $item->quotation_id === null ? null : (int) $item->quotation_id],
+        };
         if (in_array(null, $link, true)) {
             throw ValidationException::withMessages([array_key_first($link) => 'Le document lié à cette alerte n’existe plus.']);
         }
@@ -188,12 +190,16 @@ class HandleAttentionItemAction
             return;
         }
         $number = (string) ($item->metadata['i18n']['params']['number'] ?? $item->metadata['document_number'] ?? $item->metadata['quotation_number'] ?? '');
-        $invoice = $item->subject_type === AttentionItem::SUBJECT_INVOICE;
+        [$label, $titleKey] = match ($item->subject_type) {
+            AttentionItem::SUBJECT_INVOICE => ['facture', 'attention.assignedTitleInvoice'],
+            AttentionItem::SUBJECT_SALES_ORDER => ['commande', 'attention.assignedTitleOrder'],
+            default => ['devis', 'attention.assignedTitle'],
+        };
         $this->publisher->publishToUser($assignee, $organization, NotificationCategory::Sales, NotificationSeverity::Info,
-            'Alerte qui vous est confiée : '.($invoice ? 'facture' : 'devis')." {$number}", "{$actor->name} vous a confié cette alerte.",
+            "Alerte qui vous est confiée : {$label} {$number}", "{$actor->name} vous a confié cette alerte.",
             '/work/attention?view=all&focus='.$item->getKey(), 'attention_item', $item->getKey(), 'assigned:v'.$item->version,
             ['attention_item_id' => (int) $item->getKey(),
-                'i18n' => ['title' => $invoice ? 'attention.assignedTitleInvoice' : 'attention.assignedTitle', 'message' => 'attention.assignedMessage', 'params' => ['number' => $number, 'name' => (string) $actor->name]]]);
+                'i18n' => ['title' => $titleKey, 'message' => 'attention.assignedMessage', 'params' => ['number' => $number, 'name' => (string) $actor->name]]]);
     }
 
     /** @param array<string, mixed> $data @param callable(AttentionItem): array{0: string, 1: array<string, mixed>} $change */

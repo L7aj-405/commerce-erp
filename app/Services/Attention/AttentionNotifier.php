@@ -116,6 +116,9 @@ final class AttentionNotifier
             AttentionType::InvoiceOverdueUnpaid => ['InvoiceOverdue', "Facture en retard : {$number}", "Échéance dépassée depuis le {$params['date']}, aucun paiement."],
             AttentionType::InvoiceOverduePartial => ['InvoicePartial', "Paiement partiel en retard : {$number}", "Échéance dépassée depuis le {$params['date']}, solde partiellement réglé."],
             AttentionType::InvoicePaymentFollowUpBacklog => ['InvoiceBacklog', "Relances en retard sur la facture {$number}", "{$params['count']} suivi(s) en retard, le plus ancien depuis {$params['days']} j."],
+            AttentionType::SalesOrderUnpaidOverdue => ['OrderOverdue', "Commande impayée en retard : {$number}", "Échéance dépassée depuis le {$params['date']}, aucun paiement."],
+            AttentionType::SalesOrderPartialOverdue => ['OrderPartial', "Paiement partiel en retard : {$number}", "Échéance dépassée depuis le {$params['date']}, solde partiellement réglé."],
+            AttentionType::SalesOrderPaymentFollowUpBacklog => ['OrderBacklog', "Relances en retard sur la commande {$number}", "{$params['count']} suivi(s) en retard, le plus ancien depuis {$params['days']} j."],
             default => ['Expired', "Devis expiré sans décision : {$number}", "Validité dépassée depuis le {$params['date']}."],
         };
         $context = $customer !== '' ? 'Context' : '';

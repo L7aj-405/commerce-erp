@@ -82,6 +82,12 @@ class FollowUp extends Model
         return $this->belongsTo(Invoice::class);
     }
 
+    /** W4.5: the sales order (receivable) this work is about (exclusive with quotation/invoice). */
+    public function salesOrder(): BelongsTo
+    {
+        return $this->belongsTo(SalesOrder::class);
+    }
+
     /** W3: the recurring rule that generated this occurrence (NULL for manual work). */
     public function recurringRule(): BelongsTo
     {

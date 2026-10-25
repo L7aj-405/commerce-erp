@@ -18,7 +18,8 @@ use Throwable;
  * and describe them; this class owns rows, episodes and resolution.
  *
  * A condition is an array:
- *   subject_id, store_id, customer_id, quotation_id?, invoice_id?, number,
+ *   subject_id, store_id, customer_id, quotation_id?, invoice_id?,
+ *   sales_order_id?, number,
  *   type (AttentionType), severity, facts, title, summary, i18n, urgency.
  *
  * - One active row per condition (DB-unique active_key
@@ -153,6 +154,7 @@ final class AttentionEpisodes
             $item->customer_id = $condition['customer_id'];
             $item->quotation_id = $condition['quotation_id'] ?? null;
             $item->invoice_id = $condition['invoice_id'] ?? null;
+            $item->sales_order_id = $condition['sales_order_id'] ?? null;
             $item->severity = $severity;
             $item->urgency = (int) $condition['urgency'];
             if ($severity === AttentionSeverity::Critical && $item->critical_since === null) {

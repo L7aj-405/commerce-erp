@@ -16,16 +16,17 @@ use Illuminate\Support\Facades\DB;
  * W4.3 single source of attention ownership (tenant/business only).
  *
  * A valid owner is an active member of the organization whose role grants the
- * subject's view permission (quotations.view, or invoices.view for W4.4
- * invoice items) and who belongs to the item's store — exactly who can see
+ * subject's view permission (quotations.view, invoices.view for W4.4 invoice
+ * items, sales_orders.view for W4.5 order items) and who belongs to the item's store — exactly who can see
  * the item (AttentionQuery::canView). Owner ≠ document creator/issuer ≠
  * follow-up assignee ≠ organization owner ≠ platform operator.
  *
  * Background repair (each scan, per active item, row-locked, skipped if the
  * row's version changed meanwhile — a person's action always wins):
  * 1. initial owner, once per episode, first valid of: quotation → issuer,
- *    creator; invoice → issuer, originating sales order's creator (no
- *    salesperson concept exists); otherwise unassigned;
+ *    creator; invoice → issuer, originating sales order's creator; sales
+ *    order → creator, confirmer (no salesperson concept exists); otherwise
+ *    unassigned;
  * 2. owner no longer valid (left, suspended, lost the view permission or the
  *    store) → unassigned;
  * 3. an unassigned CRITICAL item — unless a manager deliberately unassigned
@@ -39,6 +40,7 @@ final class AttentionOwnership
     public const SOURCE_ISSUER = 'issuer';
     public const SOURCE_CREATOR = 'creator';
     public const SOURCE_ORDER_CREATOR = 'order_creator';
+    public const SOURCE_CONFIRMER = 'confirmer';
     public const SOURCE_FALLBACK = 'fallback';
     public const SOURCE_CLAIM = 'claim';
     public const SOURCE_MANUAL = 'manual';
@@ -48,7 +50,11 @@ final class AttentionOwnership
     /** The view permission an owner of this subject must hold. */
     public static function permissionFor(string $subjectType): string
     {
-        return $subjectType === AttentionItem::SUBJECT_INVOICE ? 'invoices.view' : 'quotations.view';
+        return match ($subjectType) {
+            AttentionItem::SUBJECT_INVOICE => 'invoices.view',
+            AttentionItem::SUBJECT_SALES_ORDER => 'sales_orders.view',
+            default => 'quotations.view',
+        };
     }
 
     /** The subset of `$userIds` who may own items of `$storeId` (one query). @param list<int> $userIds @return list<int> */
@@ -97,7 +103,7 @@ final class AttentionOwnership
     {
         $changed = 0;
         AttentionItem::query()->where('organization_id', $organization->getKey())->whereNotNull('active_key')
-            ->select(['id', 'subject_type', 'store_id', 'quotation_id', 'invoice_id', 'assigned_user_id', 'assignment_source', 'ownership_resolved_at', 'severity', 'version'])
+            ->select(['id', 'subject_type', 'store_id', 'quotation_id', 'invoice_id', 'sales_order_id', 'assigned_user_id', 'assignment_source', 'ownership_resolved_at', 'severity', 'version'])
             ->chunkById(self::CHUNK, function ($items) use ($organization, &$changed) {
                 $sources = $this->initialSources($organization, $items);
                 // Batched eligibility: one query per (store, subject) present in the chunk.
@@ -162,12 +168,19 @@ final class AttentionOwnership
             ->whereKey($items->where('subject_type', AttentionItem::SUBJECT_INVOICE)->pluck('invoice_id')->filter()->unique()->all())
             ->get(['id', 'sales_order_id', 'issued_by_user_id'])->keyBy('id');
         $orders = SalesOrder::query()->where('organization_id', $organization->getKey())
-            ->whereKey($invoices->pluck('sales_order_id')->filter()->unique()->all())
-            ->get(['id', 'created_by_user_id'])->keyBy('id');
+            ->whereKey($invoices->pluck('sales_order_id')
+                ->merge($items->where('subject_type', AttentionItem::SUBJECT_SALES_ORDER)->pluck('sales_order_id'))->filter()->unique()->values()->all())
+            ->get(['id', 'created_by_user_id', 'confirmed_by_user_id'])->keyBy('id');
 
         $sources = [];
         foreach ($items as $item) {
-            if ($item->subject_type === AttentionItem::SUBJECT_INVOICE) {
+            if ($item->subject_type === AttentionItem::SUBJECT_SALES_ORDER) {
+                $order = $orders->get($item->sales_order_id);
+                $sources[$item->getKey()] = [
+                    [$order?->created_by_user_id, self::SOURCE_CREATOR],
+                    [$order?->confirmed_by_user_id, self::SOURCE_CONFIRMER],
+                ];
+            } elseif ($item->subject_type === AttentionItem::SUBJECT_INVOICE) {
                 $invoice = $invoices->get($item->invoice_id);
                 $sources[$item->getKey()] = [
                     [$invoice?->issued_by_user_id, self::SOURCE_ISSUER],

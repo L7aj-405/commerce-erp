@@ -47,7 +47,7 @@ class AttentionController extends Controller
     private function owners(Organization $organization, AttentionOwnership $ownership): array
     {
         $owners = [];
-        foreach ([AttentionItem::SUBJECT_QUOTATION, AttentionItem::SUBJECT_INVOICE] as $subject) {
+        foreach ([AttentionItem::SUBJECT_QUOTATION, AttentionItem::SUBJECT_SALES_ORDER, AttentionItem::SUBJECT_INVOICE] as $subject) {
             foreach ($ownership->candidates($organization, AttentionOwnership::permissionFor($subject)) as $candidate) {
                 $owners[$candidate['id']] ??= [...$candidate, 'subjects' => []];
                 $owners[$candidate['id']]['subjects'][] = $subject;
@@ -97,6 +97,13 @@ class AttentionController extends Controller
         $access->authorize($attention->canView($request->user(), $attentionItem));
 
         return $opener->openQuotation($request->user(), $context, $attentionItem->quotation_id === null ? null : (int) $attentionItem->quotation_id);
+    }
+
+    public function openSalesOrder(Request $request, ActiveTenantContext $context, AttentionItem $attentionItem, AttentionQuery $attention, FollowUpAccess $access, StoreDocumentOpener $opener): RedirectResponse
+    {
+        $access->authorize($attention->canView($request->user(), $attentionItem));
+
+        return $opener->openSalesOrder($request->user(), $context, $attentionItem->sales_order_id === null ? null : (int) $attentionItem->sales_order_id);
     }
 
     public function openInvoice(Request $request, ActiveTenantContext $context, AttentionItem $attentionItem, AttentionQuery $attention, FollowUpAccess $access, StoreDocumentOpener $opener): RedirectResponse

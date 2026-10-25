@@ -10,6 +10,7 @@ use App\Models\FollowUpRecurringRule;
 use App\Models\Invoice;
 use App\Models\Organization;
 use App\Models\Quotation;
+use App\Models\SalesOrder;
 use App\Models\Store;
 use App\Models\User;
 use App\Services\AuditLogger;
@@ -67,6 +68,7 @@ class SaveFollowUpAction
             'customer_id' => ['sometimes', 'nullable', 'integer'],
             'quotation_id' => ['sometimes', 'nullable', 'integer'],
             'invoice_id' => ['sometimes', 'nullable', 'integer'],
+            'sales_order_id' => ['sometimes', 'nullable', 'integer'],
             // No `sometimes`: a due_time sent without a due_date must fail.
             'due_date' => ['nullable', 'date_format:Y-m-d', 'required_with:due_time'],
             'due_time' => ['sometimes', 'nullable', 'date_format:H:i'],
@@ -222,23 +224,42 @@ class SaveFollowUpAction
     /** @param array<string, mixed> $data */
     public function applyLinks(User $actor, Organization $organization, FollowUp|FollowUpRecurringRule $followUp, array $data): void
     {
-        // W4.4: follow-ups (not recurring rules) may link an invoice instead of a quotation.
+        // W4.4 / W4.5: follow-ups (not recurring rules) may link an invoice or a sales order instead of a quotation.
         $invoiceSupported = $followUp instanceof FollowUp;
         $quotationChanged = array_key_exists('quotation_id', $data);
         $customerChanged = array_key_exists('customer_id', $data);
         $invoiceChanged = $invoiceSupported && array_key_exists('invoice_id', $data);
-        if (! $quotationChanged && ! $customerChanged && ! $invoiceChanged) {
+        $orderChanged = $invoiceSupported && array_key_exists('sales_order_id', $data);
+        if (! $quotationChanged && ! $customerChanged && ! $invoiceChanged && ! $orderChanged) {
             return;
         }
 
         $quotationId = $quotationChanged ? $data['quotation_id'] : $followUp->quotation_id;
         $customerId = $customerChanged ? $data['customer_id'] : $followUp->customer_id;
         $invoiceId = $invoiceSupported ? ($invoiceChanged ? $data['invoice_id'] : $followUp->invoice_id) : null;
+        $orderId = $invoiceSupported ? ($orderChanged ? $data['sales_order_id'] : $followUp->sales_order_id) : null;
         $quotation = null;
         $invoice = null;
+        $order = null;
 
-        if ($quotationId !== null && $invoiceId !== null) {
-            throw ValidationException::withMessages(['invoice_id' => 'Un suivi est lié à un devis ou à une facture, pas aux deux.']);
+        if (count(array_filter([$quotationId, $invoiceId, $orderId], fn ($id) => $id !== null)) > 1) {
+            throw ValidationException::withMessages([$orderId !== null ? 'sales_order_id' : 'invoice_id' => 'Un suivi est lié à un seul document : devis, commande ou facture.']);
+        }
+        if ($orderId !== null) {
+            $order = SalesOrder::query()->where('organization_id', $organization->getKey())->whereKey((int) $orderId)->first(['id', 'organization_id', 'store_id', 'customer_id']);
+            if (! $order) {
+                throw ValidationException::withMessages(['sales_order_id' => 'Commande introuvable dans cette organisation.']);
+            }
+            if ((int) $order->getKey() !== (int) $followUp->sales_order_id
+                && (! $actor->hasPermission($organization, 'sales_orders.view') || ! $this->access->hasStoreAccess($actor, $order->store_id))) {
+                throw ValidationException::withMessages(['sales_order_id' => 'Vous n’avez pas accès à cette commande.']);
+            }
+            if ($order->customer_id !== null) {
+                if ($customerChanged && $customerId !== null && (int) $customerId !== (int) $order->customer_id) {
+                    throw ValidationException::withMessages(['customer_id' => 'Le client doit correspondre au client de la commande.']);
+                }
+                $customerId = $order->customer_id;
+            }
         }
         if ($invoiceId !== null) {
             $invoice = Invoice::query()->where('organization_id', $organization->getKey())->whereKey((int) $invoiceId)->first(['id', 'organization_id', 'store_id', 'customer_id']);
@@ -287,10 +308,11 @@ class SaveFollowUpAction
         $followUp->quotation_id = $quotation?->getKey();
         if ($invoiceSupported) {
             $followUp->invoice_id = $invoice?->getKey();
+            $followUp->sales_order_id = $order?->getKey();
         }
         $followUp->customer_id = $customerId !== null ? (int) $customerId : null;
         // The store always derives from the linked document, never from the client.
-        $followUp->store_id = $quotation?->store_id ?? $invoice?->store_id;
+        $followUp->store_id = $quotation?->store_id ?? $invoice?->store_id ?? $order?->store_id;
     }
 
     /**
@@ -383,6 +405,7 @@ class SaveFollowUpAction
             'customer_id' => $followUp->customer_id,
             'quotation_id' => $followUp->quotation_id,
             'invoice_id' => $followUp->invoice_id,
+            'sales_order_id' => $followUp->sales_order_id,
         ];
     }
 

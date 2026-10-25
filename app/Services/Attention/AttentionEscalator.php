@@ -114,15 +114,19 @@ final class AttentionEscalator
         $params = ['number' => $number, 'customer' => $customer, 'owner' => $owner];
         $context = implode(' — ', array_filter([$customer, $owner !== '' ? "responsable : {$owner}" : 'non assignée']));
         $key = $owner !== '' ? 'Owner' : 'Unassigned';
-        $invoice = $item->subject_type === AttentionItem::SUBJECT_INVOICE;
+        [$label, $titleKey] = match ($item->subject_type) {
+            AttentionItem::SUBJECT_INVOICE => ['facture', 'attention.escalationTitleInvoice'],
+            AttentionItem::SUBJECT_SALES_ORDER => ['commande', 'attention.escalationTitleOrder'],
+            default => ['devis', 'attention.escalationTitle'],
+        };
 
         return $this->publisher->publishToUser($manager, $organization, NotificationCategory::Sales, NotificationSeverity::Critical,
-            'Attention critique non traitée : '.($invoice ? 'facture' : 'devis')." {$number}", $context,
+            "Attention critique non traitée : {$label} {$number}", $context,
             '/work/attention?view=all&focus='.$item->getKey(),
             'attention_item', $item->getKey(), 'escalation',
             [
                 'attention_item_id' => (int) $item->getKey(),
-                'i18n' => ['title' => $invoice ? 'attention.escalationTitleInvoice' : 'attention.escalationTitle', 'message' => 'attention.escalationMessage'.$key.($customer !== '' ? 'Context' : ''), 'params' => $params],
+                'i18n' => ['title' => $titleKey, 'message' => 'attention.escalationMessage'.$key.($customer !== '' ? 'Context' : ''), 'params' => $params],
             ]);
     }
 }

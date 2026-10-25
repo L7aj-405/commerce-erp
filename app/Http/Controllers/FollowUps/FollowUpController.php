@@ -20,7 +20,7 @@ class FollowUpController extends Controller
 {
     private const TABS = ['today', 'overdue', 'upcoming', 'completed', 'all'];
 
-    private const INPUT = ['title', 'note', 'priority', 'assigned_user_id', 'customer_id', 'quotation_id', 'invoice_id', 'due_date', 'due_time', 'due_at', 'expected_version'];
+    private const INPUT = ['title', 'note', 'priority', 'assigned_user_id', 'customer_id', 'quotation_id', 'invoice_id', 'sales_order_id', 'due_date', 'due_time', 'due_at', 'expected_version'];
 
     public function index(Request $request, ActiveTenantContext $context, FollowUpQuery $followUps): Response
     {
@@ -80,6 +80,14 @@ class FollowUpController extends Controller
         $this->authorize('view', $followUp);
 
         return $opener->openQuotation($request->user(), $context, $followUp->quotation_id === null ? null : (int) $followUp->quotation_id);
+    }
+
+    /** W4.5: same safe store switch, for the follow-up's sales order. */
+    public function openSalesOrder(Request $request, ActiveTenantContext $context, FollowUp $followUp, StoreDocumentOpener $opener): RedirectResponse
+    {
+        $this->authorize('view', $followUp);
+
+        return $opener->openSalesOrder($request->user(), $context, $followUp->sales_order_id === null ? null : (int) $followUp->sales_order_id);
     }
 
     /** W4.4: same safe store switch, for the follow-up's invoice. */

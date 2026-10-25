@@ -19,6 +19,17 @@ return [
         'followup_backlog_critical_age_days' => 7,
     ],
 
+    // W4.5: confirmed, not-yet-invoiced Sales Orders (SalesOrderPaymentCalculator).
+    'sales_orders' => [
+        'due_soon_days' => 2,
+        'followup_backlog_count' => 2,
+        'followup_backlog_age_days' => 3,
+        'followup_backlog_critical_count' => 4,
+        'followup_backlog_critical_age_days' => 7,
+        // Fully paid manual / e-commerce orders (never POS) still without an issued invoice after this many local days.
+        'paid_not_invoiced_days' => 1,
+    ],
+
     // W4.4: issued invoices with an outstanding balance (FinanceInvoiceReadModel).
     'invoices' => [
         // due_date within this many local days (today included), not yet past.
