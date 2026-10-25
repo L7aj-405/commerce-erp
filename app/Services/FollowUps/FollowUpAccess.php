@@ -16,7 +16,8 @@ use Illuminate\Database\Eloquent\Builder;
  *
  * - follow_ups.view: own work (assigned to the user);
  * - follow_ups.update: change own work; follow_ups.create: create own work;
- * - follow_ups.manage_all: see/change everyone's work and assign to others;
+ * - follow_ups.manage_all: see/change everyone's work (including Unassigned
+ *   work, assigned_user_id NULL) and assign to others;
  * - a store-linked follow-up additionally requires store membership.
  */
 class FollowUpAccess

@@ -187,7 +187,8 @@ class FollowUpTest extends QuotationTestCase
 
         $this->save()->update($owner, $organization, $followUp, ['due_date' => '2026-11-02', 'due_time' => '09:15', 'expected_version' => 1]);
         $log = AuditLog::query()->where('event', 'follow_up.rescheduled')->sole();
-        $this->assertSame(['due_date' => '2026-10-30', 'due_at' => null], $log->old_values);
+        // assertEquals: MySQL JSON columns do not preserve object key order.
+        $this->assertEquals(['due_date' => '2026-10-30', 'due_at' => null], $log->old_values);
         $this->assertSame('2026-11-02', $log->new_values['due_date']);
         $this->assertDatabaseMissing('audit_logs', ['event' => 'follow_up.updated']);
 

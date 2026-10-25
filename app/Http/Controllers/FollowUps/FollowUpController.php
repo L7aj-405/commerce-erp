@@ -7,6 +7,8 @@ use App\Actions\FollowUps\TransitionFollowUpAction;
 use App\Enums\FollowUpStatus;
 use App\Http\Controllers\Controller;
 use App\Models\FollowUp;
+use App\Models\Quotation;
+use App\Models\Store;
 use App\Services\ActiveTenantContext;
 use App\Services\FollowUps\FollowUpQuery;
 use Illuminate\Http\RedirectResponse;
@@ -64,6 +66,39 @@ class FollowUpController extends Controller
         $action->update($request->user(), $context->organizationOrFail(), $followUp, $request->only(self::INPUT));
 
         return back()->with('success', 'Suivi mis à jour.');
+    }
+
+    /**
+     * Open the follow-up's quotation even when it belongs to another of the
+     * viewer's stores: the active store is switched through the canonical
+     * ActiveTenantContext::activateStore (same checks as the store switcher)
+     * before redirecting to the normally store-scoped quotation page. Nothing
+     * is switched or revealed unless the viewer may see the follow-up, holds
+     * quotations.view and is a member of the quotation's active store.
+     */
+    public function openQuotation(Request $request, ActiveTenantContext $context, FollowUp $followUp): RedirectResponse
+    {
+        $this->authorize('view', $followUp);
+        $user = $request->user();
+        $quotation = $followUp->quotation_id === null ? null : Quotation::query()
+            ->where('organization_id', $context->organizationOrFail()->getKey())
+            ->whereKey($followUp->quotation_id)
+            ->first(['id', 'organization_id', 'store_id']);
+        $store = $quotation ? Store::query()->where('organization_id', $quotation->organization_id)->whereKey($quotation->store_id)->first() : null;
+
+        $allowed = $store !== null
+            && $store->status === 'active'
+            && $user->hasPermission($context->organizationOrFail(), 'quotations.view')
+            && $store->memberships()->where('user_id', $user->getKey())->exists();
+        if (! $allowed) {
+            return back()->withErrors(['quotation' => 'Ce devis n’est pas accessible depuis votre compte.']);
+        }
+
+        if ((int) $context->store()?->getKey() !== (int) $store->getKey()) {
+            $context->activateStore($user, $store);
+        }
+
+        return redirect()->route('quotations.show', $quotation->getKey());
     }
 
     public function transition(Request $request, ActiveTenantContext $context, FollowUp $followUp, TransitionFollowUpAction $action): RedirectResponse

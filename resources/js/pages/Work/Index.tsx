@@ -80,6 +80,7 @@ export default function WorkIndex({ tab, filters, followUps, counts, context }: 
                     <select value={filters.assigned_to ?? 'me'} onChange={(e) => visit({ assigned_to: e.target.value })} className={`${fieldClass} flex-1 sm:flex-none`} aria-label={t('work.assignee')}>
                         <option value="me">{t('work.assignedMe')}</option>
                         <option value="all">{t('work.assignedAll')}</option>
+                        <option value="unassigned">{t('work.assignedUnassigned')}</option>
                         {context.assignees.filter((user) => user.id !== context.current_user_id).map((user) => <option key={user.id} value={String(user.id)}>{user.name}</option>)}
                     </select>
                 )}

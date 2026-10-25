@@ -14,9 +14,11 @@ export type FollowUpItem = {
     due_at: string | null;
     is_overdue: boolean;
     is_today: boolean;
+    /** null = "Unassigned" (only visible to follow_ups.manage_all). */
     assignee: { id: number; name: string } | null;
     customer: { id: number; name: string } | null;
-    quotation: { id: number; number: string | null; store_id: number } | null;
+    /** can_open: the viewer may open it (via /work/{id}/open-quotation, which switches store if needed). */
+    quotation: { id: number; number: string | null; store_id: number; can_open: boolean } | null;
     completed_at: string | null;
     cancelled_at: string | null;
     outcome_note: string | null;

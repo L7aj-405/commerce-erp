@@ -10,6 +10,8 @@ use App\Models\Store;
 use App\Models\StoreMembership;
 use App\Models\User;
 use App\Models\Warehouse;
+use App\Services\FollowUps\FollowUpAssignmentReleaser;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 class MembershipService
@@ -17,6 +19,7 @@ class MembershipService
     public function __construct(
         private readonly AuditLogger $audit,
         private readonly ActiveTenantContext $context,
+        private readonly FollowUpAssignmentReleaser $followUps,
     ) {}
 
     public function addOrganizationMember(User $actor, Organization $organization, User $user, Role $role): OrganizationMembership
@@ -54,18 +57,23 @@ class MembershipService
 
         $this->assertRoleAssignable($actor, $membership->organization, $role);
 
-        $oldRoleId = $membership->role_id;
-        $membership->role_id = $role->getKey();
-        $membership->save();
+        DB::transaction(function () use ($actor, $membership, $role) {
+            $oldRoleId = $membership->role_id;
+            $membership->role_id = $role->getKey();
+            $membership->save();
 
-        $this->audit->record(
-            'organization_membership.role_changed',
-            $actor,
-            $membership->organization,
-            auditable: $membership,
-            oldValues: ['role_id' => $oldRoleId],
-            newValues: ['role_id' => $role->getKey()],
-        );
+            $this->audit->record(
+                'organization_membership.role_changed',
+                $actor,
+                $membership->organization,
+                auditable: $membership,
+                oldValues: ['role_id' => $oldRoleId],
+                newValues: ['role_id' => $role->getKey()],
+            );
+
+            // A role without follow_ups.view can no longer hold open work.
+            $this->followUps->releaseDeparted($membership->organization, $actor, 'role_changed', (int) $membership->user_id);
+        });
     }
 
     public function changeStatus(User $actor, OrganizationMembership $membership, string $status): void
@@ -74,25 +82,31 @@ class MembershipService
         abort_if($membership->user_id === $actor->getKey(), 403, 'You cannot change your own membership status.');
         abort_if($membership->user_id === $membership->organization->owner_id, 403, 'The owner membership cannot be suspended.');
 
-        $oldStatus = $membership->status;
-        $membership->status = $status;
-        $membership->save();
+        DB::transaction(function () use ($actor, $membership, $status) {
+            $oldStatus = $membership->status;
+            $membership->status = $status;
+            $membership->save();
 
-        if ($status !== 'active' && $membership->user->active_organization_id === $membership->organization_id) {
-            $member = $membership->user;
-            $member->active_organization_id = null;
-            $member->active_store_id = null;
-            $member->save();
-        }
+            if ($status !== 'active' && $membership->user->active_organization_id === $membership->organization_id) {
+                $member = $membership->user;
+                $member->active_organization_id = null;
+                $member->active_store_id = null;
+                $member->save();
+            }
 
-        $this->audit->record(
-            'organization_membership.status_changed',
-            $actor,
-            $membership->organization,
-            auditable: $membership,
-            oldValues: ['status' => $oldStatus],
-            newValues: ['status' => $status],
-        );
+            $this->audit->record(
+                'organization_membership.status_changed',
+                $actor,
+                $membership->organization,
+                auditable: $membership,
+                oldValues: ['status' => $oldStatus],
+                newValues: ['status' => $status],
+            );
+
+            if ($status !== 'active') {
+                $this->followUps->releaseDeparted($membership->organization, $actor, 'membership_suspended', (int) $membership->user_id);
+            }
+        });
     }
 
     /**
@@ -145,14 +159,18 @@ class MembershipService
 
         $organization = $membership->organization;
         $values = ['user_id' => $membership->user_id, 'role_id' => $membership->role_id];
-        $membership->delete();
+        DB::transaction(function () use ($actor, $membership, $organization, $values) {
+            $membership->delete();
 
-        $this->audit->record(
-            'organization_membership.deleted',
-            $actor,
-            $organization,
-            oldValues: $values,
-        );
+            $this->audit->record(
+                'organization_membership.deleted',
+                $actor,
+                $organization,
+                oldValues: $values,
+            );
+
+            $this->followUps->releaseDeparted($organization, $actor, 'membership_removed', (int) $values['user_id']);
+        });
     }
 
     public function addStoreMember(User $actor, Store $store, User $user): StoreMembership
@@ -210,15 +228,20 @@ class MembershipService
         $organization = $membership->organization;
         $store = $membership->store;
         $values = ['user_id' => $membership->user_id];
-        $membership->delete();
+        DB::transaction(function () use ($actor, $membership, $organization, $store, $values) {
+            $membership->delete();
 
-        $this->audit->record(
-            'store_membership.deleted',
-            $actor,
-            $organization,
-            $store,
-            oldValues: $values,
-        );
+            $this->audit->record(
+                'store_membership.deleted',
+                $actor,
+                $organization,
+                $store,
+                oldValues: $values,
+            );
+
+            // Only open work linked to stores the member no longer belongs to is released.
+            $this->followUps->releaseDeparted($organization, $actor, 'store_access_removed', (int) $values['user_id']);
+        });
     }
 
     private function assertRoleAssignable(User $actor, Organization $organization, Role $role): void

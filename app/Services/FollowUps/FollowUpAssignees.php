@@ -3,6 +3,8 @@
 namespace App\Services\FollowUps;
 
 use App\Models\Organization;
+use App\Models\OrganizationMembership;
+use App\Models\StoreMembership;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
@@ -28,8 +30,25 @@ class FollowUpAssignees
             ->map(fn (User $user) => ['id' => (int) $user->getKey(), 'name' => (string) $user->name]);
     }
 
-    public function isAssignable(Organization $organization, int $userId, ?int $storeId = null): bool
+    /**
+     * `$lock` (inside a transaction) re-reads the member's active organization
+     * and store membership rows with a shared lock: a concurrent removal or
+     * suspension either commits first (and the user is rejected) or waits for
+     * this assignment, whose open work FollowUpAssignmentReleaser then frees.
+     */
+    public function isAssignable(Organization $organization, int $userId, ?int $storeId = null, bool $lock = false): bool
     {
+        if ($lock) {
+            $organizationId = $organization->getKey();
+            $member = OrganizationMembership::query()->where('organization_id', $organizationId)->where('user_id', $userId)
+                ->where('status', 'active')->sharedLock()->exists();
+            $storeMember = $storeId === null || StoreMembership::query()->where('organization_id', $organizationId)
+                ->where('store_id', $storeId)->where('user_id', $userId)->sharedLock()->exists();
+            if (! $member || ! $storeMember) {
+                return false;
+            }
+        }
+
         return $this->query($organization, $storeId)->whereKey($userId)->exists();
     }
 

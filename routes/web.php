@@ -227,6 +227,7 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
     Route::post('/work', [FollowUpController::class, 'store'])->name('follow-ups.store');
     Route::patch('/work/{followUp}', [FollowUpController::class, 'update'])->name('follow-ups.update');
     Route::post('/work/{followUp}/transition', [FollowUpController::class, 'transition'])->name('follow-ups.transition');
+    Route::post('/work/{followUp}/open-quotation', [FollowUpController::class, 'openQuotation'])->name('follow-ups.open-quotation');
     Route::get('/document-profile', [DocumentProfileController::class, 'edit'])->name('document-profile.edit');
     Route::put('/document-profile', [DocumentProfileController::class, 'update'])->name('document-profile.update');
     Route::put('/organization-timezone', [OrganizationTimezoneController::class, 'update'])->name('organization-timezone.update');

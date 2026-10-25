@@ -35,6 +35,9 @@ export default function FollowUpList({ items, context, showAssignee }: { items: 
         });
     };
 
+    // Server-side: re-checks access, switches to the quotation's store if needed, then redirects.
+    const openQuotation = (item: FollowUpItem) => router.post(`/work/${item.id}/open-quotation`, {}, { onError });
+
     const snooze = (item: FollowUpItem, days: number) => {
         setBusy(item.id);
         router.patch(`/work/${item.id}`, {
@@ -66,8 +69,13 @@ export default function FollowUpList({ items, context, showAssignee }: { items: 
                                     {item.due_time && <span dir="ltr"> · {item.due_time}</span>}
                                 </span>
                                 {item.customer && <Link href={`/sales/customers/${item.customer.id}`} className="text-primary hover:underline">{item.customer.name}</Link>}
-                                {item.quotation && <Link href={`/quotations/${item.quotation.id}`} className="text-primary hover:underline" dir="ltr">{item.quotation.number ?? t('work.draftQuotation')}</Link>}
+                                {item.quotation && (item.quotation.can_open ? (
+                                    <button type="button" onClick={() => openQuotation(item)} className="text-primary hover:underline" dir="ltr">{item.quotation.number ?? t('work.draftQuotation')}</button>
+                                ) : (
+                                    <span title={t('work.quotationUnavailable')} dir="ltr">{item.quotation.number ?? t('work.draftQuotation')}</span>
+                                ))}
                                 {showAssignee && item.assignee && <span>{t('work.assignedTo').replace('{name}', item.assignee.name)}</span>}
+                                {!item.assignee && <DocBadge tone="warning">{t('work.unassigned')}</DocBadge>}
                             </p>
                             {item.note && <p className="mt-1 line-clamp-2 text-[13px] text-ink-faint">{item.note}</p>}
                             {item.outcome_note && <p className="mt-1 text-[13px] text-ink-muted">{t('work.outcome')}: {item.outcome_note}</p>}

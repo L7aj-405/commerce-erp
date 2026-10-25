@@ -126,10 +126,13 @@ class FollowUpQuery
         };
     }
 
+    /** `me` (default) | `all` | `unassigned` | a user id; anything but `me` requires manage_all. */
     private function applyAssignee(Builder $query, User $user, Organization $organization, mixed $assignedTo): void
     {
         if (! $this->access->canManageAll($user, $organization) || $assignedTo === null || $assignedTo === 'me') {
             $query->where('assigned_user_id', $user->getKey());
+        } elseif ($assignedTo === 'unassigned') {
+            $query->whereNull('assigned_user_id');
         } elseif ($assignedTo !== 'all' && ctype_digit((string) $assignedTo)) {
             $query->where('assigned_user_id', (int) $assignedTo);
         }
@@ -205,7 +208,10 @@ class FollowUpQuery
             'is_today' => $open && ($local?->toDateString() ?? $followUp->due_date) === $today,
             'assignee' => $followUp->assignee ? ['id' => (int) $followUp->assignee->getKey(), 'name' => $followUp->assignee->name] : null,
             'customer' => $customer ? ['id' => (int) $customer->getKey(), 'name' => $customer->display_name] : null,
-            'quotation' => $quotation ? ['id' => (int) $quotation->getKey(), 'number' => $quotation->quotation_number, 'store_id' => (int) $quotation->store_id] : null,
+            // can_open: the viewer may open the quotation (switching to its store
+            // through FollowUpController::openQuotation when needed).
+            'quotation' => $quotation ? ['id' => (int) $quotation->getKey(), 'number' => $quotation->quotation_number, 'store_id' => (int) $quotation->store_id,
+                'can_open' => $this->access->hasStoreAccess($user, $quotation->store_id)] : null,
             'completed_at' => $followUp->completed_at?->toIso8601String(),
             'cancelled_at' => $followUp->cancelled_at?->toIso8601String(),
             'outcome_note' => $followUp->outcome_note,

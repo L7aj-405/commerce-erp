@@ -116,6 +116,9 @@ class OrganizationDataResetBundleRegistry
             ),
             OrganizationDataResetScope::UsersAndAccess => [
                 new OrganizationDataResetOperation('access.active_context', $scope, 'users', OrganizationDataResetOperation::CLEAR_NON_OWNER_ACTIVE_CONTEXT),
+                // Open work of removed members becomes "Unassigned" (never deleted);
+                // completed/cancelled history keeps its assignee.
+                new OrganizationDataResetOperation('follow_ups.unassign_removed_members', $scope, 'follow_ups', OrganizationDataResetOperation::UNASSIGN_NON_OWNER_FOLLOW_UPS),
                 new OrganizationDataResetOperation('access.store_memberships', $scope, 'store_memberships', OrganizationDataResetOperation::DELETE_NON_OWNER_STORE_MEMBERSHIPS),
                 new OrganizationDataResetOperation('access.invitations', $scope, 'user_invitations'),
                 new OrganizationDataResetOperation('access.memberships', $scope, 'organization_memberships', OrganizationDataResetOperation::DELETE_NON_OWNER_MEMBERSHIPS),

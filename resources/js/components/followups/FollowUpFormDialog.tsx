@@ -41,7 +41,8 @@ export default function FollowUpFormDialog({
         priority: followUp?.priority ?? 'normal',
         due_date: followUp?.due_date ?? (editing ? '' : context.today),
         due_time: followUp?.due_time ?? '',
-        assigned_user_id: followUp?.assignee?.id ?? context.current_user_id,
+        // '' = Unassigned (manage_all only); new work defaults to the current user.
+        assigned_user_id: followUp ? followUp.assignee?.id ?? '' : context.current_user_id,
         customer_id: followUp ? followUp.customer?.id ?? null : prefill?.customer_id ?? null,
         quotation_id: followUp ? followUp.quotation?.id ?? null : prefill?.quotation_id ?? null,
         ...(followUp ? { expected_version: followUp.version } : {}),
@@ -59,7 +60,7 @@ export default function FollowUpFormDialog({
                 if (!payload.due_date) Object.assign(payload, { due_date: null, due_time: null });
             }
             if (!context.can_manage_all) delete payload.assigned_user_id;
-            return payload;
+            return { ...payload, ...(payload.assigned_user_id === '' ? { assigned_user_id: null } : {}) };
         });
         if (followUp) form.patch(`/work/${followUp.id}`, options);
         else form.post('/work', options);
@@ -113,7 +114,12 @@ export default function FollowUpFormDialog({
                 {context.can_manage_all && context.assignees.length > 0 && (
                     <label className="block">
                         <span className="mb-1 block text-xs font-medium text-ink-muted">{t('work.assignee')}</span>
-                        <select value={form.data.assigned_user_id} onChange={(e) => form.setData('assigned_user_id', Number(e.target.value))} className={fieldClass}>
+                        <select value={form.data.assigned_user_id} onChange={(e) => form.setData('assigned_user_id', e.target.value === '' ? '' : Number(e.target.value))} className={fieldClass}>
+                            <option value="">{t('work.unassigned')}</option>
+                            {/* A current assignee who is no longer assignable stays visible but cannot be picked again. */}
+                            {followUp?.assignee && !context.assignees.some((user) => user.id === followUp.assignee?.id) && (
+                                <option value={followUp.assignee.id} disabled>{t('work.inactiveAssignee').replace('{name}', followUp.assignee.name)}</option>
+                            )}
                             {context.assignees.map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}
                         </select>
                         {errors.assigned_user_id && <span className="mt-1 block text-xs text-danger">{errors.assigned_user_id}</span>}

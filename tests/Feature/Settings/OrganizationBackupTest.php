@@ -11,6 +11,7 @@ use App\Models\Payment;
 use App\Models\Product;
 use App\Models\User;
 use App\Models\WooCommerceIntegration;
+use App\Services\FollowUps\FollowUpAssignmentReleaser;
 use App\Services\OrganizationBackups\OrganizationBackupException;
 use App\Services\OrganizationBackups\OrganizationBackupExporter;
 use App\Services\OrganizationBackups\OrganizationBackupCryptography;
@@ -379,6 +380,7 @@ class OrganizationBackupTest extends DocumentTestCase
             app(OrganizationBackupValidator::class),
             app(OrganizationBackupExporter::class),
             $failingSchema,
+            app(FollowUpAssignmentReleaser::class),
         );
 
         try {

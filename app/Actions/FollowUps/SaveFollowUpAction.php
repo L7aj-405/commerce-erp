@@ -78,7 +78,7 @@ class SaveFollowUpAction
             $followUp->version = 1;
 
             $this->applyLinks($actor, $organization, $followUp, $data);
-            $assigneeId = (int) ($data['assigned_user_id'] ?? $actor->getKey());
+            $assigneeId = $this->requestedAssignee($actor, $organization, $data, (int) $actor->getKey());
             $this->assertAssignee($actor, $organization, $assigneeId, $followUp->store_id);
             $followUp->assigned_user_id = $assigneeId;
             $this->applyDue($organization, $followUp, $data);
@@ -105,7 +105,7 @@ class SaveFollowUpAction
                 throw ValidationException::withMessages(['status' => 'Seul un suivi ouvert peut être modifié. Rouvrez-le d’abord.']);
             }
 
-            $before = ['assignee' => (int) $locked->assigned_user_id, 'due' => $this->dueSnapshot($locked)];
+            $before = ['assignee' => $this->assigneeId($locked), 'due' => $this->dueSnapshot($locked)];
             $original = $locked->only(['title', 'note', 'priority', 'customer_id', 'quotation_id', 'store_id']);
 
             if (array_key_exists('title', $data)) $locked->title = trim((string) $data['title']);
@@ -114,8 +114,7 @@ class SaveFollowUpAction
             $this->applyLinks($actor, $organization, $locked, $data);
             $this->applyDue($organization, $locked, $data);
 
-            $assigneeId = array_key_exists('assigned_user_id', $data) && $data['assigned_user_id'] !== null
-                ? (int) $data['assigned_user_id'] : (int) $locked->assigned_user_id;
+            $assigneeId = $this->requestedAssignee($actor, $organization, $data, $before['assignee']);
             if ($assigneeId !== $before['assignee'] || $locked->store_id !== $original['store_id']) {
                 $this->assertAssignee($actor, $organization, $assigneeId, $locked->store_id, $assigneeId !== $before['assignee']);
             }
@@ -210,12 +209,34 @@ class SaveFollowUpAction
         $followUp->store_id = $quotation?->store_id;
     }
 
-    private function assertAssignee(User $actor, Organization $organization, int $assigneeId, ?int $storeId, bool $assigning = true): void
+    /**
+     * Omitted → `$default`. An explicit NULL means "Unassigned", which only
+     * manage_all may choose; for everyone else it keeps `$default` (their own
+     * work), as before W1.1.
+     *
+     * @param array<string, mixed> $data
+     */
+    private function requestedAssignee(User $actor, Organization $organization, array $data, ?int $default): ?int
+    {
+        if (! array_key_exists('assigned_user_id', $data)) {
+            return $default;
+        }
+        if ($data['assigned_user_id'] === null) {
+            return $this->access->canManageAll($actor, $organization) ? null : $default;
+        }
+
+        return (int) $data['assigned_user_id'];
+    }
+
+    private function assertAssignee(User $actor, Organization $organization, ?int $assigneeId, ?int $storeId, bool $assigning = true): void
     {
         if ($assigning && $assigneeId !== (int) $actor->getKey()) {
             $this->access->authorize($this->access->canManageAll($actor, $organization));
         }
-        if (! $this->assignees->isAssignable($organization, $assigneeId, $storeId)) {
+        if ($assigneeId === null) {
+            return;
+        }
+        if (! $this->assignees->isAssignable($organization, $assigneeId, $storeId, lock: true)) {
             throw ValidationException::withMessages(['assigned_user_id' => $storeId === null
                 ? 'Cet utilisateur ne peut pas recevoir de suivis dans cette organisation.'
                 : 'Cet utilisateur ne peut pas recevoir de suivis pour ce magasin.']);
@@ -274,10 +295,15 @@ class SaveFollowUpAction
     {
         return [
             'follow_up_id' => $followUp->getKey(),
-            'assigned_user_id' => (int) $followUp->assigned_user_id,
+            'assigned_user_id' => $this->assigneeId($followUp),
             'customer_id' => $followUp->customer_id,
             'quotation_id' => $followUp->quotation_id,
         ];
+    }
+
+    private function assigneeId(FollowUp $followUp): ?int
+    {
+        return $followUp->assigned_user_id === null ? null : (int) $followUp->assigned_user_id;
     }
 
     private function store(FollowUp $followUp): ?Store

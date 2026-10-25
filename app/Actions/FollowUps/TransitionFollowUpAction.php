@@ -9,6 +9,7 @@ use App\Models\Store;
 use App\Models\User;
 use App\Services\AuditLogger;
 use App\Services\FollowUps\FollowUpAccess;
+use App\Services\FollowUps\FollowUpAssignees;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
@@ -19,6 +20,9 @@ use Illuminate\Validation\ValidationException;
  * completed | cancelled → open. Runs under a row lock and re-checks the
  * current status, so a second tab (or a retried request) cannot complete an
  * already-cancelled item or double-apply a transition.
+ *
+ * Reopening history whose assignee has since lost access makes the item
+ * "Unassigned" (W1.1) instead of recreating invisible work.
  */
 class TransitionFollowUpAction
 {
@@ -26,6 +30,7 @@ class TransitionFollowUpAction
 
     public function __construct(
         private readonly FollowUpAccess $access,
+        private readonly FollowUpAssignees $assignees,
         private readonly AuditLogger $audit,
     ) {}
 
@@ -58,19 +63,20 @@ class TransitionFollowUpAction
                 throw ValidationException::withMessages(['status' => 'Ce changement de statut n’est pas possible depuis l’état actuel du suivi.']);
             }
 
-            $metadata = ['follow_up_id' => $locked->getKey(), 'assigned_user_id' => (int) $locked->assigned_user_id,
-                'customer_id' => $locked->customer_id, 'quotation_id' => $locked->quotation_id];
+            $previousAssignee = $locked->assigned_user_id === null ? null : (int) $locked->assigned_user_id;
             match ($transition) {
                 'complete' => $this->complete($locked, $actor, $data['outcome_note'] ?? null),
                 'cancel' => $this->cancel($locked),
-                'reopen' => $this->reopen($locked),
+                'reopen' => $this->reopen($organization, $locked),
             };
+            $metadata = ['follow_up_id' => $locked->getKey(), 'assigned_user_id' => $locked->assigned_user_id === null ? null : (int) $locked->assigned_user_id,
+                'customer_id' => $locked->customer_id, 'quotation_id' => $locked->quotation_id];
             $locked->version = (int) $locked->version + 1;
             $locked->save();
 
             $event = match ($transition) { 'complete' => 'follow_up.completed', 'cancel' => 'follow_up.cancelled', 'reopen' => 'follow_up.reopened' };
             $this->audit->record($event, $actor, $organization, $locked->store_id ? Store::query()->find($locked->store_id) : null, $locked,
-                oldValues: ['status' => $from->value],
+                oldValues: ['status' => $from->value, ...($previousAssignee !== $metadata['assigned_user_id'] ? ['assigned_user_id' => $previousAssignee] : [])],
                 newValues: [...$metadata, 'status' => $locked->status->value, 'has_outcome_note' => $locked->outcome_note !== null]);
 
             return $locked;
@@ -92,8 +98,12 @@ class TransitionFollowUpAction
         $followUp->cancelled_at = now();
     }
 
-    private function reopen(FollowUp $followUp): void
+    private function reopen(Organization $organization, FollowUp $followUp): void
     {
+        if ($followUp->assigned_user_id !== null
+            && ! $this->assignees->isAssignable($organization, (int) $followUp->assigned_user_id, $followUp->store_id, lock: true)) {
+            $followUp->assigned_user_id = null;
+        }
         $followUp->status = FollowUpStatus::Open;
         $followUp->completed_at = null;
         $followUp->completed_by_user_id = null;

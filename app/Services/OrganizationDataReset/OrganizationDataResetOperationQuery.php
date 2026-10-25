@@ -56,6 +56,13 @@ class OrganizationDataResetOperationQuery
                 'active_organization_id' => null,
                 'active_store_id' => null,
             ]),
+            // Audit rows are protected during a reset: the reset's own audit
+            // event records how many follow-ups were released (per operation key).
+            OrganizationDataResetOperation::UNASSIGN_NON_OWNER_FOLLOW_UPS => $query->update([
+                'assigned_user_id' => null,
+                'version' => DB::raw('version + 1'),
+                'updated_at' => now(),
+            ]),
             default => $query->delete(),
         };
     }
@@ -103,6 +110,11 @@ class OrganizationDataResetOperationQuery
             OrganizationDataResetOperation::DELETE_NON_OWNER_STORE_MEMBERSHIPS => DB::table('store_memberships')
                 ->where('organization_id', $organizationId)
                 ->where('user_id', '!=', $ownerId),
+            OrganizationDataResetOperation::UNASSIGN_NON_OWNER_FOLLOW_UPS => DB::table('follow_ups')
+                ->where('organization_id', $organizationId)
+                ->where('status', 'open')
+                ->whereNotNull('assigned_user_id')
+                ->where('assigned_user_id', '!=', $ownerId),
             OrganizationDataResetOperation::DELETE_NON_OWNER_MEMBERSHIPS => DB::table('organization_memberships')
                 ->where('organization_id', $organizationId)
                 ->where('user_id', '!=', $ownerId),
