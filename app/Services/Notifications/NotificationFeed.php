@@ -2,6 +2,7 @@
 
 namespace App\Services\Notifications;
 
+use App\Enums\NotificationCategory;
 use App\Models\Organization;
 use App\Models\User;
 use App\Models\UserNotification;
@@ -33,7 +34,22 @@ final class NotificationFeed
     {
         return UserNotification::query()
             ->where('user_id', $user->getKey())
-            ->where('organization_id', $organization->getKey());
+            ->where('organization_id', $organization->getKey())
+            // Historical platform rows stay stored, just not shown to tenants.
+            ->when(! self::platformVisibleToTenants(), fn (Builder $query) => $query->where('category', '!=', NotificationCategory::System->value));
+    }
+
+    /** Whether platform / system-health notifications reach tenant-facing users (off during the pilot). */
+    public static function platformVisibleToTenants(): bool
+    {
+        return (bool) config('notifications.platform_to_tenants', false);
+    }
+
+    /** Categories a tenant-facing user can see. @return list<string> */
+    public static function tenantCategories(): array
+    {
+        return array_values(array_filter(NotificationCategory::values(),
+            fn (string $category) => self::platformVisibleToTenants() || $category !== NotificationCategory::System->value));
     }
 
     /** @return array<string, mixed> */

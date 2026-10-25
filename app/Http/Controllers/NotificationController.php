@@ -37,7 +37,7 @@ class NotificationController extends Controller
         return Inertia::render('Notifications/Index', [
             'notifications' => $notifications,
             'filters' => ['status' => $status, 'category' => $filters['category'] ?? '', 'severity' => $filters['severity'] ?? ''],
-            'categories' => NotificationCategory::values(),
+            'categories' => NotificationFeed::tenantCategories(),
             'severities' => array_column(NotificationSeverity::cases(), 'value'),
         ]);
     }

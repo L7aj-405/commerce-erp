@@ -5,6 +5,7 @@ namespace Tests\Feature\Notifications;
 use App\Enums\NotificationCategory;
 use App\Enums\NotificationSeverity;
 use App\Models\OrganizationBackup;
+use App\Models\SystemHealthHeartbeat;
 use App\Models\User;
 use App\Models\UserNotification;
 use App\Models\WooCommerceSyncRun;
@@ -97,6 +98,7 @@ class NotificationCenterTest extends PlatformTestCase
     public function test_deduplication_and_sensitive_metadata_redaction_are_server_side(): void
     {
         [$owner, $organization] = $this->ownerAndOrganization();
+        config()->set('notifications.platform_to_tenants', true); // delivery mechanics, with platform routing enabled
         $publisher = app(NotificationPublisher::class);
         foreach (range(1, 2) as $ignored) {
             $publisher->publishToUser($owner, $organization, NotificationCategory::System, NotificationSeverity::Warning,
@@ -157,6 +159,7 @@ class NotificationCenterTest extends PlatformTestCase
     public function test_health_monitor_notifies_only_on_meaningful_transition(): void
     {
         [$owner, $organization] = $this->ownerAndOrganization();
+        config()->set('notifications.platform_to_tenants', true); // transition logic, with platform routing enabled
         $monitor = app(SystemHealthNotificationMonitor::class);
         $monitor->evaluate($organization);
         $this->assertSame(0, UserNotification::query()->count(), 'Initial health state is only a baseline.');
@@ -168,6 +171,32 @@ class NotificationCenterTest extends PlatformTestCase
 
         $this->assertSame(1, UserNotification::query()->where('user_id', $owner->id)->where('source_type', 'system_health')->count());
         $this->assertDatabaseHas('user_notifications', ['severity' => 'critical']);
+    }
+
+    public function test_platform_health_events_are_not_delivered_to_tenant_users_by_default(): void
+    {
+        [$owner, $organization] = $this->ownerAndOrganization();
+        $this->assertFalse(config('notifications.platform_to_tenants'));
+        $monitor = app(SystemHealthNotificationMonitor::class);
+        $monitor->evaluate($organization);
+        DB::table('jobs')->insert(['queue' => 'default', 'payload' => '{}', 'attempts' => 0, 'reserved_at' => null, 'available_at' => now()->timestamp, 'created_at' => now()->timestamp]);
+        Cache::flush();
+        $monitor->evaluate($organization);
+
+        // Monitoring still runs and records the transition; nothing reaches the tenant feed.
+        $this->assertSame(1, (int) data_get(SystemHealthHeartbeat::query()->find('health:organization:'.$organization->getKey())?->metadata, 'sequence'));
+        $this->assertSame(0, UserNotification::query()->where('category', 'system')->count());
+
+        // Historical platform rows are kept but hidden; business notifications are unaffected.
+        $historical = new UserNotification;
+        $historical->forceFill(['user_id' => $owner->getKey(), 'organization_id' => $organization->getKey(), 'category' => 'system', 'severity' => 'critical',
+            'title' => 'État système critique', 'message' => 'Ancien', 'source_type' => 'system_health', 'source_id' => '1', 'event_type' => 'old', 'dedupe_key' => 'old'])->save();
+        $this->publish($owner, $organization, 'business');
+        $this->actingAs($owner)->getJson(route('notifications.feed'))->assertOk()
+            ->assertJsonPath('unread_count', 1)->assertJsonCount(1, 'recent')->assertJsonPath('recent.0.category', 'sales');
+        $this->actingAs($owner)->get(route('notifications.index'))->assertOk()
+            ->assertInertia(fn ($page) => $page->where('notifications.total', 1)->where('categories', fn ($categories) => ! collect($categories)->contains('system')));
+        $this->assertDatabaseHas('user_notifications', ['id' => $historical->getKey()]);
     }
 
     private function publish(User $user, $organization, string $source, NotificationCategory $category = NotificationCategory::Sales): UserNotification
