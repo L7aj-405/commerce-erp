@@ -129,6 +129,9 @@ class OrganizationDataResetOperationQuery
                 ->where('status', '!=', 'ended')
                 ->whereNotNull('assigned_user_id')
                 ->where('assigned_user_id', '!=', $ownerId),
+            OrganizationDataResetOperation::DELETE_QUOTATION_ATTENTION => DB::table('attention_items')
+                ->where('organization_id', $organizationId)
+                ->where('subject_type', 'quotation'),
             OrganizationDataResetOperation::DELETE_NON_OWNER_MEMBERSHIPS => DB::table('organization_memberships')
                 ->where('organization_id', $organizationId)
                 ->where('user_id', '!=', $ownerId),

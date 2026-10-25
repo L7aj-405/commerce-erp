@@ -66,6 +66,8 @@ class OrganizationDataResetBundleRegistry
                 // A quotation-linked recurring rule that loses its quotation pauses at its next generation.
                 ['follow_up_rules.unlink_quotation', 'follow_up_recurring_rules', 'quotation_id'],
             ]), [
+                // Attention about deleted quotations is meaningless history: removed with them.
+                new OrganizationDataResetOperation('attention.quotation_items', $scope, 'attention_items', OrganizationDataResetOperation::DELETE_QUOTATION_ATTENTION),
                 new OrganizationDataResetOperation('sales_and_documents.woocommerce_stock_tasks', $scope, 'woocommerce_stock_tasks', OrganizationDataResetOperation::DELETE_SALES_WOOCOMMERCE_STOCK_TASKS),
                 new OrganizationDataResetOperation('sales_and_documents.stock_transfer_lines', $scope, 'stock_transfer_lines', OrganizationDataResetOperation::DELETE_SALES_STOCK_TRANSFER_LINES),
                 new OrganizationDataResetOperation('sales_and_documents.transfer_request_lines', $scope, 'transfer_request_lines', OrganizationDataResetOperation::DELETE_SALES_TRANSFER_REQUEST_LINES),
@@ -106,6 +108,7 @@ class OrganizationDataResetBundleRegistry
                 new OrganizationDataResetOperation('contacts.unlink_customer', $scope, 'organization_contacts', OrganizationDataResetOperation::SET_NULL, 'customer_id'),
                 new OrganizationDataResetOperation('follow_ups.unlink_customer', $scope, 'follow_ups', OrganizationDataResetOperation::SET_NULL, 'customer_id'),
                 new OrganizationDataResetOperation('follow_up_rules.unlink_customer', $scope, 'follow_up_recurring_rules', OrganizationDataResetOperation::SET_NULL, 'customer_id'),
+                new OrganizationDataResetOperation('attention.unlink_customer', $scope, 'attention_items', OrganizationDataResetOperation::SET_NULL, 'customer_id'),
                 new OrganizationDataResetOperation('customers.delete', $scope, 'customers'),
             ],
             OrganizationDataResetScope::SuppliersAndPurchasing => array_merge(

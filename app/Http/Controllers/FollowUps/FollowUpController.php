@@ -7,10 +7,9 @@ use App\Actions\FollowUps\TransitionFollowUpAction;
 use App\Enums\FollowUpStatus;
 use App\Http\Controllers\Controller;
 use App\Models\FollowUp;
-use App\Models\Quotation;
-use App\Models\Store;
 use App\Services\ActiveTenantContext;
 use App\Services\FollowUps\FollowUpQuery;
+use App\Services\FollowUps\QuotationOpener;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -76,29 +75,11 @@ class FollowUpController extends Controller
      * is switched or revealed unless the viewer may see the follow-up, holds
      * quotations.view and is a member of the quotation's active store.
      */
-    public function openQuotation(Request $request, ActiveTenantContext $context, FollowUp $followUp): RedirectResponse
+    public function openQuotation(Request $request, ActiveTenantContext $context, FollowUp $followUp, QuotationOpener $opener): RedirectResponse
     {
         $this->authorize('view', $followUp);
-        $user = $request->user();
-        $quotation = $followUp->quotation_id === null ? null : Quotation::query()
-            ->where('organization_id', $context->organizationOrFail()->getKey())
-            ->whereKey($followUp->quotation_id)
-            ->first(['id', 'organization_id', 'store_id']);
-        $store = $quotation ? Store::query()->where('organization_id', $quotation->organization_id)->whereKey($quotation->store_id)->first() : null;
 
-        $allowed = $store !== null
-            && $store->status === 'active'
-            && $user->hasPermission($context->organizationOrFail(), 'quotations.view')
-            && $store->memberships()->where('user_id', $user->getKey())->exists();
-        if (! $allowed) {
-            return back()->withErrors(['quotation' => 'Ce devis n’est pas accessible depuis votre compte.']);
-        }
-
-        if ((int) $context->store()?->getKey() !== (int) $store->getKey()) {
-            $context->activateStore($user, $store);
-        }
-
-        return redirect()->route('quotations.show', $quotation->getKey());
+        return $opener->open($request->user(), $context, $followUp->quotation_id === null ? null : (int) $followUp->quotation_id);
     }
 
     public function transition(Request $request, ActiveTenantContext $context, FollowUp $followUp, TransitionFollowUpAction $action): RedirectResponse

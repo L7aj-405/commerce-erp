@@ -27,20 +27,26 @@ export default function FollowUpFormDialog({
     context,
     followUp,
     prefill,
+    defaults,
+    submitUrl,
 }: {
     open: boolean;
     onClose: () => void;
     context: FollowUpContext;
     followUp?: FollowUpItem | null;
     prefill?: { customer_id: number | null; quotation_id: number | null };
+    /** W4.1: suggested values for a new follow-up (e.g. from an attention item). */
+    defaults?: { title?: string; due_date?: string };
+    /** W4.1: create through another canonical endpoint (attention bridge); defaults to /work. */
+    submitUrl?: string;
 }) {
     const { t } = useI18n();
     const editing = Boolean(followUp);
     const form = useForm<FormData>({
-        title: followUp?.title ?? '',
+        title: followUp?.title ?? defaults?.title ?? '',
         note: followUp?.note ?? '',
         priority: followUp?.priority ?? 'normal',
-        due_date: followUp?.due_date ?? (editing ? '' : context.today),
+        due_date: followUp?.due_date ?? (editing ? '' : defaults?.due_date ?? context.today),
         due_time: followUp?.due_time ?? '',
         // '' = Unassigned (manage_all only); new work defaults to the current user.
         assigned_user_id: followUp ? followUp.assignee?.id ?? '' : context.current_user_id,
@@ -77,7 +83,7 @@ export default function FollowUpFormDialog({
             return { ...payload, ...(payload.assigned_user_id === '' ? { assigned_user_id: null } : {}) };
         });
         if (followUp) form.patch(`/work/${followUp.id}`, options);
-        else form.post('/work', options);
+        else form.post(submitUrl ?? '/work', options);
     };
 
     const errors = form.errors as Record<string, string | undefined>;

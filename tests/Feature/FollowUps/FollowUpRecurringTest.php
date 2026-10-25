@@ -331,11 +331,14 @@ class FollowUpRecurringTest extends QuotationTestCase
         $this->assertArrayNotHasKey('assigned_user_id', $context['templates'][0]);
 
         $this->actingAs($seller)->get(route('follow-ups.templates.index'))->assertForbidden();
+        // Route binding (organization-scoped) works for template updates over HTTP.
+        $this->actingAs($owner)->patch(route('follow-ups.templates.update', $old), ['default_time' => '11:00'])->assertSessionHasNoErrors();
+        $this->assertSame('11:00', $old->fresh()->default_time);
         $this->actingAs($owner)->get(route('follow-ups.templates.index'))->assertOk()
             ->assertInertia(fn (Assert $page) => $page->component('Work/Templates')->where('templates.total', 2));
         // Using a template is a normal create: assignment rules still apply.
         $this->actingAs($seller)->post(route('follow-ups.store'), ['title' => 'Appeler le client', 'priority' => 'high', 'assigned_user_id' => $owner->getKey()])->assertForbidden();
-        $this->assertSame(['follow_up_template.created', 'follow_up_template.created', 'follow_up_template.updated', 'follow_up_template.updated'],
+        $this->assertSame(['follow_up_template.created', 'follow_up_template.created', 'follow_up_template.updated', 'follow_up_template.updated', 'follow_up_template.updated'],
             AuditLog::query()->where('event', 'like', 'follow_up_template.%')->orderBy('id')->pluck('event')->all());
     }
 
