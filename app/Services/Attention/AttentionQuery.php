@@ -47,6 +47,8 @@ final class AttentionQuery
             'assigned' => ['nullable', 'string', 'max:20'],
             'escalated' => ['nullable', 'boolean'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
+            // Explicit page for transports without a query string (MCP); the web resolves it from the request.
+            'page' => ['nullable', 'integer', 'min:1', 'max:100000'],
         ];
     }
 
@@ -105,7 +107,7 @@ final class AttentionQuery
         return $query->orderByRaw('CASE WHEN active_key IS NULL THEN 1 ELSE 0 END')
             ->orderByRaw("CASE WHEN severity = 'critical' AND escalated_at IS NOT NULL THEN 0 WHEN severity = 'critical' THEN 1 WHEN severity = 'warning' THEN 2 ELSE 3 END")
             ->orderByDesc('urgency')->orderBy('detected_at')->orderBy('id')
-            ->paginate((int) ($filters['per_page'] ?? 25))->withQueryString();
+            ->paginate((int) ($filters['per_page'] ?? 25), ['*'], 'page', isset($filters['page']) ? (int) $filters['page'] : null)->withQueryString();
     }
 
     /** The canonical status view of an attention list (also used by W5 team counts). */
@@ -192,6 +194,68 @@ final class AttentionQuery
             'can_create_follow_up' => ($quotation !== null || $invoice !== null || $order !== null) && $this->access->canCreate($user, $organization),
             'suggestion' => ['title' => $this->suggestedTitle($item, $number), 'due_date' => BusinessTime::today($organization)],
             'version' => (int) $item->version,
+        ];
+    }
+
+    /** What `facts.date` means for each attention type (the detector's reference business date). */
+    private const FACT_DATE_MEANING = [
+        'quotation_sent_undecided' => 'last time the quotation was sent',
+        'quotation_expiring_soon' => 'quotation validity end date',
+        'quotation_expired_undecided' => 'quotation validity end date',
+        'quotation_followup_backlog' => 'due date of the oldest overdue follow-up',
+        'invoice_due_soon' => 'invoice payment due date',
+        'invoice_overdue_unpaid' => 'invoice payment due date',
+        'invoice_overdue_partial' => 'invoice payment due date',
+        'invoice_payment_followup_backlog' => 'due date of the oldest overdue follow-up',
+        'sales_order_payment_due_soon' => 'sales order payment due date',
+        'sales_order_unpaid_overdue' => 'sales order payment due date',
+        'sales_order_partial_overdue' => 'sales order payment due date',
+        'sales_order_payment_followup_backlog' => 'due date of the oldest overdue follow-up',
+        'sales_order_paid_not_invoiced' => 'date the order became fully paid',
+    ];
+
+    /**
+     * W6 "why is this flagged?" (MCP now, any transport later): the presented
+     * item, the reason exactly as the detector recorded it, the detector's own
+     * stored facts (never re-derived from current rows), the current state and
+     * the human actions this viewer may take right now. Amounts appear only
+     * where the web Attention page already shows them to document viewers.
+     *
+     * @return array<string, mixed>
+     */
+    public function explain(User $user, Organization $organization, AttentionItem $item): array
+    {
+        $presented = $this->present($user, $organization, $item);
+        $facts = array_intersect_key($item->metadata['facts'] ?? [], array_flip(['date', 'days', 'count', 'outstanding', 'currency']));
+
+        return [
+            'attention' => $presented,
+            'reason' => ['title' => $item->title, 'summary' => $item->summary, 'i18n' => $item->metadata['i18n'] ?? null],
+            'facts' => $facts,
+            'facts_meaning' => array_filter([
+                'date' => self::FACT_DATE_MEANING[$item->type->value] ?? null,
+                'days' => isset($facts['days']) ? 'whole organization-local days between that date and the last detection' : null,
+                'count' => isset($facts['count']) ? 'number of overdue follow-ups linked to the document' : null,
+                'outstanding' => isset($facts['outstanding']) ? 'remaining balance at last detection (decimal string, currency in facts.currency)' : null,
+            ]),
+            'state' => [
+                'status' => $item->status->value,
+                'is_active' => $item->active_key !== null,
+                'severity' => $item->severity->value,
+                'detected_at' => $item->detected_at->toIso8601String(),
+                'last_detected_at' => $item->last_detected_at?->toIso8601String(),
+                'escalated_at' => $item->escalated_at?->toIso8601String(),
+                'snoozed_until' => $item->snoozed_until?->toIso8601String(),
+                'assignee' => $presented['assignee'],
+                'follow_up_count' => $presented['follow_up_count'],
+            ],
+            'allowed_actions' => array_keys(array_filter([
+                'claim' => $presented['can_claim'],
+                'assign' => $presented['can_assign'],
+                'snooze' => $presented['can_act'],
+                'dismiss' => $presented['can_act'],
+                'create_follow_up' => $presented['can_act'] && $presented['can_create_follow_up'],
+            ])),
         ];
     }
 

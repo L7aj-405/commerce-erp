@@ -19,7 +19,8 @@ use Illuminate\Database\Eloquent\Builder;
  * - follow_ups.update: change own work; follow_ups.create: create own work;
  * - follow_ups.manage_all: see/change everyone's work (including Unassigned
  *   work, assigned_user_id NULL) and assign to others;
- * - a store-linked follow-up additionally requires store membership.
+ * - a store-linked follow-up additionally requires membership of that
+ *   store, which must be active (W6).
  *
  * W3 recurring rules follow exactly the same rules (same columns): own rule
  * = assigned to the user; anything else (other users, Unassigned) needs
@@ -78,18 +79,26 @@ class FollowUpAccess
             && $this->hasStoreAccess($user, $followUp->store_id);
     }
 
+    /**
+     * W6 hardening: only ACTIVE member stores count — the same rule as
+     * DocumentVisibility, ActiveTenantContext and StoreDocumentOpener — so
+     * work and attention of a deactivated store are no longer reachable
+     * (web, MCP, reminders) while its documents already were not.
+     */
     public function hasStoreAccess(User $user, int|string|null $storeId): bool
     {
         return $storeId === null
             || in_array((int) $storeId, $this->memberStoreIds[(int) $user->getKey()] ??= StoreMembership::query()
-                ->where('user_id', $user->getKey())->pluck('store_id')->map(fn ($id) => (int) $id)->all(), true);
+                ->where('user_id', $user->getKey())->whereHas('store', fn (Builder $store) => $store->where('status', 'active'))
+                ->pluck('store_id')->map(fn ($id) => (int) $id)->all(), true);
     }
 
-    /** @return list<int> */
+    /** Active stores of the organization the user is a member of. @return list<int> */
     public function storeIds(User $user, Organization $organization): array
     {
         return $this->organizationStoreIds[$user->getKey().':'.$organization->getKey()] ??= StoreMembership::query()
             ->where('organization_id', $organization->getKey())->where('user_id', $user->getKey())
+            ->whereHas('store', fn (Builder $store) => $store->where('status', 'active'))
             ->pluck('store_id')->map(fn ($id) => (int) $id)->all();
     }
 

@@ -18,4 +18,8 @@ export const mcpScopeTranslationKeys: Record<string, TranslationKey> = {
     'sales_orders.view': 'mcp.scope.salesOrdersView',
     'sales_orders.create': 'mcp.scope.salesOrdersCreate', 'sales_orders.update': 'mcp.scope.salesOrdersUpdate',
     'sales_orders.confirm': 'mcp.scope.salesOrdersConfirm',
+    'follow_ups.view': 'mcp.scope.followUpsView', 'follow_ups.create': 'mcp.scope.followUpsCreate',
+    'follow_ups.update': 'mcp.scope.followUpsUpdate', 'follow_ups.manage_all': 'mcp.scope.followUpsManageAll',
+    'attention.view': 'mcp.scope.attentionView', 'attention.update': 'mcp.scope.attentionUpdate',
+    'timeline.view': 'mcp.scope.timelineView',
 };

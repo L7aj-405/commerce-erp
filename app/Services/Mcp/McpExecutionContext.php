@@ -34,15 +34,15 @@ final class McpExecutionContext
 
     public function allows(string $scope): bool
     {
-        $configuration = config('mcp.scopes', [])[$scope] ?? null;
-        if (! is_array($configuration) || ! is_string($configuration['permission'] ?? null)) {
+        if (McpScopes::permissionsFor($scope) === []) {
             return false;
         }
 
         $connection = $this->connectionOrFail();
 
+        // Current ERP permissions at every check: a revoked permission takes effect immediately.
         return in_array($scope, $connection->scopeKeys(), true)
-            && $connection->user->hasPermission($connection->organization_id, $configuration['permission']);
+            && McpScopes::grantedBy($scope, $connection->user->permissionKeysFor($connection->organization_id));
     }
 
     public function reset(): void

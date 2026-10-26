@@ -98,6 +98,7 @@ final class CustomerReadService
             ...$this->summary->forCustomer($customer, $viewer),
             'definitions' => [
                 'scope' => 'Only documents of the stores the connection user may access; a figure is null when the user lacks its view permission.',
+                'null_semantics' => 'null = unavailable under the current visibility/permissions (never zero); "0.0000" = visible and actually zero.',
                 'sales_total' => 'Sum of confirmed sales orders (TTC).',
                 'invoiced_total' => 'Sum of issued invoices (TTC).',
                 'paid_total' => 'Sum of posted payment allocations on this customer\'s sales orders.',

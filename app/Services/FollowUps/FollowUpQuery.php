@@ -59,6 +59,8 @@ class FollowUpQuery
             'date_to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:date_from'],
             'query' => ['nullable', 'string', 'max:120'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
+            // Explicit page for transports without a query string (MCP); the web resolves it from the request.
+            'page' => ['nullable', 'integer', 'min:1', 'max:100000'],
         ];
     }
 
@@ -75,7 +77,7 @@ class FollowUpQuery
                 ->orderByRaw("CASE priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 ELSE 2 END")->orderBy('id');
         }
 
-        return $query->paginate((int) ($filters['per_page'] ?? 25))->withQueryString();
+        return $query->paginate((int) ($filters['per_page'] ?? 25), ['*'], 'page', isset($filters['page']) ? (int) $filters['page'] : null)->withQueryString();
     }
 
     /** @param array<string, mixed> $filters */
@@ -252,6 +254,8 @@ class FollowUpQuery
             // can_open: the viewer may open the quotation (switching to its store
             // through FollowUpController::openQuotation when needed).
             'recurring_rule_id' => $followUp->recurring_rule_id === null ? null : (int) $followUp->recurring_rule_id,
+            // W6: the store this work belongs to (NULL = organization-level); visible() already guarantees access.
+            'store_id' => $followUp->store_id === null ? null : (int) $followUp->store_id,
             'quotation' => $quotation ? ['id' => (int) $quotation->getKey(), 'number' => $quotation->quotation_number, 'store_id' => (int) $quotation->store_id,
                 'can_open' => $this->access->hasStoreAccess($user, $quotation->store_id)] : null,
             // W4.4: opened through /work/{id}/open-invoice (same safe store switch as quotations).

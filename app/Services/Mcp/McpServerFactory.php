@@ -18,6 +18,7 @@ use App\Services\Mcp\Sales\McpQuotationLifecycleService;
 use App\Services\Mcp\Sales\QuotationDocumentTools;
 use App\Services\Mcp\Sales\QuotationLifecycleTools;
 use App\Services\Mcp\Sales\SalesOrderTools;
+use App\Services\Mcp\Work\WorkCenterToolRegistrar;
 use Mcp\Schema\ToolAnnotations;
 use Mcp\Server;
 use Mcp\Server\Session\FileSessionLock;
@@ -35,6 +36,7 @@ final class McpServerFactory
         private readonly QuotationLifecycleTools $quotationLifecycleTools,
         private readonly QuotationDocumentTools $quotationDocumentTools,
         private readonly CustomerContactTools $partyTools,
+        private readonly WorkCenterToolRegistrar $workCenterTools,
     ) {}
 
     public function make(): Server
@@ -179,6 +181,7 @@ final class McpServerFactory
         $this->registerCustomerContactTools($builder, $readOnly, $outputSchema);
         $this->registerSalesOrderTools($builder, $readOnly, $outputSchema);
         $this->registerQuotationLifecycleTools($builder, $readOnly, $outputSchema);
+        $this->workCenterTools->register($builder, $readOnly, $outputSchema);
 
         return $builder->build();
     }
@@ -483,7 +486,7 @@ final class McpServerFactory
             $builder->addTool(
                 [$this->salesTools, 'getCustomerBalanceSummary'],
                 name: 'get_customer_balance_summary', title: 'Get customer balance summary',
-                description: 'Read-only sales/receivable summary shown on the ERP customer profile: confirmed sales, issued invoices, posted payments, outstanding, last activity. Decimal strings.',
+                description: 'Read-only sales/receivable summary shown on the ERP customer profile: confirmed sales, issued invoices, posted payments, outstanding, last activity. Decimal strings, computed ONLY over documents of the stores the connection user may access — never organization-wide. A null figure means unavailable under the user\'s permissions (never treat null as 0); "0.0000" means visible and actually zero.',
                 annotations: $readOnly,
                 inputSchema: ['type' => 'object', 'required' => ['customer_id'], 'properties' => ['customer_id' => $id], 'additionalProperties' => false],
                 outputSchema: $outputSchema,

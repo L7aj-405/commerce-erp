@@ -9,6 +9,7 @@ use App\Models\OrganizationMembership;
 use App\Models\User;
 use App\Services\AuditLogger;
 use App\Services\Mcp\McpConnectionCredentials;
+use App\Services\Mcp\McpScopes;
 use App\Services\Mcp\OAuth\McpOAuthException;
 use App\Services\Mcp\OAuth\McpOAuthServer;
 use Illuminate\Http\JsonResponse;
@@ -186,11 +187,10 @@ final class McpOAuthAuthorizationController extends Controller
     private function grantableScopes(User $user, int $organizationId, array $requested): array
     {
         $permissions = $user->permissionKeysFor($organizationId);
-        $scopes = config('mcp.scopes', []); // keys contain dots: no config() dot lookup
 
         return array_values(array_filter(
-            array_keys($scopes),
-            fn (string $scope) => in_array($scopes[$scope]['permission'] ?? null, $permissions, true)
+            array_keys(McpScopes::definitions()),
+            fn (string $scope) => McpScopes::grantedBy($scope, $permissions)
                 && ($requested === [] || in_array($scope, $requested, true)),
         ));
     }
