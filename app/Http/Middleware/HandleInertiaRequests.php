@@ -49,6 +49,10 @@ class HandleInertiaRequests extends Middleware
             'auth' => [
                 'user' => $request->user()?->only(['id', 'name', 'email']),
             ],
+            // PILOT-1.1: lets guest pages hide "create account" when public registration is off.
+            'features' => [
+                'public_registration' => (bool) config('auth.public_registration'),
+            ],
             'tenant' => [
                 'organization' => $organization?->only(['id', 'name', 'status']),
                 'store' => $store?->only(['id', 'organization_id', 'name', 'code', 'status']),

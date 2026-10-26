@@ -31,6 +31,9 @@ class RegisteredUserController extends Controller
 {
     public function create(): Response
     {
+        // PILOT-1.1: closed pilot — registration simply does not exist when disabled.
+        abort_unless(config('auth.public_registration'), 404);
+
         return Inertia::render('Auth/Register', [
             'legalLinks' => LegalMetadata::links(),
         ]);
@@ -38,6 +41,8 @@ class RegisteredUserController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
+        abort_unless(config('auth.public_registration'), 404);
+
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'email', 'max:255'],

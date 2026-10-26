@@ -4,6 +4,8 @@ export type SharedPageProps = {
     auth: { user: { id: number; name: string; email: string } | null };
     tenant: { organization: TenantOrganization | null; store: TenantStore | null; organizations: TenantOrganization[]; stores: TenantStore[]; permissions: string[] };
     notifications: NotificationSummary;
+    /** PILOT-1.1: false during the closed pilot (registration routes answer 404). */
+    features: { public_registration: boolean };
     flash?: { success?: string; invitationUrl?: string };
     [key: string]: unknown;
 };
