@@ -196,11 +196,36 @@ class McpConnectionSecurityTest extends PlatformTestCase
         $this->mcpRequest($issued['secret'])->assertStatus(429)->assertJsonPath('error.code', 'MCP_RATE_LIMITED');
     }
 
-    public function test_official_streamable_http_registry_is_reachable_and_empty_in_mcp_one(): void
+    /**
+     * The official streamable HTTP registry is reachable and lists tools by
+     * scope ∩ current ERP permission. Capability assertions only (the registry
+     * grows phase by phase): an allowed read tool is present, tools needing a
+     * scope or a permission the connection lacks are absent.
+     */
+    public function test_official_streamable_http_registry_lists_tools_by_scope_and_erp_permission(): void
     {
         [$owner, $organization] = $this->enabledOrganization();
-        $issued = app(McpConnectionCredentials::class)->issue($owner, $organization, 'Agent', ['products.view'], null);
-        $headers = ['Authorization' => 'Bearer '.$issued['secret'], 'Accept' => 'application/json, text/event-stream'];
+
+        // The owner holds every ERP permission: only the scope limits the registry.
+        $tools = $this->listTools(app(McpConnectionCredentials::class)->issue($owner, $organization, 'Agent', ['products.view'], null)['secret']);
+        $this->assertContains('search_products', $tools);
+        $this->assertContains('get_product', $tools);
+        foreach (['create_product', 'get_product_stock', 'search_customers', 'get_my_work', 'get_business_timeline'] as $outOfScope) {
+            $this->assertNotContains($outOfScope, $tools, "{$outOfScope} needs a scope this connection lacks.");
+        }
+
+        // The scope alone grants nothing without the ERP permission.
+        $member = User::factory()->create();
+        $this->addOrganizationMember($organization, $member, ['follow_ups.view']);
+        $tools = $this->listTools(app(McpConnectionCredentials::class)->issue($member, $organization, 'Agent', ['products.view', 'follow_ups.view'], null)['secret']);
+        $this->assertNotContains('search_products', $tools);
+        $this->assertContains('get_my_work', $tools);
+    }
+
+    /** initialize → initialized → tools/list over the official streamable HTTP transport. @return list<string> */
+    private function listTools(string $secret): array
+    {
+        $headers = ['Authorization' => 'Bearer '.$secret, 'Accept' => 'application/json, text/event-stream'];
         $initialize = $this->withHeaders($headers)->postJson('/mcp', [
             'jsonrpc' => '2.0', 'id' => 1, 'method' => 'initialize',
             'params' => ['protocolVersion' => '2025-11-25', 'capabilities' => [], 'clientInfo' => ['name' => 'test-client', 'version' => '1.0']],
@@ -210,8 +235,11 @@ class McpConnectionSecurityTest extends PlatformTestCase
 
         $sessionHeaders = $headers + ['Mcp-Session-Id' => $session, 'Mcp-Protocol-Version' => '2025-11-25'];
         $this->withHeaders($sessionHeaders)->postJson('/mcp', ['jsonrpc' => '2.0', 'method' => 'notifications/initialized'])->assertStatus(202);
-        $this->withHeaders($sessionHeaders)->postJson('/mcp', ['jsonrpc' => '2.0', 'id' => 2, 'method' => 'tools/list', 'params' => new \stdClass])
-            ->assertOk()->assertJsonPath('result.tools', []);
+        $tools = $this->withHeaders($sessionHeaders)->postJson('/mcp', ['jsonrpc' => '2.0', 'id' => 2, 'method' => 'tools/list', 'params' => new \stdClass])
+            ->assertOk()->json('result.tools');
+        $this->flushHeaders();
+
+        return array_column($tools, 'name');
     }
 
     /** @return array{0:User,1:Organization} */

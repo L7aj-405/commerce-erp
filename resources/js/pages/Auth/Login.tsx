@@ -15,7 +15,8 @@ type Props = {
 
 export default function Login({ status }: Props) {
     const { t } = useI18n();
-    const { props } = usePage<{ errors?: Record<string, string> }>();
+    const { props } = usePage<{ errors?: Record<string, string>; features?: { public_registration: boolean } }>();
+    const canRegister = props.features?.public_registration ?? false;
     const form = useForm({
         email: '',
         password: '',
@@ -37,14 +38,14 @@ export default function Login({ status }: Props) {
             <AuthLayout
                 title={t('auth.signIn')}
                 subtitle={t('auth.signInSubtitle')}
-                footer={
+                footer={canRegister ? (
                     <>
                         {t('auth.noAccount')}{' '}
                         <Link href="/register" className="font-medium text-ink underline-offset-4 hover:underline">
                             {t('auth.createAccount')}
                         </Link>
                     </>
-                }
+                ) : undefined}
             >
                 <form onSubmit={submit} className="space-y-4" noValidate>
                     {status && <p className="rounded-lg bg-success-soft px-3 py-2 text-sm font-medium text-success">{status}</p>}

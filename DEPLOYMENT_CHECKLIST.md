@@ -1,298 +1,343 @@
-# Deployment Checklist — commerce-erp
+# Deployment Checklist — commerce-erp (closed pilot, single server)
 
-Prepared during the Pre-Deploy Phase 0 cleanup/audit. No secrets are stored
-here. This is a reference for the next phase (Coolify configuration), not a
-record of anything already deployed.
+Updated in PILOT-1.1 from the PILOT-1 production-readiness audit. No secrets
+are stored here. Target: **one app server** on Coolify (web + one queue
+worker + one scheduler) with a managed MySQL service. Architecture rules and
+the known-gaps register live in `SCALABILITY_ARCHITECTURE.md`.
+
+> **The application does not use Redis.** Session, cache, locks, rate limits
+> and the queue all run on MySQL (`database` drivers). Do not add Redis for
+> the pilot.
+
+---
 
 ## 1. Runtime requirements
 
-- **PHP**: 8.4.1+ (composer.json requires `^8.4.1`; verified locally on PHP 8.4.12;
-  compatible with the PHP 8.5 target).
-- **Required PHP extensions** (from `laravel/framework`, `dompdf/dompdf`,
-  `openspout/openspout`, and the app's own `Decimal`/tax-calculation code):
-  - `ext-ctype`, `ext-filter`, `ext-hash`, `ext-mbstring`, `ext-openssl`,
-    `ext-session`, `ext-tokenizer`
-  - `ext-dom`, `ext-fileinfo`, `ext-libxml`, `ext-xmlreader`, `ext-zip`
-    (openspout — used by the product import/export feature)
-  - `ext-pdo` + **`ext-pdo_mysql`** (MySQL connection — not auto-declared by
-    any composer package; verify it is enabled on the PHP image/build pack)
-  - **`ext-bcmath`** — used directly by `App\Support\Decimal::divide()` for
-    exact tax-exclusive/inclusive price conversions (`bcdiv`/`bcadd`/`bccomp`).
-    Not declared in any composer.json; **must be confirmed enabled** or price
-    calculations will fatal-error in production.
-  - `ext-gd` recommended (not strictly required for this app's PNG-only logo
-    embedding via Dompdf's CPDF backend, but improves Dompdf's image-format
-    coverage and BMP fallback).
-- **Node**: `^20.19.0 || >=22.12.0` (required by `vite` 8 and
-  `laravel-vite-plugin` 3). Use Node 22 LTS or newer for the build step.
-- **MySQL**: 8.0+ recommended. The schema is safe on modern MySQL (see §5);
-  no code path was written for or depends on SQLite in production (SQLite is
-  only used by the test suite's in-memory DB, via `phpunit.xml`).
+- **PHP 8.4.1+** (`composer.json`), with extensions `ctype`, `filter`, `hash`,
+  `mbstring`, `openssl`, `session`, `tokenizer`, `dom`, `fileinfo`, `libxml`,
+  `xmlreader`, `zip` (openspout), **`pdo_mysql`**, **`bcmath`** (used directly by
+  `App\Support\Decimal` — prices fatal-error without it), `pcntl` (queue job
+  timeouts); `gd` recommended (Dompdf image coverage).
+- **Node** `^20.19.0 || >=22.12.0` for the build step (Node 22 LTS).
+- **MySQL 8.0+** (verified on 8.4 in strict mode: all migrations from an empty
+  database in ~70 s; backup → validate → restore verified on MySQL).
+  - charset `utf8mb4`, collation `utf8mb4_unicode_ci` (config defaults);
+  - **server time zone UTC** (`SELECT @@global.time_zone, @@system_time_zone`).
+    The application also pins every session to `+00:00`
+    (`config/database.php`), so a non-UTC server can no longer shift or
+    reject timestamps — keep the server in UTC anyway.
+- Coolify's Traefik must be the only internet-facing hop (see §13).
 
-## 2. Build commands
+## 2. Pre-deploy gate (all must be true)
 
+- [ ] Release built from an **exact commit/tag** (e.g. `pilot-candidate-1`),
+      never from a working copy. `git status` clean.
+- [ ] MySQL service in **UTC**, `DB_CONNECTION=mysql` set explicitly.
+- [ ] **Off-host MySQL backup** configured and one backup verified (§9).
+- [ ] **Persistent volume mounted at `/app/storage/app`** (§8).
+- [ ] All environment variables of §3 set; no `.env` file baked into the image.
+- [ ] **Platform SMTP** works (§6) — required for email verification of every
+      account, invitations and password resets. (The bootstrap owner of §7 is
+      created pre-verified with a one-time setup link, but needs SMTP for any
+      later password reset.)
+- [ ] `ORG_BACKUP_SIGNING_KEY` and `ORG_BACKUP_ENCRYPTION_KEY` generated and
+      **stored outside the server** (secret manager / password vault).
+- [ ] `composer audit` and `npm audit --omit=dev` report no high/critical
+      advisories (both clean at PILOT-1).
+
+## 3. Production environment reference (no real values)
+
+Only variables the code actually reads. `.env.example` documents local
+defaults; in Coolify set these as environment variables.
+
+```dotenv
+# --- Application
+APP_NAME="10xScale ERP"
+APP_ENV=production
+APP_DEBUG=false
+APP_KEY=                       # php artisan key:generate --show, once; never rotate casually
+APP_URL=https://erp.example.com
+APP_LOCALE=fr                  # config default is "en"
+# APP_LEGAL_NAME= / APP_LEGAL_CONTACT_EMAIL=   (public legal pages)
+# APP_VERSION= / APP_COMMIT_SHA=               (shown on System Health)
+PUBLIC_REGISTRATION_ENABLED=false              # closed pilot (also the production default)
+
+# --- Database (Coolify MySQL service)
+DB_CONNECTION=mysql
+DB_HOST=
+DB_PORT=3306
+DB_DATABASE=
+DB_USERNAME=
+DB_PASSWORD=
+# MYSQL_ATTR_SSL_CA=           (only if the MySQL connection uses TLS)
+
+# --- Session / cache / queue (database drivers — no Redis)
+SESSION_DRIVER=database
+SESSION_LIFETIME=120
+SESSION_SECURE_COOKIE=true
+CACHE_STORE=database
+QUEUE_CONNECTION=database
+DB_QUEUE_RETRY_AFTER=3900
+
+# --- Logs
+LOG_CHANNEL=daily
+LOG_LEVEL=warning
+LOG_DAILY_DAYS=14
+
+# --- Platform mail (account emails — mandatory, see §6)
+MAIL_MAILER=smtp
+MAIL_SCHEME=                   # smtps for implicit TLS (465); empty for STARTTLS (587)
+MAIL_HOST=
+MAIL_PORT=587
+MAIL_USERNAME=
+MAIL_PASSWORD=
+MAIL_FROM_ADDRESS=
+MAIL_FROM_NAME="${APP_NAME}"
+
+# --- Organization backups (see §9)
+ORG_BACKUP_SIGNING_KEY=        # ≥ 32 random bytes, base64:... accepted
+ORG_BACKUP_ENCRYPTION_KEY=     # a DIFFERENT ≥ 32 random bytes
+ORG_BACKUP_KEY_ID=primary
+ORG_BACKUP_ALLOW_LEGACY_UNSIGNED_RESTORE=false
+# Optional off-host storage for stored backups instead of the local volume:
+# ORG_BACKUP_STORAGE_DRIVER=s3
+# ORG_BACKUP_S3_BUCKET= / ORG_BACKUP_S3_ENDPOINT= / ORG_BACKUP_S3_REGION=
+# ORG_BACKUP_S3_ACCESS_KEY_ID= / ORG_BACKUP_S3_SECRET_ACCESS_KEY=
+
+# --- MCP (only if AI assistants connect)
+MCP_ALLOWED_HOSTS=             # the APP_URL host is always allowed; add other public hostnames, never *
+MCP_ALLOWED_ORIGINS=           # browser-based MCP clients only; empty otherwise
+
+# --- Optional
+# TRUSTED_PROXIES=             # defaults to private ranges (Coolify/Traefik)
+# GOOGLE_AUTH_CLIENT_ID= / GOOGLE_AUTH_CLIENT_SECRET= / GOOGLE_AUTH_REDIRECT_URI=
+# GOOGLE_DRIVE_CLIENT_ID= / GOOGLE_DRIVE_CLIENT_SECRET= / GOOGLE_DRIVE_REDIRECT_URI=
 ```
+
+Key rules:
+- `APP_KEY` ≠ `ORG_BACKUP_SIGNING_KEY` ≠ `ORG_BACKUP_ENCRYPTION_KEY`. Losing
+  or changing a backup key makes existing archives unverifiable/unreadable.
+- `DB_CONNECTION` missing now targets MySQL and fails loudly (no silent SQLite).
+- WooCommerce credentials and per-organization document SMTP are stored in
+  the database (configured in the app), not in env.
+
+## 4. Build
+
+```bash
 composer install --no-dev --prefer-dist --optimize-autoloader
-
 npm ci
-npm run build      # requires outbound network access — laravel-vite-plugin
-                    # fetches "Instrument Sans" from Bunny Fonts at build time
+npm run build        # needs outbound network (Bunny Fonts) at build time
 ```
 
-## 3. Laravel runtime commands (deploy step, in order)
+`public/build` is generated on every build (git-ignored). Nixpacks is fine;
+no custom Dockerfile is required.
 
-```
-php artisan storage:link      # see §7 — required, currently NOT linked
-php artisan migrate --force   # see §6 for rollback considerations
+## 5. Deploy (in this order)
 
-php artisan config:cache      # verified safe — no closures in any config file
-php artisan route:cache       # verified safe — see note below
+```bash
+php artisan storage:link        # idempotent; links public/storage → storage/app/public
+php artisan migrate --force     # take the DB snapshot of §9 first
+php artisan config:cache
+php artisan route:cache
 php artisan view:cache
+php artisan queue:restart       # workers pick up the new code after their current job
 ```
 
-**Route cache note**: `routes/web.php` has one closure-based route
-(`GET /`, the guest/redirect home page). This was tested in this audit
-(cache generated, routes still resolved correctly via `route:list`, cache
-then cleared to leave the repo state untouched) — `route:cache` currently
-succeeds without error on this Laravel version. If a future route is added
-as a Closure with captured variables from an outer scope, re-verify.
+> **NEVER seed production.** Do not run `php artisan db:seed` or
+> `php artisan migrate --seed` (nor `migrate:fresh`). `DatabaseSeeder` creates
+> a test account `admin@test.com` with a weak password. Required system data
+> (permission catalogue, roles) is provisioned by the migrations and by
+> organization creation.
 
-## 4. Environment variables (see `.env.example` for the full annotated list)
+Processes (Coolify, supervised):
 
-- **App**: `APP_NAME`, `APP_ENV=production`, `APP_KEY` (generate with
-  `php artisan key:generate`, one time), `APP_DEBUG=false`, `APP_URL` (real
-  domain), `APP_LOCALE=fr`.
-- **Database**: `DB_CONNECTION=mysql`, `DB_HOST`, `DB_PORT`, `DB_DATABASE`,
-  `DB_USERNAME`, `DB_PASSWORD` — from the Coolify MySQL service.
-- **Session/Cache/Queue**: `SESSION_DRIVER=database`, `CACHE_STORE=database`,
-  `QUEUE_CONNECTION=database`, `DB_QUEUE_RETRY_AFTER=3900` (see §9). Set
-  `SESSION_SECURE_COOKIE=true` once served over HTTPS.
-- **Mail**: `MAIL_MAILER=smtp` (or provider driver), `MAIL_HOST`, `MAIL_PORT`,
-  `MAIL_USERNAME`, `MAIL_PASSWORD`, `MAIL_FROM_ADDRESS`, `MAIL_FROM_NAME` —
-  required for the "email invoice/devis/delivery-note" features.
-- **Filesystem**: `FILESYSTEM_DISK=local` — fine as long as `storage/app/public`
-  is a persistent volume (see §7/§8) and `storage:link` has been run.
-- **WooCommerce**: no environment variables — credentials are entered and
-  stored per Organization in the database.
-- **WhatsApp**: no environment variables — share-link only (`wa.me/<digits>`),
-  no API token.
-- **Shopify**: not used by this application.
-- **PDF/documents**: no environment variables — controlled by
-  `config/documents.php` (locale, paper size, `remote_enabled` — keep `false`).
-- **Organization backups**: set independent `ORG_BACKUP_SIGNING_KEY` and
-  `ORG_BACKUP_ENCRYPTION_KEY` secrets (at least 32 random bytes each), plus a
-  non-secret `ORG_BACKUP_KEY_ID`. Never reuse `APP_KEY`; archive v2 requires
-  both keys for authenticated AES-256 export and restore.
+| Process | Command | Count |
+|---|---|---|
+| Web | the Nixpacks PHP web server | 1 (pilot) |
+| Queue worker | `php artisan queue:work --tries=3 --timeout=3600` | 1, required |
+| Scheduler | `php artisan schedule:run` every minute (cron) | **exactly 1** |
 
-## 5. MySQL / migration audit result
+Queue facts: `retry_after=3900` must stay strictly greater than the longest
+job timeout (3600 s, WooCommerce sync). The worker is required for scheduled
+organization backups, Google Drive backup copies, WooCommerce sync, MCP
+product operations and the worker heartbeat. Failed jobs:
 
-- Searched every migration for the documented anti-pattern — a **nullable
-  composite tenant FK** `(organization_id, nullable_fk)` using
-  `ON DELETE SET NULL`. **No violations found.** Every nullable composite FK
-  in the schema uses `restrictOnDelete()`; `nullOnDelete()` is used only on
-  genuine single-column FKs (e.g. `*_by_user_id` actor references, or
-  `pos_warehouse_id`), which is safe. Several migrations carry explicit
-  in-file comments recording this exact rule and why (e.g.
-  `2026_09_16_000001_create_supplier_procurement_tables.php`,
-  `2026_09_11_000001_create_quotation_tables.php`).
-- No generated/virtual/stored columns, no raw SQL expressions, no
-  DB-specific syntax found in any migration.
-- `string()->unique()` columns (`users.email`, `permissions.key`) are fine on
-  MySQL 8's default `ROW_FORMAT=DYNAMIC` + `innodb_large_prefix=ON` (3072-byte
-  index prefix limit); would only be a problem on very old MySQL 5.6/MariaDB
-  defaults, which Coolify's MySQL service does not use.
-- Recommendation before the real deploy: run the pending migrations once
-  against a disposable/staging MySQL database (not the shared dev DB) as a
-  final gate — this audit did not execute migrations against MySQL, only
-  reasoned from the DDL and from an earlier same-session dry run against a
-  disposable SQLite database, which applied cleanly end-to-end.
-
-## 6. Rollback considerations
-
-- `php artisan migrate --force` is additive-only for this project's current
-  migration set (no destructive column drops were found in the pending
-  migrations reviewed). Standard Laravel migration rollback
-  (`php artisan migrate:rollback`) is available but was **not** exercised in
-  this audit (destructive commands were out of scope).
-- Take a database backup/snapshot through Coolify (or a `mysqldump`) before
-  the first production migration run — normal practice, not a project-specific
-  requirement.
-
-## 7. Persistent storage (must survive redeploys)
-
-- `storage/app/public/document-profiles/` — organization logo uploads
-  (`DocumentProfileController`), served via the `public` disk.
-- `storage/app/public/organization-stamps/` — organization company-stamp
-  uploads. Settings serves these through an authenticated controller and PDF
-  rendering embeds local bytes as a data URI; Dompdf never fetches a remote
-  URL. New official stamp appositions also freeze that data URI in the
-  database so historical issued documents do not depend on a later file.
-- In the current Coolify Nixpacks layout, create one persistent-volume mount
-  with destination **`/app/storage/app/public`** (mounting `/app/storage/app`
-  is also valid if all application storage should persist). Do not mount over
-  `/app/storage` unless the volume is initialized with Laravel's required
-  framework subdirectories and permissions.
-- The public disk **requires**
-  `php artisan storage:link` (confirmed NOT currently linked — `php artisan
-  about` reports `public/storage .. NOT LINKED`) and a persistent volume
-  mounted at `storage/app/public` (or `storage/app` entirely) in Coolify.
-  Losing this directory only affects the *current/draft* org logo — already
-  **issued** Invoices/Devis/Delivery Notes embed their logo as a base64 data
-  URI captured at issue time (`DocumentSellerProfile`), and newly stamped
-  official documents embed their applied stamp image, so historical PDFs keep
-  rendering correctly even if the current upload is later lost or replaced.
-- `storage/logs/` — application log files. Persisting is optional (log
-  shipping/rotation is an operational choice, not a functional requirement).
-- `storage/framework/{cache,sessions,views}` — must be writable but do **not**
-  need to persist across redeploys (regenerate automatically).
-- The database itself, obviously.
-- Nothing under `public/build` needs to persist — it is regenerated by
-  `npm run build` on every deploy (see §8).
-
-## 8. `public/build` strategy
-
-**Build during deployment** (recommended and already the repo's setup):
-`.gitignore` excludes `/public/build`, only 4 static files are tracked under
-`public/` (`.htaccess`, `favicon.ico`, `index.php`, `robots.txt`). Coolify's
-build step must run `npm ci && npm run build` before serving.
-
-## 9. Queue
-
-- `QUEUE_CONNECTION=database` processes WooCommerce synchronization, scheduled
-  organization backups and personal-cloud backup copies. A supervised worker
-  is mandatory in production. Run it with
-  `php artisan queue:work --tries=3 --timeout=3600`; the configured
-  `retry_after=3900` must remain strictly greater than the longest job timeout
-  to prevent concurrent duplicate processing.
-- `sync` driver was **not** recommended as a substitute — it would make the
-  WooCommerce sync run inline on the HTTP request that dispatches it, which
-  contradicts why the job exists (a potentially long-running product sync).
-- No case was found for Redis; the `redis` queue driver would be over-
-  engineering unless a second queue-heavy feature appears.
-
-## 10. Scheduler
-
-**Required.** `routes/console.php` registers:
-
-```
-Schedule::command('catalog:cleanup-product-imports')->daily();
+```bash
+php artisan queue:failed            # list
+php artisan queue:retry <id>        # retry one (all heavy jobs are idempotent / unique)
+php artisan queue:forget <id>       # drop a permanently invalid one after review
 ```
 
-It also dispatches due organization backups every minute and removes expired
-private backup staging files hourly. Coolify needs a cron
-entry (or scheduled command/container) running `php artisan schedule:run`
-every minute, standard Laravel setup. No other scheduled task exists.
+Scheduled tasks (`routes/console.php`, all idempotent and/or `withoutOverlapping`):
 
-## 11. Cache / session recommendation (V1)
+| Every | Task |
+|---|---|
+| minute | due organization backups (`organization-backups:dispatch-due`), scheduler + queue heartbeats |
+| 5 min | follow-up reminders (`follow-ups:notify-due`), recurring follow-ups (`follow-ups:generate-recurring`), system-health transitions |
+| 15 min | Attention scan (`attention:scan`: detection, baseline, ownership, notifications, escalation) |
+| hourly | backup temporary-file cleanup |
+| daily | product-import cleanup, trusted-2FA-device cleanup, notification retention, recurring Finance obligations (00:10), MCP operation (03:20) and OAuth (03:35) pruning |
 
-Current drivers (`database` for session, cache and queue) are acceptable for
-V1 — no code path assumes Redis, and no Redis client is otherwise required.
-Introducing Redis is a future optimization, not a launch blocker. If traffic
-later justifies it, move `CACHE_STORE`/`SESSION_DRIVER`/`QUEUE_CONNECTION` to
-`redis` one at a time behind a real need.
+Run **one** scheduler only. Before a second app server exists, the
+scheduled tasks need `onOneServer()` (known gap #7).
 
-## 12. Health check
+## 6. Mail
 
-Already present and safe: `GET /up`, registered by Laravel's own
-`ApplicationBuilder` (`bootstrap/app.php`'s `->withRouting(health: '/up')`).
-Unauthenticated, returns a generic framework page, exposes no environment
-variables, credentials, tenant data or stack traces. **No changes needed** —
-point Coolify's health check at `/up`.
+- **Platform SMTP (`MAIL_*`) is mandatory**: email verification (required for
+  every user), password reset, invitations and security notices. Test it
+  before onboarding users; never use `MAIL_MAILER=log` in production.
+- **Document email** (Devis, Invoices, Delivery Notes) never uses the platform
+  mailer: each organization enters its own SMTP in the app (30 s timeout,
+  public-host guard). Without it, document emailing is refused.
+- Document emails are sent synchronously in the request (known gap #13).
 
-## 13. Error handling / debug exposure
+## 7. Registration policy and first owner
 
-- `bootstrap/app.php` does not force `APP_DEBUG` — it inherits the `.env`
-  value, so setting `APP_DEBUG=false` in Coolify is sufficient; no code
-  forces debug mode on.
-- `shouldRenderJsonWhen` is scoped to `api/*` and JSON-expecting requests
-  only — normal web errors render Laravel's standard (non-debug) error pages
-  when `APP_DEBUG=false`.
-- No controller/action was found that echoes raw exception messages or SQL
-  errors back to the client outside of Laravel's own exception handler.
+- `PUBLIC_REGISTRATION_ENABLED` defaults to **off in production**: `/register`
+  answers 404 and Google sign-in never creates an account for an unknown
+  email. Login, password reset, email verification, invitations and Google
+  sign-in for existing accounts work normally.
+- First owner — operator command on the app container (no SQL, no password
+  ever chosen or printed):
 
-## 14. Coolify deployment strategy
+  ```bash
+  php artisan erp:bootstrap-owner owner@company.ma \
+      --name="Owner Name" --organization="Company SARL" --timezone=Africa/Casablanca
+  ```
 
-**Recommended: Nixpacks (buildpack), not a custom Dockerfile.** Reasoning:
-- The application is a stock-shape Laravel + Vite project (PHP-FPM/Apache +
-  Node build step), nothing in the runtime requires custom system packages
-  beyond the PHP extensions listed in §1, all of which are commonly available
-  in standard PHP buildpacks/images.
-- No `Dockerfile`, `docker-compose*`, `nixpacks.toml` or other deployment
-  config currently exists in the repository — there is nothing bespoke to
-  preserve.
-- A custom Dockerfile only becomes worthwhile if a non-standard system
-  dependency shows up later (none was found here).
-- Whichever strategy is chosen, it must run the full build sequence from §2
-  and the runtime commands from §3, and must supervise a scheduler
-  (§10) and, if WooCommerce is used, a queue worker (§9).
+  It creates a new verified user (fails if the email already exists — it
+  never modifies an existing account), the organization through the normal
+  creator (Owner role with all permissions, membership, privileged-role 2FA
+  policy, audit), sets the business timezone, and prints a **one-time
+  password-setup link** valid 60 minutes. Hand it to the owner privately; if
+  it expires, the owner uses "Mot de passe oublié" (needs platform SMTP).
+- At first login the owner must enrol **2FA** (mandatory for owner/admin roles
+  in new production organizations), then creates stores, users (invitations),
+  organization SMTP, document profile/stamp in the app.
 
-## 15. Known non-blockers worth remembering
+## 8. Persistent storage
 
-- `composer.json`'s `post-create-project-cmd` script touches a
-  `database/database.sqlite` file and runs `migrate --graceful`; this only
-  fires on `composer create-project`, never on `composer install`/`update`,
-  so it does not affect the Coolify build/deploy pipeline. Left as-is.
-- Dompdf's font cache defaults to its bundled `vendor/dompdf/dompdf/lib/fonts`
-  directory; the app only uses the shipped "DejaVu Sans" font (no custom font
-  registration), so no runtime write to `vendor/` is expected. If a "cannot
-  write font cache" error ever appears, set a custom `fontDir`/`fontCache`
-  under `storage/` in `DompdfPdfGenerator`.
+Mount **one persistent volume at `/app/storage/app`** (not only
+`/app/storage/app/public`). It holds:
 
-## 16. Reverse proxy / trusted client IP (Security Sprint 1.1)
+| Path | Content | Must persist |
+|---|---|---|
+| `storage/app/public/document-profiles`, `organization-stamps` | logos, company stamps | yes |
+| `storage/app/private/organization-backups/*.erpbackup` (stored backups) | organization backups (local driver) | **yes** |
+| `storage/app/private/organization-backups/pre-restore` | automatic safety copy before every restore (30 days) | **yes** |
+| `storage/app/private/organization-backups/{tmp,validated,downloads,history,cloud-sync,cloud-restore}` | short-lived staging, cleaned hourly | harmless either way |
 
-- The app container must **never** be exposed directly to the internet —
-  Coolify's built-in Traefik reverse proxy must be the only internet-facing
-  hop, forwarding to the app container over Coolify's internal Docker
-  network only. If a custom Dockerfile/compose setup is ever introduced,
-  do not publish the app container's HTTP port to a public interface.
-- `bootstrap/app.php` trusts any private-range address (`10.0.0.0/8`,
-  `172.16.0.0/12`, `192.168.0.0/16`) as a proxy — not `'*'` — because Traefik
-  always connects to the app from a private-range address on that internal
-  network, but its exact IP is not fixed across redeploys, so an explicit
-  IP/CIDR is not practical here. If the deployment can provide one, set the
-  `TRUSTED_PROXIES` env var (comma-separated IPs/CIDRs) to override this
-  default with the exact address(es).
-- **Requirement on whatever sits in front of Traefik (or Traefik itself, if
-  it is the true internet edge):** it must overwrite — not blindly forward —
-  `X-Forwarded-For`/`X-Forwarded-Proto`/`X-Forwarded-Host` for internet-facing
-  traffic, so an external client cannot inject a spoofed value into the
-  chain Laravel then trusts. Coolify's default Traefik configuration is the
-  internet edge in the standard single-server setup; if this is ever changed
-  (a CDN or an external load balancer placed in front of Traefik), that
-  edge — not just Traefik — must be the one sanitizing these headers, and
-  Traefik's own trusted-hop configuration must be updated to only trust that
-  edge in turn.
-- Why this matters here specifically: `LoginThrottle` (login failure
-  throttling/cooldown, §D) keys entirely on `$request->ip()`. If an
-  untrusted client's `X-Forwarded-For` were honoured, an attacker could
-  rotate the header value on every request to defeat per-IP throttling
-  entirely.
+Not persisted (regenerated): `storage/framework/{cache,sessions,views}`,
+`storage/framework/mcp-sessions` (see §12), `public/build`. `storage/logs`:
+optional volume (keep it if you want logs across redeploys). Issued PDFs embed
+their logo/stamp bytes, so historical documents never depend on the files.
 
-## 17. Production hardening gate
+## 9. Backups
 
-- Keep `APP_ENV=production`, `APP_DEBUG=false`, `LOG_CHANNEL=daily`,
-  `LOG_LEVEL=warning`, `LOG_DAILY_DAYS=14`, HTTPS-only
-  ingress and `SESSION_SECURE_COOKIE=true`. Do not publish the application
-  container directly or mount `.env`/secret-manager files into a web-served
-  directory.
-- Back up the database and private persistent storage before deploy. Verify a
-  v2 `.erpbackup` can be validated and restored in an isolated staging tenant;
-  unsigned v1 restore must stay disabled except during a supervised migration
-  window.
-- Back up `ORG_BACKUP_SIGNING_KEY` and `ORG_BACKUP_ENCRYPTION_KEY` in the
-  platform secret manager. Changing either key makes existing archives
-  unverifiable/unreadable. Rotate by retaining the old key material until all
-  retention-window archives have been re-exported or expired.
-- Run `composer update laravel/framework --with-all-dependencies` before the
-  production build and confirm `composer.lock` resolves Laravel 13.30.0 or
-  newer. Run `composer audit` and `npm audit --omit=dev`; unresolved high or
-  critical advisories block deployment.
-- Use `scripts/export-source.ps1 -OutputPath <outside-repository>.zip` after
-  committing reviewed source. The script uses `git archive` and refuses the
-  export if runtime secrets/backups are tracked. Never package the workspace
-  recursively because that can include `.env`, logs, uploads, private backups,
-  `vendor`, `node_modules`, or local database dumps.
-- Ensure the scheduler and queue worker are supervised and alert on failed
-  jobs, queue depth, backup failures, disk usage, HTTP 5xx rate and repeated
-  authentication throttling. Application logs and audit payloads must never
-  include OAuth/SMTP/WooCommerce credentials or Authorization headers.
+Two independent layers — **organization backups do not replace database backups.**
+
+1. **Database (infrastructure) — required before real data.**
+   - Enable Coolify scheduled backups of the MySQL service to **off-host
+     object storage** (S3-compatible), daily at minimum.
+   - Decide and record the retention (recommendation: 14 daily + 8 weekly).
+   - Verify one backup completes and can be downloaded; restore = Coolify
+     "restore backup" into the MySQL service (or `mysql < dump` into a fresh
+     database), then redeploy the same release.
+   - Take a manual snapshot immediately before every `migrate --force`.
+2. **Organization backups (application).** Per-organization, signed
+   (HMAC-SHA256) and encrypted (AES-256) logical exports, scheduled per
+   organization in Settings → Sauvegardes and run by the queue worker.
+   Stored on the `/app/storage/app` volume (or S3 via
+   `ORG_BACKUP_STORAGE_DRIVER=s3`); optional Google Drive copy per user.
+   Restore validates signature and schema, isolates the organization and keeps
+   a pre-restore safety copy. Requires the same backup keys that created the
+   archive — keep them off the server.
+
+## 10. Attention rollout (W4.5.1)
+
+- **Fresh pilot organization (current assumption): safe.** Every domain
+  starts empty; the first complete scan establishes the Sales Order
+  receivables baseline (historical receivables visible, never notified or
+  escalated). Quotations and orders cannot be bulk-imported.
+- **Upgrading a database with historical quotations/invoices:** only Sales
+  Order receivables have a baseline. The first `attention:scan` would alert
+  owners of every expired undecided quotation and escalate after 2 days. Add
+  `quotation` / `invoice` to `AttentionBaselines::SUBJECTS` before such a
+  rollout. Not needed for the pilot.
+- After the pilot organization is set up: run `php artisan attention:scan`
+  once and check Travail → Attention (no notification storm).
+
+## 11. Health and post-deploy verification
+
+- `GET /up` = the application boots (Coolify health check). It does **not**
+  prove MySQL, queue or scheduler readiness.
+- After every deploy, as an owner with `system.health.view`, open **Santé du
+  système** and check: database OK, scheduler heartbeat < 3 min, queue
+  heartbeat < 3 min, backup keys configured, disk below 80 %.
+- Platform/system-health notifications are not sent to tenant users during
+  the pilot (`NOTIFICATIONS_PLATFORM_TO_TENANTS=false`): the operator must
+  watch Coolify/host monitoring.
+
+Post-deploy smoke flow (in a throwaway organization, test mailer only):
+customer → devis → issue → PDF → accept → convert → confirm → payments →
+invoice → follow-up reminder → attention scan → backup → validate. Delete the
+throwaway organization afterwards.
+
+## 12. MCP (only if AI assistants connect)
+
+- Enable per organization (Settings → IA / MCP), create connections with the
+  minimum scopes; OAuth requires HTTPS.
+- **Single-server limitation:** MCP protocol sessions are local files under
+  `storage/framework/mcp-sessions`. A redeploy drops them; clients simply
+  re-initialize (tool data, idempotency records and OAuth tokens are in the
+  database). Before a second app server, move them to a shared store (known
+  gap #1).
+
+## 13. Reverse proxy, HTTPS, cookies
+
+- The app container is never published directly; Coolify's Traefik is the
+  internet edge and must overwrite `X-Forwarded-*` headers. Private-range
+  proxies are trusted by default (`TrustedProxyRanges`); set `TRUSTED_PROXIES`
+  to Traefik's exact address if available. Login throttling keys on the real
+  client IP derived from this.
+- HTTPS only; `SESSION_SECURE_COOKIE=true`; `APP_URL` must be the https URL
+  (OAuth callbacks, signed links, MCP metadata).
+
+## 14. Rollback
+
+- **Application:** redeploy the previous image/commit, then
+  `php artisan queue:restart` and re-run the caches of §5.
+- **Database:** restore the pre-migrate snapshot if a migration fails or the
+  release must be abandoned. Do **not** run `migrate:rollback` casually in
+  production: the W4.4/W4.5 due-date backfills are forward-only data changes.
+- **One organization's data:** restore its organization backup (a safety copy
+  is taken automatically first).
+
+## 15. First pilot deployment sequence
+
+1. Tag the release candidate; build from the tag (§4).
+2. MySQL in UTC with off-host scheduled backups; volume `/app/storage/app`.
+3. Set §3 variables; store `APP_KEY` and both backup keys in the vault.
+4. Deploy (§5) — snapshot before `migrate --force`, never seed.
+5. Start web, one worker, one scheduler; health check `/up`.
+6. Verify §11 (System Health) and platform SMTP with a real mailbox you own.
+7. Smoke flow in a throwaway organization, then delete it.
+8. `php artisan erp:bootstrap-owner …` for the pilot owner (§7).
+9. Owner: 2FA, timezone check, stores, organization SMTP, document profile,
+   invitations, product/stock import, customers.
+10. `php artisan attention:scan` once; verify Attention (§10).
+11. Enable the scheduled organization backup; confirm one completes.
+12. Enable MCP only if the pilot needs it (§12).
+
+## 16. Pilot monitoring (minimum)
+
+Coolify/host: `/up` uptime, CPU/RAM, **disk** (backups, audit table, logs
+grow), MySQL availability and size, backup success. ERP: System Health page,
+`php artisan queue:failed`, `storage/logs/laravel-*.log` warnings/errors.
+Centralized logging is not required for the pilot.
+
+## 17. Release hygiene
+
+Export source with `scripts/export-source.ps1 -OutputPath <outside-repo>.zip`
+(uses `git archive`; refuses tracked secrets). Never package the working
+directory recursively (`.env`, logs, uploads, backups, `vendor`).

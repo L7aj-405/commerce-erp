@@ -40,6 +40,11 @@ class ResolveGoogleAuthenticatedUserAction
                 ->first();
 
             if (! $user) {
+                // PILOT-1.1: with public registration off, Google sign-in never creates an account
+                // (existing and invited-then-accepted accounts sign in and link as before).
+                if (! config('auth.public_registration')) {
+                    throw new RuntimeException('Aucun compte n’est associé à cette adresse. Demandez une invitation à votre administrateur.');
+                }
                 $user = new User;
                 $user->name = $identity->name ?: $identity->email;
                 $user->email = $identity->email;

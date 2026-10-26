@@ -17,7 +17,9 @@ return [
     |
     */
 
-    'default' => env('DB_CONNECTION', 'sqlite'),
+    // PILOT-1.1: no silent SQLite fallback — a missing DB_CONNECTION now targets MySQL and fails
+    // loudly if it is not configured (tests set sqlite explicitly in phpunit.xml).
+    'default' => env('DB_CONNECTION', 'mysql'),
 
     /*
     |--------------------------------------------------------------------------
@@ -59,6 +61,10 @@ return [
             'prefix_indexes' => true,
             'strict' => true,
             'engine' => null,
+            // PILOT-1.1: every MySQL session runs in UTC (the app timezone), whatever the server's
+            // default — TIMESTAMP values never shift and a UTC instant inside a local DST gap is
+            // never rejected. Business "today" still comes from the organization timezone.
+            'timezone' => '+00:00',
             'options' => extension_loaded('pdo_mysql') ? array_filter([
                 Mysql::ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
             ]) : [],

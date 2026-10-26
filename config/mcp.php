@@ -61,6 +61,17 @@ return [
         'sales_orders.create' => ['permission' => 'sales_orders.create', 'label' => 'Create draft sales orders'],
         'sales_orders.update' => ['permission' => 'sales_orders.update', 'label' => 'Update draft sales orders'],
         'sales_orders.confirm' => ['permission' => 'sales_orders.confirm', 'label' => 'Confirm sales orders'],
+
+        // W6 Work Center. Follow-up scopes mirror their ERP permissions. Attention and timelines span
+        // document kinds: they need ANY listed permission, and each record is then filtered by the
+        // canonical service (document view permission + active store), never widened by the scope.
+        'follow_ups.view' => ['permission' => 'follow_ups.view', 'label' => 'View my work (follow-ups)'],
+        'follow_ups.create' => ['permission' => 'follow_ups.create', 'label' => 'Create follow-ups'],
+        'follow_ups.update' => ['permission' => 'follow_ups.update', 'label' => 'Edit, reschedule, complete, cancel or reopen follow-ups'],
+        'follow_ups.manage_all' => ['permission' => 'follow_ups.manage_all', 'label' => 'Team workload: see and manage the team\'s work, assign attention'],
+        'attention.view' => ['any_permission' => ['quotations.view', 'invoices.view', 'sales_orders.view'], 'label' => 'View attention signals on documents you can see'],
+        'attention.update' => ['any_permission' => ['quotations.view', 'invoices.view', 'sales_orders.view'], 'label' => 'Act on attention: claim, snooze, dismiss'],
+        'timeline.view' => ['any_permission' => ['customers.view', 'quotations.view', 'sales_orders.view', 'invoices.view'], 'label' => 'View business activity timelines'],
     ],
 
     // Quotation documents (MCP-8): signed, connection-bound PDF links.

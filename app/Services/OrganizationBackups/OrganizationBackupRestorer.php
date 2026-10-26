@@ -4,6 +4,7 @@ namespace App\Services\OrganizationBackups;
 
 use App\Models\Organization;
 use App\Models\User;
+use App\Services\FollowUps\FollowUpAssignmentReleaser;
 use Illuminate\Database\Connection;
 use Illuminate\Database\Query\JoinClause;
 use Illuminate\Support\Facades\DB;
@@ -16,6 +17,7 @@ class OrganizationBackupRestorer
         private readonly OrganizationBackupValidator $validator,
         private readonly OrganizationBackupExporter $exporter,
         private readonly OrganizationBackupSchema $schema,
+        private readonly FollowUpAssignmentReleaser $followUps,
     ) {}
 
     /** @return array{pre_restore_path:string, manifest:array<string, mixed>} */
@@ -38,7 +40,7 @@ class OrganizationBackupRestorer
 
         $zip = $this->validator->open($path);
         try {
-            $this->restoreZip($zip, $manifest, $organization);
+            $this->restoreZip($zip, $manifest, $organization, $actor);
         } finally {
             $zip->close();
         }
@@ -47,7 +49,7 @@ class OrganizationBackupRestorer
     }
 
     /** @param array<string, mixed> $manifest */
-    private function restoreZip(ZipArchive $zip, array $manifest, Organization $organization): void
+    private function restoreZip(ZipArchive $zip, array $manifest, Organization $organization, User $actor): void
     {
         $tables = $manifest['restore_tables'] ?? $manifest['tables'];
         if (! is_array($tables)) {
@@ -94,6 +96,11 @@ class OrganizationBackupRestorer
             $this->restoreForeignKeyState($connection, $foreignKeyState);
             $foreignKeyState = null;
             $this->assertProtectedRelationsIntact($organization);
+            // Memberships are never restored: restored open follow-ups whose
+            // assignee is no longer an active member become "Unassigned".
+            if (in_array('follow_ups', $tables, true)) {
+                $this->followUps->releaseDeparted($organization, $actor, 'backup_restore');
+            }
             $connection->commit();
         } catch (\Throwable $exception) {
             // Roll back our transaction/savepoint before any cleanup statement.

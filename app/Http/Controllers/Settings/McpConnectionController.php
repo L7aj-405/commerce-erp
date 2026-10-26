@@ -9,6 +9,7 @@ use App\Models\OrganizationMembership;
 use App\Services\ActiveTenantContext;
 use App\Services\AuditLogger;
 use App\Services\Mcp\McpConnectionCredentials;
+use App\Services\Mcp\McpScopes;
 use App\Services\Security\FreshAuthentication;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -22,6 +23,7 @@ final class McpConnectionController extends Controller
     {
         $organization = $tenant->organizationOrFail();
         $canAdminister = $this->isOrganizationAdministrator($request, $organization);
+        $permissionKeys = $request->user()->permissionKeysFor($organization);
         $connections = McpConnection::query()
             ->with(['user:id,name,email', 'scopeRecords', 'oauthClient:id,name'])
             ->where('organization_id', $organization->getKey())
@@ -34,11 +36,11 @@ final class McpConnectionController extends Controller
             'enabled' => $organization->allowsMcpConnections(),
             'canAdminister' => $canAdminister,
             'connections' => $connections,
-            'availableScopes' => collect(config('mcp.scopes', []))->map(fn ($value, $key) => [
+            'availableScopes' => collect(McpScopes::definitions())->map(fn ($value, $key) => [
                 'key' => $key,
                 'label' => $value['label'],
-                'available' => $request->user()->hasPermission($organization, $value['permission']),
-                'permission' => $value['permission'],
+                'available' => McpScopes::grantedBy($key, $permissionKeys),
+                'permission' => implode(' | ', McpScopes::permissionsFor($key)),
             ])->values(),
             'presets' => config('mcp.presets', []),
         ]);
@@ -132,9 +134,9 @@ final class McpConnectionController extends Controller
     /** @param list<string> $scopes */
     private function assertScopeCeiling(Request $request, Organization $organization, array $scopes): void
     {
+        $permissionKeys = $request->user()->permissionKeysFor($organization);
         foreach ($scopes as $scope) {
-            $permission = config('mcp.scopes', [])[$scope]['permission'] ?? null;
-            abort_unless(is_string($permission) && $request->user()->hasPermission($organization, $permission), 403);
+            abort_unless(McpScopes::grantedBy($scope, $permissionKeys), 403);
         }
     }
 

@@ -38,7 +38,7 @@ class IssueQuotationAction
             $this->sellerProfile->validate($quotation->seller_snapshot);
             $this->templates->quotationView($quotation->template_version);
 
-            if ($quotation->valid_until !== null && $quotation->valid_until->endOfDay()->isPast()) {
+            if ($quotation->isPastValidity()) {
                 throw ValidationException::withMessages(['valid_until' => 'La date de validité doit être postérieure à aujourd’hui.']);
             }
 

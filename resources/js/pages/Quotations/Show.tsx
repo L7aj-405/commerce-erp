@@ -1,3 +1,6 @@
+import FollowUpPanel from "@/components/followups/FollowUpPanel";
+import type { FollowUpPanelData } from "@/components/followups/types";
+import ActivityTimeline from "@/components/timeline/ActivityTimeline";
 import DocBadge from "@/components/ui/DocBadge";
 import { Button } from "@/components/ui/Button";
 import SendDocumentEmailModal from "@/components/documents/SendDocumentEmailModal";
@@ -115,6 +118,7 @@ type Props = {
         configureMail: boolean;
         stamp: boolean;
     };
+    followUps: FollowUpPanelData;
 };
 
 export default function QuotationShow({
@@ -132,6 +136,7 @@ export default function QuotationShow({
     mailConfigured,
     stamp,
     can,
+    followUps,
 }: Props) {
     const { direction, t } = useI18n();
     const isDraft = quotation.status === "draft";
@@ -1240,6 +1245,16 @@ export default function QuotationShow({
                         </section>
                     )}
                 </aside>
+            </div>
+
+            {followUps && (
+                <div className="mt-6">
+                    <FollowUpPanel panel={followUps} />
+                </div>
+            )}
+
+            <div className="mt-6">
+                <ActivityTimeline subject="quotation" id={quotation.id} />
             </div>
         </SalesLayout>
     );

@@ -60,7 +60,16 @@ class OrganizationDataResetBundleRegistry
                 ['quotations.unlink_revision_root', 'quotations', 'root_quotation_id'],
                 ['quotations.unlink_revision_parent', 'quotations', 'revised_from_quotation_id'],
                 ['sales_orders.unlink_current_revision', 'sales_orders', 'current_revision_id'],
+                // Follow-ups are work items, not sales documents: they survive
+                // the reset and only lose the quotation link.
+                ['follow_ups.unlink_quotation', 'follow_ups', 'quotation_id'],
+                ['follow_ups.unlink_invoice', 'follow_ups', 'invoice_id'],
+                ['follow_ups.unlink_sales_order', 'follow_ups', 'sales_order_id'],
+                // A quotation-linked recurring rule that loses its quotation pauses at its next generation.
+                ['follow_up_rules.unlink_quotation', 'follow_up_recurring_rules', 'quotation_id'],
             ]), [
+                // Attention about deleted quotations / orders / invoices is meaningless history: removed with them.
+                new OrganizationDataResetOperation('attention.document_items', $scope, 'attention_items', OrganizationDataResetOperation::DELETE_DOCUMENT_ATTENTION),
                 new OrganizationDataResetOperation('sales_and_documents.woocommerce_stock_tasks', $scope, 'woocommerce_stock_tasks', OrganizationDataResetOperation::DELETE_SALES_WOOCOMMERCE_STOCK_TASKS),
                 new OrganizationDataResetOperation('sales_and_documents.stock_transfer_lines', $scope, 'stock_transfer_lines', OrganizationDataResetOperation::DELETE_SALES_STOCK_TRANSFER_LINES),
                 new OrganizationDataResetOperation('sales_and_documents.transfer_request_lines', $scope, 'transfer_request_lines', OrganizationDataResetOperation::DELETE_SALES_TRANSFER_REQUEST_LINES),
@@ -99,6 +108,9 @@ class OrganizationDataResetBundleRegistry
             ]),
             OrganizationDataResetScope::Customers => [
                 new OrganizationDataResetOperation('contacts.unlink_customer', $scope, 'organization_contacts', OrganizationDataResetOperation::SET_NULL, 'customer_id'),
+                new OrganizationDataResetOperation('follow_ups.unlink_customer', $scope, 'follow_ups', OrganizationDataResetOperation::SET_NULL, 'customer_id'),
+                new OrganizationDataResetOperation('follow_up_rules.unlink_customer', $scope, 'follow_up_recurring_rules', OrganizationDataResetOperation::SET_NULL, 'customer_id'),
+                new OrganizationDataResetOperation('attention.unlink_customer', $scope, 'attention_items', OrganizationDataResetOperation::SET_NULL, 'customer_id'),
                 new OrganizationDataResetOperation('customers.delete', $scope, 'customers'),
             ],
             OrganizationDataResetScope::SuppliersAndPurchasing => array_merge(
@@ -112,6 +124,13 @@ class OrganizationDataResetBundleRegistry
             ),
             OrganizationDataResetScope::UsersAndAccess => [
                 new OrganizationDataResetOperation('access.active_context', $scope, 'users', OrganizationDataResetOperation::CLEAR_NON_OWNER_ACTIVE_CONTEXT),
+                // Open work of removed members becomes "Unassigned" (never deleted);
+                // completed/cancelled history keeps its assignee.
+                new OrganizationDataResetOperation('follow_ups.unassign_removed_members', $scope, 'follow_ups', OrganizationDataResetOperation::UNASSIGN_NON_OWNER_FOLLOW_UPS),
+                // Their recurring rules become Unassigned and stop generating (paused) until a manager acts.
+                new OrganizationDataResetOperation('follow_up_rules.unassign_removed_members', $scope, 'follow_up_recurring_rules', OrganizationDataResetOperation::UNASSIGN_NON_OWNER_RECURRING_RULES),
+                // Active attention owned by removed members becomes unassigned; the next scan re-applies the fallback.
+                new OrganizationDataResetOperation('attention.unassign_removed_members', $scope, 'attention_items', OrganizationDataResetOperation::UNASSIGN_NON_OWNER_ATTENTION),
                 new OrganizationDataResetOperation('access.store_memberships', $scope, 'store_memberships', OrganizationDataResetOperation::DELETE_NON_OWNER_STORE_MEMBERSHIPS),
                 new OrganizationDataResetOperation('access.invitations', $scope, 'user_invitations'),
                 new OrganizationDataResetOperation('access.memberships', $scope, 'organization_memberships', OrganizationDataResetOperation::DELETE_NON_OWNER_MEMBERSHIPS),

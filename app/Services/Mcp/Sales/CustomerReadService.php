@@ -5,6 +5,7 @@ namespace App\Services\Mcp\Sales;
 use App\Enums\CustomerStatus;
 use App\Models\Customer;
 use App\Models\Organization;
+use App\Models\User;
 use App\Services\CustomerFinancialSummary;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use InvalidArgumentException;
@@ -87,15 +88,17 @@ final class CustomerReadService
     }
 
     /** @return array<string, mixed> */
-    public function balance(Organization $organization, int $customerId): array
+    public function balance(Organization $organization, int $customerId, User $viewer): array
     {
         $customer = $this->find($organization, $customerId);
 
         return [
             'customer' => ['id' => $customer->getKey(), 'display_name' => $customer->display_name],
             'currency_code' => config('platform.currency_code', 'MAD'),
-            ...$this->summary->forCustomer($customer),
+            ...$this->summary->forCustomer($customer, $viewer),
             'definitions' => [
+                'scope' => 'Only documents of the stores the connection user may access; a figure is null when the user lacks its view permission.',
+                'null_semantics' => 'null = unavailable under the current visibility/permissions (never zero); "0.0000" = visible and actually zero.',
                 'sales_total' => 'Sum of confirmed sales orders (TTC).',
                 'invoiced_total' => 'Sum of issued invoices (TTC).',
                 'paid_total' => 'Sum of posted payment allocations on this customer\'s sales orders.',

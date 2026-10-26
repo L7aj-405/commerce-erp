@@ -26,6 +26,8 @@ class SalesOrder extends Model
             'status' => SalesOrderStatus::class,
             'fulfillment_status' => SalesOrderFulfillmentStatus::class,
             'payment_status' => SalesOrderPaymentStatus::class,
+            // W4.5: business-local payment due date, stamped at confirmation.
+            'due_date' => 'date',
             'ordered_at' => 'datetime',
             'sale_date' => 'date',
             'subtotal_excl_tax' => 'decimal:4',

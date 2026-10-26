@@ -4,7 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Models\Organization;
 use App\Services\AuditLogger;
+use App\Services\FollowUps\FollowUpRecurringGenerator;
+use App\Services\FollowUps\FollowUpReminderSchedule;
 use App\Services\OrganizationCreator;
+use App\Support\BusinessTime;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -27,6 +30,7 @@ class OrganizationController extends Controller
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'settings' => ['sometimes', 'array'],
+            'settings.timezone' => ['sometimes', ...BusinessTime::rules()],
         ]);
 
         $creator->create($request->user(), $data['name'], $data['settings'] ?? []);
@@ -57,16 +61,21 @@ class OrganizationController extends Controller
         return back();
     }
 
-    public function updateSettings(Request $request, Organization $organization, AuditLogger $audit): RedirectResponse
+    public function updateSettings(Request $request, Organization $organization, AuditLogger $audit, FollowUpReminderSchedule $reminders, FollowUpRecurringGenerator $recurring): RedirectResponse
     {
         $this->authorize('updateSettings', $organization);
 
         $data = $request->validate([
             'settings' => ['required', 'array'],
+            'settings.timezone' => ['sometimes', ...BusinessTime::rules()],
         ]);
 
         $oldSettings = $organization->settings ?? [];
         $organization->update(['settings' => $data['settings']]);
+        if (($oldSettings['timezone'] ?? null) !== ($data['settings']['timezone'] ?? null)) {
+            $reminders->realignDateOnly($organization->fresh());
+            $recurring->rescheduleOrganization($organization->fresh());
+        }
 
         $audit->record(
             'organization.settings_changed',

@@ -188,6 +188,8 @@ class ConfirmSalesOrderAction
 
             $order->status = SalesOrderStatus::Confirmed;
             $order->confirmed_at = now();
+            // W4.5 payment term, stamped once (a revision re-confirming the order keeps it).
+            $order->due_date ??= $order->sale_date->copy()->addDays(max(0, (int) config('payments.sales_order_payment_term_days', 7)));
             $order->confirmed_by_user_id = $actor->getKey();
             $order->save();
 

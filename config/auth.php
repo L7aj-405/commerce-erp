@@ -114,4 +114,19 @@ return [
 
     'password_timeout' => env('AUTH_PASSWORD_TIMEOUT', 10800),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Public self-registration (PILOT-1.1)
+    |--------------------------------------------------------------------------
+    |
+    | Whether an unknown visitor may create an account: the /register pages and
+    | Google sign-in for an email with no existing account. Off by default in
+    | production (closed pilot); login, password reset, email verification,
+    | invitations and Google sign-in for existing accounts are unaffected. The
+    | first owner is created with `php artisan erp:bootstrap-owner`.
+    |
+    */
+
+    'public_registration' => (bool) env('PUBLIC_REGISTRATION_ENABLED', env('APP_ENV') !== 'production'),
+
 ];

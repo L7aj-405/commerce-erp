@@ -95,12 +95,16 @@ class IssueInvoiceAction
             $invoice->invoice_number = $family->canonical_invoice_number;
             $invoice->status = InvoiceStatus::Issued;
             $invoice->issued_at = now();
+            // W4.4 payment term, stamped once: a correction keeps the due date of the invoice it replaces.
+            $invoice->due_date ??= ($invoice->corrected_invoice_id
+                ? Invoice::query()->where('organization_id', $invoice->organization_id)->whereKey($invoice->corrected_invoice_id)->value('due_date')
+                : null) ?? $invoice->invoice_date->copy()->addDays(max(0, (int) config('documents.invoice.payment_term_days', 30)));
             $invoice->issued_by_user_id = $actor->getKey();
             $invoice->save();
             $this->audit->record('invoice.issued', $actor, $invoice->organization, $invoice->store, $invoice, oldValues: ['status' => InvoiceStatus::Draft->value], newValues: [
                 'invoice_number' => $invoice->invoice_number, 'sales_order_number' => $invoice->salesOrder->order_number,
                 'invoice_version' => $invoice->version,
-                'invoice_date' => $invoice->invoice_date->toDateString(), 'status' => InvoiceStatus::Issued->value,
+                'invoice_date' => $invoice->invoice_date->toDateString(), 'due_date' => $invoice->due_date?->toDateString(), 'status' => InvoiceStatus::Issued->value,
                 'total_incl_tax' => $invoice->total_incl_tax,
             ]);
 

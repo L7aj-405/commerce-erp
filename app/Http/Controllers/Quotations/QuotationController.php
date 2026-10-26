@@ -21,10 +21,12 @@ use App\Models\Quotation;
 use App\Models\TaxRate;
 use App\Services\ActiveTenantContext;
 use App\Services\DocumentStampRenderer;
+use App\Services\FollowUps\FollowUpQuery;
 use App\Services\OrganizationOutboundMailService;
 use App\Services\ProductPriceResolver;
 use App\Services\QuotationDocumentSettings;
 use App\Services\WhatsAppContactLinkResolver;
+use App\Support\BusinessTime;
 use App\Support\Decimal;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -58,8 +60,8 @@ class QuotationController extends Controller
                 ->orWhere('customer_email', 'like', "%{$s}%")))
             ->when($filters['status'] ?? null, fn ($q, string $s) => $q->where('status', $s))
             ->when($filters['quotation_date'] ?? null, fn ($q, string $d) => $q->whereDate('quotation_date', $d))
-            ->when(($filters['validity'] ?? null) === 'expired', fn ($q) => $q->whereNotNull('valid_until')->whereDate('valid_until', '<', now()->toDateString()))
-            ->when(($filters['validity'] ?? null) === 'valid', fn ($q) => $q->where(fn ($q) => $q->whereNull('valid_until')->orWhereDate('valid_until', '>=', now()->toDateString())))
+            ->when(($filters['validity'] ?? null) === 'expired', fn ($q) => $q->whereNotNull('valid_until')->whereDate('valid_until', '<', BusinessTime::today($organization)))
+            ->when(($filters['validity'] ?? null) === 'valid', fn ($q) => $q->where(fn ($q) => $q->whereNull('valid_until')->orWhereDate('valid_until', '>=', BusinessTime::today($organization))))
             ->with(['createdBy:id,name'])
             ->latest('quotation_date')->latest('id')->paginate(20)->withQueryString();
 
@@ -153,6 +155,7 @@ class QuotationController extends Controller
         OrganizationOutboundMailService $mail,
         DocumentStampRenderer $stampRenderer,
         WhatsAppContactLinkResolver $whatsapp,
+        FollowUpQuery $followUps,
     ): Response
     {
         $this->authorize('view', $quotation);
@@ -213,6 +216,8 @@ class QuotationController extends Controller
             'warehouses' => \App\Models\Warehouse::query()->where('organization_id', $quotation->organization_id)
                 ->where('status', WarehouseStatus::Active->value)->orderBy('name')->get(['id', 'name', 'code']),
             'isPastValidity' => $quotation->isPastValidity(),
+            'followUps' => $followUps->panel($request->user(), $quotation->organization, 'quotation_id', (int) $quotation->getKey(),
+                ['customer_id' => $quotation->customer_id, 'quotation_id' => (int) $quotation->getKey()], (int) $quotation->store_id),
             'isCurrentVersion' => $isCurrentVersion,
             'history' => $history,
             'sharing' => $canShare ? [

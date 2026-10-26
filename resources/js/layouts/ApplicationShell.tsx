@@ -75,7 +75,10 @@ export default function ApplicationShell({ children, wide = false, flush = false
             key: 'dashboard',
             label: t('nav.dashboard'),
             icon: <IconDashboard />,
-            items: [{ href: '/platform', label: t('nav.dashboard'), icon: <IconHome /> }],
+            items: [
+                { href: '/platform', label: t('nav.dashboard'), icon: <IconHome /> },
+                { href: '/work', label: t('nav.myWork'), permission: 'follow_ups.view', icon: <IconChecklist /> },
+            ],
         },
         {
             key: 'sales',
@@ -648,6 +651,7 @@ function IconBuilding() { return <svg {...s}><path d="M5 21V5a2 2 0 0 1 2-2h7a2 
 function IconPlug() { return <svg {...s}><path d="M9 2v6M15 2v6M7 8h10v3a5 5 0 0 1-10 0V8ZM12 16v6" /></svg>; }
 function IconSync() { return <svg {...s}><path d="M4 12a8 8 0 0 1 13.7-5.7L20 8M20 4v4h-4M20 12a8 8 0 0 1-13.7 5.7L4 16M4 20v-4h4" /></svg>; }
 function IconShield() { return <svg {...s}><path d="M12 3 5 6v5c0 4.5 2.8 8 7 10 4.2-2 7-5.5 7-10V6l-7-3Z" /></svg>; }
+function IconChecklist() { return <svg {...s}><path d="M9 6h11M9 12h11M9 18h11" /><path d="m3.5 6 1.5 1.5L7.5 5M3.5 12l1.5 1.5L7.5 11M3.5 18l1.5 1.5L7.5 17" /></svg>; }
 function IconSettings() { return <svg {...s}><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z" /><path d="M3 12h2M19 12h2M12 3v2M12 19v2M5.6 5.6 7 7M17 17l1.4 1.4M18.4 5.6 17 7M7 17l-1.4 1.4" /></svg>; }
 function IconTrash() { return <svg {...s}><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5" /></svg>; }
 function IconFolder() { return <svg {...s}><path d="M3 6h7l2 3h9v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6Z" /></svg>; }

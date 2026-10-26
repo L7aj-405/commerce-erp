@@ -33,6 +33,7 @@ type Props = {
     };
     logoUrl: string | null;
     canUpdate: boolean;
+    businessTimezone: { value: string; configured: boolean; options: string[] };
 };
 
 export default function DocumentProfile({
@@ -41,6 +42,7 @@ export default function DocumentProfile({
     invoiceNumbering,
     logoUrl,
     canUpdate,
+    businessTimezone,
 }: Props) {
     const { t } = useI18n();
     const [removeLogo, setRemoveLogo] = useState(false);
@@ -138,6 +140,11 @@ export default function DocumentProfile({
                         {t("docProfile.readOnly")}
                     </p>
                 )}
+
+                <TimezoneSection
+                    timezone={businessTimezone}
+                    canUpdate={canUpdate}
+                />
 
                 <form onSubmit={submit} className="space-y-5">
                     <fieldset disabled={!canUpdate} className="space-y-5">
@@ -448,6 +455,93 @@ export default function DocumentProfile({
                 </form>
             </div>
         </ApplicationShell>
+    );
+}
+
+function TimezoneSection({
+    timezone,
+    canUpdate,
+}: {
+    timezone: Props["businessTimezone"];
+    canUpdate: boolean;
+}) {
+    const { t } = useI18n();
+    const form = useForm<{ timezone: string }>({ timezone: timezone.value });
+    const localTime = useMemo(() => {
+        try {
+            return new Intl.DateTimeFormat(undefined, {
+                timeZone: form.data.timezone,
+                dateStyle: "medium",
+                timeStyle: "short",
+            }).format(new Date());
+        } catch {
+            return null;
+        }
+    }, [form.data.timezone]);
+
+    const submit = (event: FormEvent) => {
+        event.preventDefault();
+        form.put("/organization-timezone", { preserveScroll: true });
+    };
+
+    return (
+        <form onSubmit={submit} className="mb-5">
+            <fieldset disabled={!canUpdate}>
+                <Section
+                    title={t("orgTimezone.title")}
+                    description={t("orgTimezone.help")}
+                >
+                    {!timezone.configured && (
+                        <p className="rounded-field border border-line bg-raised px-3 py-2 text-xs text-ink-muted">
+                            {t("orgTimezone.notConfigured")}
+                        </p>
+                    )}
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                        <label className="block flex-1">
+                            <span className="mb-1 block text-xs font-medium text-ink-muted">
+                                {t("orgTimezone.label")}
+                            </span>
+                            <input
+                                list="organization-timezones"
+                                dir="ltr"
+                                required
+                                value={form.data.timezone}
+                                onChange={(e) =>
+                                    form.setData("timezone", e.target.value)
+                                }
+                                placeholder="Africa/Casablanca"
+                                className="w-full rounded-field border border-line-strong bg-surface px-3 py-2 text-sm"
+                            />
+                            <datalist id="organization-timezones">
+                                {timezone.options.map((option) => (
+                                    <option key={option} value={option} />
+                                ))}
+                            </datalist>
+                            {form.errors.timezone && (
+                                <span className="mt-1 block text-xs text-danger">
+                                    {form.errors.timezone}
+                                </span>
+                            )}
+                        </label>
+                        <Button
+                            type="submit"
+                            loading={form.processing}
+                            loadingText={t("common.saving")}
+                        >
+                            {t("common.save")}
+                        </Button>
+                    </div>
+                    {localTime && (
+                        <p className="text-xs text-ink-faint">
+                            {t("orgTimezone.localTime").replace(
+                                "{time}",
+                                localTime,
+                            )}
+                        </p>
+                    )}
+                </Section>
+            </fieldset>
+        </form>
     );
 }
 

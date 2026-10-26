@@ -39,6 +39,11 @@ final class NotificationPublisher
         string $eventType,
         array $metadata = [],
     ): int {
+        // Platform notifications are not tenant-facing for now (config notifications.platform_to_tenants).
+        if ($category === NotificationCategory::System && ! NotificationFeed::platformVisibleToTenants()) {
+            return 0;
+        }
+
         $created = 0;
         $dedupeKey = hash('sha256', implode('|', [$organization->getKey(), $sourceType, $sourceId, $eventType]));
 

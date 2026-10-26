@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Services\ActiveTenantContext;
 use App\Services\AuditLogger;
 use App\Services\InvoiceNumberGenerator;
+use App\Support\BusinessTime;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -32,6 +33,11 @@ class DocumentProfileController extends Controller
                 ? Storage::disk('public')->url($logoPath)
                 : null,
             'canUpdate' => $request->user()->hasPermission($organization, 'settings.update'),
+            'businessTimezone' => [
+                'value' => $organization->businessTimezone(),
+                'configured' => $organization->hasConfiguredTimezone(),
+                'options' => BusinessTime::timezones(),
+            ],
         ]);
     }
 

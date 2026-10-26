@@ -2,7 +2,8 @@ import AppPreview from "@/components/marketing/AppPreview";
 import { BrandLockup, PRODUCT_NAME } from "@/components/ui/brand";
 import { ButtonLink } from "@/components/ui/Button";
 import { useI18n } from "@/i18n";
-import { Head, Link } from "@inertiajs/react";
+import type { SharedPageProps } from "@/types/app";
+import { Head, Link, usePage } from "@inertiajs/react";
 import type { ReactNode } from "react";
 
 const capabilities: Array<{
@@ -40,6 +41,8 @@ export default function Home({
     legalLinks = { privacy: "/privacy", terms: "/terms" },
 }: Props) {
     const { t } = useI18n();
+    // PILOT-1.1: no self-registration during the closed pilot.
+    const canRegister = usePage<SharedPageProps>().props.features?.public_registration ?? false;
     return (
         <>
             <Head title={productName} />
@@ -51,9 +54,11 @@ export default function Home({
                         <ButtonLink href="/login" variant="ghost" size="sm">
                             {t("home.signIn")}
                         </ButtonLink>
-                        <ButtonLink href="/register" size="sm">
-                            {t("home.createAccount")}
-                        </ButtonLink>
+                        {canRegister && (
+                            <ButtonLink href="/register" size="sm">
+                                {t("home.createAccount")}
+                            </ButtonLink>
+                        )}
                     </div>
                 </header>
 
@@ -77,9 +82,11 @@ export default function Home({
                                 {t("home.pillars")}
                             </p>
                             <div className="mt-7 flex flex-wrap items-center gap-3">
-                                <ButtonLink href="/register" size="lg">
-                                    {t("home.createAccount")}
-                                </ButtonLink>
+                                {canRegister && (
+                                    <ButtonLink href="/register" size="lg">
+                                        {t("home.createAccount")}
+                                    </ButtonLink>
+                                )}
                                 <ButtonLink
                                     href="/login"
                                     variant="secondary"
@@ -140,9 +147,11 @@ export default function Home({
                             {t("home.ctaDescription")}
                         </p>
                         <div className="mt-6 flex flex-wrap justify-center gap-3">
-                            <ButtonLink href="/register" size="lg">
-                                {t("home.createAccount")}
-                            </ButtonLink>
+                            {canRegister && (
+                                <ButtonLink href="/register" size="lg">
+                                    {t("home.createAccount")}
+                                </ButtonLink>
+                            )}
                             <ButtonLink
                                 href="/login"
                                 variant="secondary"
@@ -166,12 +175,14 @@ export default function Home({
                             >
                                 {t("home.signIn")}
                             </Link>
-                            <Link
-                                href="/register"
-                                className="rounded transition-soft hover:text-ink"
-                            >
-                                {t("home.createAccount")}
-                            </Link>
+                            {canRegister && (
+                                <Link
+                                    href="/register"
+                                    className="rounded transition-soft hover:text-ink"
+                                >
+                                    {t("home.createAccount")}
+                                </Link>
+                            )}
                             <Link
                                 href={legalLinks.privacy}
                                 className="rounded transition-soft hover:text-ink"

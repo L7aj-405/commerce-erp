@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\QuotationStatus;
 use App\Models\Concerns\ScopesToActiveStore;
+use App\Support\BusinessTime;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -97,10 +98,14 @@ class Quotation extends Model
         return $this->morphOne(DocumentStampApposition::class, 'stampable');
     }
 
-    /** True once the validity date has passed, regardless of the stored status. */
+    /**
+     * True once the validity date has passed in the organization's business
+     * timezone (valid through the whole of `valid_until`), regardless of the
+     * stored status.
+     */
     public function isPastValidity(): bool
     {
-        return $this->valid_until !== null && $this->valid_until->endOfDay()->isPast();
+        return $this->valid_until !== null && BusinessTime::isBeforeToday($this->organization, $this->valid_until);
     }
 
     /** This Devis is a revision (Révision 1, 2, …) rather than an initial proposal. */
