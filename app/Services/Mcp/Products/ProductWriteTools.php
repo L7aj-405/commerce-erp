@@ -65,10 +65,13 @@ final class ProductWriteTools
             $this->assertFields($data, [...McpProductChangeService::PRODUCT_FIELDS, 'variant']);
             if (! is_array($data['variant'] ?? null)) throw new InvalidArgumentException('variant_required');
             $this->assertFields($data['variant'], McpProductChangeService::CREATE_VARIANT_FIELDS);
-            if (array_key_exists('purchase_price', $data['variant'])) $this->context->authorize('product_cost.manage');
-            $normalized = $this->validator->product($data, $this->organizationId(), true, array_key_exists('purchase_price', $data['variant']));
+            $withCost = array_key_exists('purchase_price', $data['variant']);
+            if ($withCost) $this->context->authorize('product_cost.manage');
+            // Canonical request without the unique rules: a replay must not fail on the SKU its own first call created.
+            $request = $this->validator->product($data, $this->organizationId(), true, $withCost, checkUniqueness: false);
 
-            return $this->idempotency->execute('create_product', $idempotency_key, $normalized, function () use ($normalized) {
+            return $this->idempotency->execute('create_product', $idempotency_key, $request, function () use ($data, $withCost) {
+                $normalized = $this->validator->product($data, $this->organizationId(), true, $withCost);
                 $product = $this->createProductAction->execute($this->context->user(), $this->context->organization(), $normalized);
                 $result = [
                     'target' => ['type' => 'product', 'id' => $product->getKey()],
@@ -87,11 +90,13 @@ final class ProductWriteTools
         return $this->execute('create_variant', function () use ($product_id, $data, $idempotency_key) {
             $this->context->authorize('products.create');
             $this->assertFields($data, McpProductChangeService::CREATE_VARIANT_FIELDS);
-            if (array_key_exists('purchase_price', $data)) $this->context->authorize('product_cost.manage');
+            $withCost = array_key_exists('purchase_price', $data);
+            if ($withCost) $this->context->authorize('product_cost.manage');
             $product = $this->product($product_id);
-            $normalized = $this->validator->variant($data, $this->organizationId(), null, array_key_exists('purchase_price', $data));
+            $request = $this->validator->variant($data, $this->organizationId(), null, $withCost, checkUniqueness: false);
 
-            return $this->idempotency->execute('create_variant', $idempotency_key, ['product_id' => $product_id, 'data' => $normalized], function () use ($product, $normalized) {
+            return $this->idempotency->execute('create_variant', $idempotency_key, ['product_id' => $product_id, 'data' => $request], function () use ($product, $data, $withCost) {
+                $normalized = $this->validator->variant($data, $this->organizationId(), null, $withCost);
                 $variant = $this->createVariantAction->execute($this->context->user(), $product, $normalized);
                 $target = ['type' => 'variant', 'id' => $variant->getKey()];
                 $this->auditTool('create_variant', $target, array_keys($normalized));

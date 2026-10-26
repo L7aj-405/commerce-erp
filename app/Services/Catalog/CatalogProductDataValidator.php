@@ -7,19 +7,27 @@ use App\Models\ProductVariant;
 use App\Support\Decimal;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Rules\Unique;
 
 final class CatalogProductDataValidator
 {
     public function __construct(private readonly VariantReferenceUniqueness $references) {}
 
-    /** @param array<string, mixed> $data @return array<string, mixed> */
-    public function product(array $data, int $organizationId, bool $withVariant, bool $canManageCost): array
+    /**
+     * $checkUniqueness=false skips only the per-organization unique rules (sku,
+     * reference, barcode) so an idempotent caller can compute the canonical
+     * request before its replay lookup; it must re-validate with uniqueness
+     * before writing.
+     *
+     * @param array<string, mixed> $data @return array<string, mixed>
+     */
+    public function product(array $data, int $organizationId, bool $withVariant, bool $canManageCost, bool $checkUniqueness = true): array
     {
         $rules = $this->productRules($organizationId);
         if ($withVariant) {
             $rules += ['variant' => ['required', 'array']];
-            foreach ($this->variantRules($organizationId, null, $canManageCost, false) as $field => $rule) {
-                $rules['variant.'.$field] = $rule;
+            foreach ($this->variantRules($organizationId, null, $canManageCost, false, $checkUniqueness) as $field => $rule) {
+                $rules['variant.'.$field] = $this->nestedRule($rule, 'variant.');
             }
         }
 
@@ -35,10 +43,10 @@ final class CatalogProductDataValidator
     }
 
     /** @param array<string, mixed> $data @return array<string, mixed> */
-    public function variant(array $data, int $organizationId, ?ProductVariant $variant, bool $canManageCost): array
+    public function variant(array $data, int $organizationId, ?ProductVariant $variant, bool $canManageCost, bool $checkUniqueness = true): array
     {
         return $this->normalizeVariant(
-            Validator::make($this->references->prepare($data), $this->variantRules($organizationId, $variant, $canManageCost))->validate(),
+            Validator::make($this->references->prepare($data), $this->variantRules($organizationId, $variant, $canManageCost, true, $checkUniqueness))->validate(),
         );
     }
 
@@ -57,9 +65,11 @@ final class CatalogProductDataValidator
     }
 
     /** @return array<string, mixed> */
-    public function variantRules(int $organizationId, ?ProductVariant $variant, bool $canManageCost, bool $requireStatus = true): array
+    public function variantRules(int $organizationId, ?ProductVariant $variant, bool $canManageCost, bool $requireStatus = true, bool $checkUniqueness = true): array
     {
-        return [
+        // Sale price: at least one of public_price_ttc / regular_sale_price /
+        // default_sale_price; the actions derive the others from it.
+        $rules = [
             'label' => ['nullable', 'string', 'max:255'],
             'sku' => ['required', 'string', 'max:255', Rule::unique('product_variants', 'sku')->where('organization_id', $organizationId)->ignore($variant)],
             'reference' => ['nullable', 'string', 'max:255', $this->references->rule($organizationId, $variant)],
@@ -74,6 +84,25 @@ final class CatalogProductDataValidator
             'tax_rate_id' => ['nullable', 'integer', Rule::exists('tax_rates', 'id')->where('organization_id', $organizationId)],
             'status' => [$requireStatus ? 'required' : 'sometimes', Rule::enum(CatalogStatus::class)],
         ];
+
+        return $checkUniqueness ? $rules : array_map(fn (array $rule) => array_values(array_filter($rule, fn ($item) => ! $item instanceof Unique)), $rules);
+    }
+
+    /**
+     * Rules referencing sibling fields (required_without_all, lte) resolve those
+     * names from the data root, so nested rules must prefix them.
+     *
+     * @param list<mixed> $rule @return list<mixed>
+     */
+    private function nestedRule(array $rule, string $prefix): array
+    {
+        return array_map(function ($item) use ($prefix) {
+            if (! is_string($item) || ! preg_match('/^(required_without_all|lte):(.+)$/', $item, $match)) {
+                return $item;
+            }
+
+            return $match[1].':'.implode(',', array_map(fn ($field) => $prefix.$field, explode(',', $match[2])));
+        }, $rule);
     }
 
     /** @param array<string, mixed> $data @return array<string, mixed> */
