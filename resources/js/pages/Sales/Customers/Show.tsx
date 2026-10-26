@@ -1,4 +1,5 @@
 import FollowUpPanel from "@/components/followups/FollowUpPanel";
+import ActivityTimeline from "@/components/timeline/ActivityTimeline";
 import type { FollowUpPanelData } from "@/components/followups/types";
 import DocBadge from "@/components/ui/DocBadge";
 import SalesLayout from "@/layouts/SalesLayout";
@@ -311,6 +312,10 @@ export default function CustomerShow({
                     <FollowUpPanel panel={followUps} />
                 </div>
             )}
+
+            <div className="mb-6">
+                <ActivityTimeline subject="customer" id={customer.id} />
+            </div>
 
             <Section
                 id="commandes"

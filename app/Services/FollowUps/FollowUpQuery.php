@@ -2,6 +2,7 @@
 
 namespace App\Services\FollowUps;
 
+use App\Enums\FollowUpPriority;
 use App\Enums\FollowUpStatus;
 use App\Models\Customer;
 use App\Models\FollowUp;
@@ -31,6 +32,9 @@ class FollowUpQuery
 {
     public const DUE_BUCKETS = ['today', 'overdue', 'upcoming'];
 
+    /** W5 "completed recently": the last 7 organization-local calendar days, today included. */
+    public const RECENT_COMPLETED_DAYS = 7;
+
     public function __construct(
         private readonly FollowUpAccess $access,
         private readonly FollowUpAssignees $assignees,
@@ -46,6 +50,9 @@ class FollowUpQuery
             'assigned_to' => ['nullable', 'string', 'max:20'],
             'quotation_id' => ['nullable', 'integer', 'min:1'],
             'customer_id' => ['nullable', 'integer', 'min:1'],
+            // W5 team filters; still bounded by visible() (a store the viewer lacks matches nothing).
+            'store_id' => ['nullable', 'integer', 'min:1'],
+            'priority' => ['nullable', Rule::enum(FollowUpPriority::class)],
             // A single follow-up (notification target); still bounded by visible().
             'focus' => ['nullable', 'integer', 'min:1'],
             'date_from' => ['nullable', 'date_format:Y-m-d'],
@@ -86,6 +93,8 @@ class FollowUpQuery
         return $query
             ->when($filters['quotation_id'] ?? null, fn (Builder $q, $id) => $q->where('quotation_id', (int) $id))
             ->when($filters['customer_id'] ?? null, fn (Builder $q, $id) => $q->where('customer_id', (int) $id))
+            ->when($filters['store_id'] ?? null, fn (Builder $q, $id) => $q->where('store_id', (int) $id))
+            ->when($filters['priority'] ?? null, fn (Builder $q, string $priority) => $q->where('priority', $priority))
             ->when($filters['focus'] ?? null, fn (Builder $q, $id) => $q->whereKey((int) $id))
             ->when($filters['date_from'] ?? null, fn (Builder $q, string $date) => $q->where('due_date', '>=', $date))
             ->when($filters['date_to'] ?? null, fn (Builder $q, string $date) => $q->where('due_date', '<=', $date))
@@ -132,6 +141,13 @@ class FollowUpQuery
                 ->where(fn (Builder $d) => $d->whereNull('due_at')->where('due_date', '>', $today))
                 ->orWhere('due_at', '>=', $dayEnd)),
         };
+    }
+
+    /** Completed during the last RECENT_COMPLETED_DAYS organization-local calendar days (today included). */
+    public function applyRecentlyCompleted(Builder $query, Organization $organization): void
+    {
+        $since = CarbonImmutable::parse(BusinessTime::today($organization), 'UTC')->subDays(self::RECENT_COMPLETED_DAYS - 1)->toDateString();
+        $query->where('status', FollowUpStatus::Completed->value)->where('completed_at', '>=', BusinessTime::localToUtc($organization, $since));
     }
 
     /** `me` (default) | `all` | `unassigned` | a user id; anything but `me` requires manage_all. */

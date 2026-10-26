@@ -2,6 +2,7 @@ import DocBadge from '@/components/ui/DocBadge';
 import { Button } from '@/components/ui/Button';
 import SendDocumentEmailModal from '@/components/documents/SendDocumentEmailModal';
 import StampDocumentAction from '@/components/documents/StampDocumentAction';
+import ActivityTimeline from '@/components/timeline/ActivityTimeline';
 import { useI18n } from '@/i18n';
 import SalesLayout from '@/layouts/SalesLayout';
 import { formatDate, formatDateTime, formatMoney, formatQuantity } from '@/utils/format';
@@ -689,6 +690,10 @@ export default function InvoiceShow({
                         </div>
                     )}
                 </aside>
+            </div>
+
+            <div className="mt-6">
+                <ActivityTimeline subject="invoice" id={invoice.id} />
             </div>
         </SalesLayout>
     );

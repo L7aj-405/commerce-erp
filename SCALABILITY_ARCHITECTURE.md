@@ -262,6 +262,44 @@ Rules for code written today:
 - Do not over-optimize small bounded lookup tables (roles, tax rates, units,
   warehouses, stores).
 
+**Work Center Team view (W5, `TeamWorkQuery`).** "My team" is not an org
+chart (none exists; no `manager_id` / reporting-line table is added). For a
+viewer holding `follow_ups.manage_all` it is: active organization members
+whose role grants `follow_ups.view` or a document view permission
+(`quotations.view`, `invoices.view`, `sales_orders.view`) **and** who share at
+least one store with the viewer or belong to no store — plus anyone holding
+work the viewer can already see (e.g. a departed member with completed work,
+flagged inactive). Counts reuse the canonical scopes
+(`FollowUpAccess::visible`, `AttentionQuery::visible`) and bucket rules
+(`FollowUpQuery::applyBucket` / `applyRecentlyCompleted`,
+`AttentionQuery::applyView`), so `manage_all` never widens store visibility
+and an aggregate never exceeds what the detail lists show. Aggregation is a
+fixed number of `GROUP BY assigned_user_id` queries (~10 per page, independent
+of team size); member rows (id, name, counts) are sorted in PHP — fine for
+thousands of members. No score or ranking: the order is an explainable tier
+(escalated → critical → overdue → due today → rest). Grouped counts use the
+covering index `follow_up_team_counts_idx` (forced: MySQL otherwise picks the
+assignee index for the GROUP BY order and reads every row). Measured on MySQL
+8.4 with 300k follow-ups (≈180k open, deliberately skewed), 40k attention
+items, 400 users: org-wide view ≈2.9 s → was 13 s; one-store view ≈0.5 s.
+Realistic volumes (tens of open items per person) are far below this; if a
+tenant ever reaches it, fold the four open-bucket counts into one pass.
+
+**Activity timeline (W5, `BusinessTimeline`).** A read-only projection over
+existing records (allow-listed `audit_logs` events, `document_email_deliveries`,
+payment allocations / reversals / refunds, attention episode timestamps); no
+event table is added, so backup/reset contracts are unchanged. Every linked
+source is resolved through the same permission + store rules before querying,
+then pages are a keyset k-way merge on `(occurred_at, source rank, id)` —
+stable, no duplicates or gaps, never filtered after the fact. Audit lookups
+read ids/timestamps from the covering `audit_subject_timeline_idx`
+`(auditable_type, auditable_id, organization_id, created_at, event)` — one
+statement per subject kind, string ids, cursor as a single time range — then
+load one page of full rows. Measured (1.2M audit rows): document timelines
+≈35 ms DB; a customer with ~2,400 documents ≈0.4 s DB per page. A customer
+timeline follows at most `SUBJECT_CAP` (1000) most recent linked records per
+kind — see gap #17.
+
 ---
 
 ## 11. Time / timezone rule
@@ -395,3 +433,5 @@ Required-before: `NOW` · `2 APP NODES` · `LARGE SCALE` · `DESKTOP OFFLINE` ·
 | 14 | Personal-cloud backup upload retry after a partial upload may create a duplicate remote file. | `SyncOrganizationBackupToPersonalCloudJob` | LATER | P2 |
 | 15 | ~~No organization timezone~~ — **resolved in TIME-1** (see §11). Remaining: other business-date defaults (`quotation_date`, sale/payment/invoice dates, Finance "today"/month, commission periods, dashboard "today") still use UTC `now()`. | see §11 | LATER (per feature) | P2 |
 | 16 | Client operation ids exist only for POS/sales/payments/returns; quotations, customers, contacts have none; no device id / sync cursor. | migrations | DESKTOP OFFLINE | P2 |
+| 17 | (W5) The customer activity timeline resolves linked records per kind up front, capped at the 1000 most recent each (`BusinessTimeline::SUBJECT_CAP`); a customer with more documents of one kind loses the oldest ones' history, and the audit lookup becomes a large `IN` list. `audit_logs` has no customer/store-scoped access path for a customer. Fix when measured: a narrow `(organization_id, subject_type, subject_id, created_at)` projection or an extra indexed audit column — not a duplicate event log. | `app/Services/Timeline/BusinessTimeline.php` | LARGE SCALE | P2 |
+| 18 | (W5) Quotation expiry (`MutatesQuotation` setting `expired`) and other system status changes are not audited, so the timeline cannot show "devis expiré" (it never infers events from current state). Add a canonical `quotation.expired` audit event if the business wants it. | `app/Actions/Quotations/Concerns/MutatesQuotation.php` | LATER | P3 |

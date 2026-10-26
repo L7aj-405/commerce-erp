@@ -1,90 +1,30 @@
-import FollowUpFormDialog from '@/components/followups/FollowUpFormDialog';
+import AttentionList from '@/components/attention/AttentionList';
+import type { AttentionItem, AttentionOwner } from '@/components/attention/types';
 import WorkNav from '@/components/followups/WorkNav';
 import type { FollowUpContext } from '@/components/followups/types';
-import { Button } from '@/components/ui/Button';
-import { Dialog } from '@/components/ui/Dialog';
-import DocBadge from '@/components/ui/DocBadge';
 import EmptyState from '@/components/ui/EmptyState';
 import PageHeader from '@/components/ui/PageHeader';
 import Pagination from '@/components/ui/Pagination';
-import { useToast } from '@/components/ui/toast';
 import { useI18n } from '@/i18n';
-import { fr, type TranslationKey } from '@/i18n/translations';
 import ApplicationShell from '@/layouts/ApplicationShell';
 import { Head, Link, router } from '@inertiajs/react';
-import { useState } from 'react';
 
-type AttentionItem = {
-    id: number;
-    type: 'quotation_sent_undecided' | 'quotation_expiring_soon' | 'quotation_expired_undecided' | 'quotation_followup_backlog'
-        | 'invoice_due_soon' | 'invoice_overdue_unpaid' | 'invoice_overdue_partial' | 'invoice_payment_followup_backlog'
-        | 'sales_order_payment_due_soon' | 'sales_order_unpaid_overdue' | 'sales_order_partial_overdue' | 'sales_order_payment_followup_backlog' | 'sales_order_paid_not_invoiced';
-    subject_type: 'quotation' | 'sales_order' | 'invoice';
-    severity: 'info' | 'warning' | 'critical';
-    status: 'open' | 'snoozed' | 'dismissed' | 'resolved';
-    title: string;
-    summary: string;
-    i18n: { title: string; message: string; params: Record<string, string> } | null;
-    quotation: { id: number; number: string | null; can_open: boolean } | null;
-    invoice: { id: number; number: string | null; can_open: boolean } | null;
-    sales_order: { id: number; number: string | null; can_open: boolean } | null;
-    customer: { id: number; name: string } | null;
-    detected_at: string;
-    snoozed_until: string | null;
-    dismissed_at: string | null;
-    dismiss_note: string | null;
-    resolved_at: string | null;
-    follow_up_count: number;
-    notified_at: string | null;
-    assignee: { id: number; name: string } | null;
-    store_id: number | null;
-    escalated_at: string | null;
-    can_claim: boolean;
-    can_assign: boolean;
-    is_active: boolean;
-    can_act: boolean;
-    can_create_follow_up: boolean;
-    suggestion: { title: string; due_date: string };
-    version: number;
-};
 type LinkData = { url: string | null; label: string; active: boolean };
 type Props = {
     filters: { view?: string; type?: string; severity?: string; customer_id?: number; quotation_id?: number; focus?: number; assigned?: string; escalated?: string | boolean; domain?: string };
     items: { data: AttentionItem[]; links: LinkData[]; total: number };
     context: FollowUpContext;
     /** Managers only: valid owners with the stores they can see. */
-    owners: { id: number; name: string; store_ids: number[]; subjects: string[] }[];
+    owners: AttentionOwner[];
 };
 
 const fieldClass = 'h-10 rounded-field border border-line-strong bg-surface px-3 text-sm text-ink outline-none transition-soft focus:border-primary';
-const isKey = (value: string): value is TranslationKey => Object.prototype.hasOwnProperty.call(fr, value);
 
 /** W4.1 Attention: detected quotation situations; every action is a human decision. */
 export default function WorkAttention({ filters, items, context, owners }: Props) {
-    const { t, locale } = useI18n();
-    const toast = useToast();
-    const [following, setFollowing] = useState<AttentionItem | null>(null);
-    const [dismissing, setDismissing] = useState<AttentionItem | null>(null);
-    const [snoozingDate, setSnoozingDate] = useState<AttentionItem | null>(null);
-    const [note, setNote] = useState('');
-    const [date, setDate] = useState('');
-    const [busy, setBusy] = useState<number | null>(null);
-    const onError = (errors: Record<string, string>) => toast.error(Object.values(errors)[0] ?? t('work.actionFailed'));
+    const { t } = useI18n();
     const visit = (next: Record<string, unknown>) => router.get('/work/attention', { ...filters, ...next, focus: undefined, page: undefined }, { preserveState: true, replace: true });
 
-    const text = (item: AttentionItem) => {
-        const render = (key: string, fallback: string) => (item.i18n && isKey(key) ? t(key).replace(/\{(\w+)\}/g, (_, name: string) => item.i18n?.params[name] ?? '') : fallback);
-        return { title: item.i18n ? render(item.i18n.title, item.title) : item.title, summary: item.i18n ? render(item.i18n.message, item.summary) : item.summary };
-    };
-    const formatDate = (value: string) => new Intl.DateTimeFormat(locale === 'ar' ? 'ar-MA' : 'fr-FR', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
-
-    const post = (item: AttentionItem, path: string, data: Record<string, unknown>, after?: () => void) => {
-        setBusy(item.id);
-        router.post(`/work/attention/${item.id}/${path}`, { ...data, expected_version: item.version }, { preserveScroll: true, onError, onSuccess: after, onFinish: () => setBusy(null) });
-    };
-    const snooze = (item: AttentionItem, preset: string) => (preset === 'date' ? (setDate(''), setSnoozingDate(item)) : post(item, 'snooze', { preset }));
-
-    const severity = { critical: ['danger', t('attention.severityCritical')], warning: ['warning', t('attention.severityWarning')], info: ['neutral', t('attention.severityInfo')] } as const;
     const views = [['open', t('attention.viewOpen')], ['snoozed', t('attention.viewSnoozed')], ['dismissed', t('attention.viewDismissed')], ['resolved', t('attention.viewResolved')], ['all', t('attention.viewAll')]] as const;
 
     return (
@@ -153,86 +93,9 @@ export default function WorkAttention({ filters, items, context, owners }: Props
             {items.data.length === 0 ? (
                 <EmptyState title={filters.focus ? t('attention.focusUnavailable') : t('attention.empty')} description={t('attention.emptyHelp')} />
             ) : (
-                <ul className="divide-y divide-line rounded-card border border-line bg-surface">
-                    {items.data.map((item) => (
-                        <li key={item.id} className={`flex flex-col gap-3 p-4 lg:flex-row lg:items-start lg:justify-between ${Number(filters.focus) === item.id ? 'bg-sage/30' : ''}`}>
-                            <div className="min-w-0 flex-1">
-                                <div className="flex flex-wrap items-center gap-2">
-                                    <span className={`text-sm font-semibold ${item.is_active ? 'text-ink' : 'text-ink-muted'}`}>{text(item).title}</span>
-                                    <DocBadge tone={severity[item.severity][0]}>{severity[item.severity][1]}</DocBadge>
-                                    {item.status === 'snoozed' && item.snoozed_until && <DocBadge tone="neutral">{t('attention.statusSnoozed').replace('{date}', formatDate(item.snoozed_until))}</DocBadge>}
-                                    {item.status === 'dismissed' && <DocBadge tone="neutral">{t('attention.statusDismissed')}</DocBadge>}
-                                    {item.status === 'resolved' && <DocBadge tone="positive">{t('attention.statusResolved')}</DocBadge>}
-                                    {item.escalated_at && <DocBadge tone="danger">{t('attention.escalated')}</DocBadge>}
-                                </div>
-                                <p className="mt-1 text-[13px] text-ink-muted">{text(item).summary}</p>
-                                <p className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[12px] text-ink-faint">
-                                    {item.customer && <Link href={`/sales/customers/${item.customer.id}`} className="text-primary hover:underline">{item.customer.name}</Link>}
-                                    <span>{item.assignee ? t('attention.assignedTo').replace('{name}', item.assignee.name) : t('attention.ownerUnassigned')}</span>
-                                    <span>{t('attention.detected').replace('{date}', formatDate(item.detected_at))}</span>
-                                    {item.follow_up_count > 0 && <span>{t('attention.followUpsCreated').replace('{count}', String(item.follow_up_count))}</span>}
-                                    {item.notified_at && <span>{t('attention.notified')}</span>}
-                                    {item.dismiss_note && <span>« {item.dismiss_note} »</span>}
-                                </p>
-                            </div>
-                            <div className="flex shrink-0 flex-wrap gap-2">
-                                {item.quotation?.can_open && <Button size="sm" variant="ghost" onClick={() => router.post(`/work/attention/${item.id}/open-quotation`, {}, { onError })}>{t('attention.openQuotation')}</Button>}
-                                {item.sales_order?.can_open && <Button size="sm" variant="ghost" onClick={() => router.post(`/work/attention/${item.id}/open-sales-order`, {}, { onError })}>{t('attention.openOrder')}</Button>}
-                                {item.invoice?.can_open && <Button size="sm" variant="ghost" onClick={() => router.post(`/work/attention/${item.id}/open-invoice`, {}, { onError })}>{t('attention.openInvoice')}</Button>}
-                                {item.can_claim && <Button size="sm" variant="secondary" disabled={busy === item.id} onClick={() => post(item, 'claim', {})}>{t('attention.claim')}</Button>}
-                                {item.can_assign && (
-                                    <select aria-label={t('attention.reassign')} value="" disabled={busy === item.id}
-                                        onChange={(e) => e.target.value && post(item, 'assign', { assigned_user_id: e.target.value === 'none' ? null : Number(e.target.value) })}
-                                        className="h-8 rounded-field border border-line-strong bg-surface px-2 text-xs text-ink">
-                                        <option value="">{t('attention.reassign')}</option>
-                                        {item.assignee && <option value="none">{t('attention.unassign')}</option>}
-                                        {owners.filter((owner) => owner.id !== item.assignee?.id && owner.subjects.includes(item.subject_type) && (item.store_id === null || owner.store_ids.includes(item.store_id)))
-                                            .map((owner) => <option key={owner.id} value={owner.id}>{owner.name}</option>)}
-                                    </select>
-                                )}
-                                {item.can_act && item.can_create_follow_up && <Button size="sm" onClick={() => setFollowing(item)}>{t('attention.createFollowUp')}</Button>}
-                                {item.can_act && (
-                                    <>
-                                        <select aria-label={t('attention.snooze')} value="" disabled={busy === item.id} onChange={(e) => e.target.value && snooze(item, e.target.value)}
-                                            className="h-8 rounded-field border border-line-strong bg-surface px-2 text-xs text-ink">
-                                            <option value="">{t('attention.snooze')}</option>
-                                            <option value="later_today">{t('attention.snoozeLaterToday')}</option>
-                                            <option value="tomorrow">{t('attention.snoozeTomorrow')}</option>
-                                            <option value="in_3_days">{t('attention.snooze3Days')}</option>
-                                            <option value="next_week">{t('attention.snoozeNextWeek')}</option>
-                                            <option value="date">{t('attention.snoozeDate')}</option>
-                                        </select>
-                                        <Button size="sm" variant="ghost" disabled={busy === item.id} onClick={() => { setNote(''); setDismissing(item); }}>{t('attention.dismiss')}</Button>
-                                    </>
-                                )}
-                            </div>
-                        </li>
-                    ))}
-                </ul>
+                <AttentionList items={items.data} context={context} owners={owners} focusId={filters.focus ? Number(filters.focus) : undefined} />
             )}
             <Pagination links={items.links} />
-
-            {following && (
-                <FollowUpFormDialog open onClose={() => setFollowing(null)} context={context} submitUrl={`/work/attention/${following.id}/follow-up`}
-                    defaults={{ title: following.suggestion.title, due_date: following.suggestion.due_date }} />
-            )}
-
-            <Dialog open={dismissing !== null} onClose={() => setDismissing(null)} title={t('attention.dismissTitle')} description={t('attention.dismissHelp')}
-                footer={<div className="flex justify-end gap-2"><Button type="button" variant="secondary" onClick={() => setDismissing(null)}>{t('common.cancel')}</Button>
-                    <Button type="button" onClick={() => dismissing && post(dismissing, 'dismiss', note.trim() ? { note: note.trim() } : {}, () => setDismissing(null))}>{t('attention.dismiss')}</Button></div>}>
-                <label className="block px-4 py-4 sm:px-6">
-                    <span className="mb-1 block text-xs font-medium text-ink-muted">{t('attention.dismissNote')}</span>
-                    <textarea data-autofocus rows={2} maxLength={500} value={note} onChange={(e) => setNote(e.target.value)} className="w-full rounded-field border border-line-strong bg-surface px-3 py-2 text-sm" />
-                </label>
-            </Dialog>
-
-            <Dialog open={snoozingDate !== null} onClose={() => setSnoozingDate(null)} title={t('attention.snoozeDateTitle')}
-                footer={<div className="flex justify-end gap-2"><Button type="button" variant="secondary" onClick={() => setSnoozingDate(null)}>{t('common.cancel')}</Button>
-                    <Button type="button" disabled={!date} onClick={() => snoozingDate && post(snoozingDate, 'snooze', { preset: 'date', until_date: date }, () => setSnoozingDate(null))}>{t('attention.snooze')}</Button></div>}>
-                <label className="block px-4 py-4 sm:px-6">
-                    <input data-autofocus type="date" min={context.today} value={date} onChange={(e) => setDate(e.target.value)} className={`${fieldClass} w-full`} />
-                </label>
-            </Dialog>
         </ApplicationShell>
     );
 }

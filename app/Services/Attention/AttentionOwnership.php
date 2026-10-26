@@ -98,6 +98,23 @@ final class AttentionOwnership
             ->all();
     }
 
+    /**
+     * Manager assignment picker: valid owners with their stores and the subjects they may own
+     * (the server re-validates every assignment). @return list<array{id: int, name: string, store_ids: list<int>, subjects: list<string>}>
+     */
+    public function assignmentOptions(Organization $organization): array
+    {
+        $owners = [];
+        foreach ([AttentionItem::SUBJECT_QUOTATION, AttentionItem::SUBJECT_SALES_ORDER, AttentionItem::SUBJECT_INVOICE] as $subject) {
+            foreach ($this->candidates($organization, self::permissionFor($subject)) as $candidate) {
+                $owners[$candidate['id']] ??= [...$candidate, 'subjects' => []];
+                $owners[$candidate['id']]['subjects'][] = $subject;
+            }
+        }
+
+        return array_values($owners);
+    }
+
     /** Background ownership repair for one organization's active items. Returns the number of items changed. */
     public function repairOrganization(Organization $organization): int
     {

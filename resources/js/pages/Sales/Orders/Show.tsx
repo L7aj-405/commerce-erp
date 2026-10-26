@@ -1,6 +1,7 @@
 import DocBadge from '@/components/ui/DocBadge';
 import { Button } from '@/components/ui/Button';
 import { Popover } from '@/components/pos/primitives';
+import ActivityTimeline from '@/components/timeline/ActivityTimeline';
 import SalesLayout from '@/layouts/SalesLayout';
 import { useI18n } from '@/i18n';
 import { formatDate, formatDateTime, formatMoney, formatQuantity } from '@/utils/format';
@@ -1128,6 +1129,9 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
                     )}
                 </div>
             )}
+            <div className="mt-6">
+                <ActivityTimeline subject="sales_order" id={order.id} />
+            </div>
         </SalesLayout>
     );
 }

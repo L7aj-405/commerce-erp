@@ -5,7 +5,6 @@ namespace App\Http\Controllers\FollowUps;
 use App\Actions\Attention\HandleAttentionItemAction;
 use App\Http\Controllers\Controller;
 use App\Models\AttentionItem;
-use App\Models\Organization;
 use App\Services\ActiveTenantContext;
 use App\Services\Attention\AttentionOwnership;
 use App\Services\Attention\AttentionQuery;
@@ -39,22 +38,8 @@ class AttentionController extends Controller
             ],
             'context' => $followUps->formContext($user, $organization),
             // Managers: valid owners with their stores and the subjects they may own (the server re-validates every assignment).
-            'owners' => $access->canManageAll($user, $organization) ? $this->owners($organization, $ownership) : [],
+            'owners' => $access->canManageAll($user, $organization) ? $ownership->assignmentOptions($organization) : [],
         ]);
-    }
-
-    /** @return list<array{id: int, name: string, store_ids: list<int>, subjects: list<string>}> */
-    private function owners(Organization $organization, AttentionOwnership $ownership): array
-    {
-        $owners = [];
-        foreach ([AttentionItem::SUBJECT_QUOTATION, AttentionItem::SUBJECT_SALES_ORDER, AttentionItem::SUBJECT_INVOICE] as $subject) {
-            foreach ($ownership->candidates($organization, AttentionOwnership::permissionFor($subject)) as $candidate) {
-                $owners[$candidate['id']] ??= [...$candidate, 'subjects' => []];
-                $owners[$candidate['id']]['subjects'][] = $subject;
-            }
-        }
-
-        return array_values($owners);
     }
 
     public function claim(Request $request, ActiveTenantContext $context, AttentionItem $attentionItem, HandleAttentionItemAction $action): RedirectResponse

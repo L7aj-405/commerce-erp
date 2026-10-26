@@ -33,6 +33,9 @@ class FollowUpAccess
     /** @var array<int, list<int>> */
     private array $memberStoreIds = [];
 
+    /** @var array<string, list<int>> */
+    private array $organizationStoreIds = [];
+
     public function allows(User $user, Organization|int|string $organization, string $permission): bool
     {
         $organizationId = (int) ($organization instanceof Organization ? $organization->getKey() : $organization);
@@ -85,7 +88,8 @@ class FollowUpAccess
     /** @return list<int> */
     public function storeIds(User $user, Organization $organization): array
     {
-        return StoreMembership::query()->where('organization_id', $organization->getKey())->where('user_id', $user->getKey())
+        return $this->organizationStoreIds[$user->getKey().':'.$organization->getKey()] ??= StoreMembership::query()
+            ->where('organization_id', $organization->getKey())->where('user_id', $user->getKey())
             ->pluck('store_id')->map(fn ($id) => (int) $id)->all();
     }
 

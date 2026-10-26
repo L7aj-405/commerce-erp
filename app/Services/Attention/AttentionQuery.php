@@ -39,6 +39,8 @@ final class AttentionQuery
             'severity' => ['nullable', Rule::enum(AttentionSeverity::class)],
             'customer_id' => ['nullable', 'integer', 'min:1'],
             'quotation_id' => ['nullable', 'integer', 'min:1'],
+            // W5 team filter; still bounded by visible() (a store the viewer lacks matches nothing).
+            'store_id' => ['nullable', 'integer', 'min:1'],
             // A single item (notification target); still bounded by visible().
             'focus' => ['nullable', 'integer', 'min:1'],
             // W4.3 ownership: mine | unassigned | mine_or_unassigned | all | {user id} (the last two: manage_all).
@@ -82,7 +84,6 @@ final class AttentionQuery
     /** @param array<string, mixed> $filters */
     public function search(User $user, Organization $organization, array $filters): LengthAwarePaginator
     {
-        $now = CarbonImmutable::now('UTC');
         $query = $this->visible($user, $organization)
             ->with(['customer:id,organization_id,display_name', 'quotation:id,organization_id,store_id,quotation_number,status', 'invoice:id,organization_id,store_id,invoice_number,status', 'salesOrder:id,organization_id,store_id,order_number,status', 'assignee:id,name'])
             ->when($filters['type'] ?? null, fn (Builder $q, string $type) => $q->where('type', $type))
@@ -90,13 +91,28 @@ final class AttentionQuery
             ->when($filters['severity'] ?? null, fn (Builder $q, string $severity) => $q->where('severity', $severity))
             ->when($filters['customer_id'] ?? null, fn (Builder $q, $id) => $q->where('customer_id', (int) $id))
             ->when($filters['quotation_id'] ?? null, fn (Builder $q, $id) => $q->where('quotation_id', (int) $id))
+            ->when($filters['store_id'] ?? null, fn (Builder $q, $id) => $q->where('store_id', (int) $id))
             ->when($filters['focus'] ?? null, fn (Builder $q, $id) => $q->whereKey((int) $id))
             ->when(! empty($filters['escalated']), fn (Builder $q) => $q->whereNotNull('escalated_at'));
         if (! isset($filters['focus'])) {
             $this->applyAssigned($query, $user, $organization, $filters['assigned'] ?? $this->defaultAssigned($user, $organization));
         }
 
-        match ($filters['view'] ?? 'open') {
+        $this->applyView($query, (string) ($filters['view'] ?? 'open'));
+
+        // Deterministic priority: still-active episodes first, then escalated critical > critical > warning > info,
+        // then business urgency (QuotationAttentionDetector::urgency), oldest detection, id.
+        return $query->orderByRaw('CASE WHEN active_key IS NULL THEN 1 ELSE 0 END')
+            ->orderByRaw("CASE WHEN severity = 'critical' AND escalated_at IS NOT NULL THEN 0 WHEN severity = 'critical' THEN 1 WHEN severity = 'warning' THEN 2 ELSE 3 END")
+            ->orderByDesc('urgency')->orderBy('detected_at')->orderBy('id')
+            ->paginate((int) ($filters['per_page'] ?? 25))->withQueryString();
+    }
+
+    /** The canonical status view of an attention list (also used by W5 team counts). */
+    public function applyView(Builder $query, string $view): void
+    {
+        $now = CarbonImmutable::now('UTC');
+        match ($view) {
             // A snooze that has elapsed counts as open right away (the detector confirms it on its next scan).
             'open' => $query->where(fn (Builder $q) => $q->where('status', AttentionStatus::Open->value)
                 ->orWhere(fn (Builder $s) => $s->where('status', AttentionStatus::Snoozed->value)->where('snoozed_until', '<=', $now))),
@@ -105,13 +121,6 @@ final class AttentionQuery
             'resolved' => $query->where('status', AttentionStatus::Resolved->value),
             default => null,
         };
-
-        // Deterministic priority: still-active episodes first, then escalated critical > critical > warning > info,
-        // then business urgency (QuotationAttentionDetector::urgency), oldest detection, id.
-        return $query->orderByRaw('CASE WHEN active_key IS NULL THEN 1 ELSE 0 END')
-            ->orderByRaw("CASE WHEN severity = 'critical' AND escalated_at IS NOT NULL THEN 0 WHEN severity = 'critical' THEN 1 WHEN severity = 'warning' THEN 2 ELSE 3 END")
-            ->orderByDesc('urgency')->orderBy('detected_at')->orderBy('id')
-            ->paginate((int) ($filters['per_page'] ?? 25))->withQueryString();
     }
 
     /** Normal users default to their own + claimable work; managers to the whole (accessible) team. */

@@ -1,5 +1,6 @@
 import FollowUpPanel from "@/components/followups/FollowUpPanel";
 import type { FollowUpPanelData } from "@/components/followups/types";
+import ActivityTimeline from "@/components/timeline/ActivityTimeline";
 import DocBadge from "@/components/ui/DocBadge";
 import { Button } from "@/components/ui/Button";
 import SendDocumentEmailModal from "@/components/documents/SendDocumentEmailModal";
@@ -1251,6 +1252,10 @@ export default function QuotationShow({
                     <FollowUpPanel panel={followUps} />
                 </div>
             )}
+
+            <div className="mt-6">
+                <ActivityTimeline subject="quotation" id={quotation.id} />
+            </div>
         </SalesLayout>
     );
 }
