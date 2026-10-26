@@ -80,3 +80,8 @@ actor (timelines show "via l'assistant"). Reads emit `mcp.work.viewed`,
 `FollowUpAccess::storeIds/hasStoreAccess` count only **active** member stores
 (same rule as `DocumentVisibility`, `ActiveTenantContext`, the opener): work
 and attention of a deactivated store are unreachable on every transport.
+W6.1 applies the same rule to `AttentionOwnership` (owner validity, ownership
+repair, fallback manager, escalation/alert recipients, claim and manual
+assignment, assignment picker): an inactive store qualifies nobody, so its
+active items are released and stay unassigned; resolved/dismissed items keep
+their historical owner.

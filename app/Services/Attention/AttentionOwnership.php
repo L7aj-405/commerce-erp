@@ -91,7 +91,9 @@ final class AttentionOwnership
     public function candidates(Organization $organization, string $permission = 'quotations.view', int $limit = 100): array
     {
         return $this->eligibleQuery($organization, null, $permission)
-            ->with(['storeMemberships' => fn ($query) => $query->where('organization_id', $organization->getKey())->select(['id', 'user_id', 'store_id'])])
+            // Only active stores qualify (W6.1): the picker never offers an owner the server would reject.
+            ->with(['storeMemberships' => fn ($query) => $query->where('organization_id', $organization->getKey())
+                ->whereHas('store', fn (Builder $store) => $store->where('status', 'active'))->select(['id', 'user_id', 'store_id'])])
             ->orderBy('name')->limit($limit)->get(['users.id', 'users.name'])
             ->map(fn (User $user) => ['id' => (int) $user->getKey(), 'name' => (string) $user->name,
                 'store_ids' => $user->storeMemberships->pluck('store_id')->map(fn ($id) => (int) $id)->values()->all()])
@@ -233,6 +235,13 @@ final class AttentionOwnership
         });
     }
 
+    /**
+     * W6.1: a store-linked item needs membership of that store AND the store
+     * must be active — the same rule as FollowUpAccess / AttentionQuery
+     * visibility, DocumentVisibility and the safe opener. An inactive store
+     * therefore qualifies nobody: ownership repair releases its owners, no
+     * fallback manager is found, and claims/assignments are rejected.
+     */
     private function eligibleQuery(Organization $organization, ?int $storeId, string $permission): Builder
     {
         $organizationId = $organization->getKey();
@@ -242,6 +251,7 @@ final class AttentionOwnership
                 ->where('organization_id', $organizationId)->where('status', 'active')
                 ->whereHas('role.permissions', fn (Builder $permissions) => $permissions->where('key', $permission)))
             ->when($storeId !== null, fn (Builder $query) => $query->whereHas('storeMemberships', fn (Builder $memberships) => $memberships
-                ->where('organization_id', $organizationId)->where('store_id', $storeId)));
+                ->where('organization_id', $organizationId)->where('store_id', $storeId)
+                ->whereHas('store', fn (Builder $store) => $store->where('status', 'active'))));
     }
 }
