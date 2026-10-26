@@ -66,7 +66,7 @@ final class SalesAssistantTools
     {
         return $this->execute('get_customer_balance_summary', function () use ($customer_id) {
             $this->context->authorize('customers.view');
-            $result = $this->customers->balance($this->context->organization(), $customer_id);
+            $result = $this->customers->balance($this->context->organization(), $customer_id, $this->context->user());
             $this->auditRead('mcp.customer_balance.viewed', ['customer_id' => $customer_id]);
 
             return $result;

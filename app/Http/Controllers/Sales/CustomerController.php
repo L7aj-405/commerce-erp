@@ -14,6 +14,7 @@ use App\Models\SalesOrder;
 use App\Services\ActiveTenantContext;
 use App\Services\CustomerFinancialSummary;
 use App\Services\CustomerManager;
+use App\Services\DocumentVisibility;
 use App\Services\FollowUps\FollowUpQuery;
 use App\Services\WhatsAppContactLinkResolver;
 use Illuminate\Http\RedirectResponse;
@@ -43,61 +44,57 @@ class CustomerController extends Controller
     /**
      * Operational customer profile: identity, a cheap financial summary (a
      * handful of scoped aggregate SUM/COUNT queries — never one per row),
-     * and the customer's most recent documents across every store, each
-     * linking to its own existing detail page. Never a per-row payment
+     * and the customer's most recent documents. Never a per-row payment
      * calculator: the paid/outstanding figures are single aggregate queries
      * over payment_allocations, the same pattern FinanceReceivablesService
      * already uses for the exact same "paid so far" question.
+     *
+     * W5.1: seeing a customer (organization-wide) never implies seeing all of
+     * its documents. Every list, count and figure is scoped in SQL by
+     * DocumentVisibility (view permission + the viewer's active stores), so a
+     * document of another store is never serialized, counted or summed.
+     * Documents of the viewer's other stores open through the safe
+     * cross-store opener (/documents/open/{type}/{id}).
      */
-    public function show(Customer $customer, WhatsAppContactLinkResolver $whatsapp, CustomerFinancialSummary $financialSummary, FollowUpQuery $followUps): Response
+    public function show(Customer $customer, WhatsAppContactLinkResolver $whatsapp, CustomerFinancialSummary $financialSummary, FollowUpQuery $followUps, DocumentVisibility $visibility): Response
     {
         $this->authorize('view', $customer);
-        $organizationId = $customer->organization_id;
+        $user = request()->user();
+        $organization = $customer->organization;
         $customerId = $customer->getKey();
+        $stores = $visibility->storeIds($user, $organization) ?: [0];
+        $visible = fn (string $model) => $visibility->visible($user, $organization, $model);
+        $orders = fn () => $visible(SalesOrder::class)->where('customer_id', $customerId);
+        $invoices = fn () => $visible(Invoice::class)->where('customer_id', $customerId)->where('status', '!=', InvoiceStatus::Superseded->value);
+        $payments = fn () => $visible(Payment::class)
+            ->whereHas('allocations.salesOrder', fn ($query) => $query->where('customer_id', $customerId)->whereIn('store_id', $stores));
+        $quotations = fn () => $visible(Quotation::class)->where('customer_id', $customerId);
+        $deliveryNotes = fn () => $visible(DeliveryNote::class)
+            ->whereHas('salesOrder', fn ($query) => $query->where('customer_id', $customerId)->whereIn('store_id', $stores));
 
         $recentLimit = 15;
 
         return Inertia::render('Sales/Customers/Show', [
             'customer' => $customer,
             'whatsappDestination' => $whatsapp->resolve($customer->whatsapp_username, $customer->phone),
-            'summary' => $financialSummary->forCustomer($customer),
-            'orders' => SalesOrder::query()
-                ->where('organization_id', $organizationId)->where('customer_id', $customerId)
-                ->orderByDesc('sale_date')->limit($recentLimit)
+            'summary' => $financialSummary->forCustomer($customer, $user),
+            'orders' => $orders()->orderByDesc('sale_date')->limit($recentLimit)
                 ->get(['id', 'order_number', 'sale_date', 'status', 'payment_status', 'total_incl_tax']),
-            'ordersCount' => SalesOrder::query()->where('organization_id', $organizationId)->where('customer_id', $customerId)->count(),
-            'invoices' => Invoice::query()
-                ->where('organization_id', $organizationId)->where('customer_id', $customerId)
-                ->where('status', '!=', InvoiceStatus::Superseded->value)
-                ->orderByDesc('invoice_date')->limit($recentLimit)
+            'ordersCount' => $orders()->count(),
+            'invoices' => $invoices()->orderByDesc('invoice_date')->limit($recentLimit)
                 ->get(['id', 'invoice_number', 'version', 'invoice_date', 'status', 'total_incl_tax']),
-            'invoicesCount' => Invoice::query()->where('organization_id', $organizationId)->where('customer_id', $customerId)
-                ->where('status', '!=', InvoiceStatus::Superseded->value)->count(),
-            'payments' => Payment::query()
-                ->where('organization_id', $organizationId)
-                ->whereHas('allocations.salesOrder', fn ($query) => $query->where('customer_id', $customerId))
-                ->orderByDesc('payment_date')->limit($recentLimit)
+            'invoicesCount' => $invoices()->count(),
+            'payments' => $payments()->orderByDesc('payment_date')->limit($recentLimit)
                 ->get(['id', 'payment_number', 'payment_date', 'method', 'status', 'amount']),
-            'paymentsCount' => Payment::query()
-                ->where('organization_id', $organizationId)
-                ->whereHas('allocations.salesOrder', fn ($query) => $query->where('customer_id', $customerId))
-                ->count(),
-            'quotations' => Quotation::query()
-                ->where('organization_id', $organizationId)->where('customer_id', $customerId)
-                ->orderByDesc('quotation_date')->limit($recentLimit)
+            'paymentsCount' => $payments()->count(),
+            'quotations' => $quotations()->orderByDesc('quotation_date')->limit($recentLimit)
                 ->get(['id', 'quotation_number', 'quotation_date', 'status', 'total_incl_tax']),
-            'quotationsCount' => Quotation::query()->where('organization_id', $organizationId)->where('customer_id', $customerId)->count(),
-            'deliveryNotes' => DeliveryNote::query()
-                ->where('organization_id', $organizationId)
-                ->whereHas('salesOrder', fn ($query) => $query->where('customer_id', $customerId))
-                ->orderByDesc('delivery_date')->limit($recentLimit)
+            'quotationsCount' => $quotations()->count(),
+            'deliveryNotes' => $deliveryNotes()->orderByDesc('delivery_date')->limit($recentLimit)
                 ->get(['id', 'delivery_note_number', 'delivery_date', 'status']),
-            'deliveryNotesCount' => DeliveryNote::query()
-                ->where('organization_id', $organizationId)
-                ->whereHas('salesOrder', fn ($query) => $query->where('customer_id', $customerId))
-                ->count(),
-            'followUps' => $followUps->panel(request()->user(), $customer->organization, 'customer_id', (int) $customerId, ['customer_id' => (int) $customerId, 'quotation_id' => null]),
-            'can' => ['update' => request()->user()->can('update', $customer)],
+            'deliveryNotesCount' => $deliveryNotes()->count(),
+            'followUps' => $followUps->panel($user, $organization, 'customer_id', (int) $customerId, ['customer_id' => (int) $customerId, 'quotation_id' => null]),
+            'can' => ['update' => $user->can('update', $customer)],
         ]);
     }
 

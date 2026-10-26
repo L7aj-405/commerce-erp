@@ -16,6 +16,7 @@ use App\Models\Quotation;
 use App\Models\SalesOrder;
 use App\Models\User;
 use App\Services\Attention\AttentionQuery;
+use App\Services\DocumentVisibility;
 use App\Services\FollowUps\FollowUpAccess;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
@@ -88,6 +89,7 @@ final class BusinessTimeline
     public function __construct(
         private readonly FollowUpAccess $access,
         private readonly AttentionQuery $attention,
+        private readonly DocumentVisibility $documents,
     ) {}
 
     /** @return array<string, mixed> */
@@ -208,7 +210,7 @@ final class BusinessTimeline
         }
         $root = $model::query()->where('organization_id', $organization->getKey())->whereKey($id)->first();
 
-        return $root !== null && ($subject === 'customer' || $this->access->hasStoreAccess($user, $root->store_id)) ? $root : null;
+        return $root !== null && ($subject === 'customer' || $this->documents->hasStore($user, $organization, $root->store_id)) ? $root : null;
     }
 
     /**
@@ -222,7 +224,8 @@ final class BusinessTimeline
     {
         $orgId = (int) $organization->getKey();
         $id = (int) $root->getKey();
-        $stores = $this->access->storeIds($user, $organization) ?: [0];
+        // W5.1: the same document scope as the customer profile (DocumentVisibility: active member stores).
+        $stores = $this->documents->storeIds($user, $organization) ?: [0];
         $can = fn (string $permission) => $this->access->allows($user, $organization, $permission);
         // Linked documents of a kind: view permission + the viewer's stores, newest first, bounded.
         $documents = fn (string $model, string $permission, string $column, int $value) => $can($permission)

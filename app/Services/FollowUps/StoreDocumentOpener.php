@@ -2,7 +2,9 @@
 
 namespace App\Services\FollowUps;
 
+use App\Models\DeliveryNote;
 use App\Models\Invoice;
+use App\Models\Payment;
 use App\Models\Quotation;
 use App\Models\SalesOrder;
 use App\Models\Store;
@@ -34,6 +36,17 @@ final class StoreDocumentOpener
     public function openSalesOrder(User $user, ActiveTenantContext $context, ?int $orderId): RedirectResponse
     {
         return $this->open($user, $context, SalesOrder::class, $orderId, 'sales_orders.view', 'sales.orders.show', 'sales_order', 'Cette commande n’est pas accessible depuis votre compte.');
+    }
+
+    /** W5.1: delivery notes and payments listed on the customer profile. */
+    public function openDeliveryNote(User $user, ActiveTenantContext $context, ?int $noteId): RedirectResponse
+    {
+        return $this->open($user, $context, DeliveryNote::class, $noteId, 'delivery_notes.view', 'delivery-notes.show', 'delivery_note', 'Ce bon de livraison n’est pas accessible depuis votre compte.');
+    }
+
+    public function openPayment(User $user, ActiveTenantContext $context, ?int $paymentId): RedirectResponse
+    {
+        return $this->open($user, $context, Payment::class, $paymentId, 'payments.view', 'payments.show', 'payment', 'Ce paiement n’est pas accessible depuis votre compte.');
     }
 
     /** @param class-string<Model> $model */

@@ -252,7 +252,7 @@ final class TimelinePresenter
     /** @return array{method: string, href: string} */
     private function documentLink(string $type, int $id): array
     {
-        return ['method' => 'post', 'href' => "/timeline/open/{$type}/{$id}"];
+        return ['method' => 'post', 'href' => "/documents/open/{$type}/{$id}"];
     }
 
     /** @return array{method: string, href: string} */

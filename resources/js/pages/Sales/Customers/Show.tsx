@@ -36,13 +36,15 @@ type Customer = {
     billing_address: string | null;
     status: string;
 };
+/** Scoped to the viewer's stores; null when the viewer lacks the figure's view permission (W5.1). */
 type Summary = {
-    sales_total: string;
-    invoiced_total: string;
-    paid_total: string;
-    outstanding: string;
+    sales_total: string | null;
+    invoiced_total: string | null;
+    paid_total: string | null;
+    outstanding: string | null;
     last_activity: string | null;
 };
+const money = (value: string | null) => (value === null ? "—" : formatMoney(value));
 type OrderRow = {
     id: number;
     order_number: string;
@@ -257,19 +259,19 @@ export default function CustomerShow({
             <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
                 <SummaryTile
                     label={t("customers.show.confirmedSales")}
-                    value={formatMoney(summary.sales_total)}
+                    value={money(summary.sales_total)}
                 />
                 <SummaryTile
                     label={t("customers.show.invoiced")}
-                    value={formatMoney(summary.invoiced_total)}
+                    value={money(summary.invoiced_total)}
                 />
                 <SummaryTile
                     label={t("customers.show.collected")}
-                    value={formatMoney(summary.paid_total)}
+                    value={money(summary.paid_total)}
                 />
                 <SummaryTile
                     label={t("orders.show.remaining")}
-                    value={formatMoney(summary.outstanding)}
+                    value={money(summary.outstanding)}
                     tone={
                         Number(summary.outstanding) > 0 ? "warning" : "neutral"
                     }
@@ -353,7 +355,7 @@ export default function CustomerShow({
                                 >
                                     <td className="px-4 py-2.5 font-medium text-ink">
                                         <Link
-                                            href={`/sales/orders/${order.id}`}
+                                            href={`/documents/open/sales_order/${order.id}`} method="post" as="button" className="text-start hover:underline"
                                         >
                                             {order.order_number}
                                         </Link>
@@ -425,7 +427,7 @@ export default function CustomerShow({
                                     className="border-t border-line"
                                 >
                                     <td className="px-4 py-2.5 font-medium text-ink">
-                                        <Link href={`/invoices/${invoice.id}`}>
+                                        <Link href={`/documents/open/invoice/${invoice.id}`} method="post" as="button" className="text-start hover:underline">
                                             <bdi>
                                                 {invoice.invoice_number ??
                                                     `${t("common.draft")} #${invoice.id}`}{" "}
@@ -493,7 +495,7 @@ export default function CustomerShow({
                                     className="border-t border-line"
                                 >
                                     <td className="px-4 py-2.5 font-medium text-ink">
-                                        <Link href={`/payments/${payment.id}`}>
+                                        <Link href={`/documents/open/payment/${payment.id}`} method="post" as="button" className="text-start hover:underline">
                                             {payment.payment_number}
                                         </Link>
                                     </td>
@@ -563,7 +565,7 @@ export default function CustomerShow({
                                 >
                                     <td className="px-4 py-2.5 font-medium text-ink">
                                         <Link
-                                            href={`/quotations/${quotation.id}`}
+                                            href={`/documents/open/quotation/${quotation.id}`} method="post" as="button" className="text-start hover:underline"
                                         >
                                             <bdi>
                                                 {quotation.quotation_number ??
@@ -626,7 +628,7 @@ export default function CustomerShow({
                                 >
                                     <td className="px-4 py-2.5 font-medium text-ink">
                                         <Link
-                                            href={`/delivery-notes/${note.id}`}
+                                            href={`/documents/open/delivery_note/${note.id}`} method="post" as="button" className="text-start hover:underline"
                                         >
                                             <bdi>
                                                 {note.delivery_note_number ??

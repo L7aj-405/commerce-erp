@@ -239,6 +239,14 @@ Rules for code written today:
   - Database: composite tenant foreign keys `(organization_id, fk)`.
 - Verify membership, store scope (where applicable) and the existing ERP
   permission. MCP, API and desktop reuse the same policies/permissions.
+- Organization-wide records (customers) never imply visibility of their
+  store documents. Any surface listing, counting or summing store documents
+  outside their own store-scoped page (customer profile, activity timeline,
+  MCP customer balance) uses `App\Services\DocumentVisibility::visible()`:
+  document view permission + the viewer's **active** member stores, in SQL,
+  before serialization; a figure without permission is `null`, not a partial.
+  Cross-store navigation goes through `/documents/open/{type}/{id}`
+  (`StoreDocumentOpener`), never a bypass route. (W5.1)
 - Cache keys, locks and idempotency scopes include the organization, store
   and/or connection identity where applicable (pattern:
   `mcp:idempotency:{hash(connection|tool|key)}`, `system-health:v1:{org}:…`),

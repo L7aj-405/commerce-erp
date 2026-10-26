@@ -121,7 +121,7 @@ class ActivityTimelineTest extends QuotationTestCase
         $converted = $entries[0];
         $this->assertSame(['type' => 'user', 'name' => $owner->name], $converted['actor']);
         $this->assertSame($order->order_number, $converted['params']['order_number']);
-        $this->assertSame(['method' => 'post', 'href' => '/timeline/open/sales_order/'.$order->getKey()], $converted['link']);
+        $this->assertSame(['method' => 'post', 'href' => '/documents/open/sales_order/'.$order->getKey()], $converted['link']);
         $this->assertSame('2026-11-10T08:07:00+00:00', $converted['occurred_at']);
         $this->assertArrayNotHasKey('new_values', $converted);
         $response = $this->actingAs($owner)->getJson('/timeline/quotation/'.$revision->getKey())->assertOk();
@@ -233,7 +233,7 @@ class ActivityTimelineTest extends QuotationTestCase
         $otherStore = $this->createStore($organization, $owner, 'Store B');
         $outsider = $this->viewer($organization, [$otherStore], ['quotations.view']);
         $this->actingAs($outsider)->getJson('/timeline/quotation/'.$quotation->getKey())->assertNotFound();
-        $this->actingAs($outsider)->post('/timeline/open/quotation/'.$quotation->getKey())->assertSessionHasErrors('quotation');
+        $this->actingAs($outsider)->post('/documents/open/quotation/'.$quotation->getKey())->assertSessionHasErrors('quotation');
 
         // Recipient addresses only for people allowed to email quotations.
         $reader = $this->viewer($organization, [$store], ['quotations.view']);

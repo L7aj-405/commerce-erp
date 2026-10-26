@@ -59,6 +59,7 @@ use App\Http\Controllers\FollowUps\FollowUpRecurringController;
 use App\Http\Controllers\FollowUps\FollowUpTemplateController;
 use App\Http\Controllers\FollowUps\TeamWorkController;
 use App\Http\Controllers\Timeline\ActivityTimelineController;
+use App\Http\Controllers\Documents\DocumentOpenController;
 use App\Http\Controllers\OrganizationController;
 use App\Http\Controllers\OrganizationInvitationController;
 use App\Http\Controllers\OrganizationMembershipController;
@@ -238,7 +239,7 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
     Route::get('/work/team', [TeamWorkController::class, 'index'])->name('follow-ups.team.index');
     Route::get('/work/team/{member}', [TeamWorkController::class, 'show'])->name('follow-ups.team.show');
     Route::get('/timeline/{subject}/{id}', [ActivityTimelineController::class, 'index'])->whereNumber('id')->name('timeline.index');
-    Route::post('/timeline/open/{type}/{id}', [ActivityTimelineController::class, 'open'])->whereNumber('id')->name('timeline.open');
+    Route::post('/documents/open/{type}/{id}', DocumentOpenController::class)->whereNumber('id')->name('documents.open');
     Route::get('/work/attention', [AttentionController::class, 'index'])->name('attention.index');
     Route::post('/work/attention/{attentionItem}/snooze', [AttentionController::class, 'snooze'])->name('attention.snooze');
     Route::post('/work/attention/{attentionItem}/dismiss', [AttentionController::class, 'dismiss'])->name('attention.dismiss');
