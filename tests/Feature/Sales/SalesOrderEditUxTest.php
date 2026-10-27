@@ -289,7 +289,7 @@ class SalesOrderEditUxTest extends QuotationTestCase
         $devisTotalBefore = $issued->total_incl_tax;
         $devisLineQtyBefore = $issued->lines()->first()->quantity;
 
-        $order = app(ConvertQuotationToSalesOrderAction::class)->execute($owner, $issued, ['warehouse_id' => $warehouse->id])['order'];
+        $order = app(ConvertQuotationToSalesOrderAction::class)->execute($owner, $this->acceptQuotation($owner, $issued), ['warehouse_id' => $warehouse->id])['order'];
 
         $this->actingAs($owner)->get(route('sales.orders.edit', $order))->assertInertia(fn ($page) => $page
             ->where('isEditable', true)

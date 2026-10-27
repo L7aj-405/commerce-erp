@@ -23,8 +23,9 @@ use Illuminate\Validation\ValidationException;
 /**
  * Transformer un devis en commande.
  *
- * Produces a DRAFT SalesOrder (never confirmed here) whose lines mirror the
- * Devis, then links the two and moves the Devis to CONVERTED. Inventory is NOT
+ * Only an ACCEPTED Devis converts. Produces a DRAFT SalesOrder (never
+ * confirmed here) whose lines mirror the Devis, then links the two and moves
+ * the Devis to CONVERTED. Inventory is NOT
  * touched here — reservations happen later at the existing
  * ConfirmSalesOrderAction, exactly like any other order.
  *
@@ -71,8 +72,11 @@ class ConvertQuotationToSalesOrderAction
                 }
             }
 
-            if (! in_array($quotation->status, [QuotationStatus::Issued, QuotationStatus::Accepted, QuotationStatus::Expired], true)) {
-                throw ValidationException::withMessages(['quotation' => 'Seul un devis émis ou accepté peut être transformé en commande.']);
+            // Draft → Issued → Accepted → Sales Order: acceptance is its own
+            // explicit step (DecideQuotationAction); conversion never implies it.
+            // Checked under the row lock, before anything is written.
+            if ($quotation->status !== QuotationStatus::Accepted) {
+                throw ValidationException::withMessages(['quotation' => 'Seul un devis accepté peut être transformé en commande. Acceptez d’abord le devis.']);
             }
             if ($quotation->lines->isEmpty()) {
                 throw ValidationException::withMessages(['lines' => 'Un devis vide ne peut pas être transformé.']);

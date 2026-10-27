@@ -3,6 +3,7 @@
 namespace Tests\Support;
 
 use App\Actions\Quotations\CreateQuotationAction;
+use App\Actions\Quotations\DecideQuotationAction;
 use App\Actions\Quotations\IssueQuotationAction;
 use App\Actions\Quotations\SaveQuotationLineAction;
 use App\Actions\Quotations\StartQuotationRevisionAction;
@@ -69,6 +70,12 @@ abstract class QuotationTestCase extends DocumentTestCase
     protected function issueQuotation(User $actor, Quotation $quotation): Quotation
     {
         return app(IssueQuotationAction::class)->execute($actor, $quotation)->fresh(['lines']);
+    }
+
+    /** Explicit customer acceptance — the required step before conversion. */
+    protected function acceptQuotation(User $actor, Quotation $issued): Quotation
+    {
+        return app(DecideQuotationAction::class)->accept($actor, $issued)->fresh(['lines']);
     }
 
     protected function reviseQuotation(User $actor, Quotation $issued, string $reason = 'Modification demandée par le client.'): Quotation

@@ -3,6 +3,7 @@
 namespace Tests\Feature\Quotations;
 
 use App\Actions\Quotations\ConvertQuotationToSalesOrderAction;
+use App\Actions\Quotations\DecideQuotationAction;
 use App\Actions\Sales\ConfirmSalesOrderAction;
 use App\Enums\QuotationStatus;
 use App\Enums\SalesOrderLineType;
@@ -11,11 +12,14 @@ use App\Models\InventoryMovement;
 use App\Models\InventoryReservation;
 use App\Models\Organization;
 use App\Models\ProductVariant;
+use App\Models\Quotation;
 use App\Models\SalesOrder;
 use App\Models\Store;
 use App\Models\User;
 use App\Models\Warehouse;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
+use Inertia\Testing\AssertableInertia as Assert;
 use Tests\Support\QuotationTestCase;
 
 class QuotationConversionTest extends QuotationTestCase
@@ -35,7 +39,7 @@ class QuotationConversionTest extends QuotationTestCase
         return [$owner, $organization, $store, $variant, $warehouse];
     }
 
-    public function test_an_issued_devis_converts_into_a_draft_sales_order_without_retyping_lines(): void
+    public function test_an_accepted_devis_converts_into_a_draft_sales_order_without_retyping_lines(): void
     {
         [$owner, $organization, $store, $variant, $warehouse] = $this->fixture();
         $quotation = $this->createQuotation($owner, $organization, $store);
@@ -43,7 +47,7 @@ class QuotationConversionTest extends QuotationTestCase
         $this->addNonStockQuotationLine($owner, $quotation, ['name' => 'Installation', 'unit_price' => '800', 'quantity' => '1']);
         $issued = $this->issueQuotation($owner, $quotation);
 
-        $result = app(ConvertQuotationToSalesOrderAction::class)->execute($owner, $issued, ['warehouse_id' => $warehouse->id]);
+        $result = app(ConvertQuotationToSalesOrderAction::class)->execute($owner, $this->acceptQuotation($owner, $issued), ['warehouse_id' => $warehouse->id]);
         $order = $result['order'];
 
         $this->assertSame(SalesOrderStatus::Draft, $order->status);
@@ -71,7 +75,7 @@ class QuotationConversionTest extends QuotationTestCase
         $this->addCatalogQuotationLine($owner, $quotation, $variant, ['quantity' => '1']);
         $issued = $this->issueQuotation($owner, $quotation);
 
-        $first = app(ConvertQuotationToSalesOrderAction::class)->execute($owner, $issued, ['warehouse_id' => $warehouse->id]);
+        $first = app(ConvertQuotationToSalesOrderAction::class)->execute($owner, $this->acceptQuotation($owner, $issued), ['warehouse_id' => $warehouse->id]);
         $second = app(ConvertQuotationToSalesOrderAction::class)->execute($owner, $issued->fresh(), ['warehouse_id' => $warehouse->id]);
 
         $this->assertFalse($first['reused']);
@@ -93,7 +97,7 @@ class QuotationConversionTest extends QuotationTestCase
         // Still nothing reserved by the Devis itself.
         $this->assertSame($reservationsBefore, InventoryReservation::query()->count());
 
-        $order = app(ConvertQuotationToSalesOrderAction::class)->execute($owner, $issued, ['warehouse_id' => $warehouse->id])['order'];
+        $order = app(ConvertQuotationToSalesOrderAction::class)->execute($owner, $this->acceptQuotation($owner, $issued), ['warehouse_id' => $warehouse->id])['order'];
         // Draft order: allocations exist, but still no reservation.
         $this->assertSame($reservationsBefore, InventoryReservation::query()->count());
 
@@ -110,7 +114,7 @@ class QuotationConversionTest extends QuotationTestCase
         $this->addCatalogQuotationLine($owner, $quotation, $variant, ['quantity' => '9']);
         $issued = $this->issueQuotation($owner, $quotation);
 
-        $result = app(ConvertQuotationToSalesOrderAction::class)->execute($owner, $issued, ['warehouse_id' => $warehouse->id]);
+        $result = app(ConvertQuotationToSalesOrderAction::class)->execute($owner, $this->acceptQuotation($owner, $issued), ['warehouse_id' => $warehouse->id]);
 
         $this->assertNotEmpty($result['stock_warnings']);
         $this->assertSame('Ampli', $result['stock_warnings'][0]['product_name']);
@@ -126,5 +130,143 @@ class QuotationConversionTest extends QuotationTestCase
 
         $this->expectException(ValidationException::class);
         app(ConvertQuotationToSalesOrderAction::class)->execute($owner, $quotation, ['warehouse_id' => $warehouse->id]);
+    }
+
+    // ---- Accepted-only conversion guard -----------------------------------
+
+    public function test_an_issued_devis_cannot_be_converted_before_acceptance_and_nothing_is_written(): void
+    {
+        [$owner, $organization, $store, $variant, $warehouse] = $this->fixture();
+        $quotation = $this->createQuotation($owner, $organization, $store);
+        $this->addCatalogQuotationLine($owner, $quotation, $variant, ['quantity' => '2']);
+        $issued = $this->issueQuotation($owner, $quotation);
+        $before = $this->sideEffectCounts();
+
+        try {
+            app(ConvertQuotationToSalesOrderAction::class)->execute($owner, $issued, ['warehouse_id' => $warehouse->id]);
+            $this->fail('An issued (not accepted) Devis must not convert.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('quotation', $exception->errors());
+        }
+
+        $this->assertSame($before, $this->sideEffectCounts());
+        $issued = $issued->fresh();
+        $this->assertSame(QuotationStatus::Issued, $issued->status, 'Conversion never implies acceptance.');
+        $this->assertNull($issued->accepted_at);
+        $this->assertNull($issued->converted_sales_order_id);
+        $this->assertNull($issued->converted_at);
+    }
+
+    public function test_a_refused_devis_cannot_be_converted_and_stays_refused(): void
+    {
+        [$owner, $organization, $store, $variant, $warehouse] = $this->fixture();
+        $quotation = $this->createQuotation($owner, $organization, $store);
+        $this->addCatalogQuotationLine($owner, $quotation, $variant);
+        $rejected = app(DecideQuotationAction::class)->reject($owner, $this->issueQuotation($owner, $quotation), 'Trop cher');
+        $before = $this->sideEffectCounts();
+
+        try {
+            app(ConvertQuotationToSalesOrderAction::class)->execute($owner, $rejected, ['warehouse_id' => $warehouse->id]);
+            $this->fail('A refused Devis must not convert.');
+        } catch (ValidationException) {
+            // expected
+        }
+
+        $this->assertSame($before, $this->sideEffectCounts());
+        $rejected = $rejected->fresh();
+        $this->assertSame(QuotationStatus::Rejected, $rejected->status);
+        $this->assertNotNull($rejected->rejected_at);
+        $this->assertSame('Trop cher', $rejected->rejection_reason);
+        $this->assertNull($rejected->converted_sales_order_id);
+    }
+
+    public function test_a_crafted_web_request_cannot_convert_an_issued_devis(): void
+    {
+        [$owner, $organization, $store, $variant, $warehouse] = $this->fixture();
+        $quotation = $this->createQuotation($owner, $organization, $store);
+        $this->addCatalogQuotationLine($owner, $quotation, $variant);
+        $issued = $this->issueQuotation($owner, $quotation);
+        $before = $this->sideEffectCounts();
+
+        $this->actingAs($owner)->post(route('quotations.conversion.store', $issued), ['warehouse_id' => $warehouse->id])->assertForbidden();
+
+        $this->assertSame($before, $this->sideEffectCounts());
+        $this->assertSame(QuotationStatus::Issued, $issued->fresh()->status);
+    }
+
+    public function test_issue_accept_then_convert_over_http_creates_one_order_and_keeps_acceptance_trail(): void
+    {
+        [$owner, $organization, $store, $variant, $warehouse] = $this->fixture();
+        $quotation = $this->createQuotation($owner, $organization, $store);
+        $this->addCatalogQuotationLine($owner, $quotation, $variant);
+        $accepted = $this->acceptQuotation($owner, $this->issueQuotation($owner, $quotation));
+        $this->assertSame(QuotationStatus::Accepted, $accepted->status);
+
+        $response = $this->actingAs($owner)->post(route('quotations.conversion.store', $accepted), ['warehouse_id' => $warehouse->id]);
+        $order = SalesOrder::query()->where('organization_id', $organization->id)->sole();
+        $response->assertRedirect(route('sales.orders.show', $order));
+
+        // A repeated submit is idempotent (Converted stays reachable for that).
+        $this->actingAs($owner)->post(route('quotations.conversion.store', $accepted), ['warehouse_id' => $warehouse->id])->assertRedirect(route('sales.orders.show', $order));
+        $this->assertSame(1, SalesOrder::query()->where('organization_id', $organization->id)->count());
+
+        $accepted = $accepted->fresh();
+        $this->assertSame(QuotationStatus::Converted, $accepted->status);
+        $this->assertSame($order->id, $accepted->converted_sales_order_id);
+        $this->assertNotNull($accepted->accepted_at);
+        $this->assertSame($owner->id, $accepted->accepted_by_user_id);
+        $this->assertDatabaseHas('audit_logs', ['event' => 'quotation.accepted', 'auditable_id' => $accepted->id]);
+    }
+
+    public function test_detail_page_exposes_conversion_only_for_an_accepted_devis(): void
+    {
+        [$owner, $organization, $store, $variant] = $this->fixture();
+        $devis = function () use ($owner, $organization, $store, $variant): Quotation {
+            $quotation = $this->createQuotation($owner, $organization, $store);
+            $this->addCatalogQuotationLine($owner, $quotation, $variant);
+
+            return $this->issueQuotation($owner, $quotation);
+        };
+        $issued = $devis();
+        $rejected = app(DecideQuotationAction::class)->reject($owner, $devis(), 'Non');
+        $accepted = $this->acceptQuotation($owner, $devis());
+
+        $this->actingAs($owner)->get(route('quotations.show', $issued))->assertOk()
+            ->assertInertia(fn (Assert $page) => $page->component('Quotations/Show')
+                ->where('can.convert', false)->where('can.decide', true)->where('can.revise', true));
+        $this->actingAs($owner)->get(route('quotations.show', $rejected))->assertOk()
+            ->assertInertia(fn (Assert $page) => $page->where('can.convert', false));
+        $this->actingAs($owner)->get(route('quotations.show', $accepted))->assertOk()
+            ->assertInertia(fn (Assert $page) => $page->where('can.convert', true)->where('can.decide', true));
+    }
+
+    public function test_another_organization_cannot_convert_an_accepted_devis(): void
+    {
+        [$owner, $organization, $store, $variant, $warehouse] = $this->fixture();
+        $quotation = $this->createQuotation($owner, $organization, $store);
+        $this->addCatalogQuotationLine($owner, $quotation, $variant);
+        $accepted = $this->acceptQuotation($owner, $this->issueQuotation($owner, $quotation));
+
+        $intruder = User::factory()->create();
+        $otherOrganization = $this->createOrganization($intruder);
+        $this->activate($intruder, $otherOrganization, $this->createStore($otherOrganization, $intruder));
+
+        $status = $this->actingAs($intruder)->post(route('quotations.conversion.store', $accepted), ['warehouse_id' => $warehouse->id])->status();
+        $this->assertContains($status, [403, 404]);
+        $this->assertSame(0, SalesOrder::query()->count());
+        $this->assertSame(QuotationStatus::Accepted, $accepted->fresh()->status);
+    }
+
+    /** @return array<string, int> */
+    private function sideEffectCounts(): array
+    {
+        return [
+            'sales_orders' => SalesOrder::query()->count(),
+            'sales_order_lines' => DB::table('sales_order_lines')->count(),
+            'allocations' => DB::table('sales_order_inventory_allocations')->count(),
+            'reservations' => InventoryReservation::query()->count(),
+            'movements' => InventoryMovement::query()->count(),
+            'converted_audits' => DB::table('audit_logs')->where('event', 'quotation.converted')->count(),
+        ];
     }
 }
