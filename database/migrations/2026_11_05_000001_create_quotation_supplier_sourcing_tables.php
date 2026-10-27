@@ -17,7 +17,9 @@ use Illuminate\Support\Facades\Schema;
  * - quotation_supplier_availability_requests
  *      Internal tracking record: "someone must ask supplier X whether they can
  *      supply N units for THIS Devis line". NOT a purchase order, sends nothing,
- *      reserves nothing. The IssueQuotationAction gate reads it.
+ *      reserves nothing. The IssueQuotationAction gate reads it. A manual
+ *      availability attestation is a separate `confirmed_manually` row; supplier
+ *      responses are never rewritten.
  *
  *      product_variant_id / non_stock_item_id snapshot the article the request
  *      was made for, so a later article swap on the same line never lets an old
@@ -25,6 +27,12 @@ use Illuminate\Support\Facades\Schema;
  *
  * Non-destructive: new tables only. Every composite tenant FK uses RESTRICT —
  * never SET NULL on (organization_id, x) because organization_id is NOT NULL.
+ *
+ * Every index / unique / foreign key is named explicitly: Laravel's generated
+ * names for `quotation_supplier_availability_requests` exceed MySQL's
+ * 64-character identifier limit (SQLSTATE 42000 / 1059).
+ * Prefixes: `prodsup_` = product_suppliers, `qsar_` = quotation supplier
+ * availability requests.
  */
 return new class extends Migration
 {
@@ -33,34 +41,35 @@ return new class extends Migration
         Schema::create('product_suppliers', function (Blueprint $table) {
             $table->id();
 
-            $table->foreignId('organization_id')
-                ->constrained()
-                ->cascadeOnDelete();
+            $table->unsignedBigInteger('organization_id');
 
             $table->unsignedBigInteger('product_id');
 
             $table->unsignedBigInteger('supplier_id');
 
-            $table->foreignId('created_by_user_id')
-                ->nullable()
-                ->constrained('users')
-                ->nullOnDelete();
+            $table->unsignedBigInteger('created_by_user_id')
+                ->nullable();
 
             $table->timestamps();
 
             $table->unique(
                 ['organization_id', 'product_id', 'supplier_id'],
-                'product_supplier_unique'
+                'prodsup_org_product_supplier_uq'
             );
 
             $table->index(
                 ['organization_id', 'supplier_id'],
-                'product_supplier_supplier_idx'
+                'prodsup_org_supplier_idx'
             );
+
+            $table->foreign('organization_id', 'prodsup_org_fk')
+                ->references('id')
+                ->on('organizations')
+                ->cascadeOnDelete();
 
             $table->foreign(
                 ['organization_id', 'product_id'],
-                'product_supplier_product_fk'
+                'prodsup_product_fk'
             )
                 ->references(['organization_id', 'id'])
                 ->on('products')
@@ -68,19 +77,22 @@ return new class extends Migration
 
             $table->foreign(
                 ['organization_id', 'supplier_id'],
-                'product_supplier_supplier_fk'
+                'prodsup_supplier_fk'
             )
                 ->references(['organization_id', 'id'])
                 ->on('suppliers')
                 ->restrictOnDelete();
+
+            $table->foreign('created_by_user_id', 'prodsup_created_by_fk')
+                ->references('id')
+                ->on('users')
+                ->nullOnDelete();
         });
 
         Schema::create('quotation_supplier_availability_requests', function (Blueprint $table) {
             $table->id();
 
-            $table->foreignId('organization_id')
-                ->constrained()
-                ->cascadeOnDelete();
+            $table->unsignedBigInteger('organization_id');
 
             $table->unsignedBigInteger('store_id');
 
@@ -89,9 +101,8 @@ return new class extends Migration
             $table->unsignedBigInteger('quotation_line_id');
 
             /*
-             * Nullable only for a manual confirmation recorded at issue time for
-             * a line that had no request: the user attests availability without
-             * naming a supplier inside the ERP.
+             * Nullable for a manual confirmation when no single supplier is
+             * known: the user attests availability without the ERP naming one.
              */
             $table->unsignedBigInteger('supplier_id')
                 ->nullable();
@@ -120,15 +131,11 @@ return new class extends Migration
             $table->string('status', 24)
                 ->default('pending');
 
-            $table->foreignId('requested_by_user_id')
-                ->nullable()
-                ->constrained('users')
-                ->nullOnDelete();
+            $table->unsignedBigInteger('requested_by_user_id')
+                ->nullable();
 
-            $table->foreignId('resolved_by_user_id')
-                ->nullable()
-                ->constrained('users')
-                ->nullOnDelete();
+            $table->unsignedBigInteger('resolved_by_user_id')
+                ->nullable();
 
             $table->timestamp('requested_at');
 
@@ -139,6 +146,12 @@ return new class extends Migration
                 ->nullable();
 
             $table->timestamps();
+
+            /*
+            |--------------------------------------------------------------------------
+            | Uniques / indexes
+            |--------------------------------------------------------------------------
+            */
 
             $table->unique(
                 ['organization_id', 'id'],
@@ -159,6 +172,17 @@ return new class extends Migration
                 ['organization_id', 'supplier_id', 'status'],
                 'qsar_supplier_status_idx'
             );
+
+            /*
+            |--------------------------------------------------------------------------
+            | Foreign keys
+            |--------------------------------------------------------------------------
+            */
+
+            $table->foreign('organization_id', 'qsar_org_fk')
+                ->references('id')
+                ->on('organizations')
+                ->cascadeOnDelete();
 
             $table->foreign(
                 ['organization_id', 'store_id'],
@@ -211,11 +235,25 @@ return new class extends Migration
                 ->references(['organization_id', 'id'])
                 ->on('non_stock_items')
                 ->restrictOnDelete();
+
+            /*
+             * Single-column nullable actor FKs: SET NULL is valid here.
+             */
+            $table->foreign('requested_by_user_id', 'qsar_requested_by_fk')
+                ->references('id')
+                ->on('users')
+                ->nullOnDelete();
+
+            $table->foreign('resolved_by_user_id', 'qsar_resolved_by_fk')
+                ->references('id')
+                ->on('users')
+                ->nullOnDelete();
         });
     }
 
     public function down(): void
     {
+        // Dropping a table drops its own named constraints and indexes.
         Schema::dropIfExists('quotation_supplier_availability_requests');
 
         Schema::dropIfExists('product_suppliers');
