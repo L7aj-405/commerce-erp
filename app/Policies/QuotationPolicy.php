@@ -57,7 +57,9 @@ class QuotationPolicy
 
     public function convert(User $user, Quotation $quotation): bool
     {
-        return in_array($quotation->status, [QuotationStatus::Issued, QuotationStatus::Accepted, QuotationStatus::Expired, QuotationStatus::Converted], true)
+        // Converted stays allowed so a repeated submit reaches the action's
+        // idempotent "existing order" answer instead of a 403.
+        return in_array($quotation->status, [QuotationStatus::Accepted, QuotationStatus::Converted], true)
             && $this->allowed($user, $quotation, 'quotations.convert');
     }
 

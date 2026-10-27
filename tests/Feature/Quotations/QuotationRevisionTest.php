@@ -266,7 +266,7 @@ class QuotationRevisionTest extends QuotationTestCase
             // expected
         }
 
-        $result = app(ConvertQuotationToSalesOrderAction::class)->execute($owner, $issuedRevision->fresh(), ['warehouse_id' => $warehouse->id]);
+        $result = app(ConvertQuotationToSalesOrderAction::class)->execute($owner, $this->acceptQuotation($owner, $issuedRevision->fresh()), ['warehouse_id' => $warehouse->id]);
         $this->assertSame(QuotationStatus::Converted, $issuedRevision->fresh()->status);
         $this->assertNotNull($result['order']->getKey());
     }

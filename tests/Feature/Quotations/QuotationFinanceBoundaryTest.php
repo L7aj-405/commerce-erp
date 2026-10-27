@@ -58,7 +58,7 @@ class QuotationFinanceBoundaryTest extends QuotationTestCase
         $this->addCatalogQuotationLine($owner, $quotation, $variant, ['quantity' => '2']);
         $issued = $this->issueQuotation($owner, $quotation);
 
-        $order = app(ConvertQuotationToSalesOrderAction::class)->execute($owner, $issued, ['warehouse_id' => $warehouse->id])['order'];
+        $order = app(ConvertQuotationToSalesOrderAction::class)->execute($owner, $this->acceptQuotation($owner, $issued), ['warehouse_id' => $warehouse->id])['order'];
 
         $this->assertSame(SalesOrderStatus::Draft, $order->status);
         $this->assertSame(SalesOrderPaymentStatus::Unpaid, $order->payment_status);
@@ -96,7 +96,7 @@ class QuotationFinanceBoundaryTest extends QuotationTestCase
         $this->assertSame('1330.0000', $issued->tax_total);
         $this->assertSame('7980.0000', $issued->total_incl_tax);
 
-        $order = app(ConvertQuotationToSalesOrderAction::class)->execute($owner, $issued, ['warehouse_id' => $warehouse->id])['order']->fresh();
+        $order = app(ConvertQuotationToSalesOrderAction::class)->execute($owner, $this->acceptQuotation($owner, $issued), ['warehouse_id' => $warehouse->id])['order']->fresh();
         $order = app(ConfirmSalesOrderAction::class)->execute($owner, $order)->fresh();
         $invoice = app(CreateFullInvoiceFromSalesOrderAction::class)->execute($owner, $order)->fresh();
 
