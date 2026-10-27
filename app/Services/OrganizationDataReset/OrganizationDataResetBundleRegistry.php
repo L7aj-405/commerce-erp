@@ -50,6 +50,7 @@ class OrganizationDataResetBundleRegistry
                 'finance_expected_collections', 'payments', 'commission_entries',
                 'delivery_note_lines', 'delivery_notes',
                 'invoice_lines', 'invoices', 'invoice_families',
+                'quotation_supplier_availability_requests',
                 'quotation_lines', 'quotations',
                 'out_of_stock_articles',
                 'sales_order_procurements',
@@ -101,6 +102,7 @@ class OrganizationDataResetBundleRegistry
                 'inventory_reservations', 'inventory_movements',
                 'stock_transfers', 'inventory_balances',
                 'warehouse_replenishment_overrides', 'warehouse_replenishment_settings',
+                'quotation_supplier_availability_requests', 'product_suppliers',
                 'non_stock_items', 'product_variants', 'products',
                 'categories', 'brands',
             ], [
@@ -115,6 +117,7 @@ class OrganizationDataResetBundleRegistry
             ],
             OrganizationDataResetScope::SuppliersAndPurchasing => array_merge(
                 $this->tables($scope, [
+                    'quotation_supplier_availability_requests', 'product_suppliers',
                     'sales_order_procurements',
                 ]),
                 [

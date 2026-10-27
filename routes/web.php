@@ -77,6 +77,7 @@ use App\Http\Controllers\Quotations\QuotationEmailController;
 use App\Http\Controllers\Quotations\QuotationLineController;
 use App\Http\Controllers\Quotations\QuotationRenderingController;
 use App\Http\Controllers\Quotations\QuotationSettingsController;
+use App\Http\Controllers\Quotations\QuotationSourcingController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\Sales\CustomerController;
 use App\Http\Controllers\Sales\SalesOrderController;
@@ -582,6 +583,11 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
     Route::post('/quotations/{quotation}/lines', [QuotationLineController::class, 'store'])->name('quotations.lines.store');
     Route::patch('/quotations/{quotation}/lines/{line}', [QuotationLineController::class, 'update'])->name('quotations.lines.update');
     Route::delete('/quotations/{quotation}/lines/{line}', [QuotationLineController::class, 'destroy'])->name('quotations.lines.destroy');
+    // Internal supplier availability tracking (never on the customer document).
+    Route::get('/quotations/{quotation}/lines/{line}/supplier-options', [QuotationSourcingController::class, 'supplierOptions'])->name('quotations.sourcing.supplier-options');
+    Route::post('/quotations/{quotation}/lines/{line}/supplier-requests', [QuotationSourcingController::class, 'store'])->name('quotations.sourcing.store');
+    Route::patch('/quotations/{quotation}/supplier-requests/{supplierRequest}', [QuotationSourcingController::class, 'record'])->name('quotations.sourcing.record');
+    Route::post('/quotations/{quotation}/supplier-requests/{supplierRequest}/cancel', [QuotationSourcingController::class, 'cancel'])->name('quotations.sourcing.cancel');
 
     Route::get('/delivery-notes', [DeliveryNoteController::class, 'index'])->name('delivery-notes.index');
     Route::get('/delivery-notes/{deliveryNote}', [DeliveryNoteController::class, 'show'])->name('delivery-notes.show');

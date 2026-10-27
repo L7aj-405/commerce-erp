@@ -55,6 +55,12 @@ class Quotation extends Model
         return $this->hasMany(QuotationLine::class)->orderBy('position');
     }
 
+    /** Internal supplier availability tracking. Never part of the customer document. */
+    public function supplierAvailabilityRequests(): HasMany
+    {
+        return $this->hasMany(QuotationSupplierAvailabilityRequest::class);
+    }
+
     public function createdBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by_user_id');
