@@ -7,6 +7,7 @@ use App\Enums\QuotationLineType;
 use App\Enums\SalesOrderDiscountType;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class QuotationLine extends Model
 {
@@ -49,5 +50,10 @@ class QuotationLine extends Model
     public function nonStockItem(): BelongsTo
     {
         return $this->belongsTo(NonStockItem::class);
+    }
+
+    public function supplierAvailabilityRequests(): HasMany
+    {
+        return $this->hasMany(QuotationSupplierAvailabilityRequest::class);
     }
 }

@@ -26,6 +26,11 @@ class RemoveQuotationLineAction
 
             $removed = ['line_id' => $line->getKey(), 'description' => $line->description, 'total_incl_tax' => $line->total_incl_tax];
             $nonStockId = $line->non_stock_item_id;
+            // Internal sourcing requests only exist for this draft line; the FK
+            // is RESTRICT, so they are removed explicitly with it.
+            if ($removedRequests = $line->supplierAvailabilityRequests()->delete()) {
+                $removed['supplier_availability_requests_removed'] = $removedRequests;
+            }
             $line->delete();
 
             if ($nonStockId) {

@@ -25,6 +25,7 @@ use App\Services\FollowUps\FollowUpQuery;
 use App\Services\OrganizationOutboundMailService;
 use App\Services\ProductPriceResolver;
 use App\Services\QuotationDocumentSettings;
+use App\Services\QuotationSourcing;
 use App\Services\WhatsAppContactLinkResolver;
 use App\Support\BusinessTime;
 use App\Support\Decimal;
@@ -156,6 +157,7 @@ class QuotationController extends Controller
         DocumentStampRenderer $stampRenderer,
         WhatsAppContactLinkResolver $whatsapp,
         FollowUpQuery $followUps,
+        QuotationSourcing $sourcing,
     ): Response
     {
         $this->authorize('view', $quotation);
@@ -219,6 +221,8 @@ class QuotationController extends Controller
             'followUps' => $followUps->panel($request->user(), $quotation->organization, 'quotation_id', (int) $quotation->getKey(),
                 ['customer_id' => $quotation->customer_id, 'quotation_id' => (int) $quotation->getKey()], (int) $quotation->store_id),
             'isCurrentVersion' => $isCurrentVersion,
+            // Internal sourcing state — editor only, never part of the PDF payload.
+            'sourcing' => $quotation->status->isEditable() ? array_values($sourcing->evaluate($quotation)) : null,
             'history' => $history,
             'sharing' => $canShare ? [
                 'pdfUrl' => $sharePdfUrl,
@@ -250,6 +254,11 @@ class QuotationController extends Controller
                 'createCustomer' => $request->user()->hasPermission($quotation->organization_id, 'customers.create'),
                 'configureMail' => $request->user()->hasPermission($quotation->organization_id, 'settings.update'),
                 'stamp' => $request->user()->can('stamp', $quotation) && ! $quotation->stampApposition,
+                'requestSupplierAvailability' => $request->user()->can('update', $quotation)
+                    && $request->user()->hasPermission($quotation->organization_id, 'suppliers.view'),
+                'recordSupplierAvailability' => $quotation->status->isEditable()
+                    && $request->user()->hasPermission($quotation->organization_id, 'procurement.manage'),
+                'overrideSupplierAvailability' => $request->user()->hasPermission($quotation->organization_id, 'quotations.override_supplier_availability'),
             ],
         ]);
     }
@@ -306,7 +315,8 @@ class QuotationController extends Controller
     public function issue(Request $request, Quotation $quotation, IssueQuotationAction $action): RedirectResponse
     {
         $this->authorize('issue', $quotation);
-        $action->execute($request->user(), $quotation);
+        $data = $request->validate(['confirm_supplier_availability' => ['sometimes', 'boolean']]);
+        $action->execute($request->user(), $quotation, (bool) ($data['confirm_supplier_availability'] ?? false));
 
         return back();
     }

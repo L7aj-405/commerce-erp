@@ -8,6 +8,7 @@ import StampDocumentAction from "@/components/documents/StampDocumentAction";
 import { useI18n } from "@/i18n";
 import SalesLayout from "@/layouts/SalesLayout";
 import LineGrid, { type QLine } from "./LineGrid";
+import { IssueSourcingDialog, type LineSourcing } from "./Sourcing";
 import {
     formatDate,
     formatDateTime,
@@ -103,6 +104,8 @@ type Props = {
     isPastValidity: boolean;
     isCurrentVersion: boolean;
     history: HistoryEntry[];
+    /** Internal supplier-sourcing state; null once the Devis is no longer a draft. */
+    sourcing: LineSourcing[] | null;
     sharing: Sharing | null;
     mailConfigured: boolean;
     stamp: { applied: boolean; appliedAt: string | null; unavailable: boolean };
@@ -117,6 +120,9 @@ type Props = {
         createCustomer: boolean;
         configureMail: boolean;
         stamp: boolean;
+        requestSupplierAvailability: boolean;
+        recordSupplierAvailability: boolean;
+        overrideSupplierAvailability: boolean;
     };
     followUps: FollowUpPanelData;
 };
@@ -132,6 +138,7 @@ export default function QuotationShow({
     isPastValidity,
     isCurrentVersion,
     history,
+    sourcing,
     sharing,
     mailConfigured,
     stamp,
@@ -167,7 +174,11 @@ export default function QuotationShow({
         notes: quotation.notes ?? "",
         terms: quotation.terms ?? "",
     });
-    const issueForm = useForm({});
+    const issueForm = useForm<{ confirm_supplier_availability: boolean }>({
+        confirm_supplier_availability: false,
+    });
+    const [sourcingGateOpen, setSourcingGateOpen] = useState(false);
+    const unresolvedSourcing = (sourcing ?? []).filter((l) => !l.resolved);
     const decideForm = useForm({ reason: "" });
     const reviseForm = useForm({ reason: "" });
     const convertForm = useForm<{ warehouse_id: number | null }>({
@@ -181,10 +192,24 @@ export default function QuotationShow({
         e.preventDefault();
         header.patch(`/quotations/${quotation.id}`, { preserveScroll: true });
     };
-    const issue = () =>
+    const submitIssue = (confirmSupplierAvailability: boolean) => {
+        issueForm.transform(() => ({
+            confirm_supplier_availability: confirmSupplierAvailability,
+        }));
         issueForm.post(`/quotations/${quotation.id}/issue`, {
             preserveScroll: true,
+            onSuccess: () => setSourcingGateOpen(false),
+            onError: (errors: Record<string, string>) => {
+                if (errors.sourcing) setSourcingGateOpen(true);
+            },
         });
+    };
+    // Soft gate: unresolved supplier sourcing opens the warning first. The
+    // backend IssueQuotationAction enforces the same rule regardless.
+    const issue = () =>
+        unresolvedSourcing.length > 0
+            ? setSourcingGateOpen(true)
+            : submitIssue(false);
     const accept = () =>
         decideForm.post(`/quotations/${quotation.id}/accept`, {
             preserveScroll: true,
@@ -471,6 +496,13 @@ export default function QuotationShow({
                                 lines={quotation.lines}
                                 searchUrl={searchUrl}
                                 taxRates={taxRates}
+                                sourcing={Object.fromEntries(
+                                    (sourcing ?? []).map((l) => [l.line_id, l]),
+                                )}
+                                sourcingCan={{
+                                    request: can.requestSupplierAvailability,
+                                    record: can.recordSupplierAvailability,
+                                }}
                             />
                         ) : (
                             <div className="overflow-x-auto">
@@ -714,6 +746,21 @@ export default function QuotationShow({
                                                 ? t("quotations.issueRevision")
                                                 : t("quotations.issue")}
                                         </Button>
+                                    )}
+                                    {can.issue && (
+                                        <IssueSourcingDialog
+                                            open={sourcingGateOpen}
+                                            onClose={() =>
+                                                setSourcingGateOpen(false)
+                                            }
+                                            lines={unresolvedSourcing}
+                                            canConfirm={
+                                                can.overrideSupplierAvailability
+                                            }
+                                            processing={issueForm.processing}
+                                            error={(issueForm.errors as Record<string, string>).sourcing}
+                                            onConfirm={() => submitIssue(true)}
+                                        />
                                     )}
                                 </>
                             ) : (

@@ -5,6 +5,7 @@ import { useSerializedByKey } from "@/hooks/useSerializedByKey";
 import { formatMoney, formatQuantity } from "@/utils/format";
 import { router } from "@inertiajs/react";
 import { useEffect, useRef, useState } from "react";
+import { SourcingStrip, type LineSourcing, type SourcingCan } from "./Sourcing";
 
 export type QLine = {
     id: number;
@@ -54,6 +55,9 @@ type Props = {
     lines: QLine[];
     searchUrl: string;
     taxRates: TaxRate[];
+    /** Internal sourcing state per line id (draft only). */
+    sourcing?: Record<number, LineSourcing>;
+    sourcingCan?: SourcingCan;
 };
 type Draft = {
     quantity: string;
@@ -63,7 +67,7 @@ type Draft = {
     discount_unit: "%" | "DH";
 };
 
-const RELOAD_ONLY = ["quotation", "hasDiscount", "errors", "flash"];
+const RELOAD_ONLY = ["quotation", "hasDiscount", "sourcing", "errors", "flash"];
 
 function draftFromLine(l: QLine): Draft {
     return {
@@ -90,6 +94,8 @@ export default function LineGrid({
     lines,
     searchUrl,
     taxRates,
+    sourcing = {},
+    sourcingCan = { request: false, record: false },
 }: Props) {
     const { t } = useI18n();
     const pending = usePendingKeys();
@@ -280,6 +286,11 @@ export default function LineGrid({
                                                 ? ` · ${line.unit_label}`
                                                 : ""}
                                         </span>
+                                        <SourcingStrip
+                                            quotationId={quotationId}
+                                            sourcing={sourcing[line.id]}
+                                            can={sourcingCan}
+                                        />
                                         {rowError[line.id] && (
                                             <p className="mt-1 text-xs text-danger">
                                                 {rowError[line.id]}
@@ -467,6 +478,11 @@ export default function LineGrid({
                                             .filter(Boolean)
                                             .join(" · ")}
                                     </p>
+                                    <SourcingStrip
+                                        quotationId={quotationId}
+                                        sourcing={sourcing[line.id]}
+                                        can={sourcingCan}
+                                    />
                                     {rowError[line.id] && (
                                         <p className="mt-1 text-xs text-danger">
                                             {rowError[line.id]}

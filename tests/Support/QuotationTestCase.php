@@ -67,9 +67,18 @@ abstract class QuotationTestCase extends DocumentTestCase
         return app(SaveQuotationLineAction::class)->execute($actor, $quotation, $payload);
     }
 
-    protected function issueQuotation(User $actor, Quotation $quotation): Quotation
+    /**
+     * Lifecycle fixtures carry no stock / non-stock articles: those suites test
+     * numbering and state, not sourcing, so an actor allowed to attest supplier
+     * availability does so. The sourcing gate itself is covered by
+     * QuotationSupplierSourcingTest, which passes the flag explicitly.
+     */
+    protected function issueQuotation(User $actor, Quotation $quotation, ?bool $confirmSupplierAvailability = null): Quotation
     {
-        return app(IssueQuotationAction::class)->execute($actor, $quotation)->fresh(['lines']);
+        $confirm = $confirmSupplierAvailability
+            ?? $actor->hasPermission($quotation->organization_id, 'quotations.override_supplier_availability');
+
+        return app(IssueQuotationAction::class)->execute($actor, $quotation, $confirm)->fresh(['lines']);
     }
 
     /** Explicit customer acceptance — the required step before conversion. */
