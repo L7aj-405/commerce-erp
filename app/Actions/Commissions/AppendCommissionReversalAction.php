@@ -68,7 +68,10 @@ final class AppendCommissionReversalAction
         $entry->customer_return_id = $customerReturn?->getKey();
         $entry->customer_return_line_id = $customerReturnLine?->getKey();
         $entry->entry_type = $entryType;
-        $entry->status = CommissionEntry::STATUS_PENDING;
+        // A reversal of a 0% tier sale is just as non-payable as its source.
+        $entry->status = $source->status === CommissionEntry::STATUS_NO_COMMISSION
+            ? CommissionEntry::STATUS_NO_COMMISSION
+            : CommissionEntry::STATUS_PENDING;
         $entry->source_entry_id = $source->getKey();
         $entry->source_key = $sourceKey;
         $entry->product_name_snapshot = $source->product_name_snapshot;

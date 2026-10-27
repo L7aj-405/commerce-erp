@@ -13,7 +13,10 @@ use App\Models\CommissionRuleSet;
 use App\Models\CustomerReturn;
 use App\Models\CustomerReturnLine;
 use App\Models\User;
+use App\Models\UserNotification;
+use App\Services\Commissions\CommissionDashboardService;
 use App\Services\Commissions\CommissionReconciliationService;
+use App\Services\Commissions\CommissionReportFilters;
 use App\Services\Commissions\CommissionRuleManager;
 use App\Services\OrganizationBackups\OrganizationBackupSchema;
 use App\Services\OrganizationBackups\OrganizationBackupExporter;
@@ -21,6 +24,7 @@ use App\Services\PermissionProvisioner;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use Inertia\Testing\AssertableInertia as Assert;
 use Tests\Support\PosTestCase;
 
 class CommissionLedgerTest extends PosTestCase
@@ -271,6 +275,265 @@ class CommissionLedgerTest extends PosTestCase
             'salesperson_name_snapshot' => $entry->salesperson_name_snapshot,
             'commission_amount' => $entry->commission_amount,
         ]);
+    }
+
+    public function test_zero_rate_tier_sale_is_kept_with_snapshots_as_no_commission(): void
+    {
+        // 200 revenue, 190 cost: 5% margin falls in the "< 10%" tier configured at 0%.
+        [$owner, $organization, $store, $warehouse, $variant] = $this->stockTenant('95', '100');
+        $this->activateRule($owner, $organization);
+        $order = $this->createDraftOrder($owner, $organization, $store);
+        $this->addCatalogLine($owner, $order, $variant, $warehouse, ['quantity' => '2']);
+        app(ConfirmSalesOrderAction::class)->execute($owner, $order);
+
+        $entry = CommissionEntry::query()->sole();
+        $this->assertSame(CommissionEntry::TYPE_SALE, $entry->entry_type);
+        $this->assertSame(CommissionEntry::STATUS_NO_COMMISSION, $entry->status);
+        $this->assertSame('200.0000', $entry->revenue_ht_snapshot);
+        $this->assertSame('10.0000', $entry->margin_amount_snapshot);
+        $this->assertSame('5.0000', $entry->margin_rate_snapshot);
+        $this->assertSame('0.0000', $entry->commission_rate_snapshot);
+        $this->assertSame('0.0000', $entry->commission_amount);
+        $this->assertNull($entry->rule_min_margin_snapshot);
+        $this->assertSame('10.0000', $entry->rule_max_margin_snapshot);
+    }
+
+    public function test_finance_register_lists_no_commission_entry_with_margin_columns_and_zero_payable_totals(): void
+    {
+        [$owner, $organization, $store, $warehouse, $variant] = $this->stockTenant('95', '100');
+        $this->activateRule($owner, $organization);
+        $order = $this->createDraftOrder($owner, $organization, $store);
+        $this->addCatalogLine($owner, $order, $variant, $warehouse, ['quantity' => '2']);
+        app(ConfirmSalesOrderAction::class)->execute($owner, $order);
+        $entry = CommissionEntry::query()->sole();
+
+        $page = fn (array $query = []) => $this->actingAs($owner)->get(route('finance.commissions.ledger.index', $query))->assertOk();
+        $page()->assertInertia(fn (Assert $page) => $page->component('Finance/CommissionLedger')
+            ->has('entries.data', 1)
+            ->where('entries.data.0.id', $entry->id)
+            ->where('entries.data.0.status', 'no_commission')
+            ->where('entries.data.0.margin_amount_snapshot', '10.0000')
+            ->where('entries.data.0.margin_percent', '5.0000')
+            ->where('entries.data.0.commission_rate_snapshot', '0.0000')
+            ->where('entries.data.0.commission_amount', '0.0000')
+            ->where('summary.pending', '0.0000')
+            ->where('summary.approved', '0.0000')
+            ->where('summary.paid', '0.0000')
+            ->where('summary.no_commission_count', 1)
+            ->where('summary.entry_count', 1));
+        $page(['status' => 'no_commission'])->assertInertia(fn (Assert $page) => $page->has('entries.data', 1));
+        $page(['status' => 'pending'])->assertInertia(fn (Assert $page) => $page->has('entries.data', 0));
+    }
+
+    public function test_backend_refuses_to_approve_or_pay_a_no_commission_entry_even_in_a_mixed_batch(): void
+    {
+        [$owner, $organization, $store, $warehouse, $zeroVariant] = $this->stockTenant('95', '100');
+        $paidVariant = $this->createProduct($organization, 'Payable product', null, ['purchase_price' => '40', 'default_sale_price' => '100'])->variants->first();
+        $this->openStock($owner, $organization, $warehouse, $paidVariant, '30');
+        $this->activateRule($owner, $organization);
+        $order = $this->createDraftOrder($owner, $organization, $store);
+        $this->addCatalogLine($owner, $order, $zeroVariant, $warehouse);
+        $this->addCatalogLine($owner, $order, $paidVariant, $warehouse);
+        app(ConfirmSalesOrderAction::class)->execute($owner, $order);
+        $zero = CommissionEntry::query()->where('status', CommissionEntry::STATUS_NO_COMMISSION)->sole();
+        $payable = CommissionEntry::query()->where('status', CommissionEntry::STATUS_PENDING)->sole();
+
+        $this->actingAs($owner)->post(route('finance.commissions.ledger.approve'), ['entry_ids' => [$zero->id]])->assertSessionHasErrors('entries');
+        $this->actingAs($owner)->post(route('finance.commissions.ledger.approve'), ['entry_ids' => [$payable->id, $zero->id]])->assertSessionHasErrors('entries');
+        $this->assertSame(CommissionEntry::STATUS_PENDING, $payable->fresh()->status, 'A batch containing a 0% entry is refused atomically.');
+        $this->withFreshAuthentication(1)->actingAs($owner)->post(route('finance.commissions.ledger.mark-paid'), ['entry_ids' => [$zero->id]])->assertSessionHasErrors('entries');
+
+        $zero = $zero->fresh();
+        $this->assertSame(CommissionEntry::STATUS_NO_COMMISSION, $zero->status);
+        $this->assertNull($zero->approved_at);
+        $this->assertNull($zero->paid_at);
+        $this->assertSame(0, UserNotification::query()->count());
+
+        // Normal positive entry still runs pending → approved → paid.
+        $this->actingAs($owner)->post(route('finance.commissions.ledger.approve'), ['entry_ids' => [$payable->id]])->assertSessionHasNoErrors();
+        $this->assertSame(CommissionEntry::STATUS_APPROVED, $payable->fresh()->status);
+        $this->withFreshAuthentication(1)->actingAs($owner)->post(route('finance.commissions.ledger.mark-paid'), ['entry_ids' => [$payable->id]])->assertSessionHasNoErrors();
+        $this->assertSame(CommissionEntry::STATUS_PAID, $payable->fresh()->status);
+    }
+
+    public function test_dashboard_keeps_zero_rate_revenue_and_margin_but_excludes_it_from_payable_totals(): void
+    {
+        [$owner, $organization, $store, $warehouse, $zeroVariant] = $this->stockTenant('95', '100');
+        $paidVariant = $this->createProduct($organization, 'Payable product', null, ['purchase_price' => '40', 'default_sale_price' => '100'])->variants->first();
+        $this->openStock($owner, $organization, $warehouse, $paidVariant, '30');
+        $this->activateRule($owner, $organization);
+        $order = $this->createDraftOrder($owner, $organization, $store);
+        $this->addCatalogLine($owner, $order, $zeroVariant, $warehouse);
+        $this->addCatalogLine($owner, $order, $paidVariant, $warehouse);
+        app(ConfirmSalesOrderAction::class)->execute($owner, $order);
+
+        $service = app(CommissionDashboardService::class);
+        $filters = new CommissionReportFilters('custom', now()->toDateString(), now()->toDateString());
+        $kpis = $service->kpis($organization, $filters);
+        // Revenue 100 + 100, margin 5 + 60; only the 60% line earns 10% = 6.
+        $this->assertSame('200.0000', $kpis['revenue']);
+        $this->assertSame('65.0000', $kpis['margin']);
+        $this->assertSame('6.0000', $kpis['pending']);
+        $this->assertSame('0.0000', $kpis['approved']);
+        $this->assertSame('0.0000', $kpis['paid']);
+        $this->assertSame(2, $kpis['entry_count']);
+
+        $statuses = collect($service->statusBreakdown($organization, $filters))->keyBy('status');
+        $this->assertSame(['count' => 1, 'amount' => '6.0000'], ['count' => $statuses['pending']['count'], 'amount' => $statuses['pending']['amount']]);
+        $this->assertSame(1, $statuses['no_commission']['count']);
+        $this->assertSame('0.0000', $statuses['no_commission']['amount']);
+
+        $noCommissionOnly = new CommissionReportFilters('custom', now()->toDateString(), now()->toDateString(), status: CommissionEntry::STATUS_NO_COMMISSION);
+        $kpis = $service->kpis($organization, $noCommissionOnly);
+        $this->assertSame('100.0000', $kpis['revenue']);
+        $this->assertSame('5.0000', $kpis['margin']);
+        $this->assertSame('0.0000', $kpis['pending']);
+        $this->assertSame('0.0000', $kpis['net']);
+    }
+
+    public function test_return_of_a_no_commission_sale_is_a_visible_non_payable_reversal(): void
+    {
+        [$owner, $organization, $store, $warehouse, $zeroVariant] = $this->stockTenant('95', '100');
+        $paidVariant = $this->createProduct($organization, 'Payable product', null, ['purchase_price' => '40', 'default_sale_price' => '100'])->variants->first();
+        $this->openStock($owner, $organization, $warehouse, $paidVariant, '30');
+        $this->activateRule($owner, $organization);
+        $order = $this->createDraftOrder($owner, $organization, $store);
+        $zeroLine = $this->addCatalogLine($owner, $order, $zeroVariant, $warehouse, ['quantity' => '2']);
+        $paidLine = $this->addCatalogLine($owner, $order, $paidVariant, $warehouse, ['quantity' => '2']);
+        $order = app(ConfirmSalesOrderAction::class)->execute($owner, $order)->fresh();
+        $zeroSale = CommissionEntry::query()->where('sales_order_line_id', $zeroLine->id)->sole();
+        $paidSale = CommissionEntry::query()->where('sales_order_line_id', $paidLine->id)->sole();
+        $this->assertSame(CommissionEntry::STATUS_NO_COMMISSION, $zeroSale->status);
+        $this->assertSame(CommissionEntry::STATUS_PENDING, $paidSale->status);
+
+        app(ReceiveCustomerReturnAction::class)->execute($owner, $this->makeReturn($order, $zeroLine->fresh(), $warehouse, $zeroVariant, '1', 'RET-ZERO-1'));
+        app(ReceiveCustomerReturnAction::class)->execute($owner, $this->makeReturn($order, $paidLine->fresh(), $warehouse, $paidVariant, '1', 'RET-PAID-1'));
+
+        // Zero-rate reversal: same snapshots/type as before, but non-payable.
+        $zeroReversal = CommissionEntry::query()->where('source_entry_id', $zeroSale->id)->sole();
+        $this->assertSame(CommissionEntry::TYPE_RETURN_REVERSAL, $zeroReversal->entry_type);
+        $this->assertSame(CommissionEntry::STATUS_NO_COMMISSION, $zeroReversal->status);
+        $this->assertSame('-1.0000', $zeroReversal->quantity_snapshot);
+        $this->assertSame('-100.0000', $zeroReversal->revenue_ht_snapshot);
+        $this->assertSame('-5.0000', $zeroReversal->margin_amount_snapshot);
+        $this->assertSame('0.0000', $zeroReversal->commission_rate_snapshot);
+        $this->assertSame('0.0000', $zeroReversal->commission_amount);
+
+        // Payable reversal: unchanged behaviour.
+        $paidReversal = CommissionEntry::query()->where('source_entry_id', $paidSale->id)->sole();
+        $this->assertSame(CommissionEntry::TYPE_RETURN_REVERSAL, $paidReversal->entry_type);
+        $this->assertSame(CommissionEntry::STATUS_PENDING, $paidReversal->status);
+        $this->assertSame('-6.0000', $paidReversal->commission_amount);
+
+        $this->actingAs($owner)->get(route('finance.commissions.ledger.index', ['status' => 'no_commission']))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page->has('entries.data', 2)
+                ->where('entries.data.0.id', $zeroReversal->id)
+                ->where('entries.data.0.entry_type', CommissionEntry::TYPE_RETURN_REVERSAL)
+                ->where('summary.no_commission_count', 2));
+
+        $this->actingAs($owner)->post(route('finance.commissions.ledger.approve'), ['entry_ids' => [$zeroReversal->id]])->assertSessionHasErrors('entries');
+        $this->withFreshAuthentication(1)->actingAs($owner)->post(route('finance.commissions.ledger.mark-paid'), ['entry_ids' => [$zeroReversal->id]])->assertSessionHasErrors('entries');
+        $this->assertSame(CommissionEntry::STATUS_NO_COMMISSION, $zeroReversal->fresh()->status);
+
+        $this->actingAs($owner)->post(route('finance.commissions.ledger.approve'), ['entry_ids' => [$paidReversal->id]])->assertSessionHasNoErrors();
+        $this->assertSame(CommissionEntry::STATUS_APPROVED, $paidReversal->fresh()->status);
+    }
+
+    public function test_cancellation_of_a_no_commission_sale_appends_a_non_payable_reversal(): void
+    {
+        [$owner, $organization, $store, $warehouse, $variant] = $this->stockTenant('95', '100');
+        $this->activateRule($owner, $organization);
+        $order = $this->createDraftOrder($owner, $organization, $store);
+        $this->addCatalogLine($owner, $order, $variant, $warehouse);
+        $order = app(ConfirmSalesOrderAction::class)->execute($owner, $order)->fresh();
+        $sale = CommissionEntry::query()->sole();
+
+        app(CancelSalesOrderAction::class)->execute($owner, $order, 'Annulation test');
+
+        $cancellation = CommissionEntry::query()->where('source_entry_id', $sale->id)->sole();
+        $this->assertSame(CommissionEntry::TYPE_CANCELLATION, $cancellation->entry_type);
+        $this->assertSame(CommissionEntry::STATUS_NO_COMMISSION, $cancellation->status);
+        $this->assertSame('-1.0000', $cancellation->quantity_snapshot);
+        $this->assertSame('0.0000', $cancellation->commission_amount);
+        $this->assertSame(CommissionEntry::STATUS_NO_COMMISSION, $sale->fresh()->status);
+    }
+
+    public function test_backfill_relabels_only_unambiguous_zero_rate_sales_and_their_zero_reversals(): void
+    {
+        [$owner, $organization, $store, $warehouse, $variant] = $this->stockTenant();
+        $this->activateRule($owner, $organization);
+        $order = $this->createDraftOrder($owner, $organization, $store);
+        $this->addCatalogLine($owner, $order, $variant, $warehouse);
+        app(ConfirmSalesOrderAction::class)->execute($owner, $order);
+        $template = (array) DB::table('commission_entries')->sole();
+        unset($template['id']);
+        $insert = function (string $key, array $overrides) use ($template) {
+            return DB::table('commission_entries')->insertGetId(array_replace($template, ['source_key' => 'backfill:'.$key], $overrides));
+        };
+        $zero = ['commission_rate_snapshot' => '0', 'commission_amount' => '0'];
+        $ids = [
+            'sale_pending' => $insert('sale_pending', $zero + ['status' => 'pending']),
+            'sale_approved' => $insert('sale_approved', $zero + ['status' => 'approved', 'approved_by_user_id' => $owner->id, 'approved_at' => now()]),
+            'sale_paid' => $insert('sale_paid', $zero + ['status' => 'paid', 'paid_at' => now()]),
+            'sale_positive_rate_zero_amount' => $insert('positive_rate', ['commission_rate_snapshot' => '5', 'commission_amount' => '0', 'status' => 'pending']),
+            'return_reversal' => $insert('return', $zero + ['entry_type' => 'return_reversal', 'status' => 'pending']),
+            'correction' => $insert('correction', $zero + ['entry_type' => 'correction', 'status' => 'pending']),
+            'cancellation' => $insert('cancellation', $zero + ['entry_type' => 'cancellation', 'status' => 'pending']),
+            'manual_adjustment' => $insert('manual', $zero + ['entry_type' => 'manual_adjustment', 'status' => 'pending']),
+        ];
+        $positive = CommissionEntry::query()->where('source_key', $template['source_key'])->sole();
+        // Reversals linked by source_entry_id (the only relationship the backfill follows).
+        $linked = fn (string $type, int $source, array $overrides = []) => array_replace($zero, [
+            'entry_type' => $type, 'source_entry_id' => $source, 'status' => 'pending',
+            'quantity_snapshot' => '-1', 'revenue_ht_snapshot' => '-100', 'cost_total_snapshot' => '-95', 'margin_amount_snapshot' => '-5',
+        ], $overrides);
+        $ids += [
+            'zero_return' => $insert('zero_return', $linked('return_reversal', $ids['sale_pending'])),
+            'zero_cancellation' => $insert('zero_cancellation', $linked('cancellation', $ids['sale_pending'], ['status' => 'approved', 'approved_by_user_id' => $owner->id, 'approved_at' => now()])),
+            'zero_correction' => $insert('zero_correction', $linked('correction', $ids['sale_approved'])),
+            'zero_return_paid' => $insert('zero_return_paid', $linked('return_reversal', $ids['sale_pending'], ['status' => 'paid', 'paid_at' => now()])),
+            'zero_manual_linked' => $insert('zero_manual_linked', $linked('manual_adjustment', $ids['sale_pending'])),
+            'paid_sale_return' => $insert('paid_sale_return', $linked('return_reversal', $ids['sale_paid'])),
+            'payable_return' => $insert('payable_return', $linked('return_reversal', $positive->id, ['commission_rate_snapshot' => '10', 'commission_amount' => '-6'])),
+            'payable_zero_amount_return' => $insert('payable_zero_return', $linked('return_reversal', $positive->id, ['commission_rate_snapshot' => '10'])),
+        ];
+        $before = DB::table('commission_entries')->orderBy('id')->get()->keyBy('id');
+
+        $migration = require database_path('migrations/2026_10_27_000002_backfill_commission_entries_no_commission_status.php');
+        $migration->up();
+        $migration->up();
+
+        $status = fn (int $id) => DB::table('commission_entries')->where('id', $id)->value('status');
+        $this->assertSame('no_commission', $status($ids['sale_pending']));
+        $this->assertSame('no_commission', $status($ids['sale_approved']));
+        $this->assertNotNull(DB::table('commission_entries')->where('id', $ids['sale_approved'])->value('approved_at'), 'Approval audit trail is kept.');
+        $this->assertSame('paid', $status($ids['sale_paid']));
+        $this->assertSame('pending', $status($ids['sale_positive_rate_zero_amount']));
+        foreach (['return_reversal', 'correction', 'cancellation', 'manual_adjustment'] as $untouched) {
+            $this->assertSame('pending', $status($ids[$untouched]), $untouched);
+        }
+        $this->assertSame('pending', $positive->fresh()->status);
+        // Zero-amount reversals of a now-no_commission sale follow it; nothing else does.
+        $this->assertSame('no_commission', $status($ids['zero_return']));
+        $this->assertSame('no_commission', $status($ids['zero_cancellation']));
+        $this->assertSame('no_commission', $status($ids['zero_correction']));
+        $this->assertSame('paid', $status($ids['zero_return_paid']));
+        $this->assertSame('pending', $status($ids['zero_manual_linked']));
+        $this->assertSame('pending', $status($ids['paid_sale_return']));
+        $this->assertSame('pending', $status($ids['payable_return']));
+        $this->assertSame('pending', $status($ids['payable_zero_amount_return']));
+        foreach (DB::table('commission_entries')->get() as $row) {
+            $original = $before[$row->id];
+            foreach (['quantity_snapshot', 'revenue_ht_snapshot', 'cost_total_snapshot', 'margin_amount_snapshot', 'commission_rate_snapshot', 'commission_amount', 'entry_type', 'source_entry_id', 'approved_at', 'paid_at', 'organization_id'] as $column) {
+                $this->assertEquals($original->{$column}, $row->{$column}, "{$column} of entry {$row->id} must not change");
+            }
+        }
+
+        $migration->down();
+        foreach ($before as $id => $original) {
+            $this->assertSame($original->status, $status($id), "down() restores entry {$id}");
+        }
     }
 
     private function activateRule(User $owner, $organization, string $name = 'Commission', string $from = '2026-01-01', string $topRate = '10'): CommissionRuleSet

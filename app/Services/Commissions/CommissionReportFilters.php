@@ -19,7 +19,7 @@ use Illuminate\Validation\Rule;
 final class CommissionReportFilters
 {
     public const PERIODS = ['today', 'this_week', 'this_month', 'last_month', 'this_year', 'custom'];
-    public const STATUSES = [CommissionEntry::STATUS_PENDING, CommissionEntry::STATUS_APPROVED, CommissionEntry::STATUS_PAID];
+    public const STATUSES = [CommissionEntry::STATUS_PENDING, CommissionEntry::STATUS_APPROVED, CommissionEntry::STATUS_PAID, CommissionEntry::STATUS_NO_COMMISSION];
     public const ENTRY_TYPES = [
         CommissionEntry::TYPE_SALE, CommissionEntry::TYPE_RETURN_REVERSAL, CommissionEntry::TYPE_CORRECTION,
         CommissionEntry::TYPE_CANCELLATION, CommissionEntry::TYPE_MANUAL_ADJUSTMENT,

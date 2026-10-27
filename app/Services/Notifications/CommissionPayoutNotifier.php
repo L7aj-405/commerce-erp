@@ -27,7 +27,9 @@ final class CommissionPayoutNotifier
     public function batch(Organization $organization, Collection $entries, string $status, int|string $batchId): int
     {
         $created = 0;
-        $groups = $entries->filter(fn (CommissionEntry $entry) => $entry->salesperson_id !== null)->groupBy('salesperson_id');
+        $groups = $entries
+            ->filter(fn (CommissionEntry $entry) => $entry->salesperson_id !== null && $entry->status !== CommissionEntry::STATUS_NO_COMMISSION)
+            ->groupBy('salesperson_id');
         $users = User::query()->whereIn('id', $groups->keys())->get()->keyBy('id');
 
         foreach ($groups as $salespersonId => $own) {
