@@ -693,7 +693,8 @@ function StatusBreakdown({ statuses }: { statuses: Props["statuses"] }) {
                             {statusLabels[row.status] ?? row.status}
                         </span>
                         <span className="text-ink">
-                            {formatMoney(row.amount)}{" "}
+                            {/* 0% tier entries are a count, never payable money. */}
+                            {row.status === "no_commission" ? "—" : formatMoney(row.amount)}{" "}
                             <span className="text-xs text-ink-faint">
                                 ·{" "}
                                 {t(

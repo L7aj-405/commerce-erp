@@ -19,6 +19,13 @@ class CommissionEntry extends Model
     public const STATUS_PENDING = 'pending';
     public const STATUS_APPROVED = 'approved';
     public const STATUS_PAID = 'paid';
+    /**
+     * Terminal status of a sale line that was evaluated normally (salesperson,
+     * cost, margin and a matching tier all present) but whose matched tier
+     * rate is 0%: kept for history and margin analytics, never approvable or
+     * payable. Missing data never produces an entry, so it is never this.
+     */
+    public const STATUS_NO_COMMISSION = 'no_commission';
 
     protected $guarded = ['*'];
 

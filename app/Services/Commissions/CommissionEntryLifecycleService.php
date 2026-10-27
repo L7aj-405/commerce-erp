@@ -48,6 +48,14 @@ final class CommissionEntryLifecycleService
             if ($entries->count() !== count($ids)) {
                 abort(404);
             }
+            // Explicit domain guard (not only the from-status check below):
+            // a 0% tier entry is never approvable or payable, and the whole
+            // batch is refused so it cannot slip into a payout notification.
+            if ($entries->contains(fn (CommissionEntry $entry) => $entry->status === CommissionEntry::STATUS_NO_COMMISSION)) {
+                throw ValidationException::withMessages([
+                    'entries' => 'Les écritures sans commission ne peuvent être ni approuvées ni payées.',
+                ]);
+            }
             if ($entries->contains(fn (CommissionEntry $entry) => $entry->status !== $from)) {
                 throw ValidationException::withMessages([
                     'entries' => $from === CommissionEntry::STATUS_PENDING

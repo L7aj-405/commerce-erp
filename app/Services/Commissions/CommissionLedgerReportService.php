@@ -19,11 +19,15 @@ final class CommissionLedgerReportService
             ->when($salespersonId !== null, fn ($query) => $query->where('salesperson_id', $salespersonId))
             ->get(['entry_type', 'status', 'commission_amount']);
 
-        $result = ['gross_earned' => '0.0000', 'reversals' => '0.0000', 'net' => '0.0000', 'pending' => '0.0000', 'approved' => '0.0000', 'paid' => '0.0000', 'entry_count' => $rows->count()];
+        $result = ['gross_earned' => '0.0000', 'reversals' => '0.0000', 'net' => '0.0000', 'pending' => '0.0000', 'approved' => '0.0000', 'paid' => '0.0000', 'no_commission_count' => 0, 'entry_count' => $rows->count()];
         foreach ($rows as $entry) {
             $result['net'] = Decimal::add($result['net'], $entry->commission_amount);
-            $key = $entry->status;
-            $result[$key] = Decimal::add($result[$key], $entry->commission_amount);
+            // Only payable statuses are money buckets; 0% tier entries are counted, never summed as payable.
+            if ($entry->status === CommissionEntry::STATUS_NO_COMMISSION) {
+                $result['no_commission_count']++;
+            } else {
+                $result[$entry->status] = Decimal::add($result[$entry->status], $entry->commission_amount);
+            }
             if ($entry->entry_type === CommissionEntry::TYPE_SALE) {
                 $result['gross_earned'] = Decimal::add($result['gross_earned'], $entry->commission_amount);
             } else {

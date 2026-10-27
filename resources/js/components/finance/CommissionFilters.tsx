@@ -17,7 +17,7 @@ export type CommissionFilterState = {
 export function useCommissionLabels() {
     const { t } = useI18n();
     return {
-        statuses: { pending: t('commissions.pending'), approved: t('commissions.approved'), paid: t('commissions.paid') } as Record<string, string>,
+        statuses: { pending: t('commissions.pending'), approved: t('commissions.approved'), paid: t('commissions.paid'), no_commission: t('commissions.noCommission') } as Record<string, string>,
         types: { sale: t('commissions.sale'), return_reversal: t('commissions.return'), correction: t('commissions.correction'), cancellation: t('commissions.cancellation'), manual_adjustment: t('commissions.adjustment') } as Record<string, string>,
     };
 }

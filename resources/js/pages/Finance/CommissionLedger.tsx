@@ -13,7 +13,7 @@ import type { ReactNode } from 'react';
 
 type Entry = {
     id: number; occurred_at: string; sale_date: string; salesperson_name_snapshot: string | null; product_name_snapshot: string | null;
-    entry_type: string; status: string; margin_amount_snapshot: string; commission_rate_snapshot: string; commission_amount: string;
+    entry_type: string; status: string; margin_amount_snapshot: string; margin_percent: string | null; commission_rate_snapshot: string; commission_amount: string;
     sales_order: { id: number; order_number: string }; customer_return?: { id: number; return_number: string } | null;
 };
 type Page<T> = { data: T[]; links: { url: string | null; label: string; active: boolean }[]; total: number };
@@ -47,7 +47,9 @@ export default function CommissionLedger({ organization, entries, filters, store
         }
         router.post(path, data, { preserveScroll: true, onFinish: () => setProcessing(false), onSuccess: () => setSelected([]) });
     };
-    const allVisible = entries.data.length > 0 && entries.data.every((entry) => selected.includes(entry.id));
+    // 0% tier entries are never approvable or payable, so they are never selectable.
+    const selectable = entries.data.filter((entry) => entry.status !== 'no_commission');
+    const allVisible = selectable.length > 0 && selectable.every((entry) => selected.includes(entry.id));
     const allSelectedHaveStatus = (status: string) => selected.length > 0 && selected.every((id) => entries.data.find((entry) => entry.id === id)?.status === status);
 
     return <ApplicationShell wide>
@@ -79,15 +81,15 @@ export default function CommissionLedger({ organization, entries, filters, store
         </div>}
 
         <section className="overflow-x-auto rounded-card border border-line bg-surface">
-            <table className="erp-table w-full min-w-[980px] text-start text-sm"><thead className="bg-raised text-[11px] uppercase tracking-wide text-ink-faint"><tr>
-                <th className="px-3 py-2"><input aria-label={t('commissions.selectAll')} type="checkbox" checked={allVisible} onChange={() => setSelected(allVisible ? selected.filter((id) => !entries.data.some((entry) => entry.id === id)) : [...new Set([...selected, ...entries.data.map((entry) => entry.id)])])} /></th>
-                <th className="px-3 py-2">{t('common.date')}</th><th className="px-3 py-2">{t('commissions.salesperson')}</th><th className="px-3 py-2">{t('commissions.order')}</th><th className="px-3 py-2">{t('commissions.productLine')}</th><th className="px-3 py-2">{t('commissions.type')}</th><th className="px-3 py-2 text-end">{t('commissions.margin')}</th><th className="px-3 py-2 text-end">{t('commissions.rate')}</th><th className="px-3 py-2 text-end">{t('commissions.commission')}</th><th className="px-3 py-2">{t('commissions.status')}</th>
+            <table className="erp-table w-full min-w-[1060px] text-start text-sm"><thead className="bg-raised text-[11px] uppercase tracking-wide text-ink-faint"><tr>
+                <th className="px-3 py-2"><input aria-label={t('commissions.selectAll')} type="checkbox" checked={allVisible} onChange={() => setSelected(allVisible ? selected.filter((id) => !selectable.some((entry) => entry.id === id)) : [...new Set([...selected, ...selectable.map((entry) => entry.id)])])} /></th>
+                <th className="px-3 py-2">{t('common.date')}</th><th className="px-3 py-2">{t('commissions.salesperson')}</th><th className="px-3 py-2">{t('commissions.order')}</th><th className="px-3 py-2">{t('commissions.productLine')}</th><th className="px-3 py-2">{t('commissions.type')}</th><th className="px-3 py-2 text-end">{t('commissions.margin')}</th><th className="px-3 py-2 text-end">{t('commissions.marginRate')}</th><th className="px-3 py-2 text-end">{t('commissions.commissionRate')}</th><th className="px-3 py-2 text-end">{t('commissions.commission')}</th><th className="px-3 py-2">{t('commissions.status')}</th>
             </tr></thead><tbody>{entries.data.map((entry) => <tr key={entry.id} className="border-t border-line">
-                <td className="px-3 py-2"><input aria-label={`${t('commissions.selectEntry')} ${entry.id}`} type="checkbox" checked={selected.includes(entry.id)} onChange={() => setSelected(selected.includes(entry.id) ? selected.filter((id) => id !== entry.id) : [...selected, entry.id])} /></td>
+                <td className="px-3 py-2"><input aria-label={`${t('commissions.selectEntry')} ${entry.id}`} type="checkbox" checked={selected.includes(entry.id)} disabled={entry.status === 'no_commission'} onChange={() => setSelected(selected.includes(entry.id) ? selected.filter((id) => id !== entry.id) : [...selected, entry.id])} /></td>
                 <td className="px-3 py-2 text-ink-muted">{formatDate(entry.occurred_at)}</td><td className="px-3 py-2">{entry.salesperson_name_snapshot ?? t('commissions.unattributed')}</td>
                 <td className="px-3 py-2"><Link className="font-medium text-primary" href={`/sales/orders/${entry.sales_order.id}`}><bdi>{entry.sales_order.order_number}</bdi></Link></td>
                 <td className="px-3 py-2"><Link href={`/finance/commissions/ledger/${entry.id}`} className="font-medium text-ink hover:text-primary">{entry.product_name_snapshot ?? `${t('commissions.line')} #${entry.id}`}</Link></td>
-                <td className="px-3 py-2">{types[entry.entry_type] ?? entry.entry_type}</td><td className="px-3 py-2 text-end">{formatMoney(entry.margin_amount_snapshot)}</td><td className="px-3 py-2 text-end">{entry.commission_rate_snapshot}%</td>
+                <td className="px-3 py-2">{types[entry.entry_type] ?? entry.entry_type}</td><td className="px-3 py-2 text-end">{formatMoney(entry.margin_amount_snapshot)}</td><td className="px-3 py-2 text-end">{percent(entry.margin_percent)}</td><td className="px-3 py-2 text-end">{percent(entry.commission_rate_snapshot)}</td>
                 <td className={`px-3 py-2 text-end font-semibold ${Number(entry.commission_amount) < 0 ? 'text-danger' : 'text-ink'}`}>{formatMoney(entry.commission_amount)}</td><td className="px-3 py-2"><span className="rounded-full bg-raised px-2 py-1 text-xs font-medium text-ink-muted">{statuses[entry.status] ?? entry.status}</span></td>
             </tr>)}</tbody></table>
             {entries.data.length === 0 && <p className="p-8 text-center text-sm text-ink-faint">{t('commissions.emptyFilters')}</p>}
@@ -103,4 +105,5 @@ export default function CommissionLedger({ organization, entries, filters, store
 
 function Metric({ label, value, negative = false }: { label: string; value: string; negative?: boolean }) { return <div className="rounded-card border border-line bg-surface p-4"><p className="text-[11px] font-semibold uppercase tracking-wide text-ink-faint">{label}</p><p className={`mt-1 text-lg font-semibold ${negative && Number(value) < 0 ? 'text-danger' : 'text-ink'}`}>{formatMoney(value)}</p></div>; }
 function Field({ label, children }: { label: string; children: ReactNode }) { return <label className="text-xs font-medium text-ink-muted">{label}<div className="mt-1">{children}</div></label>; }
+const percent = (value: string | null) => value == null ? 'n/d' : `${Number(value).toLocaleString('fr-FR', { maximumFractionDigits: 2 })} %`;
 const input = 'w-full rounded-field border border-line-strong bg-surface px-3 py-2 text-sm text-ink focus:border-primary focus:outline-none';

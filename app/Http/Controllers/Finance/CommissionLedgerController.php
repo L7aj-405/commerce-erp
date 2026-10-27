@@ -8,18 +8,21 @@ use App\Models\Organization;
 use App\Models\OrganizationMembership;
 use App\Models\Store;
 use App\Services\ActiveTenantContext;
+use App\Services\Commissions\CommissionDashboardService;
 use App\Services\Commissions\CommissionEntryLifecycleService;
 use App\Services\Commissions\CommissionLedgerReportService;
 use App\Services\Commissions\CommissionReconciliationService;
+use App\Services\Commissions\CommissionReportFilters;
 use App\Services\Security\FreshAuthentication;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class CommissionLedgerController extends Controller
 {
-    public function index(Request $request, ActiveTenantContext $context, CommissionLedgerReportService $report, CommissionReconciliationService $reconciliation): Response
+    public function index(Request $request, ActiveTenantContext $context, CommissionLedgerReportService $report, CommissionReconciliationService $reconciliation, CommissionDashboardService $dashboard): Response
     {
         $organization = $context->organizationOrFail();
         $this->authorizePermission($request, $organization, 'commissions.ledger.view');
@@ -37,7 +40,12 @@ class CommissionLedgerController extends Controller
             ->when($filters['entry_type'], fn ($query, $value) => $query->where('entry_type', $value))
             ->when($filters['order'], fn ($query, $value) => $query->whereHas('salesOrder', fn ($orders) => $orders->where('order_number', 'like', '%'.$value.'%')))
             ->orderByDesc('occurred_at')->orderByDesc('id')
-            ->paginate(40)->withQueryString();
+            ->paginate(40)->withQueryString()
+            // Margin % from the entry's own immutable snapshots (null = n/d when revenue <= 0).
+            ->through(fn (CommissionEntry $entry) => [
+                ...$entry->toArray(),
+                'margin_percent' => $dashboard->marginRate($entry->margin_amount_snapshot, $entry->revenue_ht_snapshot),
+            ]);
 
         $canReconcile = $request->user()->hasPermission($organization, 'commissions.ledger.reconcile');
 
@@ -121,7 +129,7 @@ class CommissionLedgerController extends Controller
         $data = $request->validate([
             'from' => ['nullable', 'date'], 'to' => ['nullable', 'date', 'after_or_equal:from'],
             'store_id' => ['nullable', 'integer'], 'salesperson_id' => ['nullable', 'integer'],
-            'status' => ['nullable', 'in:pending,approved,paid'],
+            'status' => ['nullable', Rule::in(CommissionReportFilters::STATUSES)],
             'entry_type' => ['nullable', 'in:sale,return_reversal,correction,cancellation,manual_adjustment'],
             'order' => ['nullable', 'string', 'max:100'],
         ]);

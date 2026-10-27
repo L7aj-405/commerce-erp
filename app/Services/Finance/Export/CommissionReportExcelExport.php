@@ -142,7 +142,7 @@ class CommissionReportExcelExport
 
     public static function statusLabel(string $status): string
     {
-        return ['pending' => 'En attente', 'approved' => 'Approuvée', 'paid' => 'Payée'][$status] ?? $status;
+        return ['pending' => 'En attente', 'approved' => 'Approuvée', 'paid' => 'Payée', 'no_commission' => 'Sans commission'][$status] ?? $status;
     }
 
     public static function tierLabel(mixed $min, mixed $max): string

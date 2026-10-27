@@ -52,7 +52,6 @@ final class GenerateSalesOrderCommissionEntriesAction
             $entry->sales_order_line_id = $line->getKey();
             $entry->sales_order_revision_id = $order->current_revision_id;
             $entry->entry_type = CommissionEntry::TYPE_SALE;
-            $entry->status = CommissionEntry::STATUS_PENDING;
             $entry->source_key = $sourceKey;
             $entry->product_name_snapshot = $line->product_name ?: $line->description;
             $entry->line_reference_snapshot = $line->reference ?: $line->sku;
@@ -64,6 +63,10 @@ final class GenerateSalesOrderCommissionEntriesAction
             $entry->margin_rate_snapshot = $line->margin_rate_snapshot;
             $entry->commission_rate_snapshot = $resolution['commission_rate'];
             $entry->commission_amount = Decimal::percentage($line->margin_amount_snapshot, $resolution['commission_rate']);
+            // A matched 0% tier is a valid evaluation with nothing to approve or pay.
+            $entry->status = Decimal::compare($resolution['commission_rate'], '0') === 0 && Decimal::compare($entry->commission_amount, '0') === 0
+                ? CommissionEntry::STATUS_NO_COMMISSION
+                : CommissionEntry::STATUS_PENDING;
             $entry->commission_rule_set_id = $resolution['rule_set']['id'];
             $entry->commission_rule_set_name_snapshot = $resolution['rule_set']['name'];
             $entry->commission_rule_tier_id = $resolution['tier']['id'];
@@ -76,6 +79,7 @@ final class GenerateSalesOrderCommissionEntriesAction
 
             $this->audit->record('commission.entry_created', $actor, $order->organization, $order->store, $entry, newValues: [
                 'entry_type' => $entry->entry_type,
+                'status' => $entry->status,
                 'sales_order_id' => $order->getKey(),
                 'sales_order_line_id' => $line->getKey(),
                 'salesperson_id' => $entry->salesperson_id,
