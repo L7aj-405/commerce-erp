@@ -93,6 +93,27 @@ const REQUEST_STATUS: Record<SourcingRequest["status"], TranslationKey> = {
 
 const RELOAD = ["sourcing", "errors", "flash"];
 
+/**
+ * Cancel through the canonical sourcing route. Shared by the Devis editor and
+ * the Achats › Demandes fournisseur inbox (which reloads different props).
+ */
+export function cancelSupplierRequest(
+    quotationId: number,
+    requestId: number,
+    options: { only?: string[]; onFinish?: () => void } = {},
+) {
+    router.post(
+        `/quotations/${quotationId}/supplier-requests/${requestId}/cancel`,
+        {},
+        {
+            preserveScroll: true,
+            preserveState: true,
+            only: options.only ?? RELOAD,
+            onFinish: options.onFinish,
+        },
+    );
+}
+
 /** "3.0000" → "3" for editable inputs (server expects a dot decimal). */
 function plainNumber(value: string): string {
     const parsed = Number(value);
@@ -391,16 +412,9 @@ function RequestRow({
 
     const cancel = () => {
         setBusy(true);
-        router.post(
-            `/quotations/${quotationId}/supplier-requests/${request.id}/cancel`,
-            {},
-            {
-                preserveScroll: true,
-                preserveState: true,
-                only: RELOAD,
-                onFinish: () => setBusy(false),
-            },
-        );
+        cancelSupplierRequest(quotationId, request.id, {
+            onFinish: () => setBusy(false),
+        });
     };
 
     // A manual attestation is an ERP user's statement, never a supplier answer.
@@ -712,14 +726,17 @@ function SupplierRequestDialog({
     );
 }
 
-function RecordResultDialog({
+export function RecordResultDialog({
     quotationId,
     request,
     onClose,
+    only = RELOAD,
 }: {
     quotationId: number;
     request: SourcingRequest;
     onClose: () => void;
+    /** Inertia partial-reload keys after saving (the inbox reloads its list). */
+    only?: string[];
 }) {
     const { t } = useI18n();
     const [outcome, setOutcome] = useState<"available" | "unavailable">(
@@ -745,7 +762,7 @@ function RecordResultDialog({
             {
                 preserveScroll: true,
                 preserveState: true,
-                only: RELOAD,
+                only,
                 onError: (e) => setErrors(e),
                 onSuccess: () => onClose(),
                 onFinish: () => setProcessing(false),

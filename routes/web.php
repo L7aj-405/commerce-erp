@@ -69,6 +69,7 @@ use App\Http\Controllers\PlatformController;
 use App\Http\Controllers\PosController;
 use App\Http\Controllers\Procurement\OutOfStockArticleController;
 use App\Http\Controllers\Procurement\ProcurementController;
+use App\Http\Controllers\Procurement\QuotationSupplierRequestController;
 use App\Http\Controllers\Procurement\SupplierController;
 use App\Http\Controllers\PublicLegalController;
 use App\Http\Controllers\Quotations\QuotationController;
@@ -657,6 +658,9 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
     // internal warehouse Transfer Requests above.
     Route::prefix('procurement')->name('procurement.')->group(function () {
         Route::get('/', [ProcurementController::class, 'index'])->name('index');
+        // Pre-sale supplier availability checks raised from Devis (inbox only;
+        // mutations reuse the quotations.sourcing.* routes).
+        Route::get('/supplier-requests', [QuotationSupplierRequestController::class, 'index'])->name('supplier-requests.index');
         Route::get('/suppliers', [SupplierController::class, 'index'])->name('suppliers.index');
         Route::post('/suppliers', [SupplierController::class, 'store'])->name('suppliers.store');
         Route::patch('/suppliers/{supplier}', [SupplierController::class, 'update'])->name('suppliers.update');

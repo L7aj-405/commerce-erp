@@ -125,6 +125,7 @@ export default function ApplicationShell({ children, wide = false, flush = false
             icon: <IconCart />,
             items: [
                 { href: '/procurement', label: t('nav.procurement'), permission: 'procurement.view', icon: <IconCart /> },
+                { href: '/procurement/supplier-requests', label: t('nav.supplierRequests'), permission: 'procurement.view', needsStore: true, icon: <IconChecklist /> },
                 { href: '/procurement/out-of-stock-articles', label: t('nav.catalogTasks'), permission: 'procurement.view', icon: <IconAlertBox /> },
                 { href: '/procurement/suppliers', label: t('nav.suppliers'), permission: 'suppliers.view', icon: <IconBuilding /> },
             ],
