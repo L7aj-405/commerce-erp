@@ -5,7 +5,7 @@ import { useI18n } from "@/i18n";
 import type { TranslationKey } from "@/i18n/translations";
 import { formatQuantity } from "@/utils/format";
 import { router } from "@inertiajs/react";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 
 /**
  * Internal supplier-sourcing UI for draft Devis lines. Everything here is
@@ -75,7 +75,7 @@ const STATE: Record<SourcingState, [TranslationKey, StatusVariant]> = {
     in_stock: ["sourcing.inStock", "success"],
     covered: ["sourcing.available", "success"],
     available: ["sourcing.available", "success"],
-    confirmed_manually: ["sourcing.confirmedManually", "success"],
+    confirmed_manually: ["sourcing.confirmedManually", "neutral"],
     to_source: ["sourcing.toSource", "warning"],
     pending: ["sourcing.pending", "info"],
     partial: ["sourcing.partial", "warning"],
@@ -111,67 +111,249 @@ export function SourcingBadge({ state }: { state: SourcingState }) {
     );
 }
 
-/** One compact secondary row under the article identity. */
-export function SourcingStrip({
+/** Soft, semantic panel tone per sourcing state (color is never the only signal). */
+const TONE: Record<SourcingState, string> = {
+    in_stock: "border-success/25 bg-success-soft/55",
+    covered: "border-success/25 bg-success-soft/55",
+    available: "border-success/25 bg-success-soft/55",
+    to_source: "border-warning/25 bg-warning-soft/55",
+    partial: "border-warning/25 bg-warning-soft/55",
+    insufficient: "border-warning/25 bg-warning-soft/55",
+    pending: "border-info/20 bg-info-soft/55",
+    unavailable: "border-danger/25 bg-danger-soft/55",
+    confirmed_manually: "border-line-strong bg-raised",
+};
+
+const HELPER: Partial<Record<SourcingState, TranslationKey>> = {
+    in_stock: "sourcing.helperInStock",
+    to_source: "sourcing.helperToSource",
+    pending: "sourcing.helperPending",
+    available: "sourcing.helperAvailable",
+    partial: "sourcing.helperPartial",
+    unavailable: "sourcing.helperUnavailable",
+    insufficient: "sourcing.helperInsufficient",
+    confirmed_manually: "sourcing.manualConfirmation",
+};
+
+function Metric({
+    label,
+    value,
+    emphasis = false,
+}: {
+    label: string;
+    value: string;
+    emphasis?: boolean;
+}) {
+    return (
+        <div className="min-w-0 rounded-field border border-line/80 bg-surface/80 px-2.5 py-1.5">
+            <dt className="truncate text-[11px] leading-4 text-ink-muted">
+                {label}
+            </dt>
+            <dd
+                className={`text-sm font-semibold leading-5 tabular-nums ${emphasis ? "text-warning" : "text-ink"}`}
+            >
+                {value}
+            </dd>
+        </div>
+    );
+}
+
+function TruckIcon() {
+    return (
+        <svg
+            width="15"
+            height="15"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+        >
+            <path d="M3 7h11v9H3zM14 10h4l3 3v3h-7" />
+            <circle cx="7" cy="17.5" r="1.5" />
+            <circle cx="17" cy="17.5" r="1.5" />
+        </svg>
+    );
+}
+
+/**
+ * Full-width internal sourcing panel rendered under a commercial line:
+ * status → metrics → action. Purely presentational over the server-provided
+ * sourcing evaluation; it computes nothing that decides the issue gate.
+ */
+export function SourcingPanel({
     quotationId,
     sourcing,
     can,
 }: {
     quotationId: number;
-    sourcing: LineSourcing | undefined;
+    sourcing: LineSourcing;
     can: SourcingCan;
 }) {
     const { t } = useI18n();
+    const detailsId = useId();
     const [requestOpen, setRequestOpen] = useState(false);
     const [expanded, setExpanded] = useState(false);
-    if (!sourcing) return null;
 
-    const facts =
-        sourcing.line_type === "catalog"
-            ? [
-                  `${t("sourcing.stock")}: ${formatQuantity(sourcing.internal_available)}`,
-                  `${t("sourcing.requested")}: ${formatQuantity(sourcing.requested_quantity)}`,
-                  sourcing.requires_sourcing
-                      ? `${t("sourcing.missing")}: ${formatQuantity(sourcing.shortage)}`
-                      : null,
-              ]
-            : [
-                  `${t("sourcing.toSourceQuantity")}: ${formatQuantity(sourcing.shortage)}`,
-              ];
+    const isCatalog = sourcing.line_type === "catalog";
+    const supplierRequests = sourcing.requests.filter(
+        (r) => r.status !== "confirmed_manually",
+    );
+    const supplierNames = [
+        ...new Set(
+            supplierRequests
+                .map((r) => r.supplier_name)
+                .filter((n): n is string => Boolean(n)),
+        ),
+    ];
+    const hasRequests = sourcing.requests.length > 0;
+    const canCreate =
+        sourcing.requires_sourcing && !sourcing.resolved && can.request;
+    const shortageOpen = Number(sourcing.shortage) > 0;
+    // Display only: what is still uncovered (the gate itself is server-side).
+    const remaining = Math.max(
+        0,
+        Number(sourcing.shortage) - Number(sourcing.covered_quantity),
+    );
+    const helper = HELPER[sourcing.state];
+    const showConfirmed = sourcing.requires_sourcing && hasRequests;
+    const showRemaining = showConfirmed && !sourcing.resolved;
+    const metricCols =
+        3 + Number(showConfirmed) + Number(showRemaining) === 5
+            ? "grid-cols-3 sm:grid-cols-5"
+            : showConfirmed
+              ? "grid-cols-2 sm:grid-cols-4"
+              : "grid-cols-3";
 
     return (
-        <div className="mt-1.5 text-xs">
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                <SourcingBadge state={sourcing.state} />
-                <span className="tabular-nums text-ink-muted">
-                    {facts.filter(Boolean).join(" · ")}
-                </span>
-                {sourcing.requires_sourcing &&
-                    !sourcing.resolved &&
-                    can.request && (
-                        <button
-                            type="button"
-                            onClick={() => setRequestOpen(true)}
-                            className="font-medium text-primary hover:underline"
-                        >
-                            {t("sourcing.createRequest")}
-                        </button>
+        <section
+            aria-label={`${t("sourcing.panelLabel")} — ${sourcing.article}`}
+            className={`rounded-card border px-3 py-2.5 text-xs ${TONE[sourcing.state]}`}
+        >
+            <div className="flex flex-col gap-2.5 lg:flex-row lg:items-center lg:gap-4">
+                {/* Status */}
+                <div className="min-w-0 lg:w-60 lg:shrink-0">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                        <SourcingBadge state={sourcing.state} />
+                        <span className="text-[10px] uppercase tracking-wide text-ink-faint">
+                            {t("sourcing.internal")}
+                        </span>
+                    </div>
+                    {helper && (
+                        <p className="mt-1 line-clamp-2 text-ink-muted">
+                            {sourcing.state === "to_source" && !isCatalog
+                                ? t("sourcing.helperToSourceNonStock")
+                                : t(helper)}
+                            {supplierNames.length > 0 &&
+                                sourcing.state !== "to_source" &&
+                                sourcing.state !== "in_stock" &&
+                                ` · ${supplierNames.join(", ")}`}
+                        </p>
                     )}
-                {sourcing.requests.length > 0 && (
-                    <button
-                        type="button"
-                        onClick={() => setExpanded((v) => !v)}
-                        aria-expanded={expanded}
-                        className="text-ink-muted hover:text-ink"
-                    >
-                        {expanded
-                            ? t("sourcing.hideDetails")
-                            : `${t("sourcing.details")} (${sourcing.requests.length})`}
-                    </button>
-                )}
+                </div>
+
+                {/* Metrics */}
+                <dl
+                    className={`grid min-w-0 flex-1 gap-1.5 sm:gap-2 lg:max-w-2xl ${metricCols}`}
+                >
+                    {isCatalog ? (
+                        <Metric
+                            label={t("sourcing.internalStock")}
+                            value={formatQuantity(sourcing.internal_available)}
+                        />
+                    ) : (
+                        <Metric
+                            label={t("sourcing.internalStock")}
+                            value={t("quotations.nonStock")}
+                        />
+                    )}
+                    <Metric
+                        label={t("sourcing.requestedQuantity")}
+                        value={formatQuantity(sourcing.requested_quantity)}
+                    />
+                    <Metric
+                        label={
+                            isCatalog
+                                ? t("sourcing.missingQuantity")
+                                : t("sourcing.toSourceQuantity")
+                        }
+                        value={formatQuantity(sourcing.shortage)}
+                        emphasis={shortageOpen && !sourcing.resolved}
+                    />
+                    {showConfirmed && (
+                        <Metric
+                            label={t("sourcing.confirmedTotal")}
+                            value={formatQuantity(sourcing.covered_quantity)}
+                        />
+                    )}
+                    {showRemaining && (
+                        <Metric
+                            label={t("sourcing.remaining")}
+                            value={formatQuantity(remaining)}
+                            emphasis={remaining > 0}
+                        />
+                    )}
+                </dl>
+
+                {/* Actions */}
+                <div className="flex flex-col gap-1.5 sm:flex-row sm:flex-wrap sm:items-center lg:ms-auto lg:shrink-0 lg:justify-end">
+                    {sourcing.state === "in_stock" && (
+                        <span className="inline-flex items-center gap-1 font-medium text-success">
+                            <span aria-hidden="true">✓</span>
+                            {t("sourcing.inStockAvailable")}
+                        </span>
+                    )}
+                    {canCreate && (
+                        <Button
+                            size="sm"
+                            variant={hasRequests ? "secondary" : "primary"}
+                            onClick={() => setRequestOpen(true)}
+                            className="w-full whitespace-nowrap sm:w-auto"
+                        >
+                            <TruckIcon />
+                            {hasRequests
+                                ? t("sourcing.newRequest")
+                                : t("sourcing.createRequest")}
+                        </Button>
+                    )}
+                    {hasRequests && (
+                        <Button
+                            size="sm"
+                            variant={canCreate ? "ghost" : "secondary"}
+                            onClick={() => setExpanded((v) => !v)}
+                            aria-expanded={expanded}
+                            aria-controls={detailsId}
+                            className="w-full whitespace-nowrap sm:w-auto"
+                        >
+                            {expanded
+                                ? t("sourcing.hideDetails")
+                                : sourcing.requests.length > 1
+                                  ? `${t("sourcing.viewRequests")} (${sourcing.requests.length})`
+                                  : t("sourcing.viewRequest")}
+                            <svg
+                                width="14"
+                                height="14"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                aria-hidden="true"
+                                className={`transition-transform ${expanded ? "rotate-180" : ""}`}
+                            >
+                                <path d="m6 9 6 6 6-6" />
+                            </svg>
+                        </Button>
+                    )}
+                </div>
             </div>
+
             {expanded && (
-                <ul className="mt-1.5 space-y-1 border-s-2 border-line ps-2">
+                <ul
+                    id={detailsId}
+                    className="mt-2.5 divide-y divide-line/70 rounded-field border border-line/80 bg-surface/80"
+                >
                     {sourcing.requests.map((r) => (
                         <RequestRow
                             key={r.id}
@@ -189,7 +371,7 @@ export function SourcingStrip({
                     onClose={() => setRequestOpen(false)}
                 />
             )}
-        </div>
+        </section>
     );
 }
 
@@ -224,54 +406,85 @@ function RequestRow({
     // A manual attestation is an ERP user's statement, never a supplier answer.
     if (isManual) {
         return (
-            <li className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-ink-muted">
-                <span className="font-medium text-ink">
+            <li className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-ink-muted">
+                <StatusBadge variant="neutral" className="!px-2 !py-0.5 !text-[11px]">
                     {t("sourcing.manualConfirmation")}
+                </StatusBadge>
+                <span>
+                    {t("sourcing.confirmed")}{" "}
+                    <span className="font-semibold tabular-nums text-ink">
+                        {formatQuantity(request.confirmed_quantity)}
+                    </span>
                 </span>
-                <span className="tabular-nums">
-                    {formatQuantity(request.confirmed_quantity)}
-                </span>
-                {request.supplier_name && <span>· {request.supplier_name}</span>}
-                {request.resolved_by && <span>· {request.resolved_by}</span>}
+                {request.supplier_name && <span>{request.supplier_name}</span>}
+                {request.resolved_by && (
+                    <span className="text-ink-faint">{request.resolved_by}</span>
+                )}
             </li>
         );
     }
 
     return (
-        <li className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-ink-muted">
-            <span className="font-medium text-ink">
+        <li className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-ink-muted">
+            <span className="min-w-0 font-medium text-ink">
                 {request.supplier_name ?? t("sourcing.supplierUnspecified")}
             </span>
-            <span className="tabular-nums">
-                {formatQuantity(request.requested_quantity)}
-                {request.confirmed_quantity !== null &&
-                    ` → ${formatQuantity(request.confirmed_quantity)}`}
+            <span>
+                {t("sourcing.requested")}{" "}
+                <span className="font-semibold tabular-nums text-ink">
+                    {formatQuantity(request.requested_quantity)}
+                </span>
             </span>
-            <span>· {t(REQUEST_STATUS[request.status])}</span>
-            {request.resolved_by && <span>· {request.resolved_by}</span>}
+            {request.confirmed_quantity !== null && (
+                <span>
+                    {t("sourcing.confirmed")}{" "}
+                    <span className="font-semibold tabular-nums text-ink">
+                        {formatQuantity(request.confirmed_quantity)}
+                    </span>
+                </span>
+            )}
+            <StatusBadge
+                variant={
+                    request.status === "available"
+                        ? "success"
+                        : request.status === "unavailable"
+                          ? "danger"
+                          : request.status === "partial"
+                            ? "warning"
+                            : "info"
+                }
+                className="!px-2 !py-0.5 !text-[11px]"
+            >
+                {t(REQUEST_STATUS[request.status])}
+            </StatusBadge>
+            {request.resolved_by && (
+                <span className="text-ink-faint">{request.resolved_by}</span>
+            )}
+            <span className="ms-auto flex items-center gap-3">
+                {can.record && (
+                    <button
+                        type="button"
+                        onClick={() => setRecordOpen(true)}
+                        className="rounded-field font-medium text-primary hover:underline"
+                    >
+                        {t("sourcing.recordResult")}
+                    </button>
+                )}
+                {(can.request || can.record) && (
+                    <button
+                        type="button"
+                        disabled={busy}
+                        onClick={cancel}
+                        className="rounded-field text-ink-faint hover:text-danger disabled:opacity-40"
+                    >
+                        {t("sourcing.cancelRequest")}
+                    </button>
+                )}
+            </span>
             {request.note && (
                 <span className="basis-full italic text-ink-faint">
                     {request.note}
                 </span>
-            )}
-            {can.record && (
-                <button
-                    type="button"
-                    onClick={() => setRecordOpen(true)}
-                    className="font-medium text-primary hover:underline"
-                >
-                    {t("sourcing.recordResult")}
-                </button>
-            )}
-            {(can.request || can.record) && (
-                <button
-                    type="button"
-                    disabled={busy}
-                    onClick={cancel}
-                    className="text-ink-faint hover:text-danger disabled:opacity-40"
-                >
-                    {t("sourcing.cancelRequest")}
-                </button>
             )}
             {recordOpen && (
                 <RecordResultDialog

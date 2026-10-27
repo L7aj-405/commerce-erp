@@ -4,8 +4,8 @@ import { usePendingKeys } from "@/hooks/usePendingKeys";
 import { useSerializedByKey } from "@/hooks/useSerializedByKey";
 import { formatMoney, formatQuantity } from "@/utils/format";
 import { router } from "@inertiajs/react";
-import { useEffect, useRef, useState } from "react";
-import { SourcingStrip, type LineSourcing, type SourcingCan } from "./Sourcing";
+import { Fragment, useEffect, useRef, useState } from "react";
+import { SourcingPanel, type LineSourcing, type SourcingCan } from "./Sourcing";
 
 export type QLine = {
     id: number;
@@ -258,18 +258,23 @@ export default function LineGrid({
                             const busy =
                                 pending.isPending(`line:${line.id}`) ||
                                 pending.isPending(`rm:${line.id}`);
+                            const lineSourcing = sourcing[line.id];
+                            const articleName =
+                                line.product_name ?? line.description;
                             return (
+                                <Fragment key={line.id}>
                                 <tr
-                                    key={line.id}
-                                    className={busy ? "opacity-60" : undefined}
+                                    className={`${busy ? "opacity-60" : ""} ${lineSourcing ? "[&>td]:border-b-0!" : ""}`}
                                 >
                                     <td>
-                                        <span className="font-medium text-ink">
-                                            {line.product_name ??
-                                                line.description}
+                                        <span
+                                            className="line-clamp-2 font-medium text-ink"
+                                            title={articleName}
+                                        >
+                                            {articleName}
                                         </span>
                                         {line.variant_name && (
-                                            <span className="block text-xs text-ink-muted">
+                                            <span className="block truncate text-xs text-ink-muted">
                                                 {line.variant_name}
                                             </span>
                                         )}
@@ -286,11 +291,6 @@ export default function LineGrid({
                                                 ? ` · ${line.unit_label}`
                                                 : ""}
                                         </span>
-                                        <SourcingStrip
-                                            quotationId={quotationId}
-                                            sourcing={sourcing[line.id]}
-                                            can={sourcingCan}
-                                        />
                                         {rowError[line.id] && (
                                             <p className="mt-1 text-xs text-danger">
                                                 {rowError[line.id]}
@@ -427,6 +427,22 @@ export default function LineGrid({
                                         </button>
                                     </td>
                                 </tr>
+                                {lineSourcing && (
+                                    <tr
+                                        className={
+                                            busy ? "opacity-60" : undefined
+                                        }
+                                    >
+                                        <td colSpan={8} className="pt-0! pb-3!">
+                                            <SourcingPanel
+                                                quotationId={quotationId}
+                                                sourcing={lineSourcing}
+                                                can={sourcingCan}
+                                            />
+                                        </td>
+                                    </tr>
+                                )}
+                                </Fragment>
                             );
                         })}
                         {lines.length === 0 && (
@@ -462,7 +478,13 @@ export default function LineGrid({
                                             ? t("quotations.nonStock")
                                             : t("quotations.catalog")}
                                     </span>
-                                    <p className="truncate font-medium text-ink">
+                                    <p
+                                        className="line-clamp-2 font-medium text-ink"
+                                        title={
+                                            line.product_name ??
+                                            line.description
+                                        }
+                                    >
                                         {line.product_name ?? line.description}
                                     </p>
                                     {line.variant_name && (
@@ -478,11 +500,6 @@ export default function LineGrid({
                                             .filter(Boolean)
                                             .join(" · ")}
                                     </p>
-                                    <SourcingStrip
-                                        quotationId={quotationId}
-                                        sourcing={sourcing[line.id]}
-                                        can={sourcingCan}
-                                    />
                                     {rowError[line.id] && (
                                         <p className="mt-1 text-xs text-danger">
                                             {rowError[line.id]}
@@ -632,6 +649,15 @@ export default function LineGrid({
                                     </span>
                                 </span>
                             </div>
+                            {sourcing[line.id] && (
+                                <div className="mt-3">
+                                    <SourcingPanel
+                                        quotationId={quotationId}
+                                        sourcing={sourcing[line.id]}
+                                        can={sourcingCan}
+                                    />
+                                </div>
+                            )}
                         </li>
                     );
                 })}
