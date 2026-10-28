@@ -49,7 +49,7 @@ final class FinanceToolRegistrar
                 description: 'Return one invoice: header, customer snapshot, store, frozen lines, tax breakdown, totals, Sales Order reference, immutability, and (with payments.view) the order\'s paid/outstanding amounts.',
                 annotations: $readOnly, outputSchema: $outputSchema, inputSchema: $schema(['invoice_id' => $id], ['invoice_id']));
             $builder->addTool([$this->tools, 'getInvoiceDocument'], name: 'get_invoice_document', title: 'Get invoice PDF',
-                description: 'Generates/returns the official PDF of an ISSUED invoice without changing invoice state: metadata plus a short-lived signed download_url the user can open. include_company_stamp only reports whether an apposed stamp is rendered; it never applies one.',
+                description: 'Generates/returns the official PDF of an ISSUED invoice without changing invoice state: metadata plus a short-lived signed download_url the user can open. include_company_stamp only reports whether an apposed stamp is rendered; it never applies one (use preview_document_stamp / apply_document_stamp).',
                 annotations: $readOnly, outputSchema: $outputSchema,
                 inputSchema: $schema(['invoice_id' => $id, 'format' => ['type' => 'string', 'enum' => ['pdf'], 'default' => 'pdf'], 'include_company_stamp' => ['type' => 'boolean', 'default' => false]], ['invoice_id']));
         }

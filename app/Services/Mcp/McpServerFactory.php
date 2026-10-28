@@ -7,6 +7,7 @@ use App\Enums\CustomerType;
 use App\Models\OrganizationContact;
 use App\Services\Documents\DocumentEmailRecipientService;
 use App\Services\Mcp\Parties\CustomerContactTools;
+use App\Services\Mcp\Documents\DocumentStampToolRegistrar;
 use App\Services\Mcp\Finance\FinanceToolRegistrar;
 use App\Services\Mcp\Parties\McpContactChangeService;
 use App\Services\Mcp\Procurement\PurchasingToolRegistrar;
@@ -43,6 +44,7 @@ final class McpServerFactory
         private readonly SupplierSourcingToolRegistrar $supplierSourcingTools,
         private readonly FinanceToolRegistrar $financeTools,
         private readonly PurchasingToolRegistrar $purchasingTools,
+        private readonly DocumentStampToolRegistrar $documentStampTools,
     ) {}
 
     public function make(): Server
@@ -191,6 +193,7 @@ final class McpServerFactory
         $this->supplierSourcingTools->register($builder, $readOnly, $outputSchema);
         $this->financeTools->register($builder, $readOnly, $outputSchema);
         $this->purchasingTools->register($builder, $readOnly, $outputSchema);
+        $this->documentStampTools->register($builder, $readOnly, $outputSchema);
 
         return $builder->build();
     }
@@ -239,7 +242,7 @@ final class McpServerFactory
         if ($this->context->allows('quotations.view')) {
             $builder->addTool([$this->quotationDocumentTools, 'getQuotationDocument'],
                 name: 'get_quotation_document', title: 'Get quotation PDF',
-                description: 'Generate the ERP quotation PDF (drafts carry the BROUILLON watermark) without changing anything, and return metadata plus a short-lived signed download_url the user can open. include_company_stamp reports whether the stamp apposed on the quotation is rendered; it never applies one.',
+                description: 'Generate the ERP quotation PDF (drafts carry the BROUILLON watermark) without changing anything, and return metadata plus a short-lived signed download_url the user can open. include_company_stamp reports whether the stamp apposed on the quotation is rendered; it never applies one (use preview_document_stamp / apply_document_stamp).',
                 annotations: $readOnly,
                 inputSchema: [
                     'type' => 'object', 'required' => ['quotation_id'],

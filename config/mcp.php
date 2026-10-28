@@ -89,6 +89,9 @@ return [
         'purchase_orders.create' => ['permission' => 'procurement.manage', 'label' => 'Place supplier purchase orders for sales order requirements'],
         'procurement_receipts.create' => ['permission' => 'procurement.receive', 'label' => 'Record supplier goods receipts (stock in, reserved for the sales order)'],
 
+        // "Apposer le cachet" on issued invoices / current quotations: the ERP permission of the web action.
+        'documents.stamp' => ['permission' => 'documents.stamp', 'label' => 'Appose the company stamp on official invoices and quotations'],
+
         // W6 Work Center. Follow-up scopes mirror their ERP permissions. Attention and timelines span
         // document kinds: they need ANY listed permission, and each record is then filtered by the
         // canonical service (document view permission + active store), never widened by the scope.
