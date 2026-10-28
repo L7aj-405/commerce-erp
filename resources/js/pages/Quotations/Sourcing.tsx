@@ -156,23 +156,33 @@ const HELPER: Partial<Record<SourcingState, TranslationKey>> = {
     confirmed_manually: "sourcing.manualConfirmation",
 };
 
+type MetricTone = "neutral" | "info" | "warning" | "success";
+
+const METRIC_TONE: Record<MetricTone, { box: string; value: string }> = {
+    neutral: { box: "border-line/80 bg-surface/85", value: "text-ink" },
+    info: { box: "border-info/20 bg-info-soft/60", value: "text-info" },
+    warning: { box: "border-warning/30 bg-warning-soft/70", value: "text-warning" },
+    success: { box: "border-success/25 bg-success-soft/70", value: "text-success" },
+};
+
 function Metric({
     label,
     value,
-    emphasis = false,
+    tone = "neutral",
 }: {
     label: string;
     value: string;
-    emphasis?: boolean;
+    tone?: MetricTone;
 }) {
+    const styles = METRIC_TONE[tone];
+
     return (
-        <div className="min-w-0 rounded-field border border-line/80 bg-surface/80 px-2.5 py-1.5">
-            <dt className="truncate text-[11px] leading-4 text-ink-muted">
+        <div className={`min-w-0 rounded-field border px-2.5 py-2 ${styles.box}`}>
+            {/* Labels wrap (up to 2 lines) instead of being cut with an ellipsis. */}
+            <dt className="text-[11px] leading-4 whitespace-normal break-words text-ink-muted">
                 {label}
             </dt>
-            <dd
-                className={`text-sm font-semibold leading-5 tabular-nums ${emphasis ? "text-warning" : "text-ink"}`}
-            >
+            <dd className={`mt-0.5 text-base font-semibold leading-6 tabular-nums ${styles.value}`}>
                 {value}
             </dd>
         </div>
@@ -241,21 +251,24 @@ export function SourcingPanel({
     const helper = HELPER[sourcing.state];
     const showConfirmed = sourcing.requires_sourcing && hasRequests;
     const showRemaining = showConfirmed && !sourcing.resolved;
-    const metricCols =
-        3 + Number(showConfirmed) + Number(showRemaining) === 5
-            ? "grid-cols-3 sm:grid-cols-5"
-            : showConfirmed
-              ? "grid-cols-2 sm:grid-cols-4"
-              : "grid-cols-3";
+    const metricCount = 3 + Number(showConfirmed) + Number(showRemaining);
+    // 2 columns when narrow (a final odd card spans the row), then 3, then all
+    // in one row once the panel is wide enough. Never a single cramped row.
+    const metricCols = {
+        3: "grid-cols-2 [&>*:last-child]:col-span-2 @md:grid-cols-3 @md:[&>*:last-child]:col-span-1",
+        4: "grid-cols-2 @3xl:grid-cols-4",
+        5: "grid-cols-2 [&>*:last-child]:col-span-2 @xl:grid-cols-3 @xl:[&>*:last-child]:col-span-1 @4xl:grid-cols-5",
+    }[metricCount];
+    const missingOpen = shortageOpen && !sourcing.resolved;
 
     return (
         <section
             aria-label={`${t("sourcing.panelLabel")} — ${sourcing.article}`}
-            className={`rounded-card border px-3 py-2.5 text-xs ${TONE[sourcing.state]}`}
+            className={`@container rounded-card border px-3 py-2.5 text-xs ${TONE[sourcing.state]}`}
         >
-            <div className="flex flex-col gap-2.5 lg:flex-row lg:items-center lg:gap-4">
+            <div className="grid gap-2.5 @3xl:grid-cols-[minmax(0,1fr)_auto] @3xl:gap-x-4 @6xl:grid-cols-[15rem_minmax(0,1fr)_auto] @6xl:items-center">
                 {/* Status */}
-                <div className="min-w-0 lg:w-60 lg:shrink-0">
+                <div className="min-w-0 @3xl:col-start-1 @3xl:row-start-1">
                     <div className="flex flex-wrap items-center gap-1.5">
                         <SourcingBadge state={sourcing.state} />
                         <span className="text-[10px] uppercase tracking-wide text-ink-faint">
@@ -277,7 +290,7 @@ export function SourcingPanel({
 
                 {/* Metrics */}
                 <dl
-                    className={`grid min-w-0 flex-1 gap-1.5 sm:gap-2 lg:max-w-2xl ${metricCols}`}
+                    className={`grid min-w-0 gap-1.5 @md:gap-2 @3xl:col-span-2 @3xl:row-start-2 @6xl:col-span-1 @6xl:col-start-2 @6xl:row-start-1 ${metricCols}`}
                 >
                     {isCatalog ? (
                         <Metric
@@ -293,6 +306,7 @@ export function SourcingPanel({
                     <Metric
                         label={t("sourcing.requestedQuantity")}
                         value={formatQuantity(sourcing.requested_quantity)}
+                        tone="info"
                     />
                     <Metric
                         label={
@@ -301,25 +315,26 @@ export function SourcingPanel({
                                 : t("sourcing.toSourceQuantity")
                         }
                         value={formatQuantity(sourcing.shortage)}
-                        emphasis={shortageOpen && !sourcing.resolved}
+                        tone={missingOpen ? "warning" : "neutral"}
                     />
                     {showConfirmed && (
                         <Metric
                             label={t("sourcing.confirmedTotal")}
                             value={formatQuantity(sourcing.covered_quantity)}
+                            tone={sourcing.resolved ? "success" : "neutral"}
                         />
                     )}
                     {showRemaining && (
                         <Metric
                             label={t("sourcing.remaining")}
                             value={formatQuantity(remaining)}
-                            emphasis={remaining > 0}
+                            tone={remaining > 0 ? "warning" : "success"}
                         />
                     )}
                 </dl>
 
                 {/* Actions */}
-                <div className="flex flex-col gap-1.5 sm:flex-row sm:flex-wrap sm:items-center lg:ms-auto lg:shrink-0 lg:justify-end">
+                <div className="flex flex-col gap-1.5 @md:flex-row @md:flex-wrap @md:items-center @3xl:col-start-2 @3xl:row-start-1 @3xl:justify-end @3xl:self-start @6xl:col-start-3 @6xl:self-center">
                     {sourcing.state === "in_stock" && (
                         <span className="inline-flex items-center gap-1 font-medium text-success">
                             <span aria-hidden="true">✓</span>
@@ -331,7 +346,7 @@ export function SourcingPanel({
                             size="sm"
                             variant={hasRequests ? "secondary" : "primary"}
                             onClick={() => setRequestOpen(true)}
-                            className="w-full whitespace-nowrap sm:w-auto"
+                            className="w-full whitespace-nowrap @md:w-auto"
                         >
                             <TruckIcon />
                             {hasRequests
@@ -346,7 +361,7 @@ export function SourcingPanel({
                             onClick={() => setExpanded((v) => !v)}
                             aria-expanded={expanded}
                             aria-controls={detailsId}
-                            className="w-full whitespace-nowrap sm:w-auto"
+                            className="w-full whitespace-nowrap @md:w-auto"
                         >
                             {expanded
                                 ? t("sourcing.hideDetails")
@@ -440,7 +455,7 @@ function RequestRow({
 
     return (
         <li className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-ink-muted">
-            <span className="min-w-0 font-medium text-ink">
+            <span className="min-w-0 break-words font-medium text-ink">
                 {request.supplier_name ?? t("sourcing.supplierUnspecified")}
             </span>
             <span>
@@ -474,7 +489,7 @@ function RequestRow({
             {request.resolved_by && (
                 <span className="text-ink-faint">{request.resolved_by}</span>
             )}
-            <span className="ms-auto flex items-center gap-3">
+            <span className="ms-auto flex flex-wrap items-center justify-end gap-x-3 gap-y-1">
                 {can.record && (
                     <button
                         type="button"
