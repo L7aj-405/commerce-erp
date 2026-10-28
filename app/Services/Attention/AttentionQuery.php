@@ -214,6 +214,7 @@ final class AttentionQuery
         'sales_order_paid_not_invoiced' => 'date the order became fully paid',
         'sales_order_procurement_required' => 'date the sales order was created',
         'sales_order_procurement_unresolved' => 'date the sales order was created',
+        'sales_order_procurement_awaiting_receipt' => 'earliest expected supplier delivery date still awaiting goods (else the sales order creation date)',
     ];
 
     /**
@@ -240,6 +241,7 @@ final class AttentionQuery
                 'count' => isset($facts['count']) ? match ($item->type) {
                     AttentionType::SalesOrderProcurementRequired => 'number of order lines still to order from a supplier',
                     AttentionType::SalesOrderProcurementUnresolved => 'number of order lines without a confirmed supplier',
+                    AttentionType::SalesOrderProcurementAwaitingReceipt => 'number of order lines still awaiting supplier goods',
                     default => 'number of overdue follow-ups linked to the document',
                 } : null,
                 'outstanding' => isset($facts['outstanding']) ? 'remaining balance at last detection (decimal string, currency in facts.currency)' : null,
@@ -285,6 +287,7 @@ final class AttentionQuery
             AttentionType::SalesOrderPaidNotInvoiced => "Établir la facture — commande {$number}",
             AttentionType::SalesOrderProcurementRequired => "Créer la commande fournisseur — commande {$number}",
             AttentionType::SalesOrderProcurementUnresolved => "Trouver un fournisseur — commande {$number}",
+            AttentionType::SalesOrderProcurementAwaitingReceipt => "Relancer le fournisseur pour la livraison — commande {$number}",
         });
     }
 }

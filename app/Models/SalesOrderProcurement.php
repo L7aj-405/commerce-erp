@@ -29,6 +29,7 @@ class SalesOrderProcurement extends Model
             'status' => SupplierProcurementStatus::class,
             'supplier_availability_status' => SupplierAvailabilityStatus::class,
             'quantity' => 'decimal:4',
+            'received_quantity' => 'decimal:4',
             'supplier_unit_cost' => 'decimal:4',
             'expected_at' => 'date',
             'ordered_at' => 'datetime',
@@ -109,6 +110,11 @@ class SalesOrderProcurement extends Model
     public function purchaseOrderLines(): HasMany
     {
         return $this->hasMany(PurchaseOrderLine::class);
+    }
+
+    public function receipts(): HasMany
+    {
+        return $this->hasMany(ProcurementReceipt::class)->orderBy('id');
     }
 
     /** Quantity on non-cancelled purchase orders (decimal string). */

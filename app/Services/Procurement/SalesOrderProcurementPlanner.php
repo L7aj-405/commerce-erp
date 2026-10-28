@@ -2,6 +2,7 @@
 
 namespace App\Services\Procurement;
 
+use App\Enums\InventoryReservationStatus;
 use App\Enums\PurchaseOrderStatus;
 use App\Enums\QuotationLineType;
 use App\Enums\QuotationSupplierAvailabilityStatus;
@@ -9,6 +10,7 @@ use App\Enums\SalesOrderLineType;
 use App\Enums\SalesOrderStatus;
 use App\Enums\SupplierAvailabilityStatus;
 use App\Enums\SupplierProcurementStatus;
+use App\Models\InventoryReservation;
 use App\Models\PurchaseOrderLine;
 use App\Models\Quotation;
 use App\Models\QuotationLine;
@@ -35,13 +37,23 @@ use Illuminate\Support\Collection;
  * Order shortage, not the quantity once confirmed.
  *
  * Line states: covered_by_stock, procurement_required, procurement_ordered,
- * procurement_received, unresolved, not_applicable (custom lines / cancelled orders).
+ * procurement_partially_received, procurement_received, unresolved,
+ * not_applicable (custom lines / cancelled orders).
+ *
+ * It is the one coverage calculation of a Sales Order: the order page, the MCP
+ * read model and confirmation preview, the attention engine and
+ * ConfirmSalesOrderAction (confirmationBlockers) all read it. Only physical
+ * coverage makes a line confirmation-ready: stock reserved to the order
+ * (received supplier goods included) or free internal stock — never a supplier
+ * confirmation, a purchase order or an expected delivery for a requirement
+ * derived from the quotation.
  */
 final class SalesOrderProcurementPlanner
 {
     public const COVERED = 'covered_by_stock';
     public const REQUIRED = 'procurement_required';
     public const ORDERED = 'procurement_ordered';
+    public const PARTIALLY_RECEIVED = 'procurement_partially_received';
     public const RECEIVED = 'procurement_received';
     public const UNRESOLVED = 'unresolved';
     public const NOT_APPLICABLE = 'not_applicable';
@@ -68,6 +80,44 @@ final class SalesOrderProcurementPlanner
         }
 
         return ['summary' => $this->summary($order, $lines, $context), 'lines' => $lines];
+    }
+
+    /**
+     * Why a draft order cannot be confirmed yet because of quotation-derived
+     * procurement: supplier goods not (all) physically received.
+     *
+     * @return list<array{path: string, code: string, message: string, details: array<string, mixed>}>
+     */
+    public function confirmationBlockers(SalesOrder $order): array
+    {
+        if ($order->status !== SalesOrderStatus::Draft) {
+            return [];
+        }
+
+        $blockers = [];
+        foreach ($this->plan($order)['lines'] as $line) {
+            if (! $line['awaiting_receipt']) {
+                continue;
+            }
+            $purchaseOrder = collect($line['purchase_orders'])->first(fn (array $po) => Decimal::compare($po['remaining_to_receive'], '0') > 0)
+                ?? $line['purchase_orders'][0] ?? null;
+            $blockers[] = [
+                'path' => "lines.{$line['line_id']}",
+                'code' => 'procurement_not_received',
+                'message' => "Approvisionnement non réceptionné pour {$line['article']} : {$line['procurement_received']} reçu(s) sur {$line['procurement_quantity']}. La commande pourra être confirmée après réception de la marchandise fournisseur.",
+                'details' => [
+                    'sales_order_id' => (int) $order->getKey(),
+                    'sales_order_line_id' => $line['line_id'],
+                    'required' => $line['procurement_quantity'],
+                    'ordered' => $line['procurement_ordered'],
+                    'received' => $line['procurement_received'],
+                    'remaining' => $line['procurement_remaining'],
+                    'purchase_order' => $purchaseOrder['number'] ?? null,
+                ],
+            ];
+        }
+
+        return $blockers;
     }
 
     /**
@@ -118,6 +168,12 @@ final class SalesOrderProcurementPlanner
             ->filter(fn (PurchaseOrderLine $line) => $line->purchaseOrder?->status !== PurchaseOrderStatus::Cancelled)
             ->groupBy('sales_order_procurement_id');
 
+        // Goods received while the order is a draft, held by their own reservation.
+        $receiptHeld = $procurements->isEmpty() ? collect() : InventoryReservation::query()->where('organization_id', $order->organization_id)
+            ->where('reference_type', SalesOrderProcurement::class)->whereIn('reference_id', $procurements->modelKeys())
+            ->where('status', InventoryReservationStatus::Active->value)->get(['reference_id', 'quantity'])
+            ->groupBy('reference_id')->map(fn ($rows) => $rows->reduce(fn (string $sum, $r) => Decimal::add($sum, (string) $r->quantity), '0.0000'));
+
         $sourceRequestIds = $procurements->pluck('source_supplier_request_id')->filter()->unique()->values()->all();
         $sourceRequests = $sourceRequestIds === [] ? collect() : QuotationSupplierAvailabilityRequest::query()
             ->where('organization_id', $order->organization_id)->whereKey($sourceRequestIds)->get(['id', 'status'])->keyBy('id');
@@ -130,6 +186,7 @@ final class SalesOrderProcurementPlanner
             'procurements' => $procurements->groupBy('sales_order_line_id'),
             'po_lines' => $poLines,
             'source_requests' => $sourceRequests,
+            'receipt_held' => $receiptHeld,
             'quotation' => $quotation,
             'candidates' => $quotation ? $this->candidates($order, $quotation, $lines) : [],
         ];
@@ -205,10 +262,12 @@ final class SalesOrderProcurementPlanner
         }
 
         // Internal stock covering the line: reserved allocations once confirmed,
-        // the stock currently available to it while still a draft.
-        $stock = $order->status === SalesOrderStatus::Confirmed
-            ? $line->allocations->reduce(fn (string $sum, $allocation) => Decimal::add($sum, (string) $allocation->quantity), '0.0000')
-            : $this->stock->availableForLine($order, $line->productVariant, $line);
+        // the free stock currently available to it while still a draft (goods
+        // reserved for this order are not free and are counted apart).
+        $confirmed = $order->status === SalesOrderStatus::Confirmed;
+        $allocated = $line->allocations->reduce(fn (string $sum, $allocation) => Decimal::add($sum, (string) $allocation->quantity), '0.0000');
+        $free = $confirmed ? null : Decimal::normalize($this->stock->availableForLine($order, $line->productVariant, $line));
+        $stock = $confirmed ? $allocated : $free;
         $stock = Decimal::compare($stock, $quantity) > 0 ? $quantity : Decimal::normalize($stock);
 
         $rows = $context['procurements']->get($line->getKey()) ?? collect();
@@ -222,22 +281,37 @@ final class SalesOrderProcurementPlanner
         $procured = '0.0000';
         $ordered = '0.0000';
         $received = '0.0000';
+        $held = '0.0000';
+        $commitment = '0.0000';
+        $awaitingReceipt = false;
         $purchaseOrders = [];
         foreach ($covering as $procurement) {
             $procured = Decimal::add($procured, (string) $procurement->quantity);
             $onPurchaseOrders = ($context['po_lines']->get($procurement->getKey()) ?? collect());
             $poQuantity = $onPurchaseOrders->reduce(fn (string $sum, PurchaseOrderLine $l) => Decimal::add($sum, (string) $l->quantity), '0.0000');
-            $isOrdered = in_array($procurement->status, [SupplierProcurementStatus::Ordered, SupplierProcurementStatus::Received, SupplierProcurementStatus::Completed], true);
+            // Ordered without a purchase order (V1 special order): the whole quantity.
+            $isOrdered = in_array($procurement->status, [SupplierProcurementStatus::Ordered, SupplierProcurementStatus::Received, SupplierProcurementStatus::Completed], true)
+                || ($procurement->status === SupplierProcurementStatus::PartiallyReceived && $onPurchaseOrders->isEmpty());
             $ordered = Decimal::add($ordered, $isOrdered ? (string) $procurement->quantity : $this->min($poQuantity, (string) $procurement->quantity));
-            if (in_array($procurement->status, [SupplierProcurementStatus::Received, SupplierProcurementStatus::Completed], true)) {
-                $received = Decimal::add($received, (string) $procurement->quantity);
+            $received = Decimal::add($received, (string) $procurement->received_quantity);
+            $held = Decimal::add($held, $context['receipt_held']->get($procurement->getKey(), '0.0000'));
+            $notReceived = $this->atLeastZero(Decimal::subtract((string) $procurement->quantity, (string) $procurement->received_quantity));
+            if ($procurement->source_quotation_id !== null) {
+                // Derived from the quotation: only the goods themselves cover it.
+                $awaitingReceipt = $awaitingReceipt || Decimal::compare($notReceived, '0') > 0;
+            } else {
+                // V1 special order: the confirmed supplier commitment covers it (unchanged rule).
+                $commitment = Decimal::add($commitment, $notReceived);
             }
             foreach ($onPurchaseOrders as $poLine) {
                 $purchaseOrders[] = [
                     'id' => (int) $poLine->purchase_order_id,
+                    'line_id' => (int) $poLine->getKey(),
                     'number' => $poLine->purchaseOrder?->purchase_order_number,
                     'status' => $poLine->purchaseOrder?->status?->value,
                     'quantity' => Decimal::normalize((string) $poLine->quantity),
+                    'received_quantity' => Decimal::normalize((string) $poLine->received_quantity),
+                    'remaining_to_receive' => $this->atLeastZero(Decimal::subtract((string) $poLine->quantity, (string) $poLine->received_quantity)),
                     'expected_delivery_date' => $poLine->purchaseOrder?->expected_delivery_date?->toDateString(),
                 ];
             }
@@ -268,8 +342,18 @@ final class SalesOrderProcurementPlanner
             $covering->isEmpty() => self::COVERED,
             Decimal::compare($remaining, '0') > 0 => self::REQUIRED,
             Decimal::compare($received, $procured) >= 0 => self::RECEIVED,
+            Decimal::compare($received, '0') > 0 => self::PARTIALLY_RECEIVED,
             default => self::ORDERED,
         };
+
+        // Physical coverage: reserved to this order (allocations once confirmed;
+        // received supplier goods held while a draft) + free stock it may take +
+        // the V1 supplier commitment. Never a quotation-derived requirement not received.
+        $covered = $confirmed
+            ? Decimal::add($allocated, $commitment)
+            : Decimal::add(Decimal::add($stock, $held), $commitment);
+        $covered = Decimal::compare($covered, $quantity) > 0 ? $quantity : $covered;
+        $awaitingReceipt = $candidate !== null || $awaitingReceipt;
 
         return [
             ...$base,
@@ -280,6 +364,14 @@ final class SalesOrderProcurementPlanner
             'remaining_to_order' => $candidate !== null ? $uncovered : $this->atLeastZero($remaining),
             'received_quantity' => $received,
             'uncovered_quantity' => $uncovered,
+            // Canonical coverage figures.
+            'internal_available_unreserved' => $free,
+            'already_reserved_for_this_order' => $confirmed ? $allocated : $held,
+            'procurement_ordered' => $ordered,
+            'procurement_received' => $received,
+            'procurement_remaining' => $candidate !== null ? $uncovered : $this->atLeastZero(Decimal::subtract($procured, $received)),
+            'total_covered_quantity' => $covered,
+            'confirmation_ready' => $confirmed || (! $awaitingReceipt && ! $pendingSupplier && Decimal::compare($covered, $quantity) >= 0),
             'unresolved_reason' => $state !== self::UNRESOLVED ? null
                 : ($pendingSupplier ? 'supplier_not_confirmed' : ($unavailable ? 'supplier_unavailable' : 'no_supplier_confirmation')),
             'requirement_ids' => $covering->map(fn ($p) => (int) $p->getKey())->values()->all(),
@@ -296,8 +388,7 @@ final class SalesOrderProcurementPlanner
             'source_quotation' => $this->sourceQuotation($first, $candidate, $context),
             'derivable' => $candidate !== null,
             // Quotation-derived quantity the order still waits for physically (only receipt makes it confirmable).
-            'awaiting_receipt' => $candidate !== null || $covering->contains(fn (SalesOrderProcurement $p) => $p->source_quotation_id !== null
-                && ! in_array($p->status, [SupplierProcurementStatus::Received, SupplierProcurementStatus::Completed], true)),
+            'awaiting_receipt' => $awaitingReceipt,
             'evidence' => $candidate['request'] ?? null,
         ];
     }
@@ -335,10 +426,10 @@ final class SalesOrderProcurementPlanner
     private function summary(SalesOrder $order, array $lines, array $context): array
     {
         $count = fn (array $states) => count(array_filter($lines, fn (array $line) => in_array($line['state'], $states, true)));
-        $requiredLines = $count([self::REQUIRED, self::ORDERED, self::RECEIVED, self::UNRESOLVED]);
+        $requiredLines = $count([self::REQUIRED, self::ORDERED, self::PARTIALLY_RECEIVED, self::RECEIVED, self::UNRESOLVED]);
         $toOrder = $count([self::REQUIRED]);
         $unresolved = $count([self::UNRESOLVED]);
-        $orderedLines = $count([self::ORDERED, self::RECEIVED]);
+        $orderedLines = $count([self::ORDERED, self::PARTIALLY_RECEIVED, self::RECEIVED]);
 
         // Open requirements grouped by supplier: what one purchase order may cover
         // (one still to be derived from the quotation is created when ordering).
@@ -363,6 +454,7 @@ final class SalesOrderProcurementPlanner
                 $unresolved > 0 => 'unresolved',
                 $toOrder > 0 => 'awaiting_procurement',
                 $count([self::ORDERED]) > 0 => 'ordered',
+                $count([self::PARTIALLY_RECEIVED]) > 0 => 'partially_received',
                 default => 'received',
             },
             'required' => $requiredLines > 0,
@@ -378,6 +470,10 @@ final class SalesOrderProcurementPlanner
             // Confirmation waits for the supplier goods to be received (never for the purchase order alone).
             'confirmation_waits_for_receipt' => $order->status === SalesOrderStatus::Draft
                 && count(array_filter($lines, fn (array $line) => $line['awaiting_receipt'])) > 0,
+            'receipt_pending_line_count' => $count([self::ORDERED, self::PARTIALLY_RECEIVED]),
+            // Every stock-tracked line physically covered (a draft that may be confirmed now).
+            'confirmation_ready' => $order->status === SalesOrderStatus::Draft
+                && count(array_filter($lines, fn (array $line) => $line['state'] !== self::NOT_APPLICABLE && ! $line['confirmation_ready'])) === 0,
             'suppliers' => array_values($suppliers),
             'source_quotation' => $context['quotation'] ? ['id' => (int) $context['quotation']->id, 'number' => $context['quotation']->quotation_number] : null,
         ];
@@ -389,6 +485,8 @@ final class SalesOrderProcurementPlanner
         return [
             'internal_stock_covered_quantity' => null, 'procurement_quantity' => '0.0000', 'ordered_quantity' => '0.0000',
             'remaining_to_order' => '0.0000', 'received_quantity' => '0.0000', 'uncovered_quantity' => '0.0000', 'unresolved_reason' => null,
+            'internal_available_unreserved' => null, 'already_reserved_for_this_order' => '0.0000', 'procurement_ordered' => '0.0000',
+            'procurement_received' => '0.0000', 'procurement_remaining' => '0.0000', 'total_covered_quantity' => null, 'confirmation_ready' => true,
             'requirement_ids' => [], 'requirements' => [], 'supplier' => null, 'availability' => null, 'purchase_orders' => [], 'source_quotation' => null,
         ];
     }

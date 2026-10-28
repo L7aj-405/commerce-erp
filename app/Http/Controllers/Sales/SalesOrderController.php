@@ -227,7 +227,10 @@ class SalesOrderController extends Controller
             // Procurement readiness (separate from the commercial status) for the "Approvisionnement" card.
             'procurementPlan' => [
                 ...$procurementPlanner->plan($order),
-                'can' => ['createPurchaseOrder' => request()->user()->hasPermission($order->organization_id, 'procurement.manage')],
+                'can' => [
+                    'createPurchaseOrder' => request()->user()->hasPermission($order->organization_id, 'procurement.manage'),
+                    'confirm' => request()->user()->can('confirm', $order),
+                ],
             ],
             'transferRequests' => $order->transferRequests()
                 ->with(['sourceWarehouse:id,name', 'destinationWarehouse:id,name', 'lines'])

@@ -15,6 +15,7 @@ use App\Models\ProductVariant;
 use App\Models\SalesOrder;
 use App\Models\SalesOrderLine;
 use App\Services\Mcp\McpDryRun;
+use App\Services\Procurement\SalesOrderProcurementPlanner;
 use App\Services\Mcp\McpExecutionContext;
 use App\Services\Mcp\McpIdempotencyService;
 use App\Services\Mcp\Products\ProductStockReadService;
@@ -58,6 +59,7 @@ final class McpSalesOrderService
         private readonly ProductStockReadService $stock,
         private readonly McpIdempotencyService $canonical,
         private readonly McpDryRun $dryRunner,
+        private readonly SalesOrderProcurementPlanner $procurement,
     ) {}
 
     public static function requiredScope(string $mode): string
@@ -221,8 +223,15 @@ final class McpSalesOrderService
             $issues = [];
             $plan = [];
             $totals = $before;
+            $blockers = $order->status === SalesOrderStatus::Draft ? $this->procurement->confirmationBlockers($order) : [];
             if ($order->status !== SalesOrderStatus::Draft) {
                 $issues[] = $this->issue('sales_order', 'not_draft', 'Only a draft order can be confirmed.');
+            } elseif ($blockers !== []) {
+                // Supplier goods derived from the quotation not physically received yet
+                // (the same check ConfirmSalesOrderAction applies), one issue per line.
+                foreach ($blockers as $blocker) {
+                    $issues[] = ['path' => $blocker['path'], 'code' => $blocker['code'], 'message' => mb_substr($blocker['message'], 0, 300), 'details' => $blocker['details']];
+                }
             } else {
                 try {
                     // The authoritative confirmation, rolled back below.

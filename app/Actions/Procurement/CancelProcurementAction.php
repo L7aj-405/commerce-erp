@@ -51,7 +51,7 @@ class CancelProcurementAction
             if ($procurement->status === SupplierProcurementStatus::Completed) {
                 throw ValidationException::withMessages(['status' => 'Approvisionnement déjà clôturé.']);
             }
-            if ($procurement->status === SupplierProcurementStatus::Received) {
+            if (in_array($procurement->status, [SupplierProcurementStatus::Received, SupplierProcurementStatus::PartiallyReceived], true)) {
                 throw ValidationException::withMessages([
                     'status' => 'Approvisionnement déjà réceptionné : la marchandise est réservée à la commande. Gérez-le via la commande client.',
                 ]);

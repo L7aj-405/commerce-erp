@@ -326,7 +326,7 @@ class SalesOrderProcurementRequirementTest extends QuotationTestCase
 
         $xlr = $this->planLine($this->plan($order), $this->xlr);
         $this->assertSame(SalesOrderProcurementPlanner::ORDERED, $xlr['state']);
-        $this->assertSame([['id' => $purchaseOrder->id, 'number' => 'BCF-000001', 'status' => 'ordered', 'quantity' => '2.0000', 'expected_delivery_date' => '2026-11-05']], $xlr['purchase_orders']);
+        $this->assertSame([['id' => $purchaseOrder->id, 'line_id' => $poLine->id, 'number' => 'BCF-000001', 'status' => 'ordered', 'quantity' => '2.0000', 'received_quantity' => '0.0000', 'remaining_to_receive' => '2.0000', 'expected_delivery_date' => '2026-11-05']], $xlr['purchase_orders']);
     }
 
     public function test_a_second_purchase_order_for_the_same_requirement_is_refused(): void

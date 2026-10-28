@@ -893,7 +893,7 @@ class PosController extends Controller
                 ? $line->procurements->reject(fn ($p) => in_array($p->status->value, ['cancelled', 'unavailable'], true))
                 : collect();
             $procConfirmed = $activeProcs
-                ->filter(fn ($p) => in_array($p->status->value, ['supplier_confirmed', 'ordered', 'received', 'completed'], true))
+                ->filter(fn ($p) => in_array($p->status->value, ['supplier_confirmed', 'ordered', 'partially_received', 'received', 'completed'], true))
                 ->reduce(fn (string $t, $p) => Decimal::add($t, $p->quantity), '0.0000');
             $companyCovered = Decimal::compare($totalAvailable, $line->quantity) >= 0 ? Decimal::normalize($line->quantity) : $totalAvailable;
             $toProcure = Decimal::compare($line->quantity, $totalAvailable) > 0

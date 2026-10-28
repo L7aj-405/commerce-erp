@@ -35,6 +35,7 @@ const STATUS_ORDER = [
     'pending_supplier',
     'supplier_confirmed',
     'ordered',
+    'partially_received',
     'received',
     'completed',
     'cancelled',

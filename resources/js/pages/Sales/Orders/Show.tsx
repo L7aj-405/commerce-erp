@@ -1152,6 +1152,7 @@ const PROC_STATUS_CLASS: Record<string, string> = {
     pending_supplier: 'bg-warning-soft text-warning',
     supplier_confirmed: 'bg-sky-50 text-sky-700',
     ordered: 'bg-indigo-50 text-indigo-700',
+    partially_received: 'bg-amber-50 text-amber-700',
     received: 'bg-emerald-50 text-emerald-700',
     completed: 'bg-emerald-50 text-emerald-700',
     cancelled: 'bg-slate-100 text-slate-500',

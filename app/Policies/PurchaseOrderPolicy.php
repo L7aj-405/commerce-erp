@@ -28,6 +28,12 @@ class PurchaseOrderPolicy
         return $this->allowed($user, $purchaseOrder->organization_id, 'procurement.manage');
     }
 
+    /** Record the physical receipt of supplier goods (the existing procurement.receive permission). */
+    public function receive(User $user, PurchaseOrder $purchaseOrder): bool
+    {
+        return $this->allowed($user, $purchaseOrder->organization_id, 'procurement.receive');
+    }
+
     private function allowed(User $user, int $organizationId, string $permission): bool
     {
         return $this->context->organization()?->getKey() === $organizationId

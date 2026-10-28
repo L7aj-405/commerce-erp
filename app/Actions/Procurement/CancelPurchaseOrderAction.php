@@ -9,13 +9,15 @@ use App\Models\PurchaseOrder;
 use App\Models\SalesOrderProcurement;
 use App\Models\User;
 use App\Services\AuditLogger;
+use App\Support\Decimal;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 /**
  * Cancel a supplier purchase order that was placed by mistake or refused by the
  * supplier. Its requirements return to SUPPLIER_CONFIRMED (to be ordered again);
- * refused once any of them has been received. Idempotent.
+ * refused once anything has been received against it (or any of its
+ * requirements was received). Idempotent.
  */
 class CancelPurchaseOrderAction
 {
@@ -44,7 +46,12 @@ class CancelPurchaseOrderAction
             $requirements = SalesOrderProcurement::query()->where('organization_id', $purchaseOrder->organization_id)
                 ->whereKey($purchaseOrder->lines->pluck('sales_order_procurement_id')->unique()->all())
                 ->lockForUpdate()->get();
-            if ($received = $requirements->first(fn ($r) => in_array($r->status, [SupplierProcurementStatus::Received, SupplierProcurementStatus::Completed], true))) {
+            if ($purchaseOrder->lines->contains(fn ($line) => Decimal::compare((string) $line->received_quantity, '0') > 0)) {
+                throw ValidationException::withMessages([
+                    'purchase_order' => 'Des marchandises ont déjà été réceptionnées sur cette commande fournisseur : elle ne peut plus être annulée.',
+                ]);
+            }
+            if ($received = $requirements->first(fn ($r) => in_array($r->status, [SupplierProcurementStatus::PartiallyReceived, SupplierProcurementStatus::Received, SupplierProcurementStatus::Completed], true))) {
                 throw ValidationException::withMessages([
                     'purchase_order' => "Le besoin {$received->procurement_number} est déjà réceptionné : la commande fournisseur ne peut plus être annulée.",
                 ]);

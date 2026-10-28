@@ -57,7 +57,11 @@ use LogicException;
  *   internal stock does not cover has no usable supplier (none confirmed,
  *   supplier pending or unavailable). Closes once the line is covered by stock,
  *   has a confirmed supplier, or is ordered / received.
- *   Both come from SalesOrderProcurementPlanner (the order page's own view),
+ * - sales_order_procurement_awaiting_receipt (warning → critical, P2): ordered
+ *   supplier goods not (all) received yet. Critical once the earliest expected
+ *   delivery date of a purchase order still awaiting goods has passed (the
+ *   escalation clock starts then). Closes once everything ordered is received.
+ *   All three come from SalesOrderProcurementPlanner (the order page's own view),
  *   one episode per order and type, independent of the payment states.
  */
 final class SalesOrderAttentionDetector
@@ -124,12 +128,12 @@ final class SalesOrderAttentionDetector
         if ($item->active_key === null || $item->sales_order_id === null) {
             return null;
         }
-        if (in_array($item->type, [AttentionType::SalesOrderProcurementRequired, AttentionType::SalesOrderProcurementUnresolved], true)) {
+        if (in_array($item->type, [AttentionType::SalesOrderProcurementRequired, AttentionType::SalesOrderProcurementUnresolved, AttentionType::SalesOrderProcurementAwaitingReceipt], true)) {
             $order = $this->procurementCandidates($organization)->whereKey($item->sales_order_id)->first();
-            $holds = $order && collect($this->procurementConditions($organization, $order, BusinessTime::today($organization)))
-                ->contains(fn (array $condition) => $condition[0] === $item->type);
+            $holds = $order ? collect($this->procurementConditions($organization, $order, BusinessTime::today($organization)))
+                ->first(fn (array $condition) => $condition[0] === $item->type) : null;
 
-            return $holds ? AttentionSeverity::Warning : null;
+            return $holds[1] ?? null;
         }
         $order = $this->notInvoiced(SalesOrder::query()->where('organization_id', $organization->getKey())->where('status', SalesOrderStatus::Confirmed->value))
             ->whereKey($item->sales_order_id)->first(self::COLUMNS);
@@ -274,8 +278,8 @@ final class SalesOrderAttentionDetector
             $conditions = [];
             foreach ($orders as $order) {
                 $this->episodes->guard($result, function () use ($order, $organization, $today, &$conditions) {
-                    foreach ($this->procurementConditions($organization, $order, $today) as [$type, $facts]) {
-                        $conditions[] = $this->condition($order, $type, AttentionSeverity::Warning, $facts);
+                    foreach ($this->procurementConditions($organization, $order, $today) as [$type, $severity, $facts]) {
+                        $conditions[] = $this->condition($order, $type, $severity, $facts);
                     }
                 });
             }
@@ -299,7 +303,8 @@ final class SalesOrderAttentionDetector
                     ->whereColumn('sales_order_procurements.organization_id', 'sales_orders.organization_id')
                     ->whereColumn('sales_order_procurements.sales_order_id', 'sales_orders.id')
                     ->whereIn('sales_order_procurements.status', [SupplierProcurementStatus::PendingSupplier->value,
-                        SupplierProcurementStatus::SupplierConfirmed->value, SupplierProcurementStatus::Unavailable->value]))
+                        SupplierProcurementStatus::SupplierConfirmed->value, SupplierProcurementStatus::Unavailable->value,
+                        SupplierProcurementStatus::Ordered->value, SupplierProcurementStatus::PartiallyReceived->value]))
                 ->orWhere(fn (Builder $draft) => $draft->where('status', SalesOrderStatus::Draft->value)
                     ->whereExists(fn (QueryBuilder $quotations) => $quotations->selectRaw('1')->from('quotations')
                         ->whereColumn('quotations.organization_id', 'sales_orders.organization_id')
@@ -311,22 +316,41 @@ final class SalesOrderAttentionDetector
      * (SalesOrderProcurementPlanner): lines still to order with a known supplier,
      * and lines with no usable supplier. Dated from the order's creation.
      *
-     * @return list<array{0: AttentionType, 1: array<string, mixed>}>
+     * @return list<array{0: AttentionType, 1: AttentionSeverity, 2: array<string, mixed>}>
      */
     private function procurementConditions(Organization $organization, SalesOrder $order, string $today): array
     {
         if (! in_array($order->status, [SalesOrderStatus::Draft, SalesOrderStatus::Confirmed], true)) {
             return [];
         }
-        $summary = $this->procurement->plan($order)['summary'];
+        $plan = $this->procurement->plan($order);
+        $summary = $plan['summary'];
         $date = CarbonImmutable::parse($order->created_at, 'UTC')->setTimezone($organization->businessTimezone())->toDateString();
-        $days = max(0, (int) CarbonImmutable::parse($date, 'UTC')->diffInDays(CarbonImmutable::parse($today, 'UTC'), false));
+        $daysBetween = fn (string $from, string $to) => (int) CarbonImmutable::parse($from, 'UTC')->diffInDays(CarbonImmutable::parse($to, 'UTC'), false);
+        $days = max(0, $daysBetween($date, $today));
         $conditions = [];
         if ($summary['to_order_line_count'] > 0) {
-            $conditions[] = [AttentionType::SalesOrderProcurementRequired, ['count' => $summary['to_order_line_count'], 'date' => $date, 'days' => $days]];
+            $conditions[] = [AttentionType::SalesOrderProcurementRequired, AttentionSeverity::Warning, ['count' => $summary['to_order_line_count'], 'date' => $date, 'days' => $days]];
         }
         if ($summary['unresolved_count'] > 0) {
-            $conditions[] = [AttentionType::SalesOrderProcurementUnresolved, ['count' => $summary['unresolved_count'], 'date' => $date, 'days' => $days]];
+            $conditions[] = [AttentionType::SalesOrderProcurementUnresolved, AttentionSeverity::Warning, ['count' => $summary['unresolved_count'], 'date' => $date, 'days' => $days]];
+        }
+
+        // Ordered goods still expected: the earliest expected delivery of a purchase
+        // order line still awaiting goods dates it; past that date it is critical.
+        $awaiting = collect($plan['lines'])->filter(fn (array $line) => in_array($line['state'], [SalesOrderProcurementPlanner::ORDERED, SalesOrderProcurementPlanner::PARTIALLY_RECEIVED], true));
+        if ($awaiting->isNotEmpty()) {
+            $expected = $awaiting->flatMap(fn (array $line) => $line['purchase_orders'])
+                ->filter(fn (array $po) => Decimal::compare($po['remaining_to_receive'], '0') > 0 && $po['expected_delivery_date'] !== null)
+                ->pluck('expected_delivery_date')->sort()->first();
+            $overdue = $expected !== null && $expected < $today;
+            $conditions[] = [AttentionType::SalesOrderProcurementAwaitingReceipt, $overdue ? AttentionSeverity::Critical : AttentionSeverity::Warning, [
+                'count' => $awaiting->count(),
+                'date' => $expected ?? $date,
+                'days' => $overdue ? $daysBetween($expected, $today) : ($expected !== null ? max(0, $daysBetween($today, $expected)) : $days),
+                'overdue' => $overdue,
+                'expected' => $expected !== null,
+            ]];
         }
 
         return $conditions;
@@ -390,6 +414,11 @@ final class SalesOrderAttentionDetector
             AttentionType::SalesOrderPaymentFollowUpBacklog => ['orderBacklog', "Relances de paiement en retard — commande {$number}", "{$facts['count']} suivi(s) en retard, le plus ancien prévu le {$date} ({$facts['days']} j)."],
             AttentionType::SalesOrderPaidNotInvoiced => ['orderPaidNotInvoiced', "Commande {$number} payée, non facturée", "Réglée depuis le {$date} ({$facts['days']} j), aucune facture émise."],
             AttentionType::SalesOrderProcurementRequired => ['orderProcurementRequired', "Approvisionnement requis pour {$number}", "{$facts['count']} article(s) à commander auprès d’un fournisseur (commande du {$date})."],
+            AttentionType::SalesOrderProcurementAwaitingReceipt => match (true) {
+                (bool) ($facts['overdue'] ?? false) => ['orderAwaitingReceiptOverdue', "En attente de réception fournisseur pour {$number}", "{$facts['count']} article(s) attendu(s) du fournisseur : livraison prévue le {$date} dépassée ({$facts['days']} j)."],
+                (bool) ($facts['expected'] ?? false) => ['orderAwaitingReceipt', "En attente de réception fournisseur pour {$number}", "{$facts['count']} article(s) attendu(s) du fournisseur, livraison prévue le {$date}."],
+                default => ['orderAwaitingReceiptUndated', "En attente de réception fournisseur pour {$number}", "{$facts['count']} article(s) attendu(s) du fournisseur (commande du {$date})."],
+            },
             AttentionType::SalesOrderProcurementUnresolved => ['orderProcurementUnresolved', "Fournisseur requis pour {$number}", "{$facts['count']} article(s) sans fournisseur confirmé : choisir un fournisseur ou couvrir depuis le stock (commande du {$date})."],
             default => throw new LogicException('Not a sales order attention type.'),
         };

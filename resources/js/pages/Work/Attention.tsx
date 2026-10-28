@@ -63,6 +63,7 @@ export default function WorkAttention({ filters, items, context, owners }: Props
                     <option value="sales_order_paid_not_invoiced">{t('attention.typeOrderPaidNotInvoiced')}</option>
                     <option value="sales_order_procurement_required">{t('attention.typeOrderProcurementRequired')}</option>
                     <option value="sales_order_procurement_unresolved">{t('attention.typeOrderProcurementUnresolved')}</option>
+                    <option value="sales_order_procurement_awaiting_receipt">{t('attention.typeOrderAwaitingReceipt')}</option>
                     <option value="invoice_due_soon">{t('attention.typeInvoiceDueSoon')}</option>
                     <option value="invoice_overdue_unpaid">{t('attention.typeInvoiceOverdue')}</option>
                     <option value="invoice_overdue_partial">{t('attention.typeInvoicePartial')}</option>

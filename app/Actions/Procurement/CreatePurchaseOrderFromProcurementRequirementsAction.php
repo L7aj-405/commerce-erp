@@ -108,7 +108,8 @@ class CreatePurchaseOrderFromProcurementRequirementsAction
                 if ($requirement->status === SupplierProcurementStatus::Ordered) {
                     throw ValidationException::withMessages(['requirement_ids' => "Le besoin {$number} est déjà commandé au fournisseur."]);
                 }
-                if ($requirement->status !== SupplierProcurementStatus::SupplierConfirmed) {
+                // A partly received requirement may still have a quantity not yet ordered.
+                if (! in_array($requirement->status, [SupplierProcurementStatus::SupplierConfirmed, SupplierProcurementStatus::PartiallyReceived], true)) {
                     throw ValidationException::withMessages(['requirement_ids' => "Le besoin {$number} n’est pas ouvert à la commande (disponibilité fournisseur non confirmée, annulé ou déjà traité)."]);
                 }
                 $order = $orders->get($requirement->sales_order_id);
@@ -184,7 +185,7 @@ class CreatePurchaseOrderFromProcurementRequirementsAction
             // Requirements whose whole quantity is now on purchase orders are ordered.
             foreach ($prepared as [$requirement, , , $quantity]) {
                 $onOrders = Decimal::add($ordered[$requirement->getKey()] ?? '0.0000', $quantity);
-                if (Decimal::compare($onOrders, (string) $requirement->quantity) >= 0) {
+                if (Decimal::compare($onOrders, (string) $requirement->quantity) >= 0 && $requirement->status === SupplierProcurementStatus::SupplierConfirmed) {
                     $this->orderProcurement->execute($actor, $requirement, array_filter([
                         'expected_at' => $purchaseOrder->expected_delivery_date?->toDateString(),
                         'purchase_order_id' => $purchaseOrder->getKey(),
@@ -224,7 +225,7 @@ class CreatePurchaseOrderFromProcurementRequirementsAction
 
             $requirements = SalesOrderProcurement::query()->where('organization_id', $organization->getKey())
                 ->where('sales_order_id', $order->getKey())->where('supplier_id', $supplier->getKey())
-                ->where('status', SupplierProcurementStatus::SupplierConfirmed->value)
+                ->whereIn('status', [SupplierProcurementStatus::SupplierConfirmed->value, SupplierProcurementStatus::PartiallyReceived->value])
                 ->orderBy('id')->get(['id', 'quantity']);
             $onOrders = SalesOrderProcurement::activePurchaseOrderQuantities((int) $organization->getKey(), $requirements->modelKeys());
             $open = $requirements->filter(fn (SalesOrderProcurement $r) => Decimal::compare((string) $r->quantity, $onOrders[$r->getKey()] ?? '0.0000') > 0)

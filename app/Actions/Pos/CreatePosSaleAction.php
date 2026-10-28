@@ -512,7 +512,7 @@ class CreatePosSaleAction
             $confirmedProcurement = $line->procurements
                 ->filter(fn (SalesOrderProcurement $p) => in_array(
                     $p->status->value,
-                    ['supplier_confirmed', 'ordered', 'received', 'completed'],
+                    ['supplier_confirmed', 'ordered', 'partially_received', 'received', 'completed'],
                     true,
                 ))
                 ->reduce(fn (string $total, SalesOrderProcurement $p) => Decimal::add($total, $p->quantity), '0.0000');

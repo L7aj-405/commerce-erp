@@ -26,7 +26,7 @@ type Props = {
     filters: { search?: string; status?: string };
 };
 
-const STATUSES = ['ordered', 'draft', 'cancelled'] as const;
+const STATUSES = ['ordered', 'partially_received', 'received', 'draft', 'cancelled'] as const;
 
 export default function PurchaseOrdersIndex({ purchaseOrders, filters }: Props) {
     const { t } = useI18n();

@@ -191,6 +191,7 @@ final class SalesOrderReadService
             'required_line_count' => $summary['required_line_count'],
             'ordered_line_count' => $summary['ordered_line_count'],
             'confirmation_waits_for_receipt' => $summary['confirmation_waits_for_receipt'],
+            'confirmation_ready' => $summary['confirmation_ready'],
             'source_quotation' => $summary['source_quotation'],
             'lines' => collect($plan['lines'])->reject(fn (array $line) => $line['state'] === SalesOrderProcurementPlanner::NOT_APPLICABLE)
                 ->map(fn (array $line) => [
@@ -201,10 +202,17 @@ final class SalesOrderReadService
                     'ordered_quantity' => $line['ordered_quantity'],
                     'remaining_to_order' => $line['remaining_to_order'],
                     'internal_stock_covered_quantity' => $line['internal_stock_covered_quantity'],
+                    'internal_available_unreserved' => $line['internal_available_unreserved'],
+                    'already_reserved_for_this_order' => $line['already_reserved_for_this_order'],
+                    'procurement_ordered' => $line['procurement_ordered'],
+                    'procurement_received' => $line['procurement_received'],
+                    'procurement_remaining' => $line['procurement_remaining'],
+                    'total_covered_quantity' => $line['total_covered_quantity'],
+                    'confirmation_ready' => $line['confirmation_ready'],
                     'unresolved_reason' => $line['unresolved_reason'],
                     'supplier' => $line['supplier'],
                     'availability' => $line['availability'],
-                    'purchase_orders' => array_map(fn (array $po) => array_intersect_key($po, array_flip(['id', 'number', 'status', 'quantity', 'expected_delivery_date'])), $line['purchase_orders']),
+                    'purchase_orders' => array_map(fn (array $po) => array_intersect_key($po, array_flip(['id', 'number', 'status', 'quantity', 'received_quantity', 'remaining_to_receive', 'expected_delivery_date'])), $line['purchase_orders']),
                     'source_quotation' => $line['source_quotation'],
                 ])->values()->all(),
         ];

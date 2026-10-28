@@ -24,6 +24,7 @@ enum AttentionType: string
     case SalesOrderPaidNotInvoiced = 'sales_order_paid_not_invoiced';
     case SalesOrderProcurementRequired = 'sales_order_procurement_required';
     case SalesOrderProcurementUnresolved = 'sales_order_procurement_unresolved';
+    case SalesOrderProcurementAwaitingReceipt = 'sales_order_procurement_awaiting_receipt';
 
     public function subjectType(): string
     {

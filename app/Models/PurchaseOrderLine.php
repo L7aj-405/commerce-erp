@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /** One ordered quantity of one procurement requirement (and so of one Sales Order line). */
 class PurchaseOrderLine extends Model
@@ -14,6 +15,7 @@ class PurchaseOrderLine extends Model
     {
         return [
             'quantity' => 'decimal:4',
+            'received_quantity' => 'decimal:4',
             'unit_price' => 'decimal:4',
         ];
     }
@@ -23,4 +25,5 @@ class PurchaseOrderLine extends Model
     public function salesOrder(): BelongsTo { return $this->belongsTo(SalesOrder::class); }
     public function salesOrderLine(): BelongsTo { return $this->belongsTo(SalesOrderLine::class); }
     public function productVariant(): BelongsTo { return $this->belongsTo(ProductVariant::class); }
+    public function receipts(): HasMany { return $this->hasMany(ProcurementReceipt::class)->orderBy('id'); }
 }

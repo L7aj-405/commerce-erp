@@ -50,7 +50,7 @@ class SalesOrderPolicy
             || $order->invoices()->whereIn('status', ['issued', 'superseded'])->exists()
             || $order->deliveryNotes()->where('status', 'issued')->exists()
             || $order->transferRequests()->where('status', 'shipped')->exists()
-            || $order->procurements()->where('status', 'ordered')->exists()) {
+            || $order->procurements()->whereIn('status', ['ordered', 'partially_received'])->exists()) {
             return false;
         }
 

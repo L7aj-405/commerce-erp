@@ -175,7 +175,7 @@ class SalesOrder extends Model
     public function awaitingSupplierProcurement(): bool
     {
         return $this->procurements()
-            ->whereIn('status', ['pending_supplier', 'supplier_confirmed', 'ordered'])
+            ->whereIn('status', ['pending_supplier', 'supplier_confirmed', 'ordered', 'partially_received'])
             ->exists();
     }
 

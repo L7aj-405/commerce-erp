@@ -122,7 +122,7 @@ class CancelSalesOrderAction
                 ->whereNotIn('status', [SupplierProcurementStatus::Cancelled->value, SupplierProcurementStatus::Completed->value])
                 ->lockForUpdate()->get();
 
-            if ($orderedProcurement = $procurements->first(fn ($procurement) => $procurement->status === SupplierProcurementStatus::Ordered)) {
+            if ($orderedProcurement = $procurements->first(fn ($procurement) => in_array($procurement->status, [SupplierProcurementStatus::Ordered, SupplierProcurementStatus::PartiallyReceived], true))) {
                 throw ValidationException::withMessages([
                     'order' => "Approvisionnement {$orderedProcurement->procurement_number} déjà commandé au fournisseur. Réceptionnez-le ou annulez-le explicitement avant d’annuler la commande.",
                 ]);
@@ -173,6 +173,16 @@ class CancelSalesOrderAction
             }
 
             $oldStatus = $order->status;
+            if ($oldStatus === SalesOrderStatus::Draft) {
+                // Supplier goods received for the draft keep their real stock; their
+                // earmark is released so that quantity simply becomes available.
+                $held = InventoryReservation::query()->where('organization_id', $order->organization_id)
+                    ->where('reference_type', SalesOrderProcurement::class)->whereIn('reference_id', $procurements->modelKeys())
+                    ->where('status', InventoryReservationStatus::Active->value)->orderBy('warehouse_id')->get();
+                foreach ($held as $reservation) {
+                    $this->inventory->release($actor, $order->organization, $reservation);
+                }
+            }
             if ($oldStatus === SalesOrderStatus::Confirmed) {
                 $allocationReservationIds = $order->lines()->with('allocations')->get()
                     ->flatMap(fn ($line) => $line->allocations->pluck('inventory_reservation_id'));

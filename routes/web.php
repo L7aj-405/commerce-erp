@@ -668,6 +668,7 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
         Route::get('/purchase-orders', [PurchaseOrderController::class, 'index'])->name('purchase-orders.index');
         Route::get('/purchase-orders/{purchaseOrder}', [PurchaseOrderController::class, 'show'])->whereNumber('purchaseOrder')->name('purchase-orders.show');
         Route::post('/purchase-orders/{purchaseOrder}/cancel', [PurchaseOrderController::class, 'cancel'])->whereNumber('purchaseOrder')->name('purchase-orders.cancel');
+        Route::post('/purchase-orders/{purchaseOrder}/lines/{line}/receive', [PurchaseOrderController::class, 'receive'])->whereNumber(['purchaseOrder', 'line'])->name('purchase-orders.lines.receive');
         Route::get('/suppliers', [SupplierController::class, 'index'])->name('suppliers.index');
         Route::post('/suppliers', [SupplierController::class, 'store'])->name('suppliers.store');
         Route::patch('/suppliers/{supplier}', [SupplierController::class, 'update'])->name('suppliers.update');

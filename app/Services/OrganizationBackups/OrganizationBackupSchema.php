@@ -25,7 +25,7 @@ class OrganizationBackupSchema
         'stock_transfer_sequences', 'stock_transfers', 'stock_transfer_lines',
         'transfer_request_sequences', 'transfer_requests', 'transfer_request_lines',
         'warehouse_replenishment_settings', 'warehouse_replenishment_overrides',
-        'suppliers', 'product_suppliers', 'quotation_supplier_availability_requests', 'procurement_sequences', 'sales_order_procurements', 'purchase_order_sequences', 'purchase_orders', 'purchase_order_lines', 'out_of_stock_articles',
+        'suppliers', 'product_suppliers', 'quotation_supplier_availability_requests', 'procurement_sequences', 'sales_order_procurements', 'purchase_order_sequences', 'purchase_orders', 'purchase_order_lines', 'procurement_receipts', 'out_of_stock_articles',
         'finance_obligation_sequences', 'finance_outgoing_payment_sequences', 'finance_recurring_template_sequences', 'finance_supplier_plan_sequences', 'finance_instrument_sequences',
         'finance_recurring_obligation_templates', 'finance_supplier_installment_plans', 'finance_obligations', 'finance_outgoing_payments', 'finance_outgoing_payment_allocations', 'finance_payment_instruments',
         'finance_month_reviews',
