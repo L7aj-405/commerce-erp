@@ -2,6 +2,7 @@
 
 namespace App\Actions\Documents\Concerns;
 
+use App\Actions\Concerns\MatchesActorTenant;
 use App\Models\DeliveryNote;
 use App\Models\Invoice;
 use App\Models\Organization;
@@ -11,11 +12,14 @@ use App\Models\User;
 
 trait AuthorizesDocumentAction
 {
+    use MatchesActorTenant;
+
     private function authorizeDocumentScope(User $actor, Organization $organization, Store $store, string $permission): void
     {
+        // Web: the browser's active organization + store. MCP: the connection's organization and user;
+        // store membership below still applies to both.
         abort_unless(
-            $actor->active_organization_id === $organization->getKey()
-            && $actor->active_store_id === $store->getKey()
+            $this->actorTenantMatches($actor, $organization, $store)
             && $organization->status === 'active'
             && $store->organization_id === $organization->getKey()
             && $store->status === 'active'

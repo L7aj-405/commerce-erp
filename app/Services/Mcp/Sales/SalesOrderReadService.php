@@ -2,13 +2,16 @@
 
 namespace App\Services\Mcp\Sales;
 
+use App\Enums\InvoiceStatus;
 use App\Enums\SalesOrderPaymentStatus;
 use App\Enums\SalesOrderStatus;
+use App\Models\Invoice;
 use App\Models\Organization;
 use App\Models\SalesOrder;
 use App\Models\SalesOrderInventoryAllocation;
 use App\Models\SalesOrderLine;
 use App\Services\SalesOrderPaymentCalculator;
+use App\Support\Decimal;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use InvalidArgumentException;
 
@@ -149,9 +152,13 @@ final class SalesOrderReadService
             'totals' => $this->totals($order),
             'payment' => [
                 'status' => $order->payment_status->value,
+                'total' => $payment['commercial_total'],
                 'paid' => $payment['paid'],
                 'remaining' => $payment['remaining'],
+                'fully_paid' => $order->status === SalesOrderStatus::Confirmed && Decimal::compare($payment['remaining'], '0') === 0,
                 'last_payment_date' => $payment['last_payment_date'],
+                // Latest non-cancelled invoice of the order; detailed reads: get_invoice / search_payments.
+                'invoice' => $this->invoiceSummary($order),
             ],
             'fulfillment_status' => $order->fulfillment_status->value,
             'confirmation' => $order->confirmed_at ? [
@@ -162,6 +169,16 @@ final class SalesOrderReadService
             'created_at' => $order->created_at?->toIso8601String(),
             'updated_at' => $order->updated_at?->toIso8601String(),
         ];
+    }
+
+    /** @return array{id: int, invoice_number: ?string, status: string}|null */
+    private function invoiceSummary(SalesOrder $order): ?array
+    {
+        $invoice = Invoice::query()->where('organization_id', $order->organization_id)->where('sales_order_id', $order->getKey())
+            ->where('status', '!=', InvoiceStatus::Cancelled->value)->orderByDesc('version')->orderByDesc('id')
+            ->first(['id', 'invoice_number', 'status']);
+
+        return $invoice ? ['id' => (int) $invoice->getKey(), 'invoice_number' => $invoice->invoice_number, 'status' => $invoice->status->value] : null;
     }
 
     /** @return array<string, mixed> */

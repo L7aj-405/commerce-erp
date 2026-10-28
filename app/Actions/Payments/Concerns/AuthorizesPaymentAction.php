@@ -2,16 +2,20 @@
 
 namespace App\Actions\Payments\Concerns;
 
+use App\Actions\Concerns\MatchesActorTenant;
 use App\Models\SalesOrder;
 use App\Models\User;
 
 trait AuthorizesPaymentAction
 {
+    use MatchesActorTenant;
+
     private function authorizePayment(User $actor, SalesOrder $order, string $permission): void
     {
+        // Web: the browser's active organization + store. MCP: the connection's organization and user;
+        // store membership below still applies to both.
         abort_unless(
-            $actor->active_organization_id === $order->organization_id
-            && $actor->active_store_id === $order->store_id
+            $this->actorTenantMatches($actor, $order->organization, $order->store)
             && $order->organization->status === 'active'
             && $order->store->status === 'active'
             && $order->store->memberships()->where('user_id', $actor->getKey())->exists()

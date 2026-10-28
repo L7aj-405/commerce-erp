@@ -76,6 +76,13 @@ return [
         // the canonical actions decide per call.
         'quotation_sourcing.update' => ['any_permission' => ['procurement.manage', 'quotations.update'], 'label' => 'Record or cancel supplier availability responses'],
 
+        // MCP-W7 invoices and payments. Issuing also needs invoices.create (the canonical draft step) and
+        // recording a payment on another day needs payments.backdate — the canonical actions check both.
+        'invoices.view' => ['permission' => 'invoices.view', 'label' => 'View invoices'],
+        'invoices.issue' => ['permission' => 'invoices.issue', 'label' => 'Issue invoices for fully paid sales orders'],
+        'payments.view' => ['permission' => 'payments.view', 'label' => 'View payments'],
+        'payments.create' => ['permission' => 'payments.create', 'label' => 'Record payments on confirmed sales orders'],
+
         // W6 Work Center. Follow-up scopes mirror their ERP permissions. Attention and timelines span
         // document kinds: they need ANY listed permission, and each record is then filtered by the
         // canonical service (document view permission + active store), never widened by the scope.

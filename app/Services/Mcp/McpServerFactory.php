@@ -7,6 +7,7 @@ use App\Enums\CustomerType;
 use App\Models\OrganizationContact;
 use App\Services\Documents\DocumentEmailRecipientService;
 use App\Services\Mcp\Parties\CustomerContactTools;
+use App\Services\Mcp\Finance\FinanceToolRegistrar;
 use App\Services\Mcp\Parties\McpContactChangeService;
 use App\Services\Mcp\Procurement\SupplierSourcingToolRegistrar;
 use App\Services\Mcp\Products\McpProductChangeService;
@@ -39,6 +40,7 @@ final class McpServerFactory
         private readonly CustomerContactTools $partyTools,
         private readonly WorkCenterToolRegistrar $workCenterTools,
         private readonly SupplierSourcingToolRegistrar $supplierSourcingTools,
+        private readonly FinanceToolRegistrar $financeTools,
     ) {}
 
     public function make(): Server
@@ -185,6 +187,7 @@ final class McpServerFactory
         $this->registerQuotationLifecycleTools($builder, $readOnly, $outputSchema);
         $this->workCenterTools->register($builder, $readOnly, $outputSchema);
         $this->supplierSourcingTools->register($builder, $readOnly, $outputSchema);
+        $this->financeTools->register($builder, $readOnly, $outputSchema);
 
         return $builder->build();
     }
