@@ -9,6 +9,7 @@ use App\Services\Documents\DocumentEmailRecipientService;
 use App\Services\Mcp\Parties\CustomerContactTools;
 use App\Services\Mcp\Finance\FinanceToolRegistrar;
 use App\Services\Mcp\Parties\McpContactChangeService;
+use App\Services\Mcp\Procurement\PurchasingToolRegistrar;
 use App\Services\Mcp\Procurement\SupplierSourcingToolRegistrar;
 use App\Services\Mcp\Products\McpProductChangeService;
 use App\Services\Mcp\Products\ProductOperationTools;
@@ -41,6 +42,7 @@ final class McpServerFactory
         private readonly WorkCenterToolRegistrar $workCenterTools,
         private readonly SupplierSourcingToolRegistrar $supplierSourcingTools,
         private readonly FinanceToolRegistrar $financeTools,
+        private readonly PurchasingToolRegistrar $purchasingTools,
     ) {}
 
     public function make(): Server
@@ -188,6 +190,7 @@ final class McpServerFactory
         $this->workCenterTools->register($builder, $readOnly, $outputSchema);
         $this->supplierSourcingTools->register($builder, $readOnly, $outputSchema);
         $this->financeTools->register($builder, $readOnly, $outputSchema);
+        $this->purchasingTools->register($builder, $readOnly, $outputSchema);
 
         return $builder->build();
     }

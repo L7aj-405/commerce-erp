@@ -10,6 +10,7 @@ use App\Models\Organization;
 use App\Models\SalesOrder;
 use App\Models\SalesOrderInventoryAllocation;
 use App\Models\SalesOrderLine;
+use App\Services\Mcp\Procurement\PurchaseOrderReadService;
 use App\Services\Procurement\SalesOrderProcurementPlanner;
 use App\Services\SalesOrderPaymentCalculator;
 use App\Support\Decimal;
@@ -192,6 +193,10 @@ final class SalesOrderReadService
             'ordered_line_count' => $summary['ordered_line_count'],
             'confirmation_waits_for_receipt' => $summary['confirmation_waits_for_receipt'],
             'confirmation_ready' => $summary['confirmation_ready'],
+            'to_order_line_count' => $summary['to_order_line_count'],
+            'receipt_pending_line_count' => $summary['receipt_pending_line_count'],
+            // What an agent can do next (never done automatically): get_sales_order_procurement has the details.
+            'next_step' => PurchaseOrderReadService::nextStep($order, $summary),
             'source_quotation' => $summary['source_quotation'],
             'lines' => collect($plan['lines'])->reject(fn (array $line) => $line['state'] === SalesOrderProcurementPlanner::NOT_APPLICABLE)
                 ->map(fn (array $line) => [
