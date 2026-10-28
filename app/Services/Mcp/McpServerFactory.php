@@ -8,6 +8,7 @@ use App\Models\OrganizationContact;
 use App\Services\Documents\DocumentEmailRecipientService;
 use App\Services\Mcp\Parties\CustomerContactTools;
 use App\Services\Mcp\Parties\McpContactChangeService;
+use App\Services\Mcp\Procurement\SupplierSourcingToolRegistrar;
 use App\Services\Mcp\Products\McpProductChangeService;
 use App\Services\Mcp\Products\ProductOperationTools;
 use App\Services\Mcp\Products\ProductReadTools;
@@ -37,6 +38,7 @@ final class McpServerFactory
         private readonly QuotationDocumentTools $quotationDocumentTools,
         private readonly CustomerContactTools $partyTools,
         private readonly WorkCenterToolRegistrar $workCenterTools,
+        private readonly SupplierSourcingToolRegistrar $supplierSourcingTools,
     ) {}
 
     public function make(): Server
@@ -182,6 +184,7 @@ final class McpServerFactory
         $this->registerSalesOrderTools($builder, $readOnly, $outputSchema);
         $this->registerQuotationLifecycleTools($builder, $readOnly, $outputSchema);
         $this->workCenterTools->register($builder, $readOnly, $outputSchema);
+        $this->supplierSourcingTools->register($builder, $readOnly, $outputSchema);
 
         return $builder->build();
     }
@@ -200,11 +203,11 @@ final class McpServerFactory
         if ($this->context->allows('quotations.issue')) {
             $builder->addTool([$this->quotationLifecycleTools, 'previewQuotationIssue'],
                 name: 'preview_quotation_issue', title: 'Preview quotation issue',
-                description: 'Required before issue_quotation. Checks with the ERP issue rules (draft, has lines, validity date, seller profile) whether a draft quotation can be issued, without saving anything. Returns issues and a short-lived single-use preview_fingerprint.',
+                description: 'Required before issue_quotation. Checks with the ERP issue rules (draft, has lines, validity date, seller profile, supplier sourcing) whether a draft quotation can be issued, without saving anything. Lines not covered by internal stock (and non-stock articles) need confirmed supplier availability: each unresolved line is reported as a supplier_availability_unresolved issue with its quantities. Returns issues and a short-lived single-use preview_fingerprint.',
                 annotations: $readOnly, inputSchema: $byId, outputSchema: $outputSchema);
             $builder->addTool([$this->quotationLifecycleTools, 'issueQuotation'],
                 name: 'issue_quotation', title: 'Issue quotation',
-                description: 'Issue a draft quotation (allocates its official number, freezes it) with the fingerprint from preview_quotation_issue. Does not accept or convert. Retrying with the same fingerprint after success returns the issued quotation.',
+                description: 'Issue a draft quotation (allocates its official number, freezes it) with the fingerprint from preview_quotation_issue. Rejected while supplier sourcing is unresolved: there is no override over MCP (manual availability confirmation is a web-only admin action) — record the supplier responses first. Does not accept or convert. Retrying with the same fingerprint after success returns the issued quotation.',
                 annotations: $transition, inputSchema: $withFingerprint(), outputSchema: $outputSchema);
         }
 

@@ -17,6 +17,8 @@ use App\Models\SalesOrderLine;
 use App\Services\Mcp\McpDryRun;
 use App\Services\Mcp\McpExecutionContext;
 use App\Services\Mcp\McpIdempotencyService;
+use App\Services\QuotationSourcing;
+use App\Support\Decimal;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Validation\ValidationException;
 use InvalidArgumentException;
@@ -52,6 +54,7 @@ final class McpQuotationLifecycleService
         private readonly StartQuotationRevisionAction $reviseAction,
         private readonly McpDryRun $dryRun,
         private readonly McpIdempotencyService $canonical,
+        private readonly QuotationSourcing $sourcing,
     ) {}
 
     public static function scope(string $transition): string
@@ -78,7 +81,9 @@ final class McpQuotationLifecycleService
                 try {
                     $outcome = $this->apply($transition, $quotation);
                 } catch (ValidationException $exception) {
-                    $issues[] = ['path' => 'quotation', 'code' => 'transition_rejected', 'message' => mb_substr((string) (collect($exception->errors())->flatten()->first() ?? 'Rejected.'), 0, 300)];
+                    // The ERP issue gate refused on supplier sourcing: explain each unresolved line.
+                    $sourcingIssues = $transition === 'issue' && isset($exception->errors()['sourcing']) ? $this->sourcingIssues($quotation) : [];
+                    array_push($issues, ...($sourcingIssues ?: [['path' => 'quotation', 'code' => 'transition_rejected', 'message' => mb_substr((string) (collect($exception->errors())->flatten()->first() ?? 'Rejected.'), 0, 300)]]));
                 } catch (HttpExceptionInterface) {
                     $issues[] = ['path' => 'quotation', 'code' => 'not_permitted', 'message' => $transition === 'convert'
                         ? 'The ERP refused the conversion for this user (it also needs sales_orders.create/update, plus price-override/discount permissions when the quotation uses them).'
@@ -274,6 +279,39 @@ final class McpQuotationLifecycleService
             'source' => $this->quotations->find($this->context->organization(), $quotationId),
             'revision' => $this->quotations->find($this->context->organization(), (int) $revision->getKey()),
         ];
+    }
+
+    /**
+     * One structured issue per line the issue gate refused, from the same
+     * QuotationSourcing evaluation the gate uses (never recomputed here).
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function sourcingIssues(Quotation $quotation): array
+    {
+        $issues = [];
+        foreach ($this->sourcing->unresolved($this->sourcing->evaluate($quotation)) as $line) {
+            $remaining = Decimal::subtract($line['shortage'], $line['covered_quantity']);
+            $issues[] = [
+                'path' => "quotation.lines.{$line['line_id']}.sourcing",
+                'code' => 'supplier_availability_unresolved',
+                'message' => 'La disponibilité fournisseur n’est pas encore confirmée.',
+                'details' => [
+                    'quotation_line_id' => $line['line_id'],
+                    'article' => $line['article'],
+                    'article_type' => $line['line_type'],
+                    'requested_quantity' => $line['requested_quantity'],
+                    'internal_available_quantity' => $line['internal_available'],
+                    'shortage_quantity' => $line['shortage'],
+                    'confirmed_quantity' => $line['covered_quantity'],
+                    'remaining_quantity' => Decimal::compare($remaining, '0') < 0 ? '0.0000' : $remaining,
+                    'state' => $line['state'],
+                    'pending_request_ids' => array_values(array_column(array_filter($line['requests'], fn (array $r) => $r['status'] === 'pending'), 'id')),
+                ],
+            ];
+        }
+
+        return $issues;
     }
 
     /** @return array{preview: array<string, mixed>, hash: string} */

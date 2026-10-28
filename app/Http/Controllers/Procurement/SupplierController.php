@@ -65,14 +65,6 @@ class SupplierController extends Controller
     /** @return array<string, mixed> */
     private function rules(): array
     {
-        return [
-            'name' => ['required', 'string', 'max:255'],
-            'contact_person' => ['nullable', 'string', 'max:255'],
-            'phone' => ['nullable', 'string', 'max:64'],
-            'email' => ['nullable', 'email', 'max:255'],
-            'address' => ['nullable', 'string', 'max:2000'],
-            'notes' => ['nullable', 'string', 'max:2000'],
-            'active' => ['sometimes', 'boolean'],
-        ];
+        return SaveSupplierAction::rules();
     }
 }

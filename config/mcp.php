@@ -62,6 +62,20 @@ return [
         'sales_orders.update' => ['permission' => 'sales_orders.update', 'label' => 'Update draft sales orders'],
         'sales_orders.confirm' => ['permission' => 'sales_orders.confirm', 'label' => 'Confirm sales orders'],
 
+        // MCP-W7 suppliers, non-stock articles and quotation supplier sourcing. Each maps to the ERP
+        // permission the canonical action enforces; the action re-checks it (and store membership) per call.
+        'suppliers.view' => ['permission' => 'suppliers.view', 'label' => 'View suppliers'],
+        'suppliers.create' => ['permission' => 'suppliers.manage', 'label' => 'Create suppliers'],
+        'suppliers.update' => ['permission' => 'suppliers.manage', 'label' => 'Update suppliers'],
+        'non_stock_items.view' => ['permission' => 'quotations.view', 'label' => 'View non-stock (external) articles'],
+        'non_stock_items.create' => ['permission' => 'non_stock_items.manage', 'label' => 'Create non-stock articles'],
+        'non_stock_items.update' => ['permission' => 'non_stock_items.manage', 'label' => 'Update non-stock articles'],
+        'quotation_sourcing.view' => ['permission' => 'quotations.view', 'label' => 'View quotation supplier sourcing'],
+        'quotation_sourcing.create' => ['permission' => 'quotations.update', 'label' => 'Create supplier availability requests on draft quotations'],
+        // Recording a response needs procurement.manage, cancelling needs quotations.update or procurement.manage;
+        // the canonical actions decide per call.
+        'quotation_sourcing.update' => ['any_permission' => ['procurement.manage', 'quotations.update'], 'label' => 'Record or cancel supplier availability responses'],
+
         // W6 Work Center. Follow-up scopes mirror their ERP permissions. Attention and timelines span
         // document kinds: they need ANY listed permission, and each record is then filtered by the
         // canonical service (document view permission + active store), never widened by the scope.

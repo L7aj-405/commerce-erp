@@ -32,6 +32,7 @@ final class SalesAssistantTools
         private readonly McpQuotationDraftService $drafts,
         private readonly McpIdempotencyService $idempotency,
         private readonly AuditLogger $audit,
+        private readonly McpQuotationSourcingService $sourcing,
     ) {}
 
     public function searchCustomers(?string $query = null, ?string $status = null, int $page = 1, int $per_page = 25): CallToolResult
@@ -103,7 +104,8 @@ final class SalesAssistantTools
     {
         return $this->execute('get_quotation', function () use ($quotation_id) {
             $this->context->authorize('quotations.view');
-            $result = $this->quotations->quotation($this->context->organization(), $quotation_id);
+            $quotation = $this->quotations->find($this->context->organization(), $quotation_id);
+            $result = $this->withSourcing($this->quotations->present($quotation), $quotation);
             $this->auditRead('mcp.quotation.viewed', ['quotation_id' => $quotation_id]);
 
             return $result;
@@ -166,6 +168,34 @@ final class SalesAssistantTools
                 return ['target' => ['type' => 'quotation', 'id' => $updated->getKey()], 'quotation' => $this->quotations->present($updated)];
             });
         }, 'MCP_QUOTATION_NOT_FOUND');
+    }
+
+    /**
+     * Compact supplier-sourcing state, so the agent knows at a glance whether a
+     * draft can be issued. Full request history: get_quotation_sourcing.
+     *
+     * @param array<string, mixed> $presented
+     * @return array<string, mixed>
+     */
+    private function withSourcing(array $presented, Quotation $quotation): array
+    {
+        $summary = $this->sourcing->summary($quotation, detailed: false);
+        if (! $summary['evaluated']) {
+            return [...$presented, 'sourcing' => ['evaluated' => false, 'message' => $summary['message']]];
+        }
+
+        $byLine = collect($summary['lines'])->keyBy('quotation_line_id');
+        $presented['lines'] = array_map(fn (array $line) => [
+            ...$line,
+            'sourcing' => array_diff_key($byLine->get($line['line_id'], []), ['quotation_line_id' => true]),
+        ], $presented['lines']);
+
+        return [...$presented, 'sourcing' => [
+            'evaluated' => true,
+            'sourcing_required' => $summary['sourcing_required'],
+            'sourcing_ready' => $summary['sourcing_ready'],
+            'unresolved_sourcing_count' => $summary['unresolved_count'],
+        ]];
     }
 
     /** @param callable(): array<string, mixed> $callback */

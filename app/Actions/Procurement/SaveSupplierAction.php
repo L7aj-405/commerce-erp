@@ -15,6 +15,24 @@ class SaveSupplierAction
 
     public function __construct(private readonly AuditLogger $audit) {}
 
+    /**
+     * Canonical supplier form rules, shared by the web form and MCP previews.
+     *
+     * @return array<string, mixed>
+     */
+    public static function rules(): array
+    {
+        return [
+            'name' => ['required', 'string', 'max:255'],
+            'contact_person' => ['nullable', 'string', 'max:255'],
+            'phone' => ['nullable', 'string', 'max:64'],
+            'email' => ['nullable', 'email', 'max:255'],
+            'address' => ['nullable', 'string', 'max:2000'],
+            'notes' => ['nullable', 'string', 'max:2000'],
+            'active' => ['sometimes', 'boolean'],
+        ];
+    }
+
     /** @param array<string, mixed> $data */
     public function execute(User $actor, Organization $organization, array $data, ?Supplier $supplier = null): Supplier
     {
