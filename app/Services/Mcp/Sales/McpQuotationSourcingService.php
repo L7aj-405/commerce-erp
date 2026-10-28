@@ -29,6 +29,9 @@ use InvalidArgumentException;
  */
 final class McpQuotationSourcingService
 {
+    /** Idempotency target type (mcp_idempotency_records.target_type is varchar(32)). */
+    public const TARGET_TYPE = 'supplier_request';
+
     public function __construct(
         private readonly McpExecutionContext $context,
         private readonly QuotationReadService $quotations,
@@ -162,7 +165,7 @@ final class McpQuotationSourcingService
         $line = collect($summary['lines'] ?? [])->firstWhere('quotation_line_id', (int) $request->quotation_line_id);
 
         return [
-            'target' => ['type' => 'quotation_supplier_availability_request', 'id' => (int) $request->getKey()],
+            'target' => ['type' => self::TARGET_TYPE, 'id' => (int) $request->getKey()],
             'request' => $this->presentRequest($request->fresh()),
             'line_sourcing' => $line,
             'quotation_sourcing' => array_diff_key($summary, ['lines' => true]),

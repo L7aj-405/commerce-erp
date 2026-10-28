@@ -417,6 +417,74 @@ class McpSupplierSourcingToolsTest extends QuotationTestCase
         $this->assertArrayNotHasKey('requests', $data['lines'][0]['sourcing'], 'Request history stays in get_quotation_sourcing.');
     }
 
+    /**
+     * Live regression: a draft with one non-stock line, no request yet, a supplier of the same
+     * organization and no requested_quantity failed with MCP_TOOL_INTERNAL_ERROR on MySQL — the
+     * idempotency target type (39 chars) overflowed mcp_idempotency_records.target_type varchar(32),
+     * and the whole transaction (request included) rolled back. SQLite never enforced the length.
+     */
+    public function test_live_shape_non_stock_request_with_omitted_quantity_is_created_once(): void
+    {
+        $quotation = $this->createQuotation($this->owner, $this->organization, $this->storeA);
+        $item = $this->nonStock('Clavier XYZ Pro', ['unit_price' => '1300', 'price_input_mode' => 'ht', 'tax_rate_id' => $this->tax->id]);
+        $line = $this->addNonStockQuotationLine($this->owner, $quotation, ['non_stock_item_id' => $item->id, 'quantity' => '2']);
+        $this->connect($this->owner);
+        $this->assertSame([], $this->tool('getQuotationSourcing', ['quotation_id' => $quotation->id])['data']['lines'][0]['requests']);
+
+        $created = $this->tool('createSupplierAvailabilityRequest', [
+            'quotation_id' => $quotation->id, 'quotation_line_id' => $line->id, 'supplier_id' => $this->mifa->id,
+            'idempotency_key' => 'live-smoke-sourcing-request-20261028-b',
+        ]);
+
+        $this->assertTrue($created['ok'], json_encode($created));
+        $this->assertSame('2.0000', $created['data']['request']['requested_quantity']);
+        $request = QuotationSupplierAvailabilityRequest::query()->sole();
+        $this->assertSame('2.0000', $request->requested_quantity);
+        $this->assertSame($item->id, $request->non_stock_item_id);
+
+        $record = \App\Models\McpIdempotencyRecord::query()->where('tool', 'create_supplier_availability_request')->sole();
+        $this->assertSame(\App\Services\Mcp\Sales\McpQuotationSourcingService::TARGET_TYPE, $record->target_type);
+        $this->assertLessThanOrEqual(\App\Services\Mcp\McpIdempotencyService::TARGET_TYPE_MAX, mb_strlen($record->target_type));
+        $this->assertSame((string) $request->id, $record->target_id);
+
+        $replay = $this->tool('createSupplierAvailabilityRequest', [
+            'quotation_id' => $quotation->id, 'quotation_line_id' => $line->id, 'supplier_id' => $this->mifa->id,
+            'idempotency_key' => 'live-smoke-sourcing-request-20261028-b',
+        ]);
+        $this->assertTrue($replay['data']['idempotent_replay']);
+        $this->assertSame(1, QuotationSupplierAvailabilityRequest::query()->count());
+    }
+
+    public function test_catalog_shortage_request_is_stored_with_a_fitting_idempotency_target(): void
+    {
+        [$quotation, $line] = $this->shortageQuotation('5');
+        $this->connect($this->owner);
+
+        $created = $this->tool('createSupplierAvailabilityRequest', $this->requestArgs($quotation, $line->id, 'catalog-live'));
+        $this->assertTrue($created['ok'], json_encode($created));
+        $this->assertSame('3.0000', $created['data']['request']['requested_quantity']);
+        $this->assertSame('supplier_request', \App\Models\McpIdempotencyRecord::query()->sole()->target_type);
+    }
+
+    public function test_idempotency_rejects_an_oversized_target_on_every_database_and_rolls_back(): void
+    {
+        $this->connect($this->owner);
+
+        try {
+            app(\App\Services\Mcp\McpIdempotencyService::class)->execute('probe', 'k', [], function () {
+                $this->supplier($this->organization, 'Rolled back');
+
+                return ['target' => ['type' => str_repeat('x', \App\Services\Mcp\McpIdempotencyService::TARGET_TYPE_MAX + 1), 'id' => 1]];
+            });
+            $this->fail('An oversized idempotency target must be rejected.');
+        } catch (\LogicException) {
+            // expected
+        }
+
+        $this->assertSame(0, Supplier::query()->where('name', 'Rolled back')->count());
+        $this->assertSame(0, \App\Models\McpIdempotencyRecord::query()->count());
+    }
+
     /* ================================================================ Issue */
 
     public function test_issue_is_explained_rejected_then_allowed_once_sourced(): void

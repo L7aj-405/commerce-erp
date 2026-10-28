@@ -7,9 +7,15 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
+use LogicException;
 
 final class McpIdempotencyService
 {
+    /** Column sizes of mcp_idempotency_records.target_type / target_id. */
+    public const TARGET_TYPE_MAX = 32;
+
+    public const TARGET_ID_MAX = 64;
+
     public function __construct(private readonly McpExecutionContext $context) {}
 
     /**
@@ -71,6 +77,12 @@ final class McpIdempotencyService
             }
 
             $response = $operation();
+            $targetType = isset($response['target']['type']) ? (string) $response['target']['type'] : null;
+            $targetId = isset($response['target']['id']) ? (string) $response['target']['id'] : null;
+            // Fail loudly on every database: MySQL rejects an oversized value, SQLite would silently keep it.
+            if (($targetType !== null && mb_strlen($targetType) > self::TARGET_TYPE_MAX) || ($targetId !== null && mb_strlen($targetId) > self::TARGET_ID_MAX)) {
+                throw new LogicException("MCP idempotency target for {$tool} exceeds the stored column size.");
+            }
             $record = new McpIdempotencyRecord;
             $record->id = (string) Str::ulid();
             $record->organization_id = $connection->organization_id;
@@ -78,8 +90,8 @@ final class McpIdempotencyService
             $record->tool = $tool;
             $record->idempotency_key = $key;
             $record->request_hash = $requestHash;
-            $record->target_type = isset($response['target']['type']) ? (string) $response['target']['type'] : null;
-            $record->target_id = isset($response['target']['id']) ? (string) $response['target']['id'] : null;
+            $record->target_type = $targetType;
+            $record->target_id = $targetId;
             $record->response = $response;
             $record->save();
 
