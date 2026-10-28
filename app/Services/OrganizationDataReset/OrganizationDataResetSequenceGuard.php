@@ -12,7 +12,7 @@ class OrganizationDataResetSequenceGuard
     private const SEQUENCE_TABLES = [
         'sales_order_sequences', 'payment_sequences', 'payment_refund_sequences',
         'invoice_sequences', 'delivery_note_sequences', 'quotation_sequences',
-        'stock_transfer_sequences', 'transfer_request_sequences', 'procurement_sequences',
+        'stock_transfer_sequences', 'transfer_request_sequences', 'procurement_sequences', 'purchase_order_sequences',
         'customer_return_sequences', 'credit_note_sequences', 'customer_exchange_sequences',
         'finance_obligation_sequences', 'finance_outgoing_payment_sequences',
         'finance_recurring_template_sequences', 'finance_supplier_plan_sequences',

@@ -30,6 +30,7 @@ use App\Services\ActiveTenantContext;
 use App\Services\PosStockAllocator;
 use App\Services\Pos\PosOrderCompletionEligibility;
 use App\Services\ProductPriceResolver;
+use App\Services\Procurement\SalesOrderProcurementPlanner;
 use App\Services\SalesOrderPaymentCalculator;
 use App\Services\SalesMarginReportService;
 use App\Services\SalespersonEligibilityService;
@@ -119,7 +120,7 @@ class SalesOrderController extends Controller
         return redirect()->route('sales.orders.edit', $order);
     }
 
-    public function show(SalesOrder $order, SalesOrderPaymentCalculator $payments, PosStockAllocator $stock, ReturnPolicyService $returnPolicies, PosOrderCompletionEligibility $completionEligibility, SalesMarginReportService $margins, SalespersonEligibilityService $salespersons): Response
+    public function show(SalesOrder $order, SalesOrderPaymentCalculator $payments, PosStockAllocator $stock, ReturnPolicyService $returnPolicies, PosOrderCompletionEligibility $completionEligibility, SalesMarginReportService $margins, SalespersonEligibilityService $salespersons, SalesOrderProcurementPlanner $procurementPlanner): Response
     {
         $this->authorize('view', $order);
         $order = $this->loadOrder($order);
@@ -223,6 +224,11 @@ class SalesOrderController extends Controller
             'completionEligibility' => $completion,
             'awaitingReplenishment' => $order->awaitingReplenishment(),
             'procurement' => $this->procurementPayload($order, $stock),
+            // Procurement readiness (separate from the commercial status) for the "Approvisionnement" card.
+            'procurementPlan' => [
+                ...$procurementPlanner->plan($order),
+                'can' => ['createPurchaseOrder' => request()->user()->hasPermission($order->organization_id, 'procurement.manage')],
+            ],
             'transferRequests' => $order->transferRequests()
                 ->with(['sourceWarehouse:id,name', 'destinationWarehouse:id,name', 'lines'])
                 ->latest('id')->get()

@@ -69,6 +69,7 @@ use App\Http\Controllers\PlatformController;
 use App\Http\Controllers\PosController;
 use App\Http\Controllers\Procurement\OutOfStockArticleController;
 use App\Http\Controllers\Procurement\ProcurementController;
+use App\Http\Controllers\Procurement\PurchaseOrderController;
 use App\Http\Controllers\Procurement\QuotationSupplierRequestController;
 use App\Http\Controllers\Procurement\SupplierController;
 use App\Http\Controllers\PublicLegalController;
@@ -651,6 +652,8 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
         Route::post('/orders/{order}/delivery-notes', [DeliveryNoteController::class, 'store'])->name('orders.delivery-notes.store');
         // Raise a supplier special-order for one under-covered catalogue line.
         Route::post('/orders/{order}/procurements', [ProcurementController::class, 'store'])->name('orders.procurements.store');
+        // "Créer la commande fournisseur": a supplier purchase order from the order's open requirements.
+        Route::post('/orders/{order}/purchase-orders', [PurchaseOrderController::class, 'storeFromSalesOrder'])->name('orders.purchase-orders.store');
         // Flag a Custom (not-yet-catalogued) line as an "Article hors stock" to source/create.
         Route::post('/orders/{order}/out-of-stock-articles', [OutOfStockArticleController::class, 'store'])->name('orders.out-of-stock-articles.store');
     });
@@ -662,6 +665,9 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
         // Pre-sale supplier availability checks raised from Devis (inbox only;
         // mutations reuse the quotations.sourcing.* routes).
         Route::get('/supplier-requests', [QuotationSupplierRequestController::class, 'index'])->name('supplier-requests.index');
+        Route::get('/purchase-orders', [PurchaseOrderController::class, 'index'])->name('purchase-orders.index');
+        Route::get('/purchase-orders/{purchaseOrder}', [PurchaseOrderController::class, 'show'])->whereNumber('purchaseOrder')->name('purchase-orders.show');
+        Route::post('/purchase-orders/{purchaseOrder}/cancel', [PurchaseOrderController::class, 'cancel'])->whereNumber('purchaseOrder')->name('purchase-orders.cancel');
         Route::get('/suppliers', [SupplierController::class, 'index'])->name('suppliers.index');
         Route::post('/suppliers', [SupplierController::class, 'store'])->name('suppliers.store');
         Route::patch('/suppliers/{supplier}', [SupplierController::class, 'update'])->name('suppliers.update');

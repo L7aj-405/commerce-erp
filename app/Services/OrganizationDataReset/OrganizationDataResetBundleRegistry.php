@@ -53,6 +53,7 @@ class OrganizationDataResetBundleRegistry
                 'quotation_supplier_availability_requests',
                 'quotation_lines', 'quotations',
                 'out_of_stock_articles',
+                'purchase_order_lines', 'purchase_orders',
                 'sales_order_procurements',
                 'sales_order_revisions', 'sales_order_addenda',
                 'sales_order_lines', 'sales_orders',
@@ -118,6 +119,7 @@ class OrganizationDataResetBundleRegistry
             OrganizationDataResetScope::SuppliersAndPurchasing => array_merge(
                 $this->tables($scope, [
                     'quotation_supplier_availability_requests', 'product_suppliers',
+                    'purchase_order_lines', 'purchase_orders',
                     'sales_order_procurements',
                 ]),
                 [

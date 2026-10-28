@@ -18,7 +18,10 @@ class QuotationConversionController extends Controller
         $result = $action->execute($request->user(), $quotation, ['warehouse_id' => $data['warehouse_id'] ?? null]);
 
         $redirect = redirect()->route('sales.orders.show', $result['order']);
-        if (! empty($result['stock_warnings'])) {
+        if (! empty($result['procurement']['required'])) {
+            // The order page's "Approvisionnement" card holds the next step; nothing is ordered automatically.
+            $redirect->with('success', 'Commande créée. Certains articles doivent être commandés auprès d’un fournisseur — voir l’approvisionnement.');
+        } elseif (! empty($result['stock_warnings'])) {
             $names = collect($result['stock_warnings'])->pluck('product_name')->implode(', ');
             $redirect->with('success', "Commande créée. Stock à vérifier pour : {$names}.");
         } elseif ($result['reused']) {

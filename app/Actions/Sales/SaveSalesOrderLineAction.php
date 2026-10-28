@@ -6,6 +6,7 @@ use App\Actions\Sales\Concerns\AuthorizesSalesAction;
 use App\Enums\CatalogStatus;
 use App\Enums\SalesOrderDiscountType;
 use App\Enums\SalesOrderLineType;
+use App\Enums\SupplierProcurementStatus;
 use App\Enums\WarehouseStatus;
 use App\Models\ProductVariant;
 use App\Models\SalesOrder;
@@ -50,6 +51,7 @@ class SaveSalesOrderLineAction
             if ($line) {
                 $line = SalesOrderLine::query()->where('organization_id', $order->organization_id)
                     ->where('sales_order_id', $order->getKey())->whereKey($line->getKey())->firstOrFail();
+                $this->guardSupplierRequirements($line, $data);
             }
             $type = SalesOrderLineType::from($data['line_type']);
             $requiresCostSnapshot = ! $line
@@ -133,6 +135,31 @@ class SaveSalesOrderLineAction
 
             return $line->load('allocations.warehouse');
         });
+    }
+
+    /**
+     * A draft line with a live supplier requirement (possibly already on a
+     * purchase order) keeps its article and at least that quantity: the
+     * requirement is adjusted or cancelled first, explicitly.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private function guardSupplierRequirements(SalesOrderLine $line, array $data): void
+    {
+        $live = $line->procurements()
+            ->whereNotIn('status', [SupplierProcurementStatus::Cancelled->value, SupplierProcurementStatus::Unavailable->value, SupplierProcurementStatus::Completed->value])
+            ->lockForUpdate()->get(['id', 'quantity']);
+        if ($live->isEmpty()) {
+            return;
+        }
+        $required = $live->reduce(fn (string $sum, $procurement) => Decimal::add($sum, (string) $procurement->quantity), '0.0000');
+        $sameArticle = ($data['line_type'] ?? null) === SalesOrderLineType::Catalog->value
+            && (int) ($data['product_variant_id'] ?? 0) === (int) $line->product_variant_id;
+        if (! $sameArticle || Decimal::compare(Decimal::normalize((string) ($data['quantity'] ?? '0')), $required) < 0) {
+            throw ValidationException::withMessages([
+                'quantity' => "Un approvisionnement fournisseur couvre {$required} sur cette ligne : ajustez ou annulez-le avant de changer l’article ou de descendre sous cette quantité.",
+            ]);
+        }
     }
 
     /** @return array{array<string, mixed>, string, string, ?string, bool, Warehouse, ProductVariant} */

@@ -127,6 +127,13 @@ class CancelSalesOrderAction
                     'order' => "Approvisionnement {$orderedProcurement->procurement_number} déjà commandé au fournisseur. Réceptionnez-le ou annulez-le explicitement avant d’annuler la commande.",
                 ]);
             }
+            // A requirement only partly on a purchase order is still a supplier commitment.
+            $onPurchaseOrders = SalesOrderProcurement::activePurchaseOrderQuantities($order->organization_id, $procurements->modelKeys(), lock: true);
+            if ($partlyOrdered = $procurements->first(fn ($procurement) => isset($onPurchaseOrders[$procurement->getKey()]))) {
+                throw ValidationException::withMessages([
+                    'order' => "Approvisionnement {$partlyOrdered->procurement_number} figure sur une commande fournisseur active. Annulez d’abord la commande fournisseur.",
+                ]);
+            }
 
             foreach ($draftInvoices as $invoice) {
                 $this->invoiceDrafts->execute($actor, $invoice, $reason);

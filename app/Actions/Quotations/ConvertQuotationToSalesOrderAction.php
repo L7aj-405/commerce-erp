@@ -2,6 +2,7 @@
 
 namespace App\Actions\Quotations;
 
+use App\Actions\Procurement\DeriveSalesOrderProcurementRequirementsAction;
 use App\Actions\Quotations\Concerns\AuthorizesQuotationAction;
 use App\Actions\Sales\CreateSalesOrderAction;
 use App\Actions\Sales\SaveSalesOrderLineAction;
@@ -15,6 +16,7 @@ use App\Models\SalesOrder;
 use App\Models\User;
 use App\Models\Warehouse;
 use App\Services\AuditLogger;
+use App\Services\Procurement\SalesOrderProcurementPlanner;
 use App\Support\Decimal;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -32,7 +34,12 @@ use Illuminate\Validation\ValidationException;
  * Idempotent: a Devis that already carries `converted_sales_order_id` returns
  * that same order instead of creating a second one (double-click / retry safe).
  *
- * @phpstan-type ConversionResult array{order: SalesOrder, stock_warnings: list<array<string,string>>, reused: bool}
+ * Lines internal stock no longer covers but whose supplier availability was
+ * confirmed on this quotation get a procurement requirement
+ * (DeriveSalesOrderProcurementRequirementsAction); the result's `procurement` is
+ * the order's procurement summary (absent on a reused order).
+ *
+ * @phpstan-type ConversionResult array{order: SalesOrder, stock_warnings: list<array<string,string>>, reused: bool, procurement?: array<string, mixed>}
  */
 class ConvertQuotationToSalesOrderAction
 {
@@ -41,12 +48,14 @@ class ConvertQuotationToSalesOrderAction
     public function __construct(
         private readonly CreateSalesOrderAction $createOrder,
         private readonly SaveSalesOrderLineAction $saveLine,
+        private readonly DeriveSalesOrderProcurementRequirementsAction $deriveRequirements,
+        private readonly SalesOrderProcurementPlanner $procurementPlanner,
         private readonly AuditLogger $audit,
     ) {}
 
     /**
      * @param  array{warehouse_id?: int|null}  $options
-     * @return array{order: SalesOrder, stock_warnings: list<array<string,string>>, reused: bool}
+     * @return array{order: SalesOrder, stock_warnings: list<array<string,string>>, reused: bool, procurement?: array<string, mixed>}
      */
     public function execute(User $actor, Quotation $quotation, array $options = []): array
     {
@@ -136,14 +145,22 @@ class ConvertQuotationToSalesOrderAction
             $quotation->converted_sales_order_id = $order->getKey();
             $quotation->save();
 
+            // Supplier availability confirmed on this (final, accepted) quotation
+            // becomes an explicit procurement requirement for every line internal
+            // stock no longer covers. Nothing is ordered from the supplier here.
+            $derived = $this->deriveRequirements->execute($actor, $order);
+            $procurement = $this->procurementPlanner->plan($order)['summary'];
+
             $this->audit->record('quotation.converted', $actor, $quotation->organization, $quotation->store, $quotation, newValues: [
                 'quotation_number' => $quotation->quotation_number,
                 'sales_order_id' => $order->getKey(),
                 'sales_order_number' => $order->order_number,
                 'stock_warnings' => count($warnings),
+                'procurement_requirements' => count($derived),
+                'procurement_unresolved_lines' => $procurement['unresolved_count'],
             ]);
 
-            return ['order' => $order->fresh(['lines']), 'stock_warnings' => $warnings, 'reused' => false];
+            return ['order' => $order->fresh(['lines']), 'stock_warnings' => $warnings, 'reused' => false, 'procurement' => $procurement];
         });
     }
 

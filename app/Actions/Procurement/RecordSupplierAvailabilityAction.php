@@ -37,6 +37,11 @@ class RecordSupplierAvailabilityAction
                 ->with(['organization', 'store', 'salesOrderLine', 'supplier'])
                 ->firstOrFail();
 
+            if (Decimal::compare($procurement->activePurchaseOrderQuantity(lock: true), '0') > 0) {
+                throw ValidationException::withMessages([
+                    'status' => 'Cet approvisionnement figure sur une commande fournisseur active. Annulez d’abord la commande fournisseur.',
+                ]);
+            }
             if (! $procurement->status->isEditable()) {
                 throw ValidationException::withMessages([
                     'status' => 'La disponibilité ne peut plus être modifiée une fois la commande fournisseur passée.',

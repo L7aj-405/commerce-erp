@@ -2,9 +2,11 @@
 
 namespace App\Models;
 
+use App\Enums\PurchaseOrderStatus;
 use App\Enums\SupplierAvailabilityStatus;
 use App\Enums\SupplierProcurementStatus;
 use App\Models\Concerns\ScopesToActiveOrganization;
+use App\Support\Decimal;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -97,6 +99,46 @@ class SalesOrderProcurement extends Model
     public function cancelledBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'cancelled_by_user_id');
+    }
+
+    public function sourceQuotation(): BelongsTo
+    {
+        return $this->belongsTo(Quotation::class, 'source_quotation_id');
+    }
+
+    public function purchaseOrderLines(): HasMany
+    {
+        return $this->hasMany(PurchaseOrderLine::class);
+    }
+
+    /** Quantity on non-cancelled purchase orders (decimal string). */
+    public function activePurchaseOrderQuantity(bool $lock = false): string
+    {
+        return self::activePurchaseOrderQuantities($this->organization_id, [(int) $this->getKey()], $lock)[(int) $this->getKey()] ?? '0.0000';
+    }
+
+    /**
+     * Quantity on non-cancelled purchase orders per requirement id (one query).
+     *
+     * @param  list<int>  $procurementIds
+     * @return array<int, string>
+     */
+    public static function activePurchaseOrderQuantities(int $organizationId, array $procurementIds, bool $lock = false): array
+    {
+        if ($procurementIds === []) {
+            return [];
+        }
+
+        return PurchaseOrderLine::query()
+            ->where('organization_id', $organizationId)
+            ->whereIn('sales_order_procurement_id', $procurementIds)
+            ->whereHas('purchaseOrder', fn ($query) => $query->where('status', '!=', PurchaseOrderStatus::Cancelled->value))
+            ->when($lock, fn ($query) => $query->lockForUpdate())
+            ->get(['sales_order_procurement_id', 'quantity'])
+            ->groupBy('sales_order_procurement_id')
+            ->map(fn ($lines) => $lines->reduce(fn (string $sum, PurchaseOrderLine $line) => Decimal::add($sum, (string) $line->quantity), '0.0000'))
+            ->mapWithKeys(fn (string $sum, $id) => [(int) $id => $sum])
+            ->all();
     }
 
     public function financeObligations(): HasMany { return $this->hasMany(FinanceObligation::class); }

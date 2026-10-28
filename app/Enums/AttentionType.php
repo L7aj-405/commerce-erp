@@ -4,7 +4,7 @@ namespace App\Enums;
 
 use App\Models\AttentionItem;
 
-/** W4.1 quotation attention; W4.4 invoice / payment attention; W4.5 sales order receivables. */
+/** W4.1 quotation attention; W4.4 invoice / payment attention; W4.5 sales order receivables; P1 sales order procurement. */
 enum AttentionType: string
 {
     case QuotationSentUndecided = 'quotation_sent_undecided';
@@ -22,6 +22,8 @@ enum AttentionType: string
     case SalesOrderPartialOverdue = 'sales_order_partial_overdue';
     case SalesOrderPaymentFollowUpBacklog = 'sales_order_payment_followup_backlog';
     case SalesOrderPaidNotInvoiced = 'sales_order_paid_not_invoiced';
+    case SalesOrderProcurementRequired = 'sales_order_procurement_required';
+    case SalesOrderProcurementUnresolved = 'sales_order_procurement_unresolved';
 
     public function subjectType(): string
     {

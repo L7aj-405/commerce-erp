@@ -8,6 +8,7 @@ use App\Actions\Sales\Concerns\AuthorizesSalesAction;
 use App\Enums\SalesOrderLineType;
 use App\Enums\SalesOrderSource;
 use App\Enums\SalesOrderStatus;
+use App\Enums\SupplierProcurementStatus;
 use App\Models\SalesOrder;
 use App\Models\SalesOrderInventoryAllocation;
 use App\Models\User;
@@ -97,6 +98,17 @@ class ConfirmSalesOrderAction
                 $supplierCovered = '0.0000';
                 $hasUnconfirmedProcurement = false;
                 foreach ($line->procurements as $procurement) {
+                    // A requirement derived from the accepted quotation (P1) is
+                    // covered by the goods themselves: neither the supplier
+                    // confirmation nor the purchase order makes the order
+                    // confirmable — only the receipt does.
+                    if ($procurement->source_quotation_id !== null && in_array($procurement->status, [
+                        SupplierProcurementStatus::PendingSupplier, SupplierProcurementStatus::SupplierConfirmed, SupplierProcurementStatus::Ordered,
+                    ], true)) {
+                        throw ValidationException::withMessages([
+                            'lines' => "Approvisionnement {$procurement->procurement_number} pas encore réceptionné : la commande pourra être confirmée après réception de la marchandise fournisseur.",
+                        ]);
+                    }
                     if ($procurement->status->coversSalesLine()) {
                         $supplierCovered = Decimal::add($supplierCovered, $procurement->quantity);
                     } elseif (! $procurement->status->isTerminal()) {

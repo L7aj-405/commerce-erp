@@ -7,6 +7,7 @@ use App\Enums\SupplierProcurementStatus;
 use App\Models\SalesOrderProcurement;
 use App\Models\User;
 use App\Services\AuditLogger;
+use App\Support\Decimal;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -41,6 +42,11 @@ class CancelProcurementAction
 
             if ($procurement->status === SupplierProcurementStatus::Cancelled) {
                 return $procurement; // idempotent
+            }
+            if (Decimal::compare($procurement->activePurchaseOrderQuantity(lock: true), '0') > 0) {
+                throw ValidationException::withMessages([
+                    'status' => 'Cet approvisionnement figure sur une commande fournisseur active. Annulez d’abord la commande fournisseur.',
+                ]);
             }
             if ($procurement->status === SupplierProcurementStatus::Completed) {
                 throw ValidationException::withMessages(['status' => 'Approvisionnement déjà clôturé.']);

@@ -24,7 +24,7 @@ const dot: Record<Category, string> = { documents: 'bg-primary', follow_ups: 'bg
 const attentionTypes: Record<string, TranslationKey> = {
     quotation_sent_undecided: 'attention.typeSent', quotation_expiring_soon: 'attention.typeExpiring', quotation_expired_undecided: 'attention.typeExpired',
     quotation_followup_backlog: 'attention.typeBacklog', sales_order_payment_due_soon: 'attention.typeOrderDueSoon', sales_order_unpaid_overdue: 'attention.typeOrderOverdue',
-    sales_order_partial_overdue: 'attention.typeOrderPartial', sales_order_payment_followup_backlog: 'attention.typeOrderBacklog', sales_order_paid_not_invoiced: 'attention.typeOrderPaidNotInvoiced',
+    sales_order_partial_overdue: 'attention.typeOrderPartial', sales_order_payment_followup_backlog: 'attention.typeOrderBacklog', sales_order_paid_not_invoiced: 'attention.typeOrderPaidNotInvoiced', sales_order_procurement_required: 'attention.typeOrderProcurementRequired', sales_order_procurement_unresolved: 'attention.typeOrderProcurementUnresolved',
     invoice_due_soon: 'attention.typeInvoiceDueSoon', invoice_overdue_unpaid: 'attention.typeInvoiceOverdue', invoice_overdue_partial: 'attention.typeInvoicePartial',
     invoice_payment_followup_backlog: 'attention.typeInvoiceBacklog',
 };

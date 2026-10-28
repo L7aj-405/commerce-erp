@@ -212,6 +212,8 @@ final class AttentionQuery
         'sales_order_partial_overdue' => 'sales order payment due date',
         'sales_order_payment_followup_backlog' => 'due date of the oldest overdue follow-up',
         'sales_order_paid_not_invoiced' => 'date the order became fully paid',
+        'sales_order_procurement_required' => 'date the sales order was created',
+        'sales_order_procurement_unresolved' => 'date the sales order was created',
     ];
 
     /**
@@ -235,7 +237,11 @@ final class AttentionQuery
             'facts_meaning' => array_filter([
                 'date' => self::FACT_DATE_MEANING[$item->type->value] ?? null,
                 'days' => isset($facts['days']) ? 'whole organization-local days between that date and the last detection' : null,
-                'count' => isset($facts['count']) ? 'number of overdue follow-ups linked to the document' : null,
+                'count' => isset($facts['count']) ? match ($item->type) {
+                    AttentionType::SalesOrderProcurementRequired => 'number of order lines still to order from a supplier',
+                    AttentionType::SalesOrderProcurementUnresolved => 'number of order lines without a confirmed supplier',
+                    default => 'number of overdue follow-ups linked to the document',
+                } : null,
                 'outstanding' => isset($facts['outstanding']) ? 'remaining balance at last detection (decimal string, currency in facts.currency)' : null,
             ]),
             'state' => [
@@ -277,6 +283,8 @@ final class AttentionQuery
             AttentionType::SalesOrderPartialOverdue => "Relancer le solde restant — commande {$number}",
             AttentionType::SalesOrderPaymentFollowUpBacklog => "Traiter les relances de paiement — commande {$number}",
             AttentionType::SalesOrderPaidNotInvoiced => "Établir la facture — commande {$number}",
+            AttentionType::SalesOrderProcurementRequired => "Créer la commande fournisseur — commande {$number}",
+            AttentionType::SalesOrderProcurementUnresolved => "Trouver un fournisseur — commande {$number}",
         });
     }
 }

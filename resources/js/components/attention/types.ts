@@ -2,7 +2,7 @@ export type AttentionItem = {
     id: number;
     type: 'quotation_sent_undecided' | 'quotation_expiring_soon' | 'quotation_expired_undecided' | 'quotation_followup_backlog'
         | 'invoice_due_soon' | 'invoice_overdue_unpaid' | 'invoice_overdue_partial' | 'invoice_payment_followup_backlog'
-        | 'sales_order_payment_due_soon' | 'sales_order_unpaid_overdue' | 'sales_order_partial_overdue' | 'sales_order_payment_followup_backlog' | 'sales_order_paid_not_invoiced';
+        | 'sales_order_payment_due_soon' | 'sales_order_unpaid_overdue' | 'sales_order_partial_overdue' | 'sales_order_payment_followup_backlog' | 'sales_order_paid_not_invoiced' | 'sales_order_procurement_required' | 'sales_order_procurement_unresolved';
     subject_type: 'quotation' | 'sales_order' | 'invoice';
     severity: 'info' | 'warning' | 'critical';
     status: 'open' | 'snoozed' | 'dismissed' | 'resolved';

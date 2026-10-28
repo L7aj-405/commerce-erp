@@ -209,21 +209,15 @@ class SupplierProcurementTest extends SalesTestCase
 
     // --- 9. order at supplier -----------------------------------------
 
-    public function test_ordering_at_the_supplier_requires_a_confirmed_order_and_records_metadata(): void
+    public function test_ordering_at_the_supplier_works_on_a_draft_order_and_records_metadata(): void
     {
         [$owner, $org, $store, $showroom, , $variant, $supplier] = $this->context('4.0000');
         [$order, $line] = $this->draftWithLine($owner, $org, $store, $variant, $showroom, '10.0000');
         $p = $this->confirmAvailability($owner, $this->raise($owner, $order, $line, $supplier, '6.0000'));
 
-        // customer order not confirmed yet -> blocked
-        try {
-            app(OrderProcurementAction::class)->execute($owner, $p->fresh());
-            $this->fail('Expected ordering to be blocked before the customer order is confirmed.');
-        } catch (ValidationException) {
-        }
-
-        app(ConfirmSalesOrderAction::class)->execute($owner, $order->fresh());
+        // The supplier order is placed while the customer order is still a draft.
         $p = app(OrderProcurementAction::class)->execute($owner, $p->fresh());
+        $this->assertSame('draft', $order->fresh()->status->value);
 
         $this->assertSame(SupplierProcurementStatus::Ordered, $p->status);
         $this->assertNotNull($p->ordered_at);

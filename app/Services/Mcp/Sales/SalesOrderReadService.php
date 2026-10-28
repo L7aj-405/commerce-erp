@@ -10,6 +10,7 @@ use App\Models\Organization;
 use App\Models\SalesOrder;
 use App\Models\SalesOrderInventoryAllocation;
 use App\Models\SalesOrderLine;
+use App\Services\Procurement\SalesOrderProcurementPlanner;
 use App\Services\SalesOrderPaymentCalculator;
 use App\Support\Decimal;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -25,6 +26,7 @@ final class SalesOrderReadService
     public function __construct(
         private readonly McpSalesStoreAccess $stores,
         private readonly SalesOrderPaymentCalculator $payments,
+        private readonly SalesOrderProcurementPlanner $procurement,
     ) {}
 
     /**
@@ -161,6 +163,9 @@ final class SalesOrderReadService
                 'invoice' => $this->invoiceSummary($order),
             ],
             'fulfillment_status' => $order->fulfillment_status->value,
+            // Supplier procurement readiness, independent of the commercial status. Compact:
+            // detailed supplier request histories stay on the procurement pages.
+            'procurement' => $this->procurementSummary($order),
             'confirmation' => $order->confirmed_at ? [
                 'confirmed_at' => $order->confirmed_at->toIso8601String(),
                 'confirmed_by' => $order->confirmedBy?->name,
@@ -168,6 +173,40 @@ final class SalesOrderReadService
             'version' => $this->version($order),
             'created_at' => $order->created_at?->toIso8601String(),
             'updated_at' => $order->updated_at?->toIso8601String(),
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function procurementSummary(SalesOrder $order): array
+    {
+        $plan = $this->procurement->plan($order);
+        $summary = $plan['summary'];
+
+        return [
+            'state' => $summary['state'],
+            'required' => $summary['required'],
+            'ready_for_ordering' => $summary['ready_for_ordering'],
+            'ordered' => $summary['ordered'],
+            'unresolved_count' => $summary['unresolved_count'],
+            'required_line_count' => $summary['required_line_count'],
+            'ordered_line_count' => $summary['ordered_line_count'],
+            'confirmation_waits_for_receipt' => $summary['confirmation_waits_for_receipt'],
+            'source_quotation' => $summary['source_quotation'],
+            'lines' => collect($plan['lines'])->reject(fn (array $line) => $line['state'] === SalesOrderProcurementPlanner::NOT_APPLICABLE)
+                ->map(fn (array $line) => [
+                    'line_id' => $line['line_id'],
+                    'article' => $line['article'],
+                    'state' => $line['state'],
+                    'required_quantity' => $line['procurement_quantity'],
+                    'ordered_quantity' => $line['ordered_quantity'],
+                    'remaining_to_order' => $line['remaining_to_order'],
+                    'internal_stock_covered_quantity' => $line['internal_stock_covered_quantity'],
+                    'unresolved_reason' => $line['unresolved_reason'],
+                    'supplier' => $line['supplier'],
+                    'availability' => $line['availability'],
+                    'purchase_orders' => array_map(fn (array $po) => array_intersect_key($po, array_flip(['id', 'number', 'status', 'quantity', 'expected_delivery_date'])), $line['purchase_orders']),
+                    'source_quotation' => $line['source_quotation'],
+                ])->values()->all(),
         ];
     }
 
