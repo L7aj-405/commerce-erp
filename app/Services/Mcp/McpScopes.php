@@ -15,6 +15,13 @@ namespace App\Services\Mcp;
  */
 final class McpScopes
 {
+    /**
+     * Most scopes one connection may hold: the single limit for every scope array
+     * accepted from a client (connection create/update, OAuth consent). Only a
+     * size guard — each scope must still exist and be grantable to the user.
+     */
+    public const MAX_PER_CONNECTION = 100;
+
     /** @return array<string, array<string, mixed>> */
     public static function definitions(): array
     {
