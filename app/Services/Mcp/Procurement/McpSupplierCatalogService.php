@@ -8,7 +8,10 @@ use App\Models\ProductVariantSupplier;
 use App\Models\Supplier;
 use App\Services\Mcp\McpExecutionContext;
 use App\Services\Mcp\Parties\McpPartyPreviews;
+use App\Models\QuotationLine;
+use App\Services\Mcp\Sales\QuotationReadService;
 use App\Services\Procurement\SupplierCatalogQuery;
+use App\Services\Procurement\SupplierRecommendationService;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Validation\ValidationException;
@@ -31,7 +34,41 @@ final class McpSupplierCatalogService
         private readonly SupplierCatalogQuery $catalog,
         private readonly SaveProductVariantSupplierAction $save,
         private readonly McpPartyPreviews $previews,
+        private readonly QuotationReadService $quotations,
+        private readonly SupplierRecommendationService $recommendations,
     ) {}
+
+    /**
+     * Advisory ranked suppliers for one quotation line (B2), for its current
+     * shortage. Read-only: no request, relation or purchase order is created.
+     *
+     * @return array<string, mixed>
+     */
+    public function recommendForQuotationLine(int $quotationId, int $lineId): array
+    {
+        $this->authorizeView();
+        $this->context->authorize('quotation_sourcing.view');
+        $quotation = $this->quotations->find($this->context->organization(), $quotationId);
+        $quotation->lines->firstWhere('id', $lineId) ?? throw (new ModelNotFoundException)->setModel(QuotationLine::class, [$lineId]);
+        $note = 'Advisory only: the ranking uses known ERP data (supplier catalog terms, purchase orders, recent availability answers) and does not guarantee availability. '
+            .'It reserves nothing and creates no purchase order. Explain the top suppliers, let the user choose, then call create_supplier_availability_request for the chosen supplier only — '
+            .'never for every recommendation. Issuing the quotation still requires a confirmed availability when the line needs sourcing.';
+        if (! $quotation->status->isEditable()) {
+            return ['quotation_id' => $quotationId, 'quotation_line_id' => $lineId, 'evaluated' => false,
+                'message' => 'Recommendations are computed for draft quotations only.', 'note' => $note];
+        }
+
+        return [
+            'quotation_id' => $quotationId,
+            'evaluated' => true,
+            ...$this->recommendations->forQuotation($quotation, $this->withPrices(), $lineId)[$lineId],
+            'prices_visible' => $this->withPrices(),
+            'ranking' => 'Tiers: A preferred, B linked with evidence (priority, recent confirmation or purchase, complete terms), C other linked, D legacy (remembered from past quotations, no catalog terms). '
+                .'Within a tier: priority, MOQ/multiple fit, recent availability, lead time, reliability, quality, price in '.strtoupper((string) config('platform.currency_code', 'MAD')).' only, latest purchase, name.',
+            'other_suppliers' => 'Any other active supplier can still be asked: use search_suppliers, then create_supplier_availability_request.',
+            'note' => $note,
+        ];
+    }
 
     /** @return array<string, mixed> */
     public function variantSuppliers(?int $variantId, ?string $sku, bool $includeInactive): array

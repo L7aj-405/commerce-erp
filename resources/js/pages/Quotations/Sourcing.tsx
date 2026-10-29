@@ -6,6 +6,7 @@ import type { TranslationKey } from "@/i18n/translations";
 import { formatQuantity } from "@/utils/format";
 import { router } from "@inertiajs/react";
 import { useEffect, useId, useState } from "react";
+import SupplierRecommendations, { type SupplierRecommendation } from "./SupplierRecommendations";
 
 /**
  * Internal supplier-sourcing UI for draft Devis lines. Everything here is
@@ -546,6 +547,27 @@ function SupplierRequestDialog({
     const [note, setNote] = useState("");
     const [errors, setErrors] = useState<Record<string, string>>({});
     const [processing, setProcessing] = useState(false);
+    const [processingId, setProcessingId] = useState<number | null>(null);
+    const [recommendations, setRecommendations] = useState<SupplierRecommendation[]>([]);
+    const [recoLoading, setRecoLoading] = useState(true);
+    const recommendedIds = new Set(recommendations.map((r) => r.supplier.id));
+
+    // Advisory ranking (B2): read once per open; nothing is created by viewing it.
+    useEffect(() => {
+        const ctrl = new AbortController();
+        fetch(`/quotations/${quotationId}/lines/${sourcing.line_id}/supplier-recommendations`, {
+            headers: { Accept: "application/json", "X-Requested-With": "XMLHttpRequest" },
+            signal: ctrl.signal,
+        })
+            .then(async (res) => {
+                if (res.ok) setRecommendations(((await res.json()) as { data: { recommendations: SupplierRecommendation[] } }).data.recommendations);
+            })
+            .catch(() => {
+                /* aborted or unavailable: the manual search below still works */
+            })
+            .finally(() => setRecoLoading(false));
+        return () => ctrl.abort();
+    }, [quotationId, sourcing.line_id]);
 
     useEffect(() => {
         const ctrl = new AbortController();
@@ -569,11 +591,8 @@ function SupplierRequestDialog({
                     const rows = ((await res.json()) as {
                         data: SupplierOption[];
                     }).data;
+                    // No preselection: the user always chooses the supplier to ask.
                     setOptions(rows);
-                    setSupplierId(
-                        (cur) =>
-                            cur ?? rows.find((r) => r.known)?.id ?? null,
-                    );
                 }
             } catch {
                 /* aborted */
@@ -587,13 +606,14 @@ function SupplierRequestDialog({
         };
     }, [search, quotationId, sourcing.line_id]);
 
-    const submit = () => {
-        if (supplierId === null) return;
+    /** The canonical availability request for one explicitly chosen supplier. */
+    const request = (chosen: number, fromRecommendation: boolean) => {
         setProcessing(true);
+        if (fromRecommendation) setProcessingId(chosen);
         router.post(
             `/quotations/${quotationId}/lines/${sourcing.line_id}/supplier-requests`,
             {
-                supplier_id: supplierId,
+                supplier_id: chosen,
                 requested_quantity: quantity.trim() || null,
                 note: note.trim() || null,
             },
@@ -603,10 +623,17 @@ function SupplierRequestDialog({
                 only: RELOAD,
                 onError: (e) => setErrors(e),
                 onSuccess: () => onClose(),
-                onFinish: () => setProcessing(false),
+                onFinish: () => {
+                    setProcessing(false);
+                    setProcessingId(null);
+                },
             },
         );
     };
+    const submit = () => {
+        if (supplierId !== null) request(supplierId, false);
+    };
+    const others = options.filter((o) => !recommendedIds.has(o.id));
 
     return (
         <Dialog
@@ -656,9 +683,16 @@ function SupplierRequestDialog({
                     </dl>
                 </div>
 
+                <SupplierRecommendations
+                    recommendations={recommendations}
+                    loading={recoLoading}
+                    processingId={processingId}
+                    onRequest={(chosen) => request(chosen, true)}
+                />
+
                 <div>
-                    <label className="block text-xs font-medium text-ink-muted">
-                        {t("sourcing.supplier")}
+                    <label className="block text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                        {t("supplierReco.otherSuppliers")}
                     </label>
                     <input
                         value={search}
@@ -667,14 +701,14 @@ function SupplierRequestDialog({
                         className="mt-1 h-9 w-full rounded-field border border-line-strong px-2"
                     />
                     <div className="mt-2 max-h-48 overflow-y-auto rounded-field border border-line">
-                        {options.length === 0 && (
+                        {others.length === 0 && (
                             <p className="px-3 py-2 text-xs text-ink-muted">
                                 {loading
                                     ? t("common.loading")
                                     : t("sourcing.noSupplier")}
                             </p>
                         )}
-                        {options.map((o) => (
+                        {others.map((o) => (
                             <label
                                 key={o.id}
                                 className="flex cursor-pointer items-center gap-2 border-b border-line px-3 py-2 last:border-b-0 hover:bg-raised"

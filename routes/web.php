@@ -589,6 +589,7 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
     Route::delete('/quotations/{quotation}/lines/{line}', [QuotationLineController::class, 'destroy'])->name('quotations.lines.destroy');
     // Internal supplier availability tracking (never on the customer document).
     Route::get('/quotations/{quotation}/lines/{line}/supplier-options', [QuotationSourcingController::class, 'supplierOptions'])->name('quotations.sourcing.supplier-options');
+    Route::get('/quotations/{quotation}/lines/{line}/supplier-recommendations', [QuotationSourcingController::class, 'recommendations'])->name('quotations.sourcing.supplier-recommendations');
     Route::post('/quotations/{quotation}/lines/{line}/supplier-requests', [QuotationSourcingController::class, 'store'])->name('quotations.sourcing.store');
     Route::patch('/quotations/{quotation}/supplier-requests/{supplierRequest}', [QuotationSourcingController::class, 'record'])->name('quotations.sourcing.record');
     Route::post('/quotations/{quotation}/supplier-requests/{supplierRequest}/cancel', [QuotationSourcingController::class, 'cancel'])->name('quotations.sourcing.cancel');

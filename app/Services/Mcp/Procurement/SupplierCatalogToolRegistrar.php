@@ -43,6 +43,16 @@ final class SupplierCatalogToolRegistrar
                 'page' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 100000, 'default' => 1], 'per_page' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 100, 'default' => 25],
             ], ['supplier_id']));
 
+        if ($this->context->allows('quotation_sourcing.view')) {
+            $builder->addTool([$this->tools, 'recommendSuppliersForQuotationLine'], name: 'recommend_suppliers_for_quotation_line', title: 'Recommend suppliers for a quotation line',
+                description: 'ADVISORY ranking of the suppliers to ask for a draft quotation line that internal stock does not cover, for its current shortage (requested_quantity). '
+                    .'Each recommendation has a rank, a tier (A preferred, B linked with evidence, C other linked, D legacy), reason codes, warnings (MOQ not met, order multiple, missing price/lead time, price in another currency, recently unavailable, request already pending), '
+                    .'known terms, last purchase and recent availability answers, plus an English explanation. It uses known ERP data only and does NOT guarantee availability, reserves nothing and creates no purchase order or request. '
+                    .'Explain the top suppliers, ask the user which one to contact (unless they already said), then call create_supplier_availability_request for that supplier only. Other active suppliers can still be asked (search_suppliers).',
+                annotations: $readOnly, outputSchema: $outputSchema,
+                inputSchema: $schema(['quotation_id' => $id, 'quotation_line_id' => $id], ['quotation_id', 'quotation_line_id']));
+        }
+
         if (! $this->context->allows('supplier_catalog.manage')) return;
 
         $relationFields = $schema([

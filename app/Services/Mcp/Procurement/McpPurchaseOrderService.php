@@ -13,6 +13,7 @@ use App\Services\Mcp\McpExecutionContext;
 use App\Services\Mcp\Parties\McpPartyPreviews;
 use App\Services\Mcp\Sales\SalesOrderReadService;
 use App\Services\Procurement\SalesOrderProcurementPlanner;
+use App\Services\Procurement\SupplierCatalogQuery;
 use App\Support\Decimal;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\Validator;
@@ -45,6 +46,7 @@ final class McpPurchaseOrderService
         private readonly CreatePurchaseOrderFromProcurementRequirementsAction $create,
         private readonly McpPartyPreviews $previews,
         private readonly McpDryRun $dryRun,
+        private readonly SupplierCatalogQuery $catalog,
     ) {}
 
     /** @param array<string, mixed> $data @return array<string, mixed> */
@@ -106,6 +108,18 @@ final class McpPurchaseOrderService
             ? $this->previews->issue('purchase_order', $this->binding($payload, $result['state']))
             : [null, null];
         $order = $result['order'];
+        // B2: read-only price hints, computed after the dry run so the previewed order itself never counts as history.
+        $withPrices = ($this->context->allows('product_cost.view') || $this->context->allows('purchase_orders.view'))
+            && SupplierCatalogQuery::canViewPrices($this->context->user(), (int) $this->context->organization()->getKey());
+        if ($withPrices && $result['supplier'] !== null && $result['lines'] !== []) {
+            $hints = $this->catalog->priceHints((int) $this->context->organization()->getKey(), array_map(fn (array $line) => [
+                'supplier_id' => (int) $result['supplier']->id, 'product_variant_id' => (int) $line['product_variant_id'],
+            ], $result['lines']));
+            $result['lines'] = array_map(fn (array $line) => [
+                ...$line,
+                'price_hint' => $hints[$result['supplier']->id.':'.$line['product_variant_id']] ?? null,
+            ], $result['lines']);
+        }
 
         return [
             'sales_order' => ['id' => $order->getKey(), 'order_number' => $order->order_number, 'status' => $order->status->value],
@@ -117,7 +131,7 @@ final class McpPurchaseOrderService
             'required_scopes' => ['purchase_orders.create'],
             'preview_fingerprint' => $fingerprint,
             'expires_at' => $expiresAt,
-            'note' => 'Creating it places a real supplier order (financial commitment) for these quantities, linked to the sales order. It creates no stock, no payment and no invoice, and the sales order stays as it is (a draft stays a draft). Goods are stocked only by receive_procurement once they physically arrive.',
+            'note' => 'price_hint (when shown) is read-only information — the supplier catalog price and the last actual PO price from this supplier; it is never written into the order. Creating it places a real supplier order (financial commitment) for these quantities, linked to the sales order. It creates no stock, no payment and no invoice, and the sales order stays as it is (a draft stays a draft). Goods are stocked only by receive_procurement once they physically arrive.',
         ];
     }
 

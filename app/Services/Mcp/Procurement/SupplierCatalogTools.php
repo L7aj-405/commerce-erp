@@ -36,6 +36,11 @@ final class SupplierCatalogTools
         return $this->execute('get_supplier_products', fn () => $this->catalog->supplierProducts($supplier_id, $status, $query, $page, $per_page), 'MCP_SUPPLIER_NOT_FOUND');
     }
 
+    public function recommendSuppliersForQuotationLine(int $quotation_id, int $quotation_line_id): CallToolResult
+    {
+        return $this->execute('recommend_suppliers_for_quotation_line', fn () => $this->catalog->recommendForQuotationLine($quotation_id, $quotation_line_id), 'MCP_QUOTATION_NOT_FOUND');
+    }
+
     /** @param array<string, mixed> $relation */
     public function previewSupplierProductRelation(int $supplier_id, int $product_variant_id, array $relation = []): CallToolResult
     {

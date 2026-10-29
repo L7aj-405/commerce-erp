@@ -31,6 +31,7 @@ use App\Services\PosStockAllocator;
 use App\Services\Pos\PosOrderCompletionEligibility;
 use App\Services\ProductPriceResolver;
 use App\Services\Procurement\SalesOrderProcurementPlanner;
+use App\Services\Procurement\SupplierCatalogQuery;
 use App\Services\SalesOrderPaymentCalculator;
 use App\Services\SalesMarginReportService;
 use App\Services\SalespersonEligibilityService;
@@ -118,6 +119,31 @@ class SalesOrderController extends Controller
         $order = $action->execute($request->user(), $organization, $store, $request->validate($this->headerRules($organization->getKey())));
 
         return redirect()->route('sales.orders.edit', $order);
+    }
+
+    /**
+     * Supplier catalog price and last actual PO price per line still to order,
+     * keyed by sales order line id; empty without purchase-price visibility.
+     *
+     * @param list<array<string, mixed>> $lines
+     * @return array<int, array<string, mixed>>
+     */
+    private function procurementPriceHints(SalesOrder $order, array $lines): array
+    {
+        if (! SupplierCatalogQuery::canViewPrices(request()->user(), (int) $order->organization_id)) return [];
+        $pending = array_values(array_filter($lines, fn (array $line) => $line['state'] === SalesOrderProcurementPlanner::REQUIRED
+            && $line['supplier'] !== null && $line['product_variant_id'] !== null));
+        $hints = app(SupplierCatalogQuery::class)->priceHints((int) $order->organization_id, array_map(fn (array $line) => [
+            'supplier_id' => (int) $line['supplier']['id'], 'product_variant_id' => (int) $line['product_variant_id'],
+        ], $pending));
+
+        $result = [];
+        foreach ($pending as $line) {
+            $hint = $hints[$line['supplier']['id'].':'.$line['product_variant_id']] ?? null;
+            if ($hint !== null && ($hint['catalog_price'] !== null || $hint['last_purchase_price'] !== null)) $result[(int) $line['line_id']] = $hint;
+        }
+
+        return $result;
     }
 
     public function show(SalesOrder $order, SalesOrderPaymentCalculator $payments, PosStockAllocator $stock, ReturnPolicyService $returnPolicies, PosOrderCompletionEligibility $completionEligibility, SalesMarginReportService $margins, SalespersonEligibilityService $salespersons, SalesOrderProcurementPlanner $procurementPlanner): Response
@@ -226,7 +252,9 @@ class SalesOrderController extends Controller
             'procurement' => $this->procurementPayload($order, $stock),
             // Procurement readiness (separate from the commercial status) for the "Approvisionnement" card.
             'procurementPlan' => [
-                ...$procurementPlanner->plan($order),
+                ...($plan = $procurementPlanner->plan($order)),
+                // B2: read-only supplier price hints for lines still to order (never written into the PO).
+                'price_hints' => $this->procurementPriceHints($order, $plan['lines']),
                 'can' => [
                     'createPurchaseOrder' => request()->user()->hasPermission($order->organization_id, 'procurement.manage'),
                     'confirm' => request()->user()->can('confirm', $order),

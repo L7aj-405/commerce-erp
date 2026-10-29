@@ -11,6 +11,8 @@ use App\Models\Quotation;
 use App\Models\QuotationLine;
 use App\Models\QuotationSupplierAvailabilityRequest;
 use App\Models\Supplier;
+use App\Services\Procurement\SupplierCatalogQuery;
+use App\Services\Procurement\SupplierRecommendationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -48,6 +50,22 @@ class QuotationSourcingController extends Controller
             ...$known->map(fn (Supplier $s) => [...$s->only(['id', 'name', 'phone']), 'known' => true]),
             ...$others->map(fn (Supplier $s) => [...$s->only(['id', 'name', 'phone']), 'known' => false]),
         ]]);
+    }
+
+    /**
+     * Advisory ranked suppliers for one line (B2). Read-only: opening it never
+     * creates a request; the user still picks the supplier to ask.
+     */
+    public function recommendations(Request $request, Quotation $quotation, QuotationLine $line, SupplierRecommendationService $recommendations): JsonResponse
+    {
+        $this->authorize('view', $quotation);
+        abort_unless($this->lineBelongs($line, $quotation), 404);
+        $user = $request->user();
+        abort_unless($user->hasPermission($quotation->organization, 'suppliers.view') && $user->hasPermission($quotation->organization, 'products.view'), 403);
+
+        $result = $recommendations->forQuotation($quotation, SupplierCatalogQuery::canViewPrices($user, (int) $quotation->organization_id), (int) $line->getKey());
+
+        return response()->json(['data' => $result[$line->getKey()]]);
     }
 
     public function store(Request $request, Quotation $quotation, QuotationLine $line, CreateQuotationSupplierRequestAction $action): RedirectResponse

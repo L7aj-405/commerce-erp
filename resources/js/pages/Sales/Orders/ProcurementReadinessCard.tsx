@@ -1,6 +1,6 @@
 import { useI18n } from '@/i18n';
 import type { TranslationKey } from '@/i18n/translations';
-import { formatDate, formatQuantity } from '@/utils/format';
+import { formatDate, formatMoney, formatQuantity } from '@/utils/format';
 import { Link, router, useForm } from '@inertiajs/react';
 import { useState } from 'react';
 
@@ -41,7 +41,17 @@ export type ProcurementPlan = {
         suppliers: { supplier: { id: number; name: string }; requirement_ids: number[]; line_count: number }[];
     };
     lines: PlanLine[];
+    /** B2: read-only supplier price hints per line still to order (never written into the PO). */
+    price_hints?: Record<string, PriceHint>;
     can: { createPurchaseOrder: boolean; confirm: boolean };
+};
+type PriceHint = {
+    catalog_price: string | null;
+    catalog_currency: string | null;
+    last_purchase_price: string | null;
+    last_purchase_currency: string | null;
+    last_purchase_order_number: string | null;
+    variance: string | null;
 };
 
 const fill = (text: string, params: Record<string, string | number>) =>
@@ -125,6 +135,9 @@ export default function ProcurementReadinessCard({ orderId, plan }: { orderId: n
                                 })}
                             </p>
                         )}
+                        {line.state === 'procurement_required' && plan.price_hints?.[line.line_id] && (
+                            <PriceHintText hint={plan.price_hints[line.line_id]} k={k} />
+                        )}
                         {line.derivable && <p className="mt-1 text-xs text-ink-faint">{k('derivedAtConfirmation')}</p>}
                     </li>
                 ))}
@@ -179,6 +192,20 @@ export default function ProcurementReadinessCard({ orderId, plan }: { orderId: n
                 </div>
             )}
         </section>
+    );
+}
+
+function PriceHintText({ hint, k }: { hint: PriceHint; k: (key: string) => string }) {
+    const parts = [
+        hint.catalog_price !== null && fill(k('priceHintCatalog'), { price: formatMoney(hint.catalog_price, hint.catalog_currency ?? 'MAD') }),
+        hint.last_purchase_price !== null && fill(k('priceHintLast'), { price: formatMoney(hint.last_purchase_price, hint.last_purchase_currency ?? 'MAD'), number: hint.last_purchase_order_number ?? '' }),
+        hint.variance !== null && fill(k('priceHintVariance'), { variance: formatMoney(hint.variance, hint.catalog_currency ?? 'MAD') }),
+    ].filter(Boolean);
+
+    return (
+        <p className="mt-1 text-xs text-ink-muted">
+            {parts.join(' · ')} <span className="text-ink-faint">({k('priceHintNote')})</span>
+        </p>
     );
 }
 

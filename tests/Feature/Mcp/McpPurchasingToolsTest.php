@@ -3,6 +3,7 @@
 namespace Tests\Feature\Mcp;
 
 use App\Actions\Procurement\CancelPurchaseOrderAction;
+use App\Actions\Procurement\SaveProductVariantSupplierAction;
 use App\Actions\Quotations\ConvertQuotationToSalesOrderAction;
 use App\Actions\Quotations\CreateQuotationSupplierRequestAction;
 use App\Actions\Quotations\RecordQuotationSupplierAvailabilityAction;
@@ -13,6 +14,7 @@ use App\Models\InventoryReservation;
 use App\Models\Organization;
 use App\Models\ProductVariant;
 use App\Models\PurchaseOrder;
+use App\Models\PurchaseOrderLine;
 use App\Models\SalesOrder;
 use App\Models\SalesOrderInventoryAllocation;
 use App\Models\Store;
@@ -191,6 +193,39 @@ class McpPurchasingToolsTest extends QuotationTestCase
     }
 
     /* ================================================================ Purchase orders */
+
+    public function test_the_preview_shows_a_read_only_supplier_price_hint_only_with_cost_visibility(): void
+    {
+        // B1 catalog price for MIFA → XLR, and a first purchase order giving the last actual price.
+        app(SaveProductVariantSupplierAction::class)->execute($this->owner, $this->organization, ['supplier_id' => $this->mifa->id, 'product_variant_id' => $this->xlr->id, 'purchase_price' => '120.0000']);
+        $first = $this->purchaseOrderFor($this->convertedOrder());
+        PurchaseOrderLine::query()->where('purchase_order_id', $first->id)->where('product_variant_id', $this->xlr->id)->update(['unit_price' => '118.5000']);
+        $order = $this->convertedOrder();
+        $arguments = ['sales_order_id' => $order->id, 'supplier_id' => $this->mifa->id];
+
+        // Without a cost or purchase-order read scope: no price data at all.
+        $this->connect($this->owner, ['sales_orders.view', 'purchase_orders.create']);
+        $restricted = $this->tool('previewPurchaseOrderCreation', $arguments);
+        $this->assertTrue($restricted['data']['valid'], json_encode($restricted));
+        $this->assertArrayNotHasKey('price_hint', collect($restricted['data']['lines'])->firstWhere('product_variant_id', $this->xlr->id));
+        $this->assertStringNotContainsString('120.0000', json_encode($restricted));
+        $this->assertStringNotContainsString('118.5000', json_encode($restricted));
+
+        $this->connect($this->owner);
+        $preview = $this->tool('previewPurchaseOrderCreation', $arguments)['data'];
+        $hint = collect($preview['lines'])->firstWhere('product_variant_id', $this->xlr->id)['price_hint'];
+        $this->assertSame(
+            ['120.0000', 'MAD', '118.5000', 'MAD', $first->purchase_order_number, '1.5000'],
+            [$hint['catalog_price'], $hint['catalog_currency'], $hint['last_purchase_price'], $hint['last_purchase_currency'], $hint['last_purchase_order_number'], $hint['variance']],
+        );
+        $this->assertStringContainsString('never written into the order', $preview['note']);
+
+        // Creating the order does not write the suggested price into it.
+        $created = $this->tool('createPurchaseOrder', [...$arguments, 'preview_fingerprint' => $preview['preview_fingerprint'], 'idempotency_key' => 'po-hint']);
+        $this->assertTrue($created['ok'], json_encode($created));
+        $line = PurchaseOrderLine::query()->where('purchase_order_id', $created['data']['purchase_order']['id'])->where('product_variant_id', $this->xlr->id)->sole();
+        $this->assertNull($line->unit_price, 'The PO keeps the canonical (requirement) price: none was confirmed.');
+    }
 
     public function test_purchase_order_creation_is_idempotent_and_rejects_a_changed_payload(): void
     {

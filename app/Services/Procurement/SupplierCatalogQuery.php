@@ -109,6 +109,49 @@ final class SupplierCatalogQuery
             ]])->all();
     }
 
+    /**
+     * Read-only purchase price hints for (supplier, variant) pairs, e.g. on a
+     * purchase-order preview: the supplier catalog price, the last actual PO
+     * price from that supplier and their variance when both are in the same
+     * currency. Never written into a purchase order.
+     *
+     * @param list<array{supplier_id: int, product_variant_id: int}> $pairs
+     * @return array<string, array<string, mixed>> keyed by "supplier:variant"
+     */
+    public function priceHints(int $organizationId, array $pairs): array
+    {
+        if ($pairs === []) return [];
+        $variantIds = array_values(array_unique(array_map(fn ($pair) => (int) $pair['product_variant_id'], $pairs)));
+        $supplierIds = array_values(array_unique(array_map(fn ($pair) => (int) $pair['supplier_id'], $pairs)));
+        $relations = ProductVariantSupplier::query()->where('organization_id', $organizationId)
+            ->whereIn('product_variant_id', $variantIds)->whereIn('supplier_id', $supplierIds)
+            ->get(['id', 'supplier_id', 'product_variant_id', 'purchase_price', 'currency_code', 'status'])
+            ->keyBy(fn ($relation) => $relation->supplier_id.':'.$relation->product_variant_id);
+        $history = $this->lastPurchases($organizationId, $variantIds, null);
+
+        $hints = [];
+        foreach ($pairs as $pair) {
+            $key = $pair['supplier_id'].':'.$pair['product_variant_id'];
+            $relation = $relations[$key] ?? null;
+            $last = $history[$key] ?? null;
+            $catalog = $relation?->status === ProductVariantSupplier::STATUS_ACTIVE ? $relation->purchase_price : null;
+            $comparable = $catalog !== null && ($last['unit_price'] ?? null) !== null && $relation->currency_code === $last['currency_code'];
+            $hints[$key] = [
+                'relation_id' => $relation?->getKey(),
+                'catalog_price' => $catalog,
+                'catalog_currency' => $catalog !== null ? $relation->currency_code : null,
+                'last_purchase_price' => $last['unit_price'] ?? null,
+                'last_purchase_currency' => $last['currency_code'] ?? null,
+                'last_purchase_order_number' => $last['purchase_order_number'] ?? null,
+                'last_purchase_date' => $last['order_date'] ?? null,
+                // catalog − last actual price; null when either is missing or the currencies differ.
+                'variance' => $comparable ? Decimal::subtract($catalog, $last['unit_price']) : null,
+            ];
+        }
+
+        return $hints;
+    }
+
     public function find(int $organizationId, int $relationId): ProductVariantSupplier
     {
         return ProductVariantSupplier::query()->where('organization_id', $organizationId)->whereKey($relationId)
