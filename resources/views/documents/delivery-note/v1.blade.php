@@ -108,6 +108,19 @@
             html, body { margin: 0; padding: 0; }
         }
         @include('documents.partials.commercial-style', ['accent' => $accent, 'ink' => $ink])
+
+        /* Bon de livraison columns. The shared commercial style sizes item columns
+           by POSITION for the invoice/quotation order (reference first), which made
+           the delivery note's first column (Désignation) the narrowest. These
+           delivery-note rules are more specific, so they win over it. */
+        table.items.delivery-items th:nth-child(1), table.items.delivery-items td:nth-child(1) { width: 56% !important; }
+        table.items.delivery-items th:nth-child(2), table.items.delivery-items td:nth-child(2) { width: 23% !important; }
+        table.items.delivery-items th:nth-child(3), table.items.delivery-items td:nth-child(3) { width: 11% !important; }
+        table.items.delivery-items th:nth-child(4), table.items.delivery-items td:nth-child(4) { width: 10% !important; }
+        table.items.delivery-items th { text-align: left; }
+        table.items.delivery-items td { vertical-align: top; line-height: 1.35; }
+        table.items.delivery-items .col-unit { text-align: center; }
+        table.items.delivery-items .col-qty { text-align: right; white-space: nowrap; }
     </style>
 </head>
 <body>
@@ -205,13 +218,13 @@
     </tbody>
 </table>
 
-<table class="items">
+<table class="items delivery-items">
     <thead>
         <tr>
-            <th style="width: 44%;">{{ $t('designation') }}</th>
-            <th style="width: 20%;">{{ $t('reference') }}</th>
-            <th style="width: 18%;">{{ $t('default_unit') }}</th>
-            <th style="width: 18%;" class="num">{{ $t('quantity') }}</th>
+            <th>{{ $t('designation') }}</th>
+            <th>{{ $t('reference') }}</th>
+            <th class="col-unit">{{ $t('default_unit') }}</th>
+            <th class="col-qty">{{ $t('quantity') }}</th>
         </tr>
     </thead>
     <tbody>
@@ -222,8 +235,8 @@
                     @if ($line['variant'])<div class="des-sub">{{ $line['variant'] }}</div>@endif
                 </td>
                 <td>{{ $line['sku'] ?: $line['reference'] ?: '—' }}</td>
-                <td>{{ $line['unit'] ?: '—' }}</td>
-                <td class="num">{{ $line['quantity'] }}</td>
+                <td class="col-unit">{{ $line['unit'] ?: '—' }}</td>
+                <td class="col-qty">{{ $line['quantity'] }}</td>
             </tr>
         @endforeach
     </tbody>
