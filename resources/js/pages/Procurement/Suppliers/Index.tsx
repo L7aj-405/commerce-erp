@@ -201,7 +201,9 @@ export default function SuppliersIndex({ suppliers, filters, can }: Props) {
                             <tbody className="divide-y divide-slate-100">
                                 {suppliers.data.map((supplier) => (
                                     <tr key={supplier.id}>
-                                        <td className="px-4 py-3 font-medium text-slate-900">{supplier.name}</td>
+                                        <td className="px-4 py-3 font-medium text-slate-900">
+                                            <Link href={`/procurement/suppliers/${supplier.id}`} className="hover:underline">{supplier.name}</Link>
+                                        </td>
                                         <td className="px-4 py-3 text-slate-600">{supplier.contact_person ?? '—'}</td>
                                         <td className="px-4 py-3 text-slate-600">{supplier.phone ?? '—'}</td>
                                         <td className="px-4 py-3 text-slate-600">{supplier.email ?? '—'}</td>
@@ -231,7 +233,7 @@ export default function SuppliersIndex({ suppliers, filters, can }: Props) {
                             <li key={supplier.id} className="rounded-xl border border-slate-200 bg-white p-4">
                                 <div className="flex items-start justify-between gap-3">
                                     <div className="min-w-0">
-                                        <p className="truncate text-sm font-semibold text-slate-900">{supplier.name}</p>
+                                        <Link href={`/procurement/suppliers/${supplier.id}`} className="block truncate text-sm font-semibold text-slate-900">{supplier.name}</Link>
                                         {supplier.contact_person && <p className="truncate text-[13px] text-slate-500">{supplier.contact_person}</p>}
                                     </div>
                                     <StatusBadge status={supplier.active ? 'active' : 'inactive'} />

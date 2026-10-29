@@ -17,7 +17,7 @@ class OrganizationDataResetDependencyGraph
         'payment_allocations', 'finance_payment_instruments',
         'finance_outgoing_payment_allocations',
         'customer_exchanges', 'credit_notes', 'customer_return_lines',
-        'quotation_supplier_availability_requests', 'product_suppliers',
+        'quotation_supplier_availability_requests', 'product_suppliers', 'product_variant_suppliers',
         'delivery_note_lines', 'invoice_lines', 'quotation_lines',
         'transfer_request_lines', 'stock_transfer_lines',
         'sales_order_inventory_allocations',

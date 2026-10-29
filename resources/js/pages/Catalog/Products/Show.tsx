@@ -1,4 +1,6 @@
 import ProductImage from "@/components/catalog/ProductImage";
+import type { SupplierRelation } from "@/components/procurement/SupplierRelationDialog";
+import VariantSuppliersSection from "@/components/procurement/VariantSuppliersSection";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import PageHeader from "@/components/ui/PageHeader";
 import StatusBadge from "@/components/ui/StatusBadge";
@@ -66,17 +68,24 @@ export default function ProductShow({
     product,
     stock,
     priceByVariant,
+    supplierCatalog,
+    defaultCurrency,
     can,
 }: {
     product: Product;
     stock: Stock;
     priceByVariant: Record<string, PriceInfo>;
+    supplierCatalog: Record<string, SupplierRelation[]> | null;
+    defaultCurrency: string;
     can: {
         create: boolean;
         update: boolean;
         archive: boolean;
         stock: boolean;
         transfer: boolean;
+        viewSuppliers: boolean;
+        manageSuppliers: boolean;
+        viewSupplierPrices: boolean;
     };
 }) {
     const { t } = useI18n();
@@ -422,6 +431,16 @@ export default function ProductShow({
                     </table>
                 </div>
             </section>
+            {supplierCatalog !== null && (
+                <VariantSuppliersSection
+                    productName={product.name}
+                    variants={product.variants}
+                    relationsByVariant={supplierCatalog}
+                    canManage={can.manageSuppliers}
+                    viewPrices={can.viewSupplierPrices}
+                    defaultCurrency={defaultCurrency}
+                />
+            )}
             <div className="mt-8 flex flex-wrap gap-2">
                 <ButtonLink href="/catalog/products" variant="secondary">
                     {t("imports.products.backToProducts")}

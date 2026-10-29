@@ -11,6 +11,7 @@ use App\Services\Mcp\Documents\DocumentStampToolRegistrar;
 use App\Services\Mcp\Finance\FinanceToolRegistrar;
 use App\Services\Mcp\Parties\McpContactChangeService;
 use App\Services\Mcp\Procurement\PurchasingToolRegistrar;
+use App\Services\Mcp\Procurement\SupplierCatalogToolRegistrar;
 use App\Services\Mcp\Procurement\SupplierSourcingToolRegistrar;
 use App\Services\Mcp\Products\McpProductChangeService;
 use App\Services\Mcp\Products\McpProductOperationService;
@@ -43,6 +44,7 @@ final class McpServerFactory
         private readonly CustomerContactTools $partyTools,
         private readonly WorkCenterToolRegistrar $workCenterTools,
         private readonly SupplierSourcingToolRegistrar $supplierSourcingTools,
+        private readonly SupplierCatalogToolRegistrar $supplierCatalogTools,
         private readonly FinanceToolRegistrar $financeTools,
         private readonly PurchasingToolRegistrar $purchasingTools,
         private readonly DocumentStampToolRegistrar $documentStampTools,
@@ -192,6 +194,7 @@ final class McpServerFactory
         $this->registerQuotationLifecycleTools($builder, $readOnly, $outputSchema);
         $this->workCenterTools->register($builder, $readOnly, $outputSchema);
         $this->supplierSourcingTools->register($builder, $readOnly, $outputSchema);
+        $this->supplierCatalogTools->register($builder, $readOnly, $outputSchema);
         $this->financeTools->register($builder, $readOnly, $outputSchema);
         $this->purchasingTools->register($builder, $readOnly, $outputSchema);
         $this->documentStampTools->register($builder, $readOnly, $outputSchema);

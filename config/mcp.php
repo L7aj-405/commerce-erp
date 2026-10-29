@@ -70,6 +70,9 @@ return [
         'suppliers.view' => ['permission' => 'suppliers.view', 'label' => 'View suppliers'],
         'suppliers.create' => ['permission' => 'suppliers.manage', 'label' => 'Create suppliers'],
         'suppliers.update' => ['permission' => 'suppliers.manage', 'label' => 'Update suppliers'],
+        // B1 supplier catalog: viewing also needs products.view (checked per call); prices need cost or PO visibility.
+        'supplier_catalog.view' => ['permission' => 'suppliers.view', 'label' => 'View which suppliers supply which products'],
+        'supplier_catalog.manage' => ['permission' => 'supplier_catalog.manage', 'label' => 'Link products to suppliers and maintain supplier terms'],
         'non_stock_items.view' => ['permission' => 'quotations.view', 'label' => 'View non-stock (external) articles'],
         'non_stock_items.create' => ['permission' => 'non_stock_items.manage', 'label' => 'Create non-stock articles'],
         'non_stock_items.update' => ['permission' => 'non_stock_items.manage', 'label' => 'Update non-stock articles'],

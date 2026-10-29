@@ -17,6 +17,7 @@ use App\Models\UnitOfMeasure;
 use App\Services\ActiveTenantContext;
 use App\Services\Catalog\CatalogProductDataValidator;
 use App\Services\ProductPriceResolver;
+use App\Services\Procurement\SupplierCatalogQuery;
 use App\Support\InventoryQuantity;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -182,16 +183,29 @@ class ProductController extends Controller
             ];
         }
 
+        // Supplier catalog (B1): one grouped read for all variants of the product.
+        $organizationId = (int) $product->organization_id;
+        $canViewSuppliers = $request->user()->hasPermission($organizationId, 'suppliers.view');
+        $canViewSupplierPrices = SupplierCatalogQuery::canViewPrices($request->user(), $organizationId);
+        $supplierCatalog = $canViewSuppliers
+            ? app(SupplierCatalogQuery::class)->forVariants($organizationId, $product->variants->pluck('id')->map(fn ($id) => (int) $id)->all(), $canViewSupplierPrices)
+            : null;
+
         return Inertia::render('Catalog/Products/Show', [
             'product' => $product,
             'stock' => $stock,
             'priceByVariant' => $priceByVariant,
+            'supplierCatalog' => $supplierCatalog === null ? null : (object) $supplierCatalog,
+            'defaultCurrency' => config('platform.currency_code', 'MAD'),
             'can' => [
                 'create' => $request->user()->can('create', [Product::class, $product->organization]),
                 'update' => $request->user()->can('update', $product),
                 'archive' => $request->user()->can('archive', $product),
                 'stock' => $canViewStock,
                 'transfer' => $canTransfer,
+                'viewSuppliers' => $canViewSuppliers,
+                'manageSuppliers' => $canViewSuppliers && $request->user()->hasPermission($organizationId, 'supplier_catalog.manage'),
+                'viewSupplierPrices' => $canViewSupplierPrices,
             ],
         ]);
     }

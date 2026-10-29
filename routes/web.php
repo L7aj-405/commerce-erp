@@ -71,6 +71,7 @@ use App\Http\Controllers\Procurement\OutOfStockArticleController;
 use App\Http\Controllers\Procurement\ProcurementController;
 use App\Http\Controllers\Procurement\PurchaseOrderController;
 use App\Http\Controllers\Procurement\QuotationSupplierRequestController;
+use App\Http\Controllers\Procurement\SupplierCatalogController;
 use App\Http\Controllers\Procurement\SupplierController;
 use App\Http\Controllers\PublicLegalController;
 use App\Http\Controllers\Quotations\QuotationController;
@@ -672,6 +673,12 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
         Route::get('/suppliers', [SupplierController::class, 'index'])->name('suppliers.index');
         Route::post('/suppliers', [SupplierController::class, 'store'])->name('suppliers.store');
         Route::patch('/suppliers/{supplier}', [SupplierController::class, 'update'])->name('suppliers.update');
+        Route::get('/suppliers/{supplier}', [SupplierController::class, 'show'])->whereNumber('supplier')->name('suppliers.show');
+        // Supplier catalog (B1): which suppliers supply which variant, on which terms.
+        Route::get('/supplier-catalog/supplier-options', [SupplierCatalogController::class, 'supplierOptions'])->name('supplier-catalog.supplier-options');
+        Route::get('/supplier-catalog/variant-options', [SupplierCatalogController::class, 'variantOptions'])->name('supplier-catalog.variant-options');
+        Route::post('/supplier-catalog', [SupplierCatalogController::class, 'store'])->name('supplier-catalog.store');
+        Route::patch('/supplier-catalog/{productVariantSupplier}', [SupplierCatalogController::class, 'update'])->whereNumber('productVariantSupplier')->name('supplier-catalog.update');
         Route::patch('/{procurement}/availability', [ProcurementController::class, 'availability'])->name('availability');
         Route::patch('/{procurement}/supplier', [ProcurementController::class, 'changeSupplier'])->name('supplier');
         Route::post('/{procurement}/order', [ProcurementController::class, 'order'])->name('order');
