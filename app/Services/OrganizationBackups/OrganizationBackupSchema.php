@@ -17,7 +17,7 @@ class OrganizationBackupSchema
         'organizations', 'stores',
         'brands', 'categories', 'units_of_measure', 'tax_rates', 'products', 'product_variants', 'product_channel_identifiers',
         'warehouses', 'inventory_balances', 'inventory_movements', 'inventory_reservations',
-        'customers', 'sales_order_sequences', 'sales_orders', 'sales_order_lines', 'sales_order_inventory_allocations', 'sales_order_addenda', 'sales_order_revisions',
+        'customers', 'sales_order_sequences', 'sales_orders', 'sales_order_lines', 'sales_order_inventory_allocations', 'sales_order_addenda', 'sales_order_revisions', 'fulfillments', 'fulfillment_items', 'fulfillment_attachments',
         'financial_accounts', 'financial_account_opening_positions', 'payment_sequences', 'payments', 'payment_allocations', 'payment_refund_sequences', 'payment_refunds',
         'finance_expected_collections', 'finance_expected_collection_matches',
         'invoice_sequences', 'invoice_families', 'invoices', 'invoice_lines', 'delivery_note_sequences', 'delivery_notes', 'delivery_note_lines',

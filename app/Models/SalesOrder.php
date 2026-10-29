@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\Enums\DeliveryNoteStatus;
+use App\Enums\FulfillmentStatus;
 use App\Enums\SalesOrderFulfillmentStatus;
 use App\Enums\SalesOrderPaymentStatus;
 use App\Enums\SalesOrderSource;
@@ -159,6 +161,26 @@ class SalesOrder extends Model
      * True while a linked internal Transfer Request still has to bring remote
      * stock to the operational warehouse before final Showroom fulfilment.
      */
+    public function fulfillments(): HasMany
+    {
+        return $this->hasMany(Fulfillment::class);
+    }
+
+    /**
+     * An issued Bon de livraison is an immutable document snapshot of this order:
+     * cancelling or correcting the order afterwards would make them diverge.
+     */
+    public function hasIssuedDeliveryNote(): bool
+    {
+        return $this->deliveryNotes()->where('status', DeliveryNoteStatus::Issued->value)->exists();
+    }
+
+    /** A shipment being prepared (not handed over, not cancelled) still claims this order's quantities. */
+    public function hasOpenFulfillments(): bool
+    {
+        return $this->fulfillments()->whereIn('status', [FulfillmentStatus::Preparing->value, FulfillmentStatus::Ready->value])->exists();
+    }
+
     public function awaitingReplenishment(): bool
     {
         return $this->transferRequests()

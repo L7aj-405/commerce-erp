@@ -50,7 +50,7 @@ export default function ContactsIndex({ contacts, filters, can }: Props) {
                 <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t('contacts.searchPlaceholder')} className={`${fieldClass} w-full min-w-0 flex-1 sm:min-w-72 sm:w-auto`} />
                 <select value={filters.contact_type ?? ''} onChange={(e) => router.get('/contacts', { ...filters, contact_type: e.target.value || undefined, page: undefined }, { preserveState: true })} className={`${fieldClass} flex-1 sm:flex-none`}>
                     <option value="">{t('contacts.allTypes')}</option>
-                    <option value="client">{t('contacts.client')}</option><option value="supplier">{t('contacts.supplier')}</option><option value="internal">{t('contacts.internal')}</option><option value="other">{t('contacts.other')}</option>
+                    <option value="client">{t('contacts.client')}</option><option value="supplier">{t('contacts.supplier')}</option><option value="internal">{t('contacts.internal')}</option><option value="transport">{t('contacts.transport')}</option><option value="other">{t('contacts.other')}</option>
                 </select>
                 <select value={filters.active ?? ''} onChange={(e) => router.get('/contacts', { ...filters, active: e.target.value || undefined, page: undefined }, { preserveState: true })} className={`${fieldClass} flex-1 sm:flex-none`}>
                     <option value="">{t('common.allStatuses')}</option><option value="1">{t('contacts.activePlural')}</option><option value="0">{t('contacts.archivedPlural')}</option>

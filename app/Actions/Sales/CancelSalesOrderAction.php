@@ -54,6 +54,9 @@ class CancelSalesOrderAction
             if ($order->fulfillment_status !== SalesOrderFulfillmentStatus::Unfulfilled) {
                 throw ValidationException::withMessages(['order' => 'Fulfilled or partially fulfilled orders require a returns workflow.']);
             }
+            if ($order->hasOpenFulfillments()) {
+                throw ValidationException::withMessages(['order' => 'Annulez d’abord les expéditions en préparation de cette commande.']);
+            }
             if ($order->status === SalesOrderStatus::Confirmed && trim((string) $reason) === '') {
                 throw ValidationException::withMessages(['reason' => 'A cancellation reason is required for a confirmed order.']);
             }
@@ -72,7 +75,7 @@ class CancelSalesOrderAction
                 ->whereIn('status', [DeliveryNoteStatus::Draft->value, DeliveryNoteStatus::Issued->value])
                 ->lockForUpdate()
                 ->get();
-            if ($activeDeliveryNotes->contains(fn ($note) => $note->status === DeliveryNoteStatus::Issued)) {
+            if ($order->hasIssuedDeliveryNote()) {
                 throw ValidationException::withMessages([
                     'order' => 'Un bon de livraison émis existe. Cette opération relève du workflow de retour.',
                 ]);

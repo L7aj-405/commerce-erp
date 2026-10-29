@@ -82,6 +82,7 @@ use App\Http\Controllers\Quotations\QuotationRenderingController;
 use App\Http\Controllers\Quotations\QuotationSettingsController;
 use App\Http\Controllers\Quotations\QuotationSourcingController;
 use App\Http\Controllers\RoleController;
+use App\Http\Controllers\Sales\FulfillmentController;
 use App\Http\Controllers\Sales\CustomerController;
 use App\Http\Controllers\Sales\SalesOrderController;
 use App\Http\Controllers\Sales\SalesOrderLifecycleController;
@@ -108,6 +109,7 @@ use App\Http\Controllers\Settings\PasswordController;
 use App\Http\Controllers\Settings\ProfileController;
 use App\Http\Controllers\Settings\TwoFactorAuthenticationController;
 use App\Http\Controllers\Settings\TrustedTwoFactorDeviceController;
+use App\Http\Controllers\Settings\OrganizationFulfillmentModeController;
 use App\Http\Controllers\Settings\OrganizationTimezoneController;
 use App\Http\Controllers\Settings\ReturnPolicyController;
 use App\Http\Controllers\StoreController;
@@ -264,6 +266,7 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
     Route::get('/document-profile', [DocumentProfileController::class, 'edit'])->name('document-profile.edit');
     Route::put('/document-profile', [DocumentProfileController::class, 'update'])->name('document-profile.update');
     Route::put('/organization-timezone', [OrganizationTimezoneController::class, 'update'])->name('organization-timezone.update');
+    Route::put('/organization-fulfillment-mode', [OrganizationFulfillmentModeController::class, 'update'])->name('organization-fulfillment-mode.update');
     Route::get('/document-profile/studio', [DocumentTemplateStudioController::class, 'edit'])->name('document-profile.studio.edit');
     Route::post('/document-profile/studio/preview', [DocumentTemplateStudioController::class, 'preview'])
         ->middleware('throttle:20,1')
@@ -647,6 +650,22 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
         Route::post('/exchanges/{exchange}/cancel', [CustomerExchangeController::class, 'cancel'])->name('exchanges.cancel');
         Route::post('/orders/{order}/cancel', [SalesOrderLifecycleController::class, 'cancel'])->name('orders.cancel');
         Route::post('/orders/{order}/fulfill', [SalesOrderLifecycleController::class, 'fulfill'])->name('orders.fulfill');
+        // Expédition & Livraison (F1.1): shipments of a confirmed order. Canonical rules live in App\Actions\Fulfillment.
+        Route::prefix('/orders/{order}/fulfillments')->name('orders.fulfillments.')->group(function () {
+            Route::get('/carrier-options', [FulfillmentController::class, 'carrierOptions'])->name('carrier-options');
+            Route::post('/preparation', [FulfillmentController::class, 'startPreparation'])->name('preparation');
+            Route::post('/hand-to-carrier', [FulfillmentController::class, 'handNewToCarrier'])->name('hand-to-carrier');
+            Route::post('/{fulfillment}/ready', [FulfillmentController::class, 'markReady'])->name('ready');
+            Route::post('/{fulfillment}/hand-to-carrier', [FulfillmentController::class, 'handReadyToCarrier'])->name('hand-ready-to-carrier');
+            Route::post('/{fulfillment}/in-transit', [FulfillmentController::class, 'markInTransit'])->name('in-transit');
+            Route::post('/{fulfillment}/delivered', [FulfillmentController::class, 'markDelivered'])->name('delivered');
+            Route::post('/{fulfillment}/close', [FulfillmentController::class, 'close'])->name('close');
+            Route::post('/{fulfillment}/cancel', [FulfillmentController::class, 'cancel'])->name('cancel');
+            Route::patch('/{fulfillment}', [FulfillmentController::class, 'update'])->name('update');
+            Route::post('/{fulfillment}/attachments', [FulfillmentController::class, 'attach'])->name('attachments.store');
+            Route::get('/{fulfillment}/attachments/{attachment}', [FulfillmentController::class, 'showAttachment'])->name('attachments.show');
+            Route::delete('/{fulfillment}/attachments/{attachment}', [FulfillmentController::class, 'removeAttachment'])->name('attachments.destroy');
+        });
         Route::get('/orders/{order}/returns/create', [CustomerReturnController::class, 'create'])->name('orders.returns.create');
         Route::post('/orders/{order}/returns', [CustomerReturnController::class, 'store'])->name('orders.returns.store');
         Route::post('/orders/{order}/payments', [PaymentController::class, 'store'])->name('orders.payments.store');

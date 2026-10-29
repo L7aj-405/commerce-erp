@@ -14,8 +14,10 @@ class OrganizationContact extends Model
     public const TYPE_SUPPLIER = 'supplier';
     public const TYPE_INTERNAL = 'internal';
     public const TYPE_OTHER = 'other';
+    /** A carrier / transport company or driver (F1.1 shipments). */
+    public const TYPE_TRANSPORT = 'transport';
 
-    public const TYPES = [self::TYPE_CLIENT, self::TYPE_SUPPLIER, self::TYPE_INTERNAL, self::TYPE_OTHER];
+    public const TYPES = [self::TYPE_CLIENT, self::TYPE_SUPPLIER, self::TYPE_INTERNAL, self::TYPE_TRANSPORT, self::TYPE_OTHER];
 
     protected $guarded = ['*'];
 

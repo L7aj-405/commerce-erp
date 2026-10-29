@@ -188,6 +188,83 @@ class InventoryReservationManager
         });
     }
 
+    /**
+     * Consume PART of an active reservation (F1.1 partial shipments). The
+     * consumed portion becomes its own `consumed` reservation owned by
+     * $referenceType/$referenceId — the single movement references it — and
+     * the original reservation stays active with the remainder. The caller
+     * shrinks whatever records the original quantity (e.g. the Sales Order
+     * allocation) in the same transaction. Consuming the full quantity is a
+     * plain consume() of the original reservation.
+     */
+    public function consumeQuantity(User $actor, Organization $organization, InventoryReservation $reservation, int|float|string $quantity, string $referenceType, int $referenceId, ?string $reference = null): InventoryReservation
+    {
+        $this->assertContext($actor, $organization);
+        abort_unless($reservation->organization_id === $organization->getKey(), 404);
+        $quantity = InventoryQuantity::positive($quantity);
+
+        return DB::transaction(function () use ($actor, $organization, $reservation, $quantity, $referenceType, $referenceId, $reference) {
+            $balance = $this->balances->lock($organization, $reservation->warehouse, $reservation->productVariant);
+            $reservation = InventoryReservation::query()->whereKey($reservation->getKey())
+                ->where('organization_id', $organization->getKey())->lockForUpdate()->firstOrFail();
+            if ($reservation->status !== InventoryReservationStatus::Active) {
+                throw ValidationException::withMessages(['reservation' => 'Only an active reservation can be consumed.']);
+            }
+            $comparison = InventoryQuantity::compare($quantity, $reservation->quantity);
+            if ($comparison > 0) {
+                throw ValidationException::withMessages(['quantity' => 'The quantity exceeds the reservation.']);
+            }
+            if ($comparison === 0) {
+                return $this->consume($actor, $organization, $reservation);
+            }
+            if (InventoryQuantity::compare($balance->reserved, $quantity) < 0 || InventoryQuantity::compare($balance->on_hand, $quantity) < 0) {
+                throw ValidationException::withMessages(['reservation' => 'The inventory balance is inconsistent with this reservation.']);
+            }
+
+            $consumed = new InventoryReservation;
+            $consumed->organization_id = $organization->getKey();
+            $consumed->warehouse_id = $reservation->warehouse_id;
+            $consumed->product_variant_id = $reservation->product_variant_id;
+            $consumed->quantity = $quantity;
+            $consumed->status = InventoryReservationStatus::Consumed;
+            $consumed->reference_type = $referenceType;
+            $consumed->reference_id = $referenceId;
+            $consumed->reference = $reference ?? $reservation->reference;
+            $consumed->created_by_user_id = $actor->getKey();
+            $consumed->save();
+            $reservation->quantity = InventoryQuantity::subtract($reservation->quantity, $quantity);
+            $reservation->save();
+
+            $before = $balance->on_hand;
+            $after = InventoryQuantity::subtract($before, $quantity);
+            $movement = new InventoryMovement;
+            $movement->organization_id = $organization->getKey();
+            $movement->warehouse_id = $consumed->warehouse_id;
+            $movement->product_variant_id = $consumed->product_variant_id;
+            $movement->movement_type = InventoryMovementType::ReservationConsumed;
+            $movement->quantity = '-'.$quantity;
+            $movement->quantity_before = $before;
+            $movement->quantity_after = $after;
+            $movement->reference_type = InventoryReservation::class;
+            $movement->reference_id = $consumed->getKey();
+            $movement->reference = $consumed->reference;
+            $movement->reason = 'Reservation partially consumed';
+            $movement->performed_by_user_id = $actor->getKey();
+            $movement->metadata = ['source_reference_type' => $referenceType, 'source_reference_id' => $referenceId, 'split_from_reservation_id' => $reservation->getKey()];
+            $movement->save();
+            $balance->on_hand = $after;
+            $balance->reserved = InventoryQuantity::subtract($balance->reserved, $quantity);
+            $balance->save();
+            $this->audit->record('inventory.reservation.partially_consumed', $actor, $organization, auditable: $consumed, newValues: [
+                'warehouse_id' => $consumed->warehouse_id, 'product_variant_id' => $consumed->product_variant_id,
+                'quantity' => $quantity, 'remaining_reservation_id' => $reservation->getKey(), 'remaining_quantity' => $reservation->quantity,
+                'movement_id' => $movement->getKey(),
+            ]);
+
+            return $consumed;
+        });
+    }
+
     private function assertContext(User $actor, Organization $organization): void
     {
         abort_unless(

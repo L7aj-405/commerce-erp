@@ -4,6 +4,7 @@ import { Popover } from '@/components/pos/primitives';
 import ActivityTimeline from '@/components/timeline/ActivityTimeline';
 import SalesLayout from '@/layouts/SalesLayout';
 import { useI18n } from '@/i18n';
+import FulfillmentCard, { type FulfillmentPayload } from './FulfillmentCard';
 import ProcurementReadinessCard, { type ProcurementPlan } from './ProcurementReadinessCard';
 import { formatDate, formatDateTime, formatMoney, formatQuantity } from '@/utils/format';
 import {
@@ -181,6 +182,7 @@ type Props = {
     awaitingReplenishment: boolean;
     procurement: ProcurementData;
     procurementPlan: ProcurementPlan;
+    fulfillment: FulfillmentPayload | null;
     transferRequests: TransferReq[];
     revisions: Revision[];
     activeCorrection: ActiveCorrection | null;
@@ -236,7 +238,7 @@ function Card({ label: l, children }: { label: string; children: ReactNode }) {
     );
 }
 
-export default function ShowOrder({ order, paymentSummary, payments, refunds, financialAccounts, documents, awaitingReplenishment, procurement, procurementPlan, transferRequests, revisions, activeCorrection, pendingReplacementInvoice, invoiceStaleAfterCompletion, addenda, customerReturns, customerExchanges, returnPolicy, commercialSummary, marginSummary, salespersons, completionEligibility, can }: Props) {
+export default function ShowOrder({ order, paymentSummary, payments, refunds, financialAccounts, documents, awaitingReplenishment, procurement, procurementPlan, fulfillment, transferRequests, revisions, activeCorrection, pendingReplacementInvoice, invoiceStaleAfterCompletion, addenda, customerReturns, customerExchanges, returnPolicy, commercialSummary, marginSummary, salespersons, completionEligibility, can }: Props) {
     const { t } = useI18n();
     const [confirmCancel, setConfirmCancel] = useState(false);
     const cancellation = useForm({ reason: '' });
@@ -322,8 +324,11 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
                         <Button onClick={() => router.post(`/sales/orders/${order.id}/confirm`)}>{t('common.confirm')}</Button>
                     )}
 
-                    {order.status === 'confirmed' && order.fulfillment_status === 'unfulfilled' && can.correct && (
+                    {order.status === 'confirmed' && order.fulfillment_status === 'unfulfilled' && can.correct && !documents.deliveryNotes.some((note) => note.status === 'issued') && (
                         <Button variant="secondary" onClick={() => setShowCorrection(true)}>{t('orders.show.correctOrder')}</Button>
+                    )}
+                    {order.status === 'confirmed' && order.fulfillment_status === 'unfulfilled' && can.correct && documents.deliveryNotes.some((note) => note.status === 'issued') && (
+                        <span className="self-center text-xs text-ink-muted">{t('orders.show.correctionBlockedByDeliveryNote')}</span>
                     )}
 
                     {can.completePos && (
@@ -701,6 +706,7 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
             {/* Supplier procurement / special orders — a domain of its own,
                 deliberately not mixed with the internal transfer requests above. */}
             <ProcurementReadinessCard orderId={order.id} plan={procurementPlan} />
+            {fulfillment && <FulfillmentCard orderId={order.id} data={fulfillment} />}
             <ProcurementPanel order={order} data={procurement} />
 
             {/* Articles hors stock — a Custom (not-yet-catalogued) line flagged for

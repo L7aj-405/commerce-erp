@@ -55,6 +55,7 @@ class OrganizationDataResetBundleRegistry
                 'out_of_stock_articles',
                 'procurement_receipts', 'purchase_order_lines', 'purchase_orders',
                 'sales_order_procurements',
+                'fulfillment_attachments', 'fulfillment_items', 'fulfillments',
                 'sales_order_revisions', 'sales_order_addenda',
                 'sales_order_lines', 'sales_orders',
             ], [

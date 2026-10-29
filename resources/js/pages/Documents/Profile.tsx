@@ -34,6 +34,7 @@ type Props = {
     logoUrl: string | null;
     canUpdate: boolean;
     businessTimezone: { value: string; configured: boolean; options: string[] };
+    fulfillmentMode: "simple" | "advanced";
 };
 
 export default function DocumentProfile({
@@ -43,6 +44,7 @@ export default function DocumentProfile({
     logoUrl,
     canUpdate,
     businessTimezone,
+    fulfillmentMode,
 }: Props) {
     const { t } = useI18n();
     const [removeLogo, setRemoveLogo] = useState(false);
@@ -143,6 +145,11 @@ export default function DocumentProfile({
 
                 <TimezoneSection
                     timezone={businessTimezone}
+                    canUpdate={canUpdate}
+                />
+
+                <FulfillmentModeSection
+                    mode={fulfillmentMode}
                     canUpdate={canUpdate}
                 />
 
@@ -539,6 +546,60 @@ function TimezoneSection({
                             )}
                         </p>
                     )}
+                </Section>
+            </fieldset>
+        </form>
+    );
+}
+
+/** Organization fulfillment mode (F1.1): one engine, simple or advanced workflow. */
+function FulfillmentModeSection({
+    mode,
+    canUpdate,
+}: {
+    mode: Props["fulfillmentMode"];
+    canUpdate: boolean;
+}) {
+    const { t } = useI18n();
+    const form = useForm<{ fulfillment_mode: Props["fulfillmentMode"] }>({ fulfillment_mode: mode });
+    const submit = (event: FormEvent) => {
+        event.preventDefault();
+        form.put("/organization-fulfillment-mode", { preserveScroll: true });
+    };
+
+    return (
+        <form onSubmit={submit} className="mb-5">
+            <fieldset disabled={!canUpdate}>
+                <Section title={t("fulfillmentMode.title")} description={t("fulfillmentMode.help")}>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                        {(["simple", "advanced"] as const).map((option) => (
+                            <label
+                                key={option}
+                                className={`flex cursor-pointer items-start gap-3 rounded-field border p-3 text-sm ${form.data.fulfillment_mode === option ? "border-primary bg-raised" : "border-line"}`}
+                            >
+                                <input
+                                    type="radio"
+                                    name="fulfillment_mode"
+                                    value={option}
+                                    checked={form.data.fulfillment_mode === option}
+                                    onChange={() => form.setData("fulfillment_mode", option)}
+                                    className="mt-0.5"
+                                />
+                                <span>
+                                    <span className="block font-medium text-ink">{t(`fulfillmentMode.${option}`)}</span>
+                                    <span className="block text-xs text-ink-muted">{t(`fulfillmentMode.${option}Help`)}</span>
+                                </span>
+                            </label>
+                        ))}
+                    </div>
+                    {form.errors.fulfillment_mode && (
+                        <span className="block text-xs text-danger">{form.errors.fulfillment_mode}</span>
+                    )}
+                    <div>
+                        <Button type="submit" loading={form.processing} loadingText={t("common.saving")} disabled={form.data.fulfillment_mode === mode}>
+                            {t("common.save")}
+                        </Button>
+                    </div>
                 </Section>
             </fieldset>
         </form>

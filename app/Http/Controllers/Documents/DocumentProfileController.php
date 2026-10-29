@@ -38,6 +38,7 @@ class DocumentProfileController extends Controller
                 'configured' => $organization->hasConfiguredTimezone(),
                 'options' => BusinessTime::timezones(),
             ],
+            'fulfillmentMode' => \App\Services\Fulfillment\FulfillmentEngine::modeFor($organization),
         ]);
     }
 

@@ -23,7 +23,7 @@ type Contact = {
 type Props = { contact: Contact; whatsappDestination: WhatsAppDestination; duplicates: Contact[]; can: { update: boolean; archive: boolean } };
 export default function ContactShow({ contact, whatsappDestination, duplicates, can }: Props) {
     const { t } = useI18n();
-    const typeLabels: Record<string, string> = { client: t('contacts.client'), supplier: t('contacts.supplier'), internal: t('contacts.internal'), other: t('contacts.other') };
+    const typeLabels: Record<string, string> = { client: t('contacts.client'), supplier: t('contacts.supplier'), internal: t('contacts.internal'), transport: t('contacts.transport'), other: t('contacts.other') };
     const archive = () => {
         if (window.confirm(t('contacts.archiveQuestion'))) router.delete(`/contacts/${contact.id}`);
     };

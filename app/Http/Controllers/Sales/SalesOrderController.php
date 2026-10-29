@@ -30,6 +30,7 @@ use App\Services\ActiveTenantContext;
 use App\Services\PosStockAllocator;
 use App\Services\Pos\PosOrderCompletionEligibility;
 use App\Services\ProductPriceResolver;
+use App\Services\Fulfillment\FulfillmentQuery;
 use App\Services\Procurement\SalesOrderProcurementPlanner;
 use App\Services\Procurement\SupplierCatalogQuery;
 use App\Services\SalesOrderPaymentCalculator;
@@ -250,6 +251,11 @@ class SalesOrderController extends Controller
             'completionEligibility' => $completion,
             'awaitingReplenishment' => $order->awaitingReplenishment(),
             'procurement' => $this->procurementPayload($order, $stock),
+            // Expédition & Livraison (F1.1): shipments of a confirmed order, for fulfillment viewers only.
+            'fulfillment' => request()->user()->hasPermission($order->organization_id, 'fulfillment.view')
+                && ($order->status === SalesOrderStatus::Confirmed || $order->fulfillments()->exists())
+                ? app(FulfillmentQuery::class)->forOrder($order, request()->user())
+                : null,
             // Procurement readiness (separate from the commercial status) for the "Approvisionnement" card.
             'procurementPlan' => [
                 ...($plan = $procurementPlanner->plan($order)),

@@ -5,7 +5,14 @@ namespace Tests\Feature\Documents;
 use App\Actions\Documents\CancelDeliveryNoteDraftAction;
 use App\Actions\Documents\UpdateDeliveryNoteDraftAction;
 use App\Actions\Sales\ConfirmSalesOrderAction;
+use App\Actions\Fulfillment\HandFulfillmentToCarrierAction;
+use App\Actions\Sales\CancelSalesOrderAction;
 use App\Actions\Sales\FulfillSalesOrderAction;
+use App\Actions\Sales\StartSalesOrderCorrectionAction;
+use App\Enums\InventoryReservationStatus;
+use App\Models\Fulfillment;
+use App\Models\InventoryReservation;
+use App\Models\OrganizationContact;
 use App\Models\InventoryBalance;
 use App\Models\InventoryMovement;
 use App\Models\User;
@@ -65,25 +72,90 @@ class DeliveryNoteTest extends DocumentTestCase
         $this->assertSame($beforeDraft, InventoryBalance::query()->firstOrFail()->only(array_keys($beforeDraft)));
         $this->assertSame($movementsBeforeDraft, InventoryMovement::query()->count());
 
+        // 09:00 — the Bon de livraison is printed: a document only. The goods stay with
+        // us, their stock stays reserved and on hand, no shipment is created.
         $issued = $this->issueDeliveryNote($owner, $note);
 
         $this->assertSame('issued', $issued->status->value);
-        $this->assertSame('fulfilled', $order->fresh()->fulfillment_status->value);
-        $this->assertDatabaseHas('inventory_balances', [
-            'warehouse_id' => $warehouse->id,
-            'product_variant_id' => $variant->id,
-            'on_hand' => 8,
-            'reserved' => 0,
+        $this->assertSame('unfulfilled', $order->fresh()->fulfillment_status->value);
+        $this->assertSame($beforeDraft, InventoryBalance::query()->firstOrFail()->only(array_keys($beforeDraft)));
+        $this->assertDatabaseHas('inventory_balances', ['warehouse_id' => $warehouse->id, 'product_variant_id' => $variant->id, 'on_hand' => 10, 'reserved' => 2]);
+        $this->assertSame($movementsBeforeDraft, InventoryMovement::query()->count());
+        $this->assertSame(0, Fulfillment::query()->count());
+        $this->assertSame(InventoryReservationStatus::Active, InventoryReservation::query()->sole()->status);
+        $this->assertFalse($order->fresh()->hasOpenFulfillments(), 'The BL alone never blocks cancellation or correction.');
+
+        // 14:05 — the carrier takes the goods: only now does stock leave, exactly once.
+        $carrier = new OrganizationContact;
+        $carrier->forceFill(['organization_id' => $organization->id, 'full_name' => 'Amana', 'contact_type' => OrganizationContact::TYPE_TRANSPORT, 'active' => true])->save();
+        $line = $order->lines()->sole();
+        app(HandFulfillmentToCarrierAction::class)->execute($owner, $order->fresh(), [
+            'items' => [$line->id => '2'], 'carrier_contact_id' => $carrier->id, 'handed_at' => now()->toDateTimeString(),
         ]);
+
+        $this->assertSame('fulfilled', $order->fresh()->fulfillment_status->value);
+        $this->assertDatabaseHas('inventory_balances', ['warehouse_id' => $warehouse->id, 'product_variant_id' => $variant->id, 'on_hand' => 8, 'reserved' => 0]);
         $this->assertSame($movementsBeforeDraft + 1, InventoryMovement::query()->count());
+        $this->assertSame('handed_to_carrier', Fulfillment::query()->sole()->status->value);
 
         try {
             app(FulfillSalesOrderAction::class)->execute($owner, $order->fresh());
             $this->fail('Expected duplicate fulfillment rejection.');
         } catch (ValidationException) {
-            $this->assertSame('fulfilled', $order->fresh()->fulfillment_status->value);
             $this->assertSame($movementsBeforeDraft + 1, InventoryMovement::query()->count());
         }
+    }
+
+    public function test_an_issued_delivery_note_blocks_correction_and_cancellation_but_moves_no_stock(): void
+    {
+        $owner = User::factory()->create();
+        $organization = $this->createOrganization($owner);
+        $store = $this->createStore($organization, $owner);
+        $warehouse = $this->createWarehouse($organization);
+        $variant = $this->createProduct($organization)->variants->first();
+        $this->openStock($owner, $organization, $warehouse, $variant, '10.0000');
+        $confirmed = function () use ($owner, $organization, $store, $variant, $warehouse) {
+            $order = $this->createDraftOrder($owner, $organization, $store);
+            $this->addCatalogLine($owner, $order, $variant, $warehouse, ['quantity' => '2.0000']);
+
+            return app(ConfirmSalesOrderAction::class)->execute($owner, $order)->fresh();
+        };
+
+        // 1. No Bon de livraison: the correction may start (all other rules pass).
+        $free = $confirmed();
+        app(StartSalesOrderCorrectionAction::class)->execute($owner, $free, 'Ajustement client');
+        $this->assertTrue($free->revisions()->exists());
+
+        // 2. Issued Bon de livraison: the correction is refused, the document untouched.
+        $order = $confirmed();
+        $movements = InventoryMovement::query()->count();
+        $balance = InventoryBalance::query()->firstOrFail()->only(['on_hand', 'reserved']);
+        $issued = $this->issueDeliveryNote($owner, $this->createDeliveryNote($owner, $order));
+        $frozen = fn () => [$issued->fresh()->delivery_note_number, $issued->fresh()->status->value, $issued->fresh()->issued_at->toIso8601String(), $issued->fresh()->lines()->pluck('quantity')->all()];
+        $snapshot = $frozen();
+        try {
+            app(StartSalesOrderCorrectionAction::class)->execute($owner, $order->fresh(), 'Trop tard');
+            $this->fail('A correction after an issued Delivery Note must be refused.');
+        } catch (ValidationException $exception) {
+            $this->assertStringContainsString('bon de livraison émis', $exception->errors()['order'][0]);
+        }
+        $this->assertFalse($order->revisions()->exists());
+        $this->assertSame($snapshot, $frozen());
+
+        // 3. Issuing it created no shipment and moved no stock.
+        $this->assertSame(0, Fulfillment::query()->where('sales_order_id', $order->id)->count());
+        $this->assertSame('unfulfilled', $order->fresh()->fulfillment_status->value);
+        $this->assertSame($movements, InventoryMovement::query()->count());
+        $this->assertSame($balance, InventoryBalance::query()->firstOrFail()->only(['on_hand', 'reserved']));
+
+        // 4. Cancellation stays refused, as before.
+        try {
+            app(CancelSalesOrderAction::class)->execute($owner, $order->fresh(), 'Annulation');
+            $this->fail('A cancellation after an issued Delivery Note must be refused.');
+        } catch (ValidationException $exception) {
+            $this->assertStringContainsString('bon de livraison émis', $exception->errors()['order'][0]);
+        }
+        $this->assertSame('confirmed', $order->fresh()->status->value);
     }
 
     public function test_manual_order_show_exposes_delivery_note_action_without_pos_completion(): void
@@ -101,7 +173,7 @@ class DeliveryNoteTest extends DocumentTestCase
                 ->where('completionEligibility.code', 'not_pos_order'));
     }
 
-    public function test_delivery_issue_fulfills_physical_order_without_rewriting_invoice_or_payment(): void
+    public function test_delivery_issue_neither_ships_nor_rewrites_invoice_or_payment(): void
     {
         [$owner, $organization,, $order] = $this->documentFixture(false, total: '250.0000');
         $invoice = $this->createInvoice($owner, $order);
@@ -116,7 +188,8 @@ class DeliveryNoteTest extends DocumentTestCase
         $issued = $this->issueDeliveryNote($owner, $this->createDeliveryNote($owner, $order));
 
         $this->assertSame('issued', $issued->status->value);
-        $this->assertSame('fulfilled', $order->fresh()->fulfillment_status->value);
+        $this->assertSame('unfulfilled', $order->fresh()->fulfillment_status->value, 'A document does not ship anything.');
+        $this->assertSame(0, Fulfillment::query()->count());
         $this->assertSame($invoiceSnapshot, $invoice->fresh()->only(array_keys($invoiceSnapshot)));
         $this->assertSame($paymentSnapshot, $payment->fresh()->only(array_keys($paymentSnapshot)));
     }

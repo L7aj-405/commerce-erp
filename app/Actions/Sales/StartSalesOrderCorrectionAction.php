@@ -60,6 +60,15 @@ class StartSalesOrderCorrectionAction
                     'order' => 'Une commande livrée ou exécutée nécessite un workflow de retour/avoir et ne peut pas être corrigée ici.',
                 ]);
             }
+            // Same rule as cancellation: the issued Bon de livraison is an immutable snapshot of the order.
+            if ($order->hasIssuedDeliveryNote()) {
+                throw ValidationException::withMessages([
+                    'order' => 'Un bon de livraison émis existe : la commande ne peut plus être corrigée (document figé).',
+                ]);
+            }
+            if ($order->hasOpenFulfillments()) {
+                throw ValidationException::withMessages(['order' => 'Annulez d’abord les expéditions en préparation avant de corriger la commande.']);
+            }
             if ($order->currentRevision?->status === 'in_progress') {
                 throw ValidationException::withMessages(['order' => 'Une correction commerciale est déjà en cours.']);
             }

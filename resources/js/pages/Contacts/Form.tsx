@@ -61,7 +61,7 @@ export default function ContactForm({ contact, linkedOptions }: Props) {
                     <Field label={t('contacts.fullName')} error={form.errors.full_name}><input required value={form.data.full_name} onChange={(e) => form.setData('full_name', e.target.value)} className={input} /></Field>
                     <Field label={t('contacts.type')} error={form.errors.contact_type}>
                         <select value={form.data.contact_type} onChange={(e) => form.setData('contact_type', e.target.value)} className={input}>
-                            <option value="client">{t('contacts.client')}</option><option value="supplier">{t('contacts.supplier')}</option><option value="internal">{t('contacts.internal')}</option><option value="other">{t('contacts.other')}</option>
+                            <option value="client">{t('contacts.client')}</option><option value="supplier">{t('contacts.supplier')}</option><option value="internal">{t('contacts.internal')}</option><option value="transport">{t('contacts.transport')}</option><option value="other">{t('contacts.other')}</option>
                         </select>
                     </Field>
                     <Field label={t('contacts.organization')} error={form.errors.company_name}><input value={form.data.company_name} onChange={(e) => form.setData('company_name', e.target.value)} className={input} /></Field>

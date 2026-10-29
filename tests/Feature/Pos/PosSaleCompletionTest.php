@@ -36,6 +36,10 @@ class PosSaleCompletionTest extends PosTestCase
         $this->assertDatabaseHas('audit_logs', ['organization_id' => $organization->id, 'event' => 'sales_order.fulfilled']);
         $this->assertDatabaseCount('payments', 1);
         $this->assertDatabaseCount('payment_allocations', 1);
+        // A counter sale is a DIRECT hand-over (the customer takes the goods): no carrier, delivered at once.
+        $handOver = \App\Models\Fulfillment::query()->sole();
+        $this->assertSame(['direct', 'delivered', null], [$handOver->channel, $handOver->status->value, $handOver->carrier_contact_id]);
+        $this->assertSame(1, InventoryMovement::query()->where('movement_type', 'reservation_consumed')->count());
     }
 
     public function test_sales_employee_can_complete_pos_sale_without_direct_inventory_mutation_permissions(): void

@@ -2,36 +2,34 @@
 
 namespace App\Actions\Sales;
 
-use App\Actions\Sales\Concerns\AuthorizesSalesAction;
-use App\Actions\WooCommerce\RecordWooCommerceStockTaskAction;
-use App\Enums\InventoryReservationStatus;
+use App\Enums\FulfillmentStatus;
 use App\Enums\SalesOrderFulfillmentStatus;
-use App\Enums\SalesOrderStatus;
-use App\Models\InventoryReservation;
+use App\Models\Fulfillment;
 use App\Models\SalesOrder;
 use App\Models\User;
-use App\Services\AuditLogger;
-use App\Services\InventoryReservationManager;
-use Illuminate\Support\Facades\DB;
+use App\Services\Fulfillment\FulfillmentEngine;
 use Illuminate\Validation\ValidationException;
 
+/**
+ * Explicit DIRECT hand-over of everything left to ship: the customer takes the
+ * goods now (POS counter sale, or the explicit "fulfill" action for a pickup).
+ * No transport contact is involved. It records one `direct` fulfillment,
+ * delivered at once, and consumes exactly its quantities through the
+ * fulfillment engine — so a carrier shipment can never deduct the same stock
+ * twice. Never called by document operations: issuing a Bon de livraison
+ * moves no stock. Readiness rules are unchanged: every internal transfer and
+ * supplier procurement must be received first.
+ */
 class FulfillSalesOrderAction
 {
-    use AuthorizesSalesAction;
-
-    public function __construct(
-        private readonly InventoryReservationManager $inventory,
-        private readonly AuditLogger $audit,
-        private readonly RecordWooCommerceStockTaskAction $wooStockTasks,
-    ) {}
+    public function __construct(private readonly FulfillmentEngine $engine) {}
 
     public function execute(User $actor, SalesOrder $order): SalesOrder
     {
-        $this->authorizeOrder($actor, $order, 'sales_orders.fulfill');
+        $this->engine->authorize($actor, $order, 'sales_orders.fulfill');
 
-        return DB::transaction(function () use ($actor, $order) {
-            $order = SalesOrder::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
-            if ($order->status !== SalesOrderStatus::Confirmed || $order->fulfillment_status !== SalesOrderFulfillmentStatus::Unfulfilled) {
+        return $this->engine->transaction($order, function (SalesOrder $order) use ($actor) {
+            if (! in_array($order->fulfillment_status, [SalesOrderFulfillmentStatus::Unfulfilled, SalesOrderFulfillmentStatus::PartiallyFulfilled], true)) {
                 throw ValidationException::withMessages(['order' => 'Only a confirmed, unfulfilled order can be fulfilled.']);
             }
             // Showroom pickup can only complete once every remote quantity has
@@ -49,34 +47,23 @@ class FulfillSalesOrderAction
                     'order' => 'À approvisionner fournisseur : la marchandise fournisseur doit être réceptionnée avant la remise au client.',
                 ]);
             }
-            $allocationReservationIds = $order->lines()->with('allocations')->get()->flatMap(fn ($line) => $line->allocations->pluck('inventory_reservation_id'));
-            if ($allocationReservationIds->contains(null)) {
-                throw ValidationException::withMessages(['order' => 'Every catalog allocation must have an active reservation.']);
+            if (Fulfillment::query()->where('organization_id', $order->organization_id)->where('sales_order_id', $order->getKey())
+                ->whereIn('status', [FulfillmentStatus::Preparing->value, FulfillmentStatus::Ready->value])->exists()) {
+                throw ValidationException::withMessages(['order' => 'Des expéditions sont en préparation : remettez-les ou annulez-les avant la remise directe.']);
             }
-            $reservationIds = $allocationReservationIds->unique()->values();
-            $reservations = InventoryReservation::query()->where('organization_id', $order->organization_id)
-                ->whereIn('id', $reservationIds)->with(['warehouse', 'productVariant'])
-                ->orderBy('warehouse_id')->orderBy('product_variant_id')->get();
-            if ($reservations->count() !== $reservationIds->count() || $reservations->contains(fn ($reservation) => $reservation->status !== InventoryReservationStatus::Active)) {
-                throw ValidationException::withMessages(['order' => 'Every catalog allocation must have an active reservation.']);
+            $remaining = $this->engine->remaining($order);
+            if ($remaining === []) {
+                throw ValidationException::withMessages(['order' => 'Only a confirmed, unfulfilled order can be fulfilled.']);
             }
-            foreach ($reservations as $reservation) {
-                $this->inventory->consume($actor, $order->organization, $reservation);
-                // Manual WooCommerce bridge (deferred automatic write-back): a
-                // no-op unless this variant is actually Woo-linked. Never touches
-                // inventory — see RecordWooCommerceStockTaskAction.
-                $this->wooStockTasks->recordForConsumedSale($order->organization, $order, $reservation);
-            }
-            $order->fulfillment_status = SalesOrderFulfillmentStatus::Fulfilled;
-            $order->fulfilled_at = now();
-            $order->fulfilled_by_user_id = $actor->getKey();
-            $order->save();
-            $this->audit->record('sales_order.fulfilled', $actor, $order->organization, $order->store, $order, oldValues: ['fulfillment_status' => SalesOrderFulfillmentStatus::Unfulfilled->value], newValues: [
-                'order_number' => $order->order_number, 'fulfillment_status' => SalesOrderFulfillmentStatus::Fulfilled->value,
-                'total_incl_tax' => $order->total_incl_tax,
-            ]);
 
-            return $order;
+            $fulfillment = $this->engine->create($actor, $order, $this->engine->validateItems($order, $remaining), FulfillmentStatus::Delivered, Fulfillment::CHANNEL_DIRECT, [
+                'delivered_at' => now(),
+                'delivered_by_user_id' => $actor->getKey(),
+            ]);
+            $this->engine->consumeStock($actor, $order, $fulfillment);
+            $this->engine->record('fulfillment.delivered', $actor, $order, $fulfillment, [], ['status' => FulfillmentStatus::Delivered->value, 'channel' => Fulfillment::CHANNEL_DIRECT]);
+
+            return $this->engine->syncOrder($actor, $order);
         });
     }
 }

@@ -3,9 +3,8 @@
 namespace App\Actions\Documents;
 
 use App\Actions\Documents\Concerns\AuthorizesDocumentAction;
-use App\Actions\Sales\FulfillSalesOrderAction;
 use App\Enums\DeliveryNoteStatus;
-use App\Enums\SalesOrderFulfillmentStatus;
+use App\Enums\SalesOrderStatus;
 use App\Models\DeliveryNote;
 use App\Models\SalesOrder;
 use App\Models\User;
@@ -27,7 +26,6 @@ class IssueDeliveryNoteAction
         private readonly DocumentSellerProfile $sellerProfile,
         private readonly DocumentTemplateRegistry $templates,
         private readonly AuditLogger $audit,
-        private readonly FulfillSalesOrderAction $fulfillOrder,
     ) {}
 
     public function execute(User $actor, DeliveryNote $note): DeliveryNote
@@ -40,12 +38,12 @@ class IssueDeliveryNoteAction
             if ($note->status !== DeliveryNoteStatus::Draft) {
                 throw ValidationException::withMessages(['delivery_note' => 'Only a draft Delivery Note can be issued.']);
             }
+            // Issuing the Bon de livraison is a DOCUMENT operation only: the goods stay
+            // with us and their stock stays reserved. Stock leaves only when a shipment
+            // is explicitly handed over (App\Actions\Fulfillment / direct hand-over).
             $order = SalesOrder::query()->where('organization_id', $note->organization_id)->whereKey($note->sales_order_id)->lockForUpdate()->firstOrFail();
-            if ($order->fulfillment_status === SalesOrderFulfillmentStatus::Unfulfilled) {
-                $order = $this->fulfillOrder->execute($actor, $order)->fresh();
-            }
-            if ($order->fulfillment_status !== SalesOrderFulfillmentStatus::Fulfilled) {
-                throw ValidationException::withMessages(['order' => 'The Sales Order could not be fulfilled.']);
+            if ($order->status !== SalesOrderStatus::Confirmed) {
+                throw ValidationException::withMessages(['order' => 'Only a confirmed Sales Order can have an issued Delivery Note.']);
             }
             if (DeliveryNote::query()->where('organization_id', $note->organization_id)->where('sales_order_id', $note->sales_order_id)
                 ->where('status', DeliveryNoteStatus::Issued->value)->where('id', '!=', $note->getKey())->exists()) {

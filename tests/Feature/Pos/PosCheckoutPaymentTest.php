@@ -48,6 +48,9 @@ class PosCheckoutPaymentTest extends PosTestCase
 
         $this->assertSame('500.0000', $payment->amount);
         $this->assertSame('partially_paid', $order->payment_status->value);
+        // "Delivery" checkout: nothing is handed over at the counter — the goods ship later.
+        $this->assertSame('unfulfilled', $order->fulfillment_status->value);
+        $this->assertSame(0, \App\Models\Fulfillment::query()->count());
         $this->actingAs($owner)->get(route('pos.index'))->assertInertia(fn (Assert $page) => $page
             ->where('completedOrder.total_incl_tax', '935.0000')
             ->where('completedOrder.paid', '500.0000')
