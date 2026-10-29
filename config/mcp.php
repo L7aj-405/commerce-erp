@@ -36,6 +36,9 @@ return [
         'products.create' => ['permission' => 'products.create', 'label' => 'Create products'],
         'products.update' => ['permission' => 'products.update', 'label' => 'Update products'],
         'products.archive' => ['permission' => 'products.archive', 'label' => 'Archive products'],
+        // Catalog import/merge through MCP: the ERP permission of the web product import. Updating existing
+        // products during an import additionally needs products.update.
+        'products.import' => ['permission' => 'products.import', 'label' => 'Import (create or merge) product catalogs'],
         'product_cost.view' => ['permission' => 'product_cost.view', 'label' => 'View purchase costs'],
         'product_cost.manage' => ['permission' => 'product_cost.manage', 'label' => 'Manage purchase costs'],
         'inventory.view' => ['permission' => 'inventory.view', 'label' => 'View organization stock'],

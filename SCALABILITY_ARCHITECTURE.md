@@ -154,6 +154,15 @@ Assume **more than one worker** and **at-least-once delivery**.
      (pattern: `SyncWooCommerceProductsJob` + `woocommerce-sync:{id}` lock);
   4. persistent idempotency records for client-initiated mutations
      (pattern: `McpIdempotencyService` / `McpIdempotencyRecord`).
+- Bulk client-supplied row sets reuse the MCP product-operation engine
+  (`McpOperation` / `McpOperationItem`): connection-scoped idempotency key +
+  request hash, synchronous preview up to `sync_validation_max_items` (500) and
+  `ValidateMcpProductOperationJob` above, deterministic preview fingerprint over
+  per-item version/state hashes, re-check at execute and again per item under
+  `lockForUpdate`, chunked `ProcessMcpProductOperationChunkJob` (100 items),
+  paginated per-row results, item rows purged after `retention_days`
+  (`mcp:prune-operations`). MCP product import/merge (`product_import`,
+  `McpProductImportPlanner`) is built this way — do not add a second engine.
 - `retry_after` must stay strictly greater than the longest job `timeout`.
 - Jobs dispatched inside transactions rely on `after_commit=true` (configured
   for the database and redis connections); keep it.
@@ -443,3 +452,4 @@ Required-before: `NOW` · `2 APP NODES` · `LARGE SCALE` · `DESKTOP OFFLINE` ·
 | 16 | Client operation ids exist only for POS/sales/payments/returns; quotations, customers, contacts have none; no device id / sync cursor. | migrations | DESKTOP OFFLINE | P2 |
 | 17 | (W5) The customer activity timeline resolves linked records per kind up front, capped at the 1000 most recent each (`BusinessTimeline::SUBJECT_CAP`); a customer with more documents of one kind loses the oldest ones' history, and the audit lookup becomes a large `IN` list. `audit_logs` has no customer/store-scoped access path for a customer. Fix when measured: a narrow `(organization_id, subject_type, subject_id, created_at)` projection or an extra indexed audit column — not a duplicate event log. | `app/Services/Timeline/BusinessTimeline.php` | LARGE SCALE | P2 |
 | 18 | (W5) Quotation expiry (`MutatesQuotation` setting `expired`) and other system status changes are not audited, so the timeline cannot show "devis expiré" (it never infers events from current state). Add a canonical `quotation.expired` audit event if the business wants it. | `app/Actions/Quotations/Concerns/MutatesQuotation.php` | LATER | P3 |
+| 19 | (Phase A) MCP product import/merge (`preview_product_import` → `execute_product_import`, SKU merge key) is capability-limited by design: no multi-variant product grouping on create (one row = one single-variant product); cannot add a new variant to an existing product; no stock import; no WooCommerce ID import; brand/category are organization ids only (no lookup/creation by name); max 5,000 rows per request (`mcp.operations.max_items`). Not a scaling defect; the web file importer keeps these features. | `app/Services/Mcp/Products/McpProductImportPlanner.php` | LATER (per feature) | P3 |

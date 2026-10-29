@@ -29,6 +29,7 @@ final class McpProductOperationService
         McpOperation::TYPE_PRODUCT_UPDATE => 'products.update',
         McpOperation::TYPE_PURCHASE_PRICE_UPDATE => 'product_cost.manage',
         McpOperation::TYPE_PRODUCT_ARCHIVE => 'products.archive',
+        McpOperation::TYPE_PRODUCT_IMPORT => 'products.import',
     ];
 
     private const ROW_KEYS = [
@@ -37,9 +38,9 @@ final class McpProductOperationService
         McpOperation::TYPE_PRODUCT_ARCHIVE => ['product_id', 'sku'],
     ];
 
-    private const DECIMAL_FIELDS = ['purchase_price', 'public_price_ttc', 'unit_price_ht', 'regular_sale_price', 'promotional_sale_price', 'default_sale_price'];
+    public const DECIMAL_FIELDS = ['purchase_price', 'public_price_ttc', 'unit_price_ht', 'regular_sale_price', 'promotional_sale_price', 'default_sale_price'];
     private const IDENTIFIER_FIELDS = ['sku', 'reference', 'barcode'];
-    private const DECIMAL_PATTERN = '/\A\d{1,15}(?:\.\d{1,4})?\z/';
+    public const DECIMAL_PATTERN = '/\A\d{1,15}(?:\.\d{1,4})?\z/';
 
     public const MESSAGES = [
         'invalid_row' => 'The row shape is invalid for this operation.',
@@ -66,6 +67,17 @@ final class McpProductOperationService
         'preview_expired' => 'The preview expired before execution.',
         'validation_internal_error' => 'The operation could not be validated.',
         'all_items_failed' => 'No record could be applied.',
+        // Product import (merge) rows.
+        'unsupported_field' => 'The row contains a field the product import does not support.',
+        'missing_identifier' => 'The row must carry a variant SKU, the merge key of the import.',
+        'invalid_image_url' => 'Image URLs must be absolute http(s) URLs; local paths and uploaded files are not supported.',
+        'duplicate_identifier' => 'A SKU, barcode, or reference of the row belongs to another variant.',
+        'ambiguous_match' => 'The barcode or reference belongs to an existing variant with a different SKU. The import never re-keys or duplicates it.',
+        'conflicting_product_fields' => 'Rows of the same product carry different product fields.',
+        'update_not_allowed' => 'Updating existing products also requires the products.update scope.',
+        'reference_not_found' => 'A brand, category, unit, or tax rate was not found in this organization.',
+        'identifier_taken' => 'The SKU, barcode, or reference was taken by another record after the preview.',
+        'product_fields_applied_by_row' => 'Product fields are applied once, by the first row of this product.',
     ];
 
     public function __construct(
@@ -73,6 +85,7 @@ final class McpProductOperationService
         private readonly McpProductChangeService $changes,
         private readonly McpIdempotencyService $canonical,
         private readonly AuditLogger $audit,
+        private readonly McpProductImportPlanner $import,
     ) {}
 
     public static function message(string $code): string
@@ -140,6 +153,12 @@ final class McpProductOperationService
         foreach ($this->scopesFor($operation) as $scope) $this->context->authorize($scope);
 
         $items = $operation->items()->orderBy('ordinal')->get();
+        if ($operation->type === McpOperation::TYPE_PRODUCT_IMPORT) {
+            $plan = $this->import->plan($items);
+            $this->storePreview($operation, $items, $plan['results'], $plan['evaluations'], $plan['scopes']);
+
+            return;
+        }
         $skuTargets = $this->resolveSkus($items->pluck('locator.sku')->filter(fn ($sku) => is_string($sku))->unique()->values()->all());
         $results = [];
         $candidates = [];
@@ -171,13 +190,22 @@ final class McpProductOperationService
         }
 
         $this->flagIdentifierCollisions($items, $results, $evaluations);
+        $this->storePreview($operation, $items, $results, $evaluations);
+    }
 
-        DB::transaction(function () use ($operation, $items, $results, $evaluations) {
+    /**
+     * @param iterable<McpOperationItem> $items @param array<int, array<string, mixed>> $results
+     * @param array<int, array<string, mixed>|null> $evaluations @param list<string>|null $scopes
+     */
+    private function storePreview(McpOperation $operation, iterable $items, array $results, array $evaluations, ?array $scopes = null): void
+    {
+        DB::transaction(function () use ($operation, $items, $results, $evaluations, $scopes) {
             foreach ($items as $item) {
                 if (! isset($results[$item->getKey()])) continue;
                 $result = $results[$item->getKey()];
                 $evaluation = $result['preview_status'] === McpOperationItem::PREVIEW_CHANGED ? ($evaluations[$item->getKey()] ?? null) : null;
                 $item->forceFill([
+                    'target_type' => $result['target_type'] ?? $item->target_type,
                     'target_id' => $result['target_id'],
                     'preview_status' => $result['preview_status'],
                     'preview_result' => $result['preview_result'],
@@ -201,6 +229,7 @@ final class McpProductOperationService
                 'validated_at' => now(),
                 'preview_expires_at' => now()->addSeconds((int) config('mcp.operations.preview_ttl_seconds', 900)),
             ]);
+            if ($scopes !== null) $operation->required_scopes = $scopes;
             $operation->preview_hash = $this->previewHash($operation);
             $operation->save();
         });
@@ -209,10 +238,10 @@ final class McpProductOperationService
     }
 
     /** @return array<string, mixed> */
-    public function execute(string $operationId, string $fingerprint): array
+    public function execute(string $operationId, string $fingerprint, ?string $type = null): array
     {
         if (! preg_match('/\A[0-9a-f]{64}\z/', $fingerprint)) throw new InvalidArgumentException('invalid_preview_fingerprint');
-        $operation = $this->operation($operationId);
+        $operation = $this->operation($operationId, $type);
         foreach ($this->scopesFor($operation) as $scope) $this->context->authorize($scope);
         $fingerprintHash = hash('sha256', $fingerprint);
 
@@ -276,18 +305,18 @@ final class McpProductOperationService
     }
 
     /** @return array<string, mixed> */
-    public function show(string $operationId): array
+    public function show(string $operationId, ?string $type = null): array
     {
-        $operation = $this->operation($operationId);
+        $operation = $this->operation($operationId, $type);
         foreach ($this->scopesFor($operation) as $scope) $this->context->authorize($scope);
 
         return $this->view($operation);
     }
 
     /** @return array<string, mixed> */
-    public function items(string $operationId, int $page, int $perPage, ?string $status, ?string $previewStatus): array
+    public function items(string $operationId, int $page, int $perPage, ?string $status, ?string $previewStatus, ?string $type = null, ?string $targetType = null): array
     {
-        $operation = $this->operation($operationId);
+        $operation = $this->operation($operationId, $type);
         foreach ($this->scopesFor($operation) as $scope) $this->context->authorize($scope);
         if ($operation->details_purged_at !== null) throw new InvalidArgumentException('operation_details_expired');
         $perPage = max(1, min($perPage, (int) config('mcp.operations.items_max_per_page', 200)));
@@ -295,7 +324,8 @@ final class McpProductOperationService
 
         $query = $operation->items()
             ->when($status !== null, fn ($query) => $query->where('status', $status))
-            ->when($previewStatus !== null, fn ($query) => $query->where('preview_status', $previewStatus));
+            ->when($previewStatus !== null, fn ($query) => $query->where('preview_status', $previewStatus))
+            ->when($targetType !== null, fn ($query) => $query->where('target_type', $targetType));
         $total = (clone $query)->count();
         $rows = $query->orderBy('ordinal')->forPage($page, $perPage)->get();
 
@@ -305,7 +335,7 @@ final class McpProductOperationService
             'per_page' => $perPage,
             'total' => $total,
             'has_more' => $page * $perPage < $total,
-            'items' => $rows->map(fn (McpOperationItem $item) => $this->itemView($item))->values()->all(),
+            'items' => $rows->map(fn (McpOperationItem $item) => $this->itemView($item, $operation->type))->values()->all(),
         ];
     }
 
@@ -363,6 +393,38 @@ final class McpProductOperationService
             ],
             'details_available' => $operation->details_purged_at === null,
             'summary' => $this->summary($operation, $succeeded, $failed),
+            ...($operation->type === McpOperation::TYPE_PRODUCT_IMPORT ? ['import' => $this->importSummary($operation)] : []),
+        ];
+    }
+
+    /** Merge-oriented counts of a product import: what the preview creates/updates and what execution did. @return array<string, mixed> */
+    private function importSummary(McpOperation $operation): array
+    {
+        // Create/update splits come from item rows; once retention purges them only the durable counters remain.
+        $purged = $operation->details_purged_at !== null;
+        $rows = $purged ? collect() : $operation->items()->selectRaw('target_type, preview_status, status, count(*) as aggregate')
+            ->groupBy('target_type', 'preview_status', 'status')->get();
+        $changed = $rows->where('preview_status', McpOperationItem::PREVIEW_CHANGED);
+        $succeeded = $rows->where('status', McpOperationItem::STATUS_SUCCEEDED);
+        $split = fn ($rows, string $targetType) => $purged ? null : (int) $rows->where('target_type', $targetType)->sum('aggregate');
+
+        return [
+            'total_rows' => $operation->total_items,
+            'to_create' => $split($changed, McpProductImportPlanner::TARGET_CREATE),
+            'to_update' => $split($changed, McpProductImportPlanner::TARGET_UPDATE),
+            'unchanged' => $operation->unchanged_count,
+            'conflicts' => $operation->conflict_count,
+            'invalid' => $operation->invalid_count,
+            'duplicate_rows' => $operation->skipped_count,
+            'result' => $operation->execute_requested_at === null ? null : [
+                'created' => $split($succeeded, McpProductImportPlanner::TARGET_CREATE),
+                'updated' => $split($succeeded, McpProductImportPlanner::TARGET_UPDATE),
+                'failed' => $purged ? $operation->failed_count : (int) $rows->where('status', McpOperationItem::STATUS_FAILED)->sum('aggregate'),
+                'pending' => (int) $rows->where('status', McpOperationItem::STATUS_PENDING)->sum('aggregate'),
+                'skipped' => $operation->unchanged_count + $operation->skipped_count,
+                'conflicts_not_executed' => $operation->conflict_count,
+                'invalid_not_executed' => $operation->invalid_count,
+            ],
         ];
     }
 
@@ -409,7 +471,7 @@ final class McpProductOperationService
             foreach (array_chunk($rows, 500, true) as $chunk) {
                 $records = [];
                 foreach ($chunk as $index => $row) {
-                    $normalized = $this->normalizeRow($type, $row);
+                    $normalized = $type === McpOperation::TYPE_PRODUCT_IMPORT ? $this->import->normalize($row) : $this->normalizeRow($type, $row);
                     $invalid = $normalized['issue'] !== null;
                     $records[] = [
                         'mcp_operation_id' => $operation->getKey(),
@@ -629,6 +691,7 @@ final class McpProductOperationService
 
     private function staleTargetCount(McpOperation $operation): int
     {
+        if ($operation->type === McpOperation::TYPE_PRODUCT_IMPORT) return $this->import->staleCount($operation);
         $stale = 0;
         $operation->items()->where('status', McpOperationItem::STATUS_READY)
             ->select(['id', 'target_type', 'target_id', 'expected_version'])
@@ -664,7 +727,7 @@ final class McpProductOperationService
         $operation->forceFill(['status' => McpOperation::STATUS_EXPIRED, 'failure_code' => $code, 'failure_message' => self::message($code)])->save();
     }
 
-    private function operation(string $operationId): McpOperation
+    private function operation(string $operationId, ?string $type = null): McpOperation
     {
         $connection = $this->context->connectionOrFail();
         if (! preg_match('/\A[0-9A-HJKMNP-TV-Z]{26}\z/i', $operationId)) throw (new ModelNotFoundException)->setModel(McpOperation::class);
@@ -673,14 +736,35 @@ final class McpProductOperationService
             ->where('organization_id', $connection->organization_id)
             ->where('mcp_connection_id', $connection->getKey())
             ->whereKey(strtolower($operationId))
+            ->when($type !== null, fn ($query) => $query->where('type', $type))
             ->firstOrFail();
     }
 
     /** @return array<string, mixed> */
-    private function itemView(McpOperationItem $item): array
+    private function itemView(McpOperationItem $item, ?string $type = null): array
     {
         $preview = $item->preview_result ?? [];
         $changed = $preview['changed_fields'] ?? [];
+        if ($type === McpOperation::TYPE_PRODUCT_IMPORT) {
+            return [
+                'ordinal' => $item->ordinal,
+                'row_number' => $item->locator['row_number'] ?? null,
+                'action' => $preview['action'] ?? $item->preview_status,
+                'identifiers' => array_intersect_key($item->locator ?? [], array_flip(['sku', 'barcode', 'reference'])),
+                'resolved_target' => $preview['resolved'] ?? null,
+                'preview_status' => $item->preview_status,
+                'status' => $item->status,
+                'changed_fields' => $changed,
+                'before' => $preview['before'] ?? [],
+                'after' => array_intersect_key($item->proposed_values ?? [], array_flip($changed)),
+                'issues' => $preview['issues'] ?? [],
+                'warnings' => array_map(fn ($warning) => [...$warning, 'message' => self::message($warning['code'])], $preview['warnings'] ?? []),
+                'result' => $item->result,
+                'error' => $item->error_code === null ? null : ['code' => $item->error_code, 'message' => $item->error_message],
+                'attempts' => $item->attempts,
+                'processed_at' => $item->processed_at?->toIso8601String(),
+            ];
+        }
 
         return [
             'ordinal' => $item->ordinal,

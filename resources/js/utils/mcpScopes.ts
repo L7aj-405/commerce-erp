@@ -4,6 +4,7 @@ import type { TranslationKey } from '@/i18n/translations';
 export const mcpScopeTranslationKeys: Record<string, TranslationKey> = {
     'products.view': 'mcp.scope.productsView', 'products.create': 'mcp.scope.productsCreate',
     'products.update': 'mcp.scope.productsUpdate', 'products.archive': 'mcp.scope.productsArchive',
+    'products.import': 'mcp.scope.productsImport',
     'product_cost.view': 'mcp.scope.costView', 'product_cost.manage': 'mcp.scope.costManage',
     'inventory.view': 'mcp.scope.inventoryView', 'brands.manage': 'mcp.scope.brandsManage',
     'categories.manage': 'mcp.scope.categoriesManage', 'units.manage': 'mcp.scope.unitsManage',

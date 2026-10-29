@@ -13,6 +13,7 @@ use App\Services\Mcp\Parties\McpContactChangeService;
 use App\Services\Mcp\Procurement\PurchasingToolRegistrar;
 use App\Services\Mcp\Procurement\SupplierSourcingToolRegistrar;
 use App\Services\Mcp\Products\McpProductChangeService;
+use App\Services\Mcp\Products\McpProductOperationService;
 use App\Services\Mcp\Products\ProductOperationTools;
 use App\Services\Mcp\Products\ProductReadTools;
 use App\Services\Mcp\Products\ProductWriteTools;
@@ -987,6 +988,83 @@ final class McpServerFactory
                     'properties' => [
                         'rows' => $rows($locator('product_id')),
                         'idempotency_key' => $key,
+                    ], 'additionalProperties' => false,
+                ], outputSchema: $outputSchema,
+            );
+        }
+
+        if ($this->context->allows('products.import')) {
+            // Structure only, like the other row schemas: field problems are reported per row.
+            $loose = ['type' => ['string', 'integer', 'null']];
+            $productFields = array_fill_keys(McpProductChangeService::PRODUCT_FIELDS, $loose);
+            $variantFields = array_fill_keys(McpProductChangeService::VARIANT_FIELDS, $loose);
+            foreach (array_intersect(McpProductOperationService::DECIMAL_FIELDS, McpProductChangeService::VARIANT_FIELDS) as $field) {
+                $variantFields[$field] = ['type' => ['string', 'null'], 'description' => 'Exact decimal string, max 4 decimals.'];
+            }
+            $builder->addTool(
+                [$this->operationTools, 'previewProductImport'],
+                name: 'preview_product_import', title: 'Preview product catalog import (merge)',
+                description: 'Preview importing or merging a product catalog (e.g. rows you parsed from the user\'s CSV/Excel file). Does NOT change the catalog. '
+                    .'Each row is one variant with its product fields, in the create_product shape: product fields '.implode(', ', McpProductChangeService::PRODUCT_FIELDS)
+                    .' and a "variant" object ('.implode(', ', McpProductChangeService::VARIANT_FIELDS).'); optional row_number echoes the spreadsheet row. '
+                    .'variant.sku is required and is the merge key: an unknown SKU is created, a known SKU updates that variant and its product (omitted fields are kept), '
+                    .'an identical row is "unchanged". Re-importing the same catalog later is a merge, never a duplicate. '
+                    .'A barcode or reference already held by another variant (or by a variant with a different SKU) is a "conflict": conflicts are never auto-resolved and never executed. '
+                    .'brand_id, category_id, unit_id and tax_rate_id are ids of this organization (look them up first). Prices are exact decimal strings (max 4 decimals). '
+                    .'image_url must be an absolute http(s) URL; local paths and embedded/uploaded images are rejected. Purchase costs are not imported: use prepare_purchase_price_bulk_update afterwards. '
+                    .'Up to '.$max.' rows; large imports return status "validating" (poll get_product_import). The same idempotency_key with the same rows returns the same import. '
+                    .'Summarize the preview (to_create, to_update, unchanged, conflicts, invalid) for the user and get their explicit approval before calling execute_product_import.',
+                annotations: $prepare,
+                inputSchema: [
+                    'type' => 'object', 'required' => ['rows', 'idempotency_key'],
+                    'properties' => [
+                        'rows' => $rows([
+                            ...$productFields,
+                            'row_number' => ['type' => 'integer', 'minimum' => 1],
+                            'variant' => ['type' => 'object', 'properties' => $variantFields],
+                        ]),
+                        'idempotency_key' => $key,
+                    ], 'additionalProperties' => false,
+                ], outputSchema: $outputSchema,
+            );
+            $builder->addTool(
+                [$this->operationTools, 'executeProductImport'],
+                name: 'execute_product_import', title: 'Execute product catalog import',
+                description: 'Apply a previewed product import with its exact preview_fingerprint, ONLY after the user explicitly approved the preview. '
+                    .'Only "create" and "update" rows are applied, each independently (one failing row never rolls back the others); unchanged and duplicate rows are skipped, conflicts and invalid rows are never executed. '
+                    .'A product changed since the preview, an identifier taken since the preview, or an expired preview is rejected: preview again. '
+                    .'Repeating the call with the same fingerprint returns the current status without applying anything twice. Poll get_product_import for the final result.',
+                annotations: $execute,
+                inputSchema: [
+                    'type' => 'object', 'required' => ['operation_id', 'preview_fingerprint'],
+                    'properties' => [
+                        'operation_id' => $operationId,
+                        'preview_fingerprint' => ['type' => 'string', 'pattern' => '^[0-9a-f]{64}$'],
+                    ], 'additionalProperties' => false,
+                ], outputSchema: $outputSchema,
+            );
+            $builder->addTool(
+                [$this->operationTools, 'getProductImport'],
+                name: 'get_product_import', title: 'Get product import',
+                description: 'Return the status, merge counts (to_create, to_update, unchanged, conflicts, invalid), execution result (created, updated, failed, skipped) and, while previewed, the preview fingerprint of a product import created by this connection.',
+                annotations: $readOnly,
+                inputSchema: [
+                    'type' => 'object', 'required' => ['operation_id'],
+                    'properties' => ['operation_id' => $operationId], 'additionalProperties' => false,
+                ], outputSchema: $outputSchema,
+            );
+            $builder->addTool(
+                [$this->operationTools, 'getProductImportItems'],
+                name: 'get_product_import_items', title: 'Get product import rows',
+                description: 'Page through the per-row results of a product import: action, resolved target, changed fields with before/after, issues, warnings, and execution result.',
+                annotations: $readOnly,
+                inputSchema: [
+                    'type' => 'object', 'required' => ['operation_id'],
+                    'properties' => [
+                        'operation_id' => $operationId,
+                        'page' => ['type' => 'integer', 'minimum' => 1, 'default' => 1],
+                        'per_page' => ['type' => 'integer', 'minimum' => 1, 'maximum' => (int) config('mcp.operations.items_max_per_page', 200), 'default' => 50],
+                        'action' => ['type' => 'string', 'enum' => ['create', 'update', 'unchanged', 'skipped', 'conflict', 'invalid', 'succeeded', 'failed']],
                     ], 'additionalProperties' => false,
                 ], outputSchema: $outputSchema,
             );

@@ -14,6 +14,7 @@ final class McpOperation extends Model
     public const TYPE_PRODUCT_UPDATE = 'product_bulk_update';
     public const TYPE_PURCHASE_PRICE_UPDATE = 'purchase_price_bulk_update';
     public const TYPE_PRODUCT_ARCHIVE = 'product_bulk_archive';
+    public const TYPE_PRODUCT_IMPORT = 'product_import';
 
     public const STATUS_VALIDATING = 'validating';
     public const STATUS_PREVIEWED = 'previewed';

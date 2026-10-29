@@ -78,6 +78,65 @@ final class ProductOperationTools
         });
     }
 
+    /**
+     * Product import/merge: previews the rows as an operation and returns the
+     * first page of per-row results with the counts.
+     *
+     * @param list<mixed> $rows
+     */
+    public function previewProductImport(array $rows, string $idempotency_key): CallToolResult
+    {
+        return $this->execute('preview_product_import', function () use ($rows, $idempotency_key) {
+            $this->throttle('prepare', (int) config('mcp.operations.prepare_per_minute', 10));
+            $view = $this->operations->prepare(McpOperation::TYPE_PRODUCT_IMPORT, $rows, $idempotency_key);
+            // A synchronous queue validates large imports inline and releases the connection binding afterwards.
+            if ($view['status'] !== McpOperation::STATUS_VALIDATING && $view['details_available'] && $this->context->isBound()) {
+                $view['rows'] = $this->operations->items($view['operation_id'], 1, 50, null, null, McpOperation::TYPE_PRODUCT_IMPORT);
+            }
+
+            return $view;
+        });
+    }
+
+    public function executeProductImport(string $operation_id, string $preview_fingerprint): CallToolResult
+    {
+        return $this->execute('execute_product_import', function () use ($operation_id, $preview_fingerprint) {
+            $this->throttle('execute', (int) config('mcp.operations.execute_per_minute', 10));
+
+            return $this->operations->execute($operation_id, $preview_fingerprint, McpOperation::TYPE_PRODUCT_IMPORT);
+        });
+    }
+
+    public function getProductImport(string $operation_id): CallToolResult
+    {
+        return $this->execute('get_product_import', fn () => $this->operations->show($operation_id, McpOperation::TYPE_PRODUCT_IMPORT));
+    }
+
+    public function getProductImportItems(string $operation_id, int $page = 1, int $per_page = 50, ?string $action = null): CallToolResult
+    {
+        return $this->execute('get_product_import_items', function () use ($operation_id, $page, $per_page, $action) {
+            // Actions are the import vocabulary over the generic preview/execution statuses.
+            [$status, $preview] = match ($action) {
+                null => [null, null],
+                'create', 'update' => [null, McpOperationItem::PREVIEW_CHANGED],
+                'unchanged' => [null, McpOperationItem::PREVIEW_UNCHANGED],
+                'skipped' => [null, McpOperationItem::PREVIEW_SKIPPED],
+                'invalid' => [null, McpOperationItem::PREVIEW_INVALID],
+                'conflict' => [null, McpOperationItem::PREVIEW_CONFLICT],
+                'failed' => [McpOperationItem::STATUS_FAILED, null],
+                'succeeded' => [McpOperationItem::STATUS_SUCCEEDED, null],
+                default => throw new InvalidArgumentException('invalid_filter'),
+            };
+            $targetType = match ($action) {
+                'create' => McpProductImportPlanner::TARGET_CREATE,
+                'update' => McpProductImportPlanner::TARGET_UPDATE,
+                default => null,
+            };
+
+            return $this->operations->items($operation_id, $page, $per_page, $status, $preview, McpOperation::TYPE_PRODUCT_IMPORT, $targetType);
+        });
+    }
+
     /** @param list<mixed> $rows */
     private function prepare(string $type, array $rows, string $key): CallToolResult
     {

@@ -42,6 +42,7 @@ final class McpProductOperationProcessor
         private readonly UpdateVariantAction $updateVariant,
         private readonly UpdateProductPurchasePriceAction $updateCost,
         private readonly ArchiveProductAction $archiveProduct,
+        private readonly McpProductImportPlanner $import,
     ) {}
 
     public function processChunk(string $operationId, int $fromItemId, int $toItemId): void
@@ -100,6 +101,20 @@ final class McpProductOperationProcessor
             DB::transaction(function () use ($itemId) {
                 $item = McpOperationItem::query()->whereKey($itemId)->lockForUpdate()->first();
                 if (! $item || $item->status !== McpOperationItem::STATUS_PENDING) return;
+
+                if (McpProductImportPlanner::handles($item->target_type)) {
+                    $result = $this->import->apply($item);
+                    $item->forceFill([
+                        'status' => McpOperationItem::STATUS_SUCCEEDED,
+                        'target_id' => $result['variant_id'],
+                        'result' => $result,
+                        'error_code' => null,
+                        'error_message' => null,
+                        'processed_at' => now(),
+                    ])->save();
+
+                    return;
+                }
 
                 $evaluation = $this->changes->evaluate($item->target_type, (int) $item->target_id, $item->input_changes ?? [], lock: true);
                 if ($evaluation['forbidden'] !== []) throw new McpOperationItemFailure('forbidden_fields');
