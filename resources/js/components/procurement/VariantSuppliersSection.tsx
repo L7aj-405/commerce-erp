@@ -31,24 +31,31 @@ export default function VariantSuppliersSection({
     };
 
     return (
-        <section className="mt-8">
-            <h2 className="text-lg font-semibold">{t('supplierCatalog.productSection')}</h2>
-            <p className="mb-3 text-sm text-ink-muted">{t('supplierCatalog.productSectionHint')}</p>
-            <div className="space-y-5">
+        <section className="rounded-card border border-line bg-surface p-5 sm:p-6">
+            <h2 className="text-base font-semibold text-ink">{t('supplierCatalog.productSection')}</h2>
+            <p className="mt-1 max-w-3xl text-sm text-ink-muted">{t('supplierCatalog.productSectionHint')}</p>
+            <div className="mt-4 space-y-5">
                 {variants.map((variant) => {
                     const relations = relationsByVariant[variant.id] ?? [];
                     return (
                         <div key={variant.id}>
                             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                                <p className="text-sm font-medium text-ink"><bdi>{[variant.label, variant.sku].filter(Boolean).join(' · ') || productName}</bdi></p>
-                                {canManage && (
+                                <p className="min-w-0 truncate text-sm font-medium text-ink"><bdi>{[variant.label, variant.sku].filter(Boolean).join(' · ') || productName}</bdi></p>
+                                {canManage && relations.length > 0 && (
                                     <Button size="sm" variant="secondary" type="button" onClick={() => setDialog({ variant, relation: null })}>
                                         {t('supplierCatalog.addSupplier')}
                                     </Button>
                                 )}
                             </div>
                             {relations.length === 0 ? (
-                                <p className="rounded-xl border border-dashed border-line px-4 py-3 text-sm text-ink-faint">{t('supplierCatalog.noSuppliers')}</p>
+                                <div className="flex flex-wrap items-center justify-between gap-3 rounded-card border border-dashed border-line-strong bg-raised px-4 py-4">
+                                    <p className="text-sm text-ink-muted">{t('supplierCatalog.noSuppliers')}</p>
+                                    {canManage && (
+                                        <Button size="sm" type="button" onClick={() => setDialog({ variant, relation: null })}>
+                                            {t('supplierCatalog.addSupplier')}
+                                        </Button>
+                                    )}
+                                </div>
                             ) : (
                                 <SupplierRelationTable relations={relations} side="variant" canManage={canManage} onEdit={(relation) => setDialog({ variant, relation })} />
                             )}

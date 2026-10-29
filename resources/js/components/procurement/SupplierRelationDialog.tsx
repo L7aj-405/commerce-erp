@@ -155,9 +155,9 @@ export default function SupplierRelationDialog({ open, onClose, fixed, relation,
                 </div>
             }
         >
-            <form id="supplier-relation-form" onSubmit={submit} className="space-y-4">
+            <form id="supplier-relation-form" onSubmit={submit} className="space-y-5 px-4 py-5 sm:px-6">
                 {!editing && (
-                    <div className="space-y-2">
+                    <div className="space-y-1.5">
                         <Field label={pickKind === 'supplier' ? t('supplierCatalog.supplier') : t('supplierCatalog.product')} error={form.errors.supplier_id ?? form.errors.product_variant_id}>
                             <input
                                 value={search}
@@ -178,7 +178,7 @@ export default function SupplierRelationDialog({ open, onClose, fixed, relation,
                         <p className="text-xs text-ink-faint">{t('supplierCatalog.reactivateHint')}</p>
                     </div>
                 )}
-                <div className="grid gap-4 sm:grid-cols-2">
+                <div className="grid grid-cols-1 gap-x-5 gap-y-4 sm:grid-cols-2">
                     {text('supplier_sku', 'supplierCatalog.supplierSkuField')}
                     {text('supplier_reference', 'supplierCatalog.supplierReference')}
                     {text('supplier_product_name', 'supplierCatalog.supplierProductName')}
@@ -194,9 +194,9 @@ export default function SupplierRelationDialog({ open, onClose, fixed, relation,
                 <Field label={t('supplierCatalog.notes')} error={form.errors.notes}>
                     <textarea value={String(form.data.notes ?? '')} onChange={(event) => form.setData('notes', event.target.value)} rows={2} className="control-input w-full" />
                 </Field>
-                <label className="flex items-start gap-2 text-sm text-ink">
-                    <input type="checkbox" checked={Boolean(form.data.is_preferred)} onChange={(event) => form.setData('is_preferred', event.target.checked)} className="mt-0.5" />
-                    <span>
+                <label className="flex cursor-pointer items-start gap-3 rounded-field border border-line bg-raised px-3 py-3 text-sm text-ink">
+                    <input type="checkbox" checked={Boolean(form.data.is_preferred)} onChange={(event) => form.setData('is_preferred', event.target.checked)} className="mt-0.5 size-4 shrink-0" />
+                    <span className="min-w-0">
                         {t('supplierCatalog.markPreferred')}
                         {replaces && preferredNow && (
                             <small role="status" className="block text-warning">
@@ -215,8 +215,8 @@ export default function SupplierRelationDialog({ open, onClose, fixed, relation,
 
 function Field({ label, error, children }: { label: string; error?: string; children: ReactNode }) {
     return (
-        <label className="block text-sm">
-            <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-ink-faint">{label}</span>
+        <label className="block min-w-0 text-sm">
+            <span className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-ink-faint">{label}</span>
             {children}
             {error && <span className="mt-1 block text-xs text-danger">{error}</span>}
         </label>

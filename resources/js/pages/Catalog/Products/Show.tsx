@@ -7,7 +7,9 @@ import StatusBadge from "@/components/ui/StatusBadge";
 import CatalogLayout from "@/layouts/CatalogLayout";
 import { useI18n } from "@/i18n";
 import { formatMoney, formatQuantity } from "@/utils/format";
+import { plainText } from "@/utils/plainText";
 import { Head, router } from "@inertiajs/react";
+import { useState, type ReactNode } from "react";
 
 type Variant = {
     id: number;
@@ -89,16 +91,18 @@ export default function ProductShow({
     };
 }) {
     const { t } = useI18n();
+    const [descriptionOpen, setDescriptionOpen] = useState(false);
     const first = product.variants[0];
     const firstPrice = first ? priceByVariant[first.id] : undefined;
+    const description = plainText(product.description);
+    const longDescription = description.length > 320 || description.split("\n").length > 4;
+    const stockSearch = encodeURIComponent(first?.sku ?? product.name);
     return (
         <CatalogLayout>
             <Head title={product.name} />
             <PageHeader
                 title={product.name}
-                description={
-                    product.description ?? t("products.show.catalogProduct")
-                }
+                description={t("products.show.catalogProduct")}
                 actions={
                     <>
                         {can.create && (
@@ -118,330 +122,299 @@ export default function ProductShow({
                             </ButtonLink>
                         )}
                         {can.stock && (
-                            <ButtonLink
-                                href={`/inventory/stock?search=${encodeURIComponent(first?.sku ?? product.name)}`}
-                            >
+                            <ButtonLink href={`/inventory/stock?search=${stockSearch}`}>
                                 {t("products.show.viewStock")}
                             </ButtonLink>
                         )}
                     </>
                 }
             />
-            <section className="grid gap-6 rounded-2xl border bg-white p-6 lg:grid-cols-[minmax(260px,320px)_1fr]">
-                <div className="flex items-center justify-center rounded-2xl bg-slate-50 p-4">
-                    <ProductImage
-                        name={product.name}
-                        imageUrl={product.image_url}
-                        className="h-64 w-full max-w-[18rem]"
-                        textClassName="text-slate-400 text-4xl"
-                    />
-                </div>
-                <div>
-                    <div className="flex items-center gap-3">
-                        <h2 className="text-lg font-semibold">
-                            {t("products.show.identity")}
-                        </h2>
-                        <StatusBadge status={product.status} />
+
+            <div className="space-y-6">
+                <section className="grid gap-6 rounded-card border border-line bg-surface p-5 sm:p-6 md:grid-cols-[minmax(200px,260px)_1fr] lg:grid-cols-[minmax(240px,300px)_1fr]">
+                    <div className="flex items-center justify-center self-start rounded-card bg-raised p-4">
+                        <ProductImage
+                            name={product.name}
+                            imageUrl={product.image_url}
+                            className="aspect-square h-auto w-full max-w-[16rem]"
+                            textClassName="text-ink-faint text-4xl"
+                        />
                     </div>
-                    <dl className="mt-5 grid gap-4 text-sm sm:grid-cols-2 xl:grid-cols-3">
-                        <div>
-                            <dt className="text-slate-500">
-                                {t("products.brand")}
-                            </dt>
-                            <dd className="font-medium">
-                                {product.brand?.name ?? t("products.noBrand")}
-                            </dd>
+                    <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-3">
+                            <h2 className="text-base font-semibold text-ink">
+                                {t("products.show.identity")}
+                            </h2>
+                            <StatusBadge status={product.status} />
                         </div>
-                        <div>
-                            <dt className="text-slate-500">SKU</dt>
-                            <dd className="font-medium">
-                                {first?.sku ?? t("products.noSku")}
-                            </dd>
-                        </div>
-                        <div>
-                            <dt className="text-slate-500">
-                                {t("common.reference")}
-                            </dt>
-                            <dd>
-                                {first?.reference ?? t("products.noReference")}
-                            </dd>
-                        </div>
-                        <div>
-                            <dt className="text-slate-500">
-                                {t("products.form.barcode")}
-                            </dt>
-                            <dd>{first?.barcode ?? "—"}</dd>
-                        </div>
-                        <div>
-                            <dt className="text-slate-500">
-                                {t("products.category")}
-                            </dt>
-                            <dd>{product.default_category?.name ?? "—"}</dd>
-                        </div>
-                        <div>
-                            <dt className="text-slate-500">
-                                {t("products.show.publicPrice")}
-                            </dt>
-                            <dd className="font-semibold">
-                                {firstPrice?.ttc
-                                    ? formatMoney(firstPrice.ttc)
-                                    : "—"}
-                            </dd>
-                        </div>
-                        <div>
-                            <dt className="text-slate-500">
-                                {t("products.show.netPrice")}
-                            </dt>
-                            <dd>
+                        <dl className="mt-4 grid grid-cols-1 gap-x-6 gap-y-4 text-sm min-[420px]:grid-cols-2 xl:grid-cols-3">
+                            <Fact label={t("products.brand")}>
+                                <span className="font-medium">{product.brand?.name ?? t("products.noBrand")}</span>
+                            </Fact>
+                            <Fact label="SKU">
+                                <bdi className="font-medium">{first?.sku ?? t("products.noSku")}</bdi>
+                            </Fact>
+                            <Fact label={t("common.reference")}>
+                                <bdi>{first?.reference ?? t("products.noReference")}</bdi>
+                            </Fact>
+                            <Fact label={t("products.form.barcode")}>
+                                <bdi>{first?.barcode ?? "—"}</bdi>
+                            </Fact>
+                            <Fact label={t("products.category")}>
+                                {product.default_category?.name ?? "—"}
+                            </Fact>
+                            <Fact label="TVA">
+                                {taxLabel(firstPrice, t("common.notConfigured"))}
+                            </Fact>
+                            <Fact label={t("products.show.publicPrice")}>
+                                <span className="text-base font-semibold tabular-nums">
+                                    {firstPrice?.ttc ? formatMoney(firstPrice.ttc) : "—"}
+                                </span>
+                            </Fact>
+                            <Fact label={t("products.show.netPrice")}>
                                 {firstPrice?.ht ? (
-                                    <>
+                                    <span className="tabular-nums">
                                         {formatMoney(firstPrice.ht)}
                                         {firstPrice.ht_source === "derived" && (
-                                            <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-500">
+                                            <span className="ms-2 rounded bg-raised px-1.5 py-0.5 text-xs text-ink-muted">
                                                 {t("products.form.calculated")}
                                             </span>
                                         )}
-                                    </>
+                                    </span>
                                 ) : (
                                     "—"
                                 )}
-                            </dd>
-                        </div>
-                        <div>
-                            <dt className="text-slate-500">TVA</dt>
-                            <dd>
-                                {taxLabel(
-                                    firstPrice,
-                                    t("common.notConfigured"),
+                            </Fact>
+                            <Fact label={t("products.show.availableStock")}>
+                                <span className="font-medium tabular-nums">
+                                    {stock?.variants?.[0]
+                                        ? formatQuantity(stock.variants[0].available_total)
+                                        : "—"}
+                                </span>
+                            </Fact>
+                        </dl>
+                        {description !== "" && (
+                            <div className="mt-5 border-t border-line pt-4">
+                                <h3 className="text-xs font-medium uppercase tracking-wide text-ink-faint">
+                                    {t("common.description")}
+                                </h3>
+                                <p
+                                    className={`mt-1.5 max-w-3xl whitespace-pre-line break-words text-sm leading-6 text-ink-muted ${longDescription && !descriptionOpen ? "line-clamp-4" : ""}`}
+                                >
+                                    {description}
+                                </p>
+                                {longDescription && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setDescriptionOpen((open) => !open)}
+                                        aria-expanded={descriptionOpen}
+                                        className="mt-1 text-xs font-medium text-ink underline underline-offset-2"
+                                    >
+                                        {descriptionOpen ? t("products.show.readLess") : t("products.show.readMore")}
+                                    </button>
                                 )}
-                            </dd>
-                        </div>
-                        <div>
-                            <dt className="text-slate-500">
-                                {t("products.show.availableStock")}
-                            </dt>
-                            <dd className="font-medium">
-                                {stock?.variants?.[0]
-                                    ? formatQuantity(
-                                          stock.variants[0].available_total,
-                                      )
-                                    : "—"}
-                            </dd>
-                        </div>
-                    </dl>
-                </div>
-            </section>
-            {can.stock && stock && (
-                <section className="mt-8 rounded-2xl border bg-white p-6">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div>
-                            <h2 className="text-lg font-semibold">
-                                {t("products.show.availability")}
-                            </h2>
-                            <p className="mt-1 text-sm text-slate-600">
-                                {t("products.show.availabilityDescription")}
-                            </p>
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                            {can.update && (
-                                <ButtonLink
-                                    href={`/catalog/products/${product.id}/edit`}
-                                    variant="secondary"
-                                >
-                                    {t("common.edit")}
-                                </ButtonLink>
-                            )}
-                            {can.transfer && first && (
-                                <ButtonLink
-                                    href={`/inventory/transfers/create?variant_id=${first.id}`}
-                                >
-                                    {t("products.show.transfer")}
-                                </ButtonLink>
-                            )}
-                            {can.stock && (
-                                <ButtonLink
-                                    href={`/inventory/stock?search=${encodeURIComponent(first?.sku ?? product.name)}`}
-                                    variant="secondary"
-                                >
-                                    {t("products.show.adjustStock")}
-                                </ButtonLink>
-                            )}
-                            {can.stock && (
-                                <ButtonLink
-                                    href={`/inventory/movements?search=${encodeURIComponent(first?.sku ?? product.name)}`}
-                                    variant="secondary"
-                                >
-                                    {t("products.show.history")}
-                                </ButtonLink>
-                            )}
-                        </div>
-                    </div>
-                    <div className="mt-5 space-y-6">
-                        {stock.variants.map((variant) => (
-                            <article
-                                key={variant.id}
-                                className="rounded-xl bg-slate-50 p-4"
-                            >
-                                <div className="flex flex-wrap items-start justify-between gap-3">
-                                    <div>
-                                        <p className="font-semibold">
-                                            {variant.label ??
-                                                t("products.mainVariant")}
-                                        </p>
-                                        <p className="text-sm text-slate-500">
-                                            {variant.sku ??
-                                                t("products.show.noSkuShort")}
-                                        </p>
-                                    </div>
-                                    <div className="text-right">
-                                        <p className="text-xs uppercase tracking-wide text-slate-400">
-                                            {t("products.show.totalAvailable")}
-                                        </p>
-                                        <p className="text-lg font-semibold">
-                                            {formatQuantity(
-                                                variant.available_total,
-                                            )}
-                                        </p>
-                                    </div>
-                                </div>
-                                <div className="mt-4 space-y-2">
-                                    {variant.warehouses.map((row) => (
-                                        <div
-                                            key={row.warehouse.id}
-                                            className="flex justify-between gap-3 border-t border-slate-200 pt-2 text-sm"
-                                        >
-                                            <span>{row.warehouse.name}</span>
-                                            <span className="font-medium">
-                                                {formatQuantity(row.available)}
-                                            </span>
-                                        </div>
-                                    ))}
-                                </div>
-                                {can.transfer && (
-                                    <div className="mt-4">
-                                        <ButtonLink
-                                            href={`/inventory/transfers/create?variant_id=${variant.id}`}
-                                            variant="secondary"
-                                        >
-                                            {t("products.show.transferVariant")}
-                                        </ButtonLink>
-                                    </div>
-                                )}
-                            </article>
-                        ))}
+                            </div>
+                        )}
                     </div>
                 </section>
-            )}
-            <section className="mt-8">
-                <h2 className="mb-3 text-lg font-semibold">
-                    {t("products.show.variants")}
-                </h2>
-                <div className="overflow-x-auto rounded-xl border bg-white">
-                    <table className="w-full min-w-[1000px] text-left text-sm">
-                        <thead className="bg-slate-50">
-                            <tr>
-                                <th className="p-3">
-                                    <span className="sr-only">
-                                        {t("products.show.image")}
-                                    </span>
-                                </th>
-                                <th className="p-3">{t("products.variant")}</th>
-                                <th className="p-3">SKU</th>
-                                <th className="p-3">{t("common.reference")}</th>
-                                <th className="p-3">
-                                    {t("products.form.barcode")}
-                                </th>
-                                <th className="p-3 text-right">
-                                    {t("products.show.publicPrice")}
-                                </th>
-                                <th className="p-3 text-end">
-                                    {t("products.show.netPrice")}
-                                </th>
-                                <th className="p-3">TVA</th>
-                                <th className="p-3">{t("common.status")}</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {product.variants.map((variant) => {
-                                const p = priceByVariant[variant.id];
-                                return (
-                                    <tr key={variant.id} className="border-t">
-                                        <td className="p-3">
-                                            <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-lg bg-slate-50">
-                                                <ProductImage
-                                                    name={
-                                                        variant.label ??
-                                                        product.name
-                                                    }
-                                                    imageUrl={
-                                                        variant.image_url ??
-                                                        product.image_url
-                                                    }
-                                                    className="h-full w-full"
-                                                    roundedClassName="rounded-none"
-                                                />
-                                            </div>
-                                        </td>
-                                        <td className="p-3">
-                                            {variant.label ??
-                                                t("products.show.main")}
-                                        </td>
-                                        <td className="p-3 font-medium">
-                                            {variant.sku}
-                                        </td>
-                                        <td className="p-3">
-                                            {variant.reference ?? "—"}
-                                        </td>
-                                        <td className="p-3">
-                                            {variant.barcode ?? "—"}
-                                        </td>
-                                        <td className="p-3 text-right font-medium">
-                                            {p?.ttc ? formatMoney(p.ttc) : "—"}
-                                        </td>
-                                        <td className="p-3 text-right">
-                                            {p?.ht ? (
-                                                <>
-                                                    {formatMoney(p.ht)}
-                                                    {p.ht_source ===
-                                                        "derived" && (
-                                                        <span className="ml-1 text-xs text-slate-400">
-                                                            (calc.)
-                                                        </span>
-                                                    )}
-                                                </>
-                                            ) : (
-                                                "—"
-                                            )}
-                                        </td>
-                                        <td className="p-3">
-                                            {taxLabel(
-                                                p,
-                                                t("common.notConfigured"),
-                                            )}
-                                        </td>
-                                        <td className="p-3">
-                                            <StatusBadge
-                                                status={variant.status}
-                                            />
-                                        </td>
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
-                </div>
-            </section>
-            {supplierCatalog !== null && (
-                <VariantSuppliersSection
-                    productName={product.name}
-                    variants={product.variants}
-                    relationsByVariant={supplierCatalog}
-                    canManage={can.manageSuppliers}
-                    viewPrices={can.viewSupplierPrices}
-                    defaultCurrency={defaultCurrency}
-                />
-            )}
-            <div className="mt-8 flex flex-wrap gap-2">
+
+                {can.stock && stock && (
+                    <section className="rounded-card border border-line bg-surface p-5 sm:p-6">
+                        <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
+                            <div className="min-w-0">
+                                <h2 className="text-base font-semibold text-ink">
+                                    {t("products.show.availability")}
+                                </h2>
+                                <p className="mt-1 text-sm text-ink-muted">
+                                    {t("products.show.availabilityDescription")}
+                                </p>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2">
+                                {can.update && (
+                                    <ButtonLink
+                                        href={`/catalog/products/${product.id}/edit`}
+                                        variant="secondary"
+                                        size="sm"
+                                    >
+                                        {t("common.edit")}
+                                    </ButtonLink>
+                                )}
+                                {can.transfer && first && (
+                                    <ButtonLink
+                                        href={`/inventory/transfers/create?variant_id=${first.id}`}
+                                        size="sm"
+                                    >
+                                        {t("products.show.transfer")}
+                                    </ButtonLink>
+                                )}
+                                {can.stock && (
+                                    <ButtonLink
+                                        href={`/inventory/stock?search=${stockSearch}`}
+                                        variant="secondary"
+                                        size="sm"
+                                    >
+                                        {t("products.show.adjustStock")}
+                                    </ButtonLink>
+                                )}
+                                {can.stock && (
+                                    <ButtonLink
+                                        href={`/inventory/movements?search=${stockSearch}`}
+                                        variant="secondary"
+                                        size="sm"
+                                    >
+                                        {t("products.show.history")}
+                                    </ButtonLink>
+                                )}
+                            </div>
+                        </div>
+                        <div className="mt-5 grid gap-4 lg:grid-cols-2">
+                            {stock.variants.map((variant) => (
+                                <article
+                                    key={variant.id}
+                                    className="flex flex-col rounded-card border border-line bg-raised p-4"
+                                >
+                                    <div className="flex items-start justify-between gap-3">
+                                        <div className="min-w-0">
+                                            <p className="truncate font-semibold text-ink">
+                                                {variant.label ?? t("products.mainVariant")}
+                                            </p>
+                                            <p className="truncate text-xs text-ink-muted">
+                                                <bdi>{variant.sku ?? t("products.show.noSkuShort")}</bdi>
+                                            </p>
+                                        </div>
+                                        <div className="shrink-0 text-end">
+                                            <p className="text-[11px] font-medium uppercase tracking-wide text-ink-faint">
+                                                {t("products.show.totalAvailable")}
+                                            </p>
+                                            <p className="text-xl font-semibold tabular-nums text-ink">
+                                                {formatQuantity(variant.available_total)}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    {variant.warehouses.length > 0 && (
+                                        <ul className="mt-3 divide-y divide-line rounded-field border border-line bg-surface">
+                                            {variant.warehouses.map((row) => (
+                                                <li
+                                                    key={row.warehouse.id}
+                                                    className="flex items-center justify-between gap-3 px-3 py-2 text-sm"
+                                                >
+                                                    <span className="min-w-0 truncate text-ink-muted">{row.warehouse.name}</span>
+                                                    <span className="shrink-0 font-medium tabular-nums text-ink">
+                                                        {formatQuantity(row.available)}
+                                                    </span>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    )}
+                                    {can.transfer && (
+                                        <div className="mt-3 flex justify-end">
+                                            <ButtonLink
+                                                href={`/inventory/transfers/create?variant_id=${variant.id}`}
+                                                variant="secondary"
+                                                size="sm"
+                                            >
+                                                {t("products.show.transferVariant")}
+                                            </ButtonLink>
+                                        </div>
+                                    )}
+                                </article>
+                            ))}
+                        </div>
+                    </section>
+                )}
+
+                <section className="rounded-card border border-line bg-surface p-5 sm:p-6">
+                    <h2 className="text-base font-semibold text-ink">
+                        {t("products.show.variants")}
+                    </h2>
+                    <div className="mt-4 overflow-x-auto rounded-field border border-line">
+                        <table className="w-full min-w-[860px] text-start text-sm">
+                            <thead className="bg-raised text-xs uppercase tracking-wide text-ink-faint">
+                                <tr>
+                                    <th className="w-14 px-3 py-2.5">
+                                        <span className="sr-only">{t("products.show.image")}</span>
+                                    </th>
+                                    <th className="px-3 py-2.5 text-start font-medium">{t("products.variant")}</th>
+                                    <th className="px-3 py-2.5 text-start font-medium">SKU</th>
+                                    <th className="px-3 py-2.5 text-start font-medium">{t("common.reference")}</th>
+                                    <th className="px-3 py-2.5 text-start font-medium">{t("products.form.barcode")}</th>
+                                    <th className="px-3 py-2.5 text-end font-medium">{t("products.show.publicPrice")}</th>
+                                    <th className="px-3 py-2.5 text-end font-medium">{t("products.show.netPrice")}</th>
+                                    <th className="px-3 py-2.5 text-start font-medium">TVA</th>
+                                    <th className="px-3 py-2.5 text-start font-medium">{t("common.status")}</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-line">
+                                {product.variants.map((variant) => {
+                                    const p = priceByVariant[variant.id];
+                                    return (
+                                        <tr key={variant.id} className="align-middle">
+                                            <td className="px-3 py-2">
+                                                <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-field bg-raised">
+                                                    <ProductImage
+                                                        name={variant.label ?? product.name}
+                                                        imageUrl={variant.image_url ?? product.image_url}
+                                                        className="h-full w-full"
+                                                        roundedClassName="rounded-none"
+                                                    />
+                                                </div>
+                                            </td>
+                                            <td className="max-w-[14rem] px-3 py-2">
+                                                <span className="block truncate text-ink" title={variant.label ?? undefined}>
+                                                    {variant.label ?? t("products.show.main")}
+                                                </span>
+                                            </td>
+                                            <td className="max-w-[12rem] px-3 py-2">
+                                                <bdi className="block truncate font-medium text-ink" title={variant.sku ?? undefined}>{variant.sku}</bdi>
+                                            </td>
+                                            <td className="max-w-[12rem] px-3 py-2">
+                                                <bdi className="block truncate text-ink-muted" title={variant.reference ?? undefined}>{variant.reference ?? "—"}</bdi>
+                                            </td>
+                                            <td className="px-3 py-2">
+                                                <bdi className="whitespace-nowrap text-ink-muted">{variant.barcode ?? "—"}</bdi>
+                                            </td>
+                                            <td className="whitespace-nowrap px-3 py-2 text-end font-medium tabular-nums text-ink">
+                                                {p?.ttc ? formatMoney(p.ttc) : "—"}
+                                            </td>
+                                            <td className="whitespace-nowrap px-3 py-2 text-end tabular-nums text-ink-muted">
+                                                {p?.ht ? (
+                                                    <>
+                                                        {formatMoney(p.ht)}
+                                                        {p.ht_source === "derived" && (
+                                                            <span className="ms-1 text-xs text-ink-faint">(calc.)</span>
+                                                        )}
+                                                    </>
+                                                ) : (
+                                                    "—"
+                                                )}
+                                            </td>
+                                            <td className="whitespace-nowrap px-3 py-2 text-ink-muted">
+                                                {taxLabel(p, t("common.notConfigured"))}
+                                            </td>
+                                            <td className="px-3 py-2">
+                                                <StatusBadge status={variant.status} />
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                {supplierCatalog !== null && (
+                    <VariantSuppliersSection
+                        productName={product.name}
+                        variants={product.variants}
+                        relationsByVariant={supplierCatalog}
+                        canManage={can.manageSuppliers}
+                        viewPrices={can.viewSupplierPrices}
+                        defaultCurrency={defaultCurrency}
+                    />
+                )}
+            </div>
+
+            <div className="mt-8 flex flex-wrap items-center gap-2 border-t border-line pt-6">
                 <ButtonLink href="/catalog/products" variant="secondary">
                     {t("imports.products.backToProducts")}
                 </ButtonLink>
@@ -461,5 +434,15 @@ export default function ProductShow({
                 )}
             </div>
         </CatalogLayout>
+    );
+}
+
+/** One identity fact: a quiet label above an easy-to-scan value. */
+function Fact({ label, children }: { label: string; children: ReactNode }) {
+    return (
+        <div className="min-w-0">
+            <dt className="text-xs text-ink-faint">{label}</dt>
+            <dd className="mt-0.5 break-words text-ink">{children}</dd>
+        </div>
     );
 }
