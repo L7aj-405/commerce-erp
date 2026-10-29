@@ -10,6 +10,7 @@ use App\Models\PaymentAllocation;
 use App\Models\PaymentRefund;
 use App\Models\SalesOrder;
 use App\Support\Decimal;
+use App\Support\Money;
 use Illuminate\Support\Carbon;
 use LogicException;
 
@@ -65,7 +66,7 @@ class SalesOrderPaymentCalculator
             return '0.0000';
         }
 
-        return $this->nonNegative(Decimal::subtract($this->commercialTotal($order), $this->paidAmount($order)));
+        return Money::outstanding($this->commercialTotal($order), $this->paidAmount($order), $order->currency_code);
     }
 
     /** @return array{paid: string, collected: string, refunded: string, net: string, returned: string, commercial_total: string, remaining: string, status: string, last_payment_date: ?string} */
@@ -156,7 +157,7 @@ class SalesOrderPaymentCalculator
         $commercialTotal = $this->nonNegative(Decimal::subtract($order->total_incl_tax, $returned));
         $remaining = $order->status === SalesOrderStatus::Cancelled
             ? '0.0000'
-            : $this->nonNegative(Decimal::subtract($commercialTotal, $paid));
+            : Money::outstanding($commercialTotal, $paid, $order->currency_code);
 
         return [
             'paid' => $paid,
@@ -166,7 +167,7 @@ class SalesOrderPaymentCalculator
             'returned' => $returned,
             'commercial_total' => $commercialTotal,
             'remaining' => $remaining,
-            'status' => $this->status($commercialTotal, $paid)->value,
+            'status' => $this->status($order, $commercialTotal, $paid)->value,
             'last_payment_date' => $lastPaymentDate,
         ];
     }
@@ -174,19 +175,24 @@ class SalesOrderPaymentCalculator
     public function recalculate(SalesOrder $order): SalesOrder
     {
         $paid = $this->paidAmount($order);
-        $order->payment_status = $this->status($this->commercialTotal($order), $paid);
+        $order->payment_status = $this->status($order, $this->commercialTotal($order), $paid);
         $order->save();
 
         return $order;
     }
 
-    private function status(string $total, string $paid): SalesOrderPaymentStatus
+    /**
+     * Paid once nothing payable remains at the order currency's precision
+     * (Money::outstanding), so a sub-minor-unit residue such as 0.0001 MAD
+     * never leaves an order partially paid.
+     */
+    private function status(SalesOrder $order, string $total, string $paid): SalesOrderPaymentStatus
     {
         if (Decimal::compare($paid, '0.0000') === 0) {
             return SalesOrderPaymentStatus::Unpaid;
         }
 
-        return Decimal::compare($paid, $total) < 0
+        return Money::outstanding($total, $paid, $order->currency_code) !== '0.0000'
             ? SalesOrderPaymentStatus::PartiallyPaid
             : SalesOrderPaymentStatus::Paid;
     }

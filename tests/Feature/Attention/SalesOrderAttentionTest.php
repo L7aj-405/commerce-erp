@@ -111,10 +111,10 @@ class SalesOrderAttentionTest extends QuotationTestCase
         $this->assertSame(['sales_order_partial_overdue:open'], $this->active($order));
         $this->assertSame('60.0000', AttentionItem::query()->where('type', 'sales_order_partial_overdue')->sole()->metadata['facts']['outstanding']);
 
-        $almost = $this->recordPayment($owner, $order, $account, '59.9999');
+        $almost = $this->recordPayment($owner, $order, $account, '59.9900');
         $this->tick($organization, '2026-11-09 10:30:00');
-        $this->assertSame(['sales_order_partial_overdue:open'], $this->active($order), '0.0001 still owed (exact Decimal).');
-        $last = $this->recordPayment($owner, $order, $account, '0.0001');
+        $this->assertSame(['sales_order_partial_overdue:open'], $this->active($order), 'A genuine 0.01 MAD is still owed.');
+        $last = $this->recordPayment($owner, $order, $account, '0.0100');
         $this->tick($organization, '2026-11-09 10:45:00');
         $this->assertSame([], $this->active($order), 'Fully paid: receivable resolves; paid-not-invoiced waits a local day.');
 
@@ -129,7 +129,7 @@ class SalesOrderAttentionTest extends QuotationTestCase
         $this->assertSame(2, AttentionItem::query()->where('type', 'sales_order_partial_overdue')->whereNotNull('active_key')->sole()->episode);
 
         // Paid again and invoiced: everything resolves (post-issuance anomalies are W4.4's job).
-        $this->recordPayment($owner, $order, $account, '0.0001');
+        $this->recordPayment($owner, $order, $account, '0.0100');
         app(IssueInvoiceAction::class)->execute($owner, $this->createInvoice($owner, $order->fresh()));
         $this->tick($organization, '2026-11-12 10:00:00');
         $this->assertSame([], $this->active($order));

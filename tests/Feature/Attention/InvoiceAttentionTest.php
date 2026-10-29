@@ -100,11 +100,11 @@ class InvoiceAttentionTest extends QuotationTestCase
         $this->assertSame('60.0000', $item->metadata['facts']['outstanding']);
         $this->assertStringContainsString('reste 60.00 MAD', $item->summary);
 
-        // Exact Decimal comparisons: 0.0001 still outstanding, then fully paid resolves everything.
-        $almost = $this->recordPayment($owner, $order, $account, '59.9999');
+        // A genuine 0.01 MAD still outstanding keeps it open (a sub-centime residue would not, see App\Support\Money), then fully paid resolves everything.
+        $almost = $this->recordPayment($owner, $order, $account, '59.9900');
         $this->tick($organization, CarbonImmutable::parse($due)->addDay()->setTime(10, 30)->toDateTimeString());
         $this->assertSame(['invoice_overdue_partial:open'], $this->active($invoice));
-        $this->recordPayment($owner, $order, $account, '0.0001');
+        $this->recordPayment($owner, $order, $account, '0.0100');
         $this->tick($organization, CarbonImmutable::parse($due)->addDay()->setTime(10, 45)->toDateTimeString());
         $this->assertSame([], $this->active($invoice));
 

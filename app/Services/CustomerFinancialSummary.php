@@ -11,6 +11,7 @@ use App\Models\Payment;
 use App\Models\SalesOrder;
 use App\Models\User;
 use App\Support\Decimal;
+use App\Support\Money;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -60,8 +61,9 @@ final class CustomerFinancialSummary
             ->where('payments.status', PaymentStatus::Posted->value)
             ->sum('payment_allocations.amount'));
 
+        // Same currency-precision rule as SalesOrderPaymentCalculator: a sub-centime residue is not owed.
         $outstanding = $invoicedTotal === null || $paidTotal === null ? null
-            : (Decimal::compare($invoicedTotal, $paidTotal) > 0 ? Decimal::subtract($invoicedTotal, $paidTotal) : '0.0000');
+            : Money::outstanding($invoicedTotal, $paidTotal, (string) config('platform.currency_code', 'MAD'));
 
         return [
             'sales_total' => $salesTotal,

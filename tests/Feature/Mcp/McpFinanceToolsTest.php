@@ -338,6 +338,60 @@ class McpFinanceToolsTest extends QuotationTestCase
         $this->assertSame([$issued['target']['id']], array_column($this->tool('getPayment', ['payment_id' => $paymentId])['data']['allocations'][0]['invoices'], 'id'));
     }
 
+    /* ================================================================ Currency precision */
+
+    public function test_sub_centime_residue_is_settled_at_mad_precision_and_unblocks_invoice_issue(): void
+    {
+        $order = $this->confirmedOrder(price: '13306.0001');
+        $tpe = $this->createFinancialAccount($this->organization, ['type' => 'card_clearing', 'name' => 'TPE', 'code' => 'TPE']);
+        $this->connect($this->owner);
+
+        $this->record($order, '10000', 'mad-1');
+        $card = $this->payment($order, '3306', $tpe->id);
+        $card['method'] = 'card';
+        $preview = $this->tool('previewPayment', ['payment' => $card])['data'];
+        $this->assertTrue($preview['valid'], json_encode($preview['issues']));
+        $this->assertSame(['total' => '13306.0001', 'paid_amount' => '10000.0000', 'outstanding_amount' => '3306.0001', 'payment_status' => 'partially_paid', 'fully_paid' => false], $preview['before']);
+        $this->assertSame(['total' => '13306.0001', 'paid_amount' => '13306.0000', 'outstanding_amount' => '0.0000', 'payment_status' => 'paid', 'fully_paid' => true], $preview['after']);
+        $recorded = $this->tool('recordPayment', ['payment' => $card, 'preview_fingerprint' => $preview['preview_fingerprint'], 'idempotency_key' => 'mad-2'])['data'];
+        $this->assertTrue($recorded['sales_order_payment']['fully_paid']);
+
+        // No fake 0.0001 balancing payment is possible.
+        $residue = $this->tool('previewPayment', ['payment' => $this->payment($order, '0.0001')])['data'];
+        $this->assertSame('amount_exceeds_outstanding', $residue['issues'][0]['code']);
+
+        $payment = $this->tool('getSalesOrder', ['sales_order_id' => $order->id], SalesOrderTools::class)['data']['payment'];
+        $this->assertSame(['paid', '13306.0000', '0.0000', true], [$payment['status'], $payment['paid'], $payment['remaining'], $payment['fully_paid']]);
+
+        $ready = $this->tool('previewInvoiceIssue', ['sales_order_id' => $order->id])['data'];
+        $this->assertTrue($ready['valid'], json_encode($ready['issues']));
+        $this->assertSame('13306.0001', $ready['invoice_preview']['totals']['total_incl_tax']);
+        $issued = $this->tool('issueInvoice', ['sales_order_id' => $order->id, 'preview_fingerprint' => $ready['preview_fingerprint'], 'idempotency_key' => 'mad-inv']);
+        $this->assertTrue($issued['ok'], json_encode($issued));
+        $this->assertSame(1, Invoice::query()->count());
+        $this->assertSame(2, Payment::query()->count());
+
+        $balance = $this->tool('getCustomerBalanceSummary', ['customer_id' => $this->customer->id], SalesAssistantTools::class)['data'];
+        $this->assertSame('13306.0001', $balance['invoiced_total']);
+        $this->assertSame('13306.0000', $balance['paid_total']);
+        $this->assertSame('0.0000', $balance['outstanding']);
+    }
+
+    public function test_a_genuine_centime_still_blocks_invoice_issue(): void
+    {
+        $order = $this->confirmedOrder(price: '13306.0100');
+        $this->connect($this->owner);
+        $after = $this->record($order, '13306', 'cent-1')['data']['sales_order_payment'];
+        $this->assertSame(['outstanding_amount' => '0.0100', 'payment_status' => 'partially_paid', 'fully_paid' => false], array_intersect_key($after, array_flip(['outstanding_amount', 'payment_status', 'fully_paid'])));
+
+        $blocked = $this->tool('previewInvoiceIssue', ['sales_order_id' => $order->id])['data'];
+        $this->assertFalse($blocked['valid']);
+        $this->assertSame('sales_order_not_fully_paid', $blocked['issues'][0]['code']);
+        $this->assertSame('0.0100', $blocked['issues'][0]['details']['outstanding']);
+        $this->assertSame('amount_exceeds_outstanding', $this->tool('previewPayment', ['payment' => $this->payment($order, '0.02')])['data']['issues'][0]['code']);
+        $this->assertSame(0, Invoice::query()->count());
+    }
+
     /* ================================================================ Full workflow */
 
     public function test_full_workflow_partial_payment_blocked_invoice_remaining_payment_invoice_pdf(): void
@@ -423,18 +477,18 @@ class McpFinanceToolsTest extends QuotationTestCase
         return $this->tool('recordPayment', ['payment' => $payment, 'preview_fingerprint' => $preview['preview_fingerprint'], 'idempotency_key' => $key]);
     }
 
-    private function draftOrder(?Store $store = null): SalesOrder
+    private function draftOrder(?Store $store = null, string $price = '10000.0000'): SalesOrder
     {
         app()->forgetScopedInstances();
         $order = $this->createDraftOrder($this->owner, $this->organization, $store ?? $this->storeA, $this->customer, ['sale_date' => '2026-10-01']);
-        $this->addCustomLine($this->owner, $order, ['unit_price_excl_tax' => '10000.0000']);
+        $this->addCustomLine($this->owner, $order, ['unit_price_excl_tax' => $price]);
 
         return $order->fresh();
     }
 
-    private function confirmedOrder(?Store $store = null): SalesOrder
+    private function confirmedOrder(?Store $store = null, string $price = '10000.0000'): SalesOrder
     {
-        $order = $this->draftOrder($store);
+        $order = $this->draftOrder($store, $price);
 
         return app(ConfirmSalesOrderAction::class)->execute($this->owner, $order)->fresh();
     }
