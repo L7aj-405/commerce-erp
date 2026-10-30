@@ -35,6 +35,7 @@ type Props = {
     canUpdate: boolean;
     businessTimezone: { value: string; configured: boolean; options: string[] };
     fulfillmentMode: "simple" | "advanced";
+    fulfillmentCustomerNotifications: boolean;
 };
 
 export default function DocumentProfile({
@@ -45,6 +46,7 @@ export default function DocumentProfile({
     canUpdate,
     businessTimezone,
     fulfillmentMode,
+    fulfillmentCustomerNotifications,
 }: Props) {
     const { t } = useI18n();
     const [removeLogo, setRemoveLogo] = useState(false);
@@ -150,6 +152,7 @@ export default function DocumentProfile({
 
                 <FulfillmentModeSection
                     mode={fulfillmentMode}
+                    customerNotifications={fulfillmentCustomerNotifications}
                     canUpdate={canUpdate}
                 />
 
@@ -552,16 +555,21 @@ function TimezoneSection({
     );
 }
 
-/** Organization fulfillment mode (F1.1): one engine, simple or advanced workflow. */
+/** Organization fulfillment mode (F1.1): one engine, simple or advanced workflow; F1.2 customer shipment emails. */
 function FulfillmentModeSection({
     mode,
+    customerNotifications,
     canUpdate,
 }: {
     mode: Props["fulfillmentMode"];
+    customerNotifications: boolean;
     canUpdate: boolean;
 }) {
     const { t } = useI18n();
-    const form = useForm<{ fulfillment_mode: Props["fulfillmentMode"] }>({ fulfillment_mode: mode });
+    const form = useForm<{ fulfillment_mode: Props["fulfillmentMode"]; fulfillment_customer_notifications: boolean }>({
+        fulfillment_mode: mode,
+        fulfillment_customer_notifications: customerNotifications,
+    });
     const submit = (event: FormEvent) => {
         event.preventDefault();
         form.put("/organization-fulfillment-mode", { preserveScroll: true });
@@ -595,8 +603,25 @@ function FulfillmentModeSection({
                     {form.errors.fulfillment_mode && (
                         <span className="block text-xs text-danger">{form.errors.fulfillment_mode}</span>
                     )}
+                    <label className="flex cursor-pointer items-start gap-3 text-sm">
+                        <input
+                            type="checkbox"
+                            checked={form.data.fulfillment_customer_notifications}
+                            onChange={(event) => form.setData("fulfillment_customer_notifications", event.target.checked)}
+                            className="mt-0.5"
+                        />
+                        <span>
+                            <span className="block font-medium text-ink">{t("fulfillmentMode.customerNotifications")}</span>
+                            <span className="block text-xs text-ink-muted">{t("fulfillmentMode.customerNotificationsHelp")}</span>
+                        </span>
+                    </label>
                     <div>
-                        <Button type="submit" loading={form.processing} loadingText={t("common.saving")} disabled={form.data.fulfillment_mode === mode}>
+                        <Button
+                            type="submit"
+                            loading={form.processing}
+                            loadingText={t("common.saving")}
+                            disabled={form.data.fulfillment_mode === mode && form.data.fulfillment_customer_notifications === customerNotifications}
+                        >
                             {t("common.save")}
                         </Button>
                     </div>

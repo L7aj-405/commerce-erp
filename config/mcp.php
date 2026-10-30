@@ -64,6 +64,10 @@ return [
         'sales_orders.create' => ['permission' => 'sales_orders.create', 'label' => 'Create draft sales orders'],
         'sales_orders.update' => ['permission' => 'sales_orders.update', 'label' => 'Update draft sales orders'],
         'sales_orders.confirm' => ['permission' => 'sales_orders.confirm', 'label' => 'Confirm sales orders'],
+        // F1.2 shipments: tracking and delivery only — hand-over (the one stock OUT) stays a web action.
+        'fulfillment.view' => ['permission' => 'fulfillment.view', 'label' => 'View shipments and deliveries of sales orders'],
+        'fulfillment.manage' => ['permission' => 'fulfillment.manage', 'label' => 'Update shipment tracking (carrier, tracking number/link, packages); never moves stock'],
+        'fulfillment.mark_delivered' => ['permission' => 'fulfillment.mark_delivered', 'label' => 'Mark handed-over shipments as delivered; never moves stock'],
 
         // MCP-W7 suppliers, non-stock articles and quotation supplier sourcing. Each maps to the ERP
         // permission the canonical action enforces; the action re-checks it (and store membership) per call.

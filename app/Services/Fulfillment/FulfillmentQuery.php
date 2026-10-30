@@ -2,10 +2,12 @@
 
 namespace App\Services\Fulfillment;
 
+use App\Actions\Fulfillment\ShareFulfillmentWithCustomerAction;
 use App\Enums\FulfillmentStatus;
 use App\Enums\SalesOrderStatus;
 use App\Models\Fulfillment;
 use App\Models\FulfillmentAttachment;
+use App\Models\FulfillmentCustomerNotification;
 use App\Models\SalesOrder;
 use App\Models\User;
 use App\Support\InventoryQuantity;
@@ -60,7 +62,7 @@ final class FulfillmentQuery
         $canShipMore = $confirmed && ! $order->awaitingReplenishment() && collect($lines)->contains(fn ($line) => InventoryQuantity::compare($line['shippable'], InventoryQuantity::ZERO) > 0);
         $articles = collect($lines)->keyBy('line_id');
 
-        $fulfillments = $order->fulfillments()->with(['items', 'carrier:id,full_name,company_name,phone', 'attachments', 'createdBy:id,name', 'handedBy:id,name'])
+        $fulfillments = $order->fulfillments()->with(['items', 'carrier:id,full_name,company_name,phone', 'attachments', 'customerNotifications.sentBy:id,name', 'createdBy:id,name', 'handedBy:id,name'])
             ->orderBy('created_at')->orderBy('id')->get()
             ->values()
             ->map(fn (Fulfillment $fulfillment, int $index) => [
@@ -81,6 +83,7 @@ final class FulfillmentQuery
                     'phone' => $fulfillment->carrier->phone,
                 ] : null,
                 'tracking_number' => $fulfillment->tracking_number,
+                'tracking_url' => $fulfillment->tracking_url,
                 'carrier_reference' => $fulfillment->carrier_reference,
                 'package_count' => $fulfillment->package_count,
                 'expected_delivery_at' => $fulfillment->expected_delivery_at?->toIso8601String(),
@@ -93,6 +96,19 @@ final class FulfillmentQuery
                 'delivered_at' => $fulfillment->delivered_at?->toIso8601String(),
                 'closed_at' => $fulfillment->closed_at?->toIso8601String(),
                 'cancelled_at' => $fulfillment->cancelled_at?->toIso8601String(),
+                // Stock left exactly here (hand-over); everything after is logistics only.
+                'stock_left_at' => $fulfillment->stock_consumed_at?->toIso8601String(),
+                'customer_notifications' => $fulfillment->customerNotifications->sortBy('id')->values()->map(fn (FulfillmentCustomerNotification $notification) => [
+                    'id' => (int) $notification->getKey(),
+                    'event' => $notification->event,
+                    'origin' => $notification->origin,
+                    'channel' => $notification->channel,
+                    'status' => $notification->status,
+                    'recipient' => $notification->recipient,
+                    'skip_reason' => $notification->skip_reason,
+                    'sent_by' => $notification->sentBy?->name,
+                    'sent_at' => ($notification->sent_at ?? ($notification->origin === FulfillmentCustomerNotification::ORIGIN_MANUAL ? $notification->created_at : null))?->toIso8601String(),
+                ])->all(),
                 'created_by' => $fulfillment->createdBy?->name,
                 'attachments' => $fulfillment->attachments->sortBy('created_at')->values()->map(fn (FulfillmentAttachment $attachment) => [
                     'id' => (string) $attachment->getKey(),
@@ -134,6 +150,9 @@ final class FulfillmentQuery
         };
         if (! in_array($fulfillment->status, [FulfillmentStatus::Closed, FulfillmentStatus::Cancelled], true) && $fulfillment->channel === Fulfillment::CHANNEL_CARRIER && $can['manage']) {
             $actions[] = 'edit_details';
+        }
+        if (in_array($fulfillment->status, ShareFulfillmentWithCustomerAction::STATUSES, true) && $fulfillment->channel === Fulfillment::CHANNEL_CARRIER && ($can['manage'] || $can['dispatch'])) {
+            $actions[] = 'share_with_customer';
         }
 
         return array_values(array_filter($actions));

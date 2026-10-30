@@ -36,6 +36,8 @@ class FinanceMonthlySituationPageTest extends PaymentTestCase
 
     public function test_store_category_status_and_search_filters_are_applied_server_side(): void
     {
+        // "upcoming" is relative to today: pinned before the default 2026-10-25 due date.
+        $this->travelTo('2026-10-17');
         $owner = User::factory()->create();
         $organization = $this->createOrganization($owner);
         $one = $this->createStore($organization, $owner, 'Casa');

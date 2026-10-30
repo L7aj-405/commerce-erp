@@ -10,8 +10,10 @@ use App\Actions\Fulfillment\MarkFulfillmentDeliveredAction;
 use App\Actions\Fulfillment\MarkFulfillmentInTransitAction;
 use App\Actions\Fulfillment\MarkFulfillmentReadyAction;
 use App\Actions\Fulfillment\RemoveFulfillmentProofAction;
+use App\Actions\Fulfillment\ShareFulfillmentWithCustomerAction;
 use App\Actions\Fulfillment\StartFulfillmentPreparationAction;
 use App\Actions\Fulfillment\UpdateFulfillmentShipmentDetailsAction;
+use App\Enums\FulfillmentStatus;
 use App\Http\Controllers\Controller;
 use App\Models\Fulfillment;
 use App\Models\FulfillmentAttachment;
@@ -111,9 +113,9 @@ class FulfillmentController extends Controller
 
     public function update(Request $request, SalesOrder $order, Fulfillment $fulfillment, UpdateFulfillmentShipmentDetailsAction $action): RedirectResponse
     {
-        $action->execute($request->user(), $order, $fulfillment, $request->only(['tracking_number', 'carrier_reference', 'package_count', 'expected_delivery_at', 'note']), $this->expected($request));
+        $action->execute($request->user(), $order, $fulfillment, $request->only(UpdateFulfillmentShipmentDetailsAction::FIELDS), $this->expected($request));
 
-        return back()->with('success', 'Expédition mise à jour.');
+        return back()->with('success', 'Suivi de l’expédition mis à jour.');
     }
 
     public function attach(Request $request, SalesOrder $order, Fulfillment $fulfillment, AttachFulfillmentProofAction $action): RedirectResponse
@@ -149,10 +151,38 @@ class FulfillmentController extends Controller
         ]);
     }
 
-    /** Active transport contacts of the organization for the dispatch dialog (bounded autocomplete). */
+    /** "Partager au client" dialog: exactly what would be shared, for the chosen proofs. */
+    public function sharePreview(Request $request, SalesOrder $order, Fulfillment $fulfillment, ShareFulfillmentWithCustomerAction $action): JsonResponse
+    {
+        $data = $request->validate(['attachment_ids' => ['nullable', 'array', 'max:50'], 'attachment_ids.*' => ['string', 'max:64']]);
+
+        return response()->json($action->preview($request->user(), $order, $fulfillment, $request->boolean('proofs_chosen') ? ($data['attachment_ids'] ?? []) : null));
+    }
+
+    public function share(Request $request, SalesOrder $order, Fulfillment $fulfillment, ShareFulfillmentWithCustomerAction $action): RedirectResponse
+    {
+        $notification = $action->execute($request->user(), $order, $fulfillment, $request->only(ShareFulfillmentWithCustomerAction::FIELDS));
+
+        return back()->with('success', $notification->channel === 'whatsapp' ? 'Partage WhatsApp enregistré.' : 'Suivi envoyé au client par e-mail.');
+    }
+
+    /** Signed link shared with the customer: one proof of a shipment that left with the carrier (never a cancelled or not yet handed-over one). */
+    public function sharedProof(FulfillmentAttachment $attachment): StreamedResponse
+    {
+        $fulfillment = Fulfillment::query()->where('organization_id', $attachment->organization_id)->whereKey($attachment->fulfillment_id)->firstOrFail();
+        abort_unless($fulfillment->channel === Fulfillment::CHANNEL_CARRIER && $fulfillment->stock_consumed_at !== null && $fulfillment->status !== FulfillmentStatus::Cancelled, 404);
+        abort_unless(Storage::disk($attachment->disk)->exists($attachment->path), 404);
+
+        return Storage::disk($attachment->disk)->download($attachment->path, $attachment->original_name, [
+            'Content-Type' => $attachment->mime_type,
+            'X-Content-Type-Options' => 'nosniff',
+        ]);
+    }
+
+    /** Active transport contacts of the organization for the dispatch and "Modifier le suivi" dialogs (bounded autocomplete). */
     public function carrierOptions(Request $request, SalesOrder $order, FulfillmentEngine $engine): JsonResponse
     {
-        $engine->authorize($request->user(), $order, 'fulfillment.dispatch');
+        $engine->authorizeAny($request->user(), $order, ['fulfillment.dispatch', 'fulfillment.manage']);
         $search = trim((string) ($request->validate(['search' => ['nullable', 'string', 'max:255']])['search'] ?? ''));
 
         return response()->json(['data' => OrganizationContact::query()->where('organization_id', $order->organization_id)

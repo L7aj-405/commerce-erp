@@ -207,9 +207,10 @@ class FulfillmentTest extends SalesTestCase
     {
         $fulfillment = $this->hand(['items' => [$this->line->id => '5']]);
         $this->assertValidation('status', fn () => app(MarkFulfillmentDeliveredAction::class)->execute($this->owner, $this->order, $fulfillment, null, 'in_transit'));
-        app(MarkFulfillmentDeliveredAction::class)->execute($this->owner, $this->order, $fulfillment, null, 'handed_to_carrier');
-        // A second click on "Marquer comme livré" with the now stale status.
-        $this->assertValidation('status', fn () => app(MarkFulfillmentDeliveredAction::class)->execute($this->owner, $this->order, $fulfillment, null, 'handed_to_carrier'));
+        $delivered = app(MarkFulfillmentDeliveredAction::class)->execute($this->owner, $this->order, $fulfillment, null, 'handed_to_carrier');
+        // A second click on "Marquer comme livré" (F1.2): an idempotent no-op success, not an error.
+        $again = app(MarkFulfillmentDeliveredAction::class)->execute($this->owner, $this->order, $fulfillment, '2026-10-29 09:45:00', 'handed_to_carrier');
+        $this->assertSame([FulfillmentStatus::Delivered, $delivered->delivered_at->toDateTimeString()], [$again->status, $again->fresh()->delivered_at->toDateTimeString()]);
         $this->assertSame(1, AuditLog::query()->where('event', 'fulfillment.delivered')->count());
     }
 
@@ -340,7 +341,7 @@ class FulfillmentTest extends SalesTestCase
             ->where('fulfillment.fulfillments.0.status', 'handed_to_carrier')
             ->where('fulfillment.fulfillments.0.carrier.name', 'Amana Express')
             ->where('fulfillment.fulfillments.0.tracking_number', 'TRK-NEW')
-            ->where('fulfillment.fulfillments.0.actions', ['mark_delivered', 'edit_details'])
+            ->where('fulfillment.fulfillments.0.actions', ['mark_delivered', 'edit_details', 'share_with_customer'])
             ->where('fulfillment.actions', ['hand_to_carrier']));
 
         $this->actingAs($this->owner)->put('/organization-fulfillment-mode', ['fulfillment_mode' => 'advanced'])->assertSessionHasNoErrors();

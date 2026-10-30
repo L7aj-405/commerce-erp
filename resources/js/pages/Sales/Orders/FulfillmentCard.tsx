@@ -3,13 +3,15 @@ import { Dialog } from '@/components/ui/Dialog';
 import { useI18n } from '@/i18n';
 import type { TranslationKey } from '@/i18n/translations';
 import { formatDateTime, formatQuantity } from '@/utils/format';
+import { whatsappLink, type WhatsAppDestination } from '@/utils/whatsapp';
 import { router, useForm } from '@inertiajs/react';
 import axios from 'axios';
 import type { FormEvent, ReactNode } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 
 type Status = 'preparing' | 'ready' | 'handed_to_carrier' | 'in_transit' | 'delivered' | 'closed' | 'cancelled';
-type Action = 'mark_ready' | 'hand_to_carrier' | 'mark_in_transit' | 'mark_delivered' | 'close' | 'cancel' | 'edit_details';
+type Action = 'mark_ready' | 'hand_to_carrier' | 'mark_in_transit' | 'mark_delivered' | 'close' | 'cancel' | 'edit_details' | 'share_with_customer';
+type Carrier = { id: number; name: string; contact: string | null; phone: string | null };
 type Line = { line_id: number; article: string; sku: string | null; catalog: boolean; quantity: string; planned: string; shipped: string; delivered: string; remaining: string; shippable: string };
 type Shipment = {
     id: string;
@@ -18,8 +20,9 @@ type Shipment = {
     channel: 'carrier' | 'direct';
     workflow_mode: 'simple' | 'advanced';
     items: { line_id: number; article: string; quantity: string }[];
-    carrier: { id: number; name: string; contact: string | null; phone: string | null } | null;
+    carrier: Carrier | null;
     tracking_number: string | null;
+    tracking_url: string | null;
     carrier_reference: string | null;
     package_count: number | null;
     expected_delivery_at: string | null;
@@ -30,6 +33,18 @@ type Shipment = {
     delivered_at: string | null;
     closed_at: string | null;
     cancelled_at: string | null;
+    stock_left_at: string | null;
+    customer_notifications: {
+        id: number;
+        event: 'handed_to_carrier' | 'delivered';
+        origin: 'automatic' | 'manual';
+        channel: 'email' | 'whatsapp';
+        status: 'pending' | 'sending' | 'sent' | 'skipped' | 'failed' | 'opened';
+        recipient: string | null;
+        skip_reason: string | null;
+        sent_by: string | null;
+        sent_at: string | null;
+    }[];
     attachments: { id: string; name: string; category: string; mime_type: string; size_bytes: number; url: string }[];
     actions: Action[];
 };
@@ -63,11 +78,23 @@ const nowLocal = () => {
     return date.toISOString().slice(0, 16);
 };
 
+/** Active transport contacts (bounded, debounced autocomplete). */
+function useCarrierOptions(base: string, search: string): Carrier[] {
+    const [carriers, setCarriers] = useState<Carrier[]>([]);
+    useEffect(() => {
+        const timer = window.setTimeout(() => {
+            axios.get(`${base}/carrier-options`, { params: { search: search || undefined } }).then(({ data }) => setCarriers(data.data));
+        }, 250);
+        return () => window.clearTimeout(timer);
+    }, [base, search]);
+    return carriers;
+}
+
 /** "Expédition & Livraison": shipments of a confirmed order. Rules are server-side (App\Actions\Fulfillment). */
 export default function FulfillmentCard({ orderId, data }: { orderId: number; data: FulfillmentPayload }) {
     const { t } = useI18n();
     const k = (key: string) => t(`fulfillment.${key}` as TranslationKey);
-    const [dialog, setDialog] = useState<{ kind: 'dispatch' | 'prepare' | 'deliver' | 'cancel' | 'edit'; shipment: Shipment | null } | null>(null);
+    const [dialog, setDialog] = useState<{ kind: 'dispatch' | 'prepare' | 'deliver' | 'cancel' | 'edit' | 'share'; shipment: Shipment | null } | null>(null);
     const base = `/sales/orders/${orderId}/fulfillments`;
     const post = (shipment: Shipment, path: string) => router.post(`${base}/${shipment.id}/${path}`, { expected_status: shipment.status }, { preserveScroll: true });
     const shippable = data.lines.filter((line) => Number(line.shippable) > 0);
@@ -129,6 +156,7 @@ export default function FulfillmentCard({ orderId, data }: { orderId: number; da
                                 else if (action === 'mark_delivered') setDialog({ kind: 'deliver', shipment });
                                 else if (action === 'cancel') setDialog({ kind: 'cancel', shipment });
                                 else if (action === 'edit_details') setDialog({ kind: 'edit', shipment });
+                                else if (action === 'share_with_customer') setDialog({ kind: 'share', shipment });
                             }}
                         />
                     ))}
@@ -140,6 +168,7 @@ export default function FulfillmentCard({ orderId, data }: { orderId: number; da
             {dialog?.kind === 'deliver' && dialog.shipment && <DeliverDialog base={base} shipment={dialog.shipment} onClose={() => setDialog(null)} />}
             {dialog?.kind === 'cancel' && dialog.shipment && <CancelDialog base={base} shipment={dialog.shipment} onClose={() => setDialog(null)} />}
             {dialog?.kind === 'edit' && dialog.shipment && <EditDialog base={base} shipment={dialog.shipment} onClose={() => setDialog(null)} />}
+            {dialog?.kind === 'share' && dialog.shipment && <ShareDialog base={base} shipment={dialog.shipment} onClose={() => setDialog(null)} />}
         </section>
     );
 }
@@ -150,7 +179,7 @@ function ShipmentRow({ shipment, base, canAttach, canRemove, onAction }: { shipm
     const upload = useForm<{ files: File[] }>({ files: [] });
     const actionLabels: Record<Action, string> = {
         mark_ready: k('markReady'), hand_to_carrier: k('handToCarrier'), mark_in_transit: k('markInTransit'), mark_delivered: k('markDelivered'),
-        close: k('close'), cancel: k('cancel'), edit_details: k('editDetails'),
+        close: k('close'), cancel: k('cancel'), edit_details: k('editDetails'), share_with_customer: k('shareWithCustomer'),
     };
     const primary: Action[] = ['mark_ready', 'hand_to_carrier', 'mark_in_transit', 'mark_delivered', 'close'];
 
@@ -172,18 +201,34 @@ function ShipmentRow({ shipment, base, canAttach, canRemove, onAction }: { shipm
                     ))}
                 </div>
             </div>
-            {(shipment.carrier || shipment.tracking_number || shipment.carrier_reference || shipment.handed_to_carrier_at || shipment.delivered_at || shipment.note) && (
+            {(shipment.status === 'handed_to_carrier' || shipment.status === 'in_transit') && <p className="mt-1 text-xs text-ink-muted">{k('handedNotDelivered')}</p>}
+            {(shipment.carrier || shipment.tracking_number || shipment.tracking_url || shipment.carrier_reference || shipment.package_count !== null || shipment.handed_to_carrier_at || shipment.delivered_at || shipment.note) && (
                 <dl className="mt-2 grid gap-x-4 gap-y-1 text-xs sm:grid-cols-2">
                     {shipment.carrier && <Fact label={k('carrier')}>{shipment.carrier.name}{shipment.carrier.phone ? ` · ${shipment.carrier.phone}` : ''}</Fact>}
                     {shipment.tracking_number && <Fact label={k('trackingNumber')}><bdi>{shipment.tracking_number}</bdi></Fact>}
+                    {shipment.tracking_url && <Fact label={k('trackingUrl')}><a href={shipment.tracking_url} target="_blank" rel="noopener noreferrer" className="underline">{k('openTracking')}</a></Fact>}
                     {shipment.carrier_reference && <Fact label={k('carrierReference')}><bdi>{shipment.carrier_reference}</bdi></Fact>}
                     {shipment.package_count !== null && <Fact label={k('packageCount')}>{shipment.package_count}</Fact>}
                     {shipment.handed_to_carrier_at && <Fact label={k('handedAt')}>{formatDateTime(shipment.handed_to_carrier_at)}{shipment.handed_by ? ` · ${shipment.handed_by}` : ''}</Fact>}
                     {shipment.expected_delivery_at && <Fact label={k('expectedDelivery')}>{formatDateTime(shipment.expected_delivery_at)}</Fact>}
                     {shipment.in_transit_at && <Fact label={k('inTransitAt')}>{formatDateTime(shipment.in_transit_at)}</Fact>}
                     {shipment.delivered_at && <Fact label={k('deliveredAt')}>{formatDateTime(shipment.delivered_at)}</Fact>}
+                    {shipment.stock_left_at && <Fact label={k('stockLeftAt')}>{formatDateTime(shipment.stock_left_at)}</Fact>}
                     {shipment.note && <Fact label={k('note')} wide>{shipment.note}</Fact>}
                 </dl>
+            )}
+            {shipment.customer_notifications.length > 0 && (
+                <ul className="mt-2 space-y-0.5 text-xs text-ink-muted">
+                    {shipment.customer_notifications.map((notification) => (
+                        <li key={notification.id}>
+                            {notification.origin === 'manual' ? `${k('notification.manual')} (${k(`notification.channel.${notification.channel}`)})` : k(`notification.${notification.event}`)} : {k(`notification.status.${notification.status}`)}
+                            {notification.recipient && notification.status !== 'skipped' ? ` · ${notification.recipient}` : ''}
+                            {(notification.status === 'sent' || notification.status === 'opened') && notification.sent_at ? ` · ${formatDateTime(notification.sent_at)}` : ''}
+                            {notification.sent_by ? ` · ${notification.sent_by}` : ''}
+                            {notification.status === 'skipped' && notification.skip_reason ? ` (${k(`notification.skip.${notification.skip_reason}`)})` : ''}
+                        </li>
+                    ))}
+                </ul>
             )}
             {(shipment.attachments.length > 0 || (canAttach && shipment.channel === 'carrier' && shipment.status !== 'cancelled')) && (
                 <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
@@ -264,11 +309,12 @@ function DispatchDialog({ base, shipment, lines, onClose }: { base: string; ship
     const k = (key: string) => t(`fulfillment.${key}` as TranslationKey);
     const operationId = useMemo(() => crypto.randomUUID(), []);
     const [carrierSearch, setCarrierSearch] = useState('');
-    const [carriers, setCarriers] = useState<{ id: number; name: string; contact: string | null; phone: string | null }[]>([]);
+    const carriers = useCarrierOptions(base, carrierSearch);
     type DispatchForm = {
         items: Record<number, string>;
         carrier_contact_id: string;
         tracking_number: string;
+        tracking_url: string;
         carrier_reference: string;
         handed_at: string;
         package_count: string;
@@ -277,16 +323,9 @@ function DispatchDialog({ base, shipment, lines, onClose }: { base: string; ship
     };
     const form = useForm<DispatchForm>({
         items: Object.fromEntries(lines.map((line) => [line.line_id, plain(line.shippable)])),
-        carrier_contact_id: '', tracking_number: '', carrier_reference: '', handed_at: nowLocal(), package_count: '', note: '', proofs: [],
+        carrier_contact_id: '', tracking_number: '', tracking_url: '', carrier_reference: '', handed_at: nowLocal(), package_count: '', note: '', proofs: [],
     });
     const errors = form.errors as Record<string, string>;
-
-    useEffect(() => {
-        const timer = window.setTimeout(() => {
-            axios.get(`${base}/carrier-options`, { params: { search: carrierSearch || undefined } }).then(({ data }) => setCarriers(data.data));
-        }, 250);
-        return () => window.clearTimeout(timer);
-    }, [base, carrierSearch]);
 
     const submit = (event: FormEvent) => {
         event.preventDefault();
@@ -321,6 +360,7 @@ function DispatchDialog({ base, shipment, lines, onClose }: { base: string; ship
                 <div className="grid grid-cols-1 gap-x-5 gap-y-4 sm:grid-cols-2">
                     <Field label={k('trackingNumber')} error={errors.tracking_number}><input value={form.data.tracking_number} onChange={(event) => form.setData('tracking_number', event.target.value)} className="control-input w-full" maxLength={128} /></Field>
                     <Field label={k('carrierReference')} error={errors.carrier_reference}><input value={form.data.carrier_reference} onChange={(event) => form.setData('carrier_reference', event.target.value)} className="control-input w-full" maxLength={128} /></Field>
+                    <Field label={k('trackingUrl')} error={errors.tracking_url}><input type="url" inputMode="url" value={form.data.tracking_url} onChange={(event) => form.setData('tracking_url', event.target.value)} className="control-input w-full" maxLength={500} placeholder="https://" /></Field>
                     <Field label={k('handedAt')} error={errors.handed_at}><input type="datetime-local" required value={form.data.handed_at} onChange={(event) => form.setData('handed_at', event.target.value)} className="control-input w-full" /></Field>
                     <Field label={k('packageCount')} error={errors.package_count}><input type="number" min={1} value={form.data.package_count} onChange={(event) => form.setData('package_count', event.target.value)} className="control-input w-full" /></Field>
                 </div>
@@ -362,7 +402,7 @@ function DeliverDialog({ base, shipment, onClose }: { base: string; shipment: Sh
     const form = useForm({ delivered_at: nowLocal(), expected_status: shipment.status });
 
     return (
-        <Dialog open onClose={() => !form.processing && onClose()} title={k('markDelivered')} description={`${k('shipment')} ${shipment.sequence}`} dismissible={!form.processing}
+        <Dialog open onClose={() => !form.processing && onClose()} title={k('markDelivered')} description={`${k('shipment')} ${shipment.sequence} — ${k('deliverHint')}`} dismissible={!form.processing}
             footer={<div className="flex justify-end gap-2"><Button variant="secondary" type="button" onClick={onClose}>{t('common.cancel')}</Button><Button type="submit" form="fulfillment-deliver" loading={form.processing}>{k('markDelivered')}</Button></div>}>
             <form id="fulfillment-deliver" onSubmit={(event) => { event.preventDefault(); form.transform((data) => ({ ...data, delivered_at: toIso(data.delivered_at) })); form.post(`${base}/${shipment.id}/delivered`, { preserveScroll: true, onSuccess: onClose }); }} className="space-y-4 px-4 py-5 sm:px-6">
                 <Field label={k('deliveredAt')} error={form.errors.delivered_at ?? (form.errors as Record<string, string>).status}>
@@ -393,28 +433,175 @@ function CancelDialog({ base, shipment, onClose }: { base: string; shipment: Shi
 function EditDialog({ base, shipment, onClose }: { base: string; shipment: Shipment; onClose: () => void }) {
     const { t } = useI18n();
     const k = (key: string) => t(`fulfillment.${key}` as TranslationKey);
+    const [carrierSearch, setCarrierSearch] = useState('');
+    const found = useCarrierOptions(base, carrierSearch);
+    const carriers = shipment.carrier && !found.some((carrier) => carrier.id === shipment.carrier?.id) ? [shipment.carrier, ...found] : found;
     const form = useForm({
-        tracking_number: shipment.tracking_number ?? '', carrier_reference: shipment.carrier_reference ?? '',
+        carrier_contact_id: shipment.carrier ? String(shipment.carrier.id) : '',
+        tracking_number: shipment.tracking_number ?? '', tracking_url: shipment.tracking_url ?? '', carrier_reference: shipment.carrier_reference ?? '',
         package_count: shipment.package_count?.toString() ?? '', note: shipment.note ?? '', expected_status: shipment.status,
     });
     const errors = form.errors as Record<string, string>;
 
     return (
-        <Dialog open onClose={() => !form.processing && onClose()} title={k('editDetails')} description={`${k('shipment')} ${shipment.sequence}`} dismissible={!form.processing}
+        <Dialog open onClose={() => !form.processing && onClose()} title={k('editDetails')} description={`${k('shipment')} ${shipment.sequence} — ${k('editDetailsHint')}`} dismissible={!form.processing}
             footer={<div className="flex justify-end gap-2"><Button variant="secondary" type="button" onClick={onClose}>{t('common.cancel')}</Button><Button type="submit" form="fulfillment-edit" loading={form.processing}>{t('common.save')}</Button></div>}>
             <form id="fulfillment-edit" onSubmit={(event) => {
                 event.preventDefault();
-                form.transform((data) => ({ ...data, package_count: data.package_count === '' ? null : data.package_count }));
+                form.transform((data) => ({
+                    ...data,
+                    carrier_contact_id: data.carrier_contact_id === '' ? undefined : data.carrier_contact_id,
+                    package_count: data.package_count === '' ? null : data.package_count,
+                }));
                 form.patch(`${base}/${shipment.id}`, { preserveScroll: true, onSuccess: onClose });
             }} className="space-y-4 px-4 py-5 sm:px-6">
+                {shipment.channel === 'carrier' && (
+                    <Field label={k('carrier')} error={errors.carrier_contact_id}>
+                        <input value={carrierSearch} onChange={(event) => setCarrierSearch(event.target.value)} placeholder={k('searchCarrier')} className="control-input mb-2 w-full" />
+                        <select value={form.data.carrier_contact_id} onChange={(event) => form.setData('carrier_contact_id', event.target.value)} className="control-input w-full" required>
+                            {carriers.map((carrier) => <option key={carrier.id} value={carrier.id}>{[carrier.name, carrier.contact, carrier.phone].filter(Boolean).join(' · ')}</option>)}
+                        </select>
+                    </Field>
+                )}
                 <div className="grid grid-cols-1 gap-x-5 gap-y-4 sm:grid-cols-2">
                     <Field label={k('trackingNumber')} error={errors.tracking_number}><input value={form.data.tracking_number} onChange={(event) => form.setData('tracking_number', event.target.value)} className="control-input w-full" maxLength={128} /></Field>
+                    <Field label={k('trackingUrl')} error={errors.tracking_url}><input type="url" inputMode="url" value={form.data.tracking_url} onChange={(event) => form.setData('tracking_url', event.target.value)} className="control-input w-full" maxLength={500} placeholder="https://" /></Field>
                     <Field label={k('carrierReference')} error={errors.carrier_reference}><input value={form.data.carrier_reference} onChange={(event) => form.setData('carrier_reference', event.target.value)} className="control-input w-full" maxLength={128} /></Field>
                     <Field label={k('packageCount')} error={errors.package_count}><input type="number" min={1} value={form.data.package_count} onChange={(event) => form.setData('package_count', event.target.value)} className="control-input w-full" /></Field>
                 </div>
                 <Field label={k('note')} error={errors.note}><textarea value={form.data.note} onChange={(event) => form.setData('note', event.target.value)} rows={2} className="control-input w-full" maxLength={2000} /></Field>
                 {errors.status && <p className="text-xs text-danger">{errors.status}</p>}
             </form>
+        </Dialog>
+    );
+}
+
+type SharePreview = {
+    email: { to: string | null; configured: boolean; subject: string; html: string; already_sent: { to: string; at: string | null; origin: 'automatic' | 'manual' } | null };
+    whatsapp: { message: string; destination: WhatsAppDestination; phone: string | null };
+    proofs: { id: string; name: string; mime_type: string; selected: boolean }[];
+};
+
+const firstErrors = (errors: Record<string, unknown>) => Object.fromEntries(Object.entries(errors).map(([key, value]) => [key, Array.isArray(value) ? String(value[0]) : String(value)]));
+
+/** "Partager au client": shows exactly what is shared before sending. Logistics only; the server re-checks everything and is retry-safe per operation id. */
+function ShareDialog({ base, shipment, onClose }: { base: string; shipment: Shipment; onClose: () => void }) {
+    const { t } = useI18n();
+    const k = (key: string) => t(`fulfillment.${key}` as TranslationKey);
+    const url = `${base}/${shipment.id}/share`;
+    const [preview, setPreview] = useState<SharePreview | null>(null);
+    const [channel, setChannel] = useState<'email' | 'whatsapp'>('email');
+    const [proofs, setProofs] = useState<string[] | null>(null);
+    const [email, setEmail] = useState('');
+    const [resend, setResend] = useState(false);
+    const [phone, setPhone] = useState('');
+    const [message, setMessage] = useState('');
+    const [operationId, setOperationId] = useState(() => crypto.randomUUID());
+    const [errors, setErrors] = useState<Record<string, string>>({});
+    const [processing, setProcessing] = useState(false);
+    const proofKey = proofs === null ? null : proofs.join(',');
+
+    useEffect(() => {
+        // Re-rendered by the server for the chosen proofs, so the preview is exactly what is sent.
+        const selection = proofKey === null ? {} : { proofs_chosen: 1, attachment_ids: proofKey === '' ? [] : proofKey.split(',') };
+        axios.get<SharePreview>(url, { params: selection }).then(({ data }) => {
+            setPreview((previous) => {
+                if (previous === null) {
+                    setEmail(data.email.to ?? '');
+                    setPhone(data.whatsapp.phone ?? '');
+                    setProofs(data.proofs.filter((proof) => proof.selected).map((proof) => proof.id));
+                }
+                return data;
+            });
+            setMessage(data.whatsapp.message);
+        }).catch((error) => setErrors(firstErrors(error.response?.data?.errors ?? { status: error.message })));
+    }, [url, proofKey]);
+
+    const submit = (data: Record<string, unknown>) => {
+        setProcessing(true);
+        router.post(url, { client_operation_id: operationId, attachment_ids: proofs ?? [], ...data } as never, {
+            preserveScroll: true,
+            onSuccess: onClose,
+            // A failed attempt is final for its operation id: a new attempt gets a new one.
+            onError: (failed) => { setErrors(failed as Record<string, string>); setOperationId(crypto.randomUUID()); },
+            onFinish: () => setProcessing(false),
+        });
+    };
+    const usesUsername = preview?.whatsapp.destination.type === 'username';
+    const link = preview ? whatsappLink(preview.whatsapp.destination, message, usesUsername ? undefined : phone) : null;
+    const already = preview?.email.already_sent && preview.email.already_sent.to.toLowerCase() === email.trim().toLowerCase() ? preview.email.already_sent : null;
+
+    return (
+        <Dialog open onClose={() => !processing && onClose()} title={k('shareWithCustomer')} description={`${k('shipment')} ${shipment.sequence} — ${k('shareHint')}`} dismissible={!processing}
+            footer={<div className="flex justify-end gap-2">
+                <Button variant="secondary" type="button" onClick={onClose}>{t('common.cancel')}</Button>
+                {channel === 'email'
+                    ? <Button type="button" loading={processing} disabled={!preview || !preview.email.configured || email.trim() === '' || (already !== null && !resend)} onClick={() => submit({ channel: 'email', email: email.trim(), resend })}>{k('shareSendEmail')}</Button>
+                    : <Button type="button" loading={processing} disabled={!link || message.trim() === ''} onClick={() => {
+                        if (!link) return;
+                        window.open(link, '_blank', 'noopener,noreferrer');
+                        submit({ channel: 'whatsapp', message, phone: usesUsername ? null : phone });
+                    }}>{k('shareOpenWhatsapp')}</Button>}
+            </div>}>
+            <div className="space-y-4 px-4 py-5 sm:px-6">
+                {preview === null ? <p className="text-sm text-ink-muted">{errors.status ?? k('shareLoading')}</p> : (
+                    <>
+                        <div role="tablist" aria-label={k('shareChannel')} className="inline-flex rounded-field border border-line-strong p-0.5 text-sm">
+                            {(['email', 'whatsapp'] as const).map((key) => (
+                                <button key={key} type="button" role="tab" aria-selected={channel === key} onClick={() => { setChannel(key); setErrors({}); }}
+                                    className={`rounded-[7px] px-3 py-1 font-medium transition-soft ${channel === key ? 'bg-primary text-primary-fg' : 'text-ink-muted hover:text-ink'}`}>
+                                    {key === 'email' ? k('shareEmail') : k('shareWhatsapp')}
+                                </button>
+                            ))}
+                        </div>
+                        <fieldset>
+                            <legend className="mb-1.5 text-xs font-medium uppercase tracking-wide text-ink-faint">{k('shareProofs')}</legend>
+                            {preview.proofs.length === 0 ? <p className="text-xs text-ink-muted">{k('shareNoProof')}</p> : preview.proofs.map((proof) => (
+                                <label key={proof.id} className="flex items-center gap-2 text-sm">
+                                    <input type="checkbox" checked={proofs?.includes(proof.id) ?? false}
+                                        onChange={(event) => { setResend(false); setProofs((current) => event.target.checked ? [...(current ?? []), proof.id] : (current ?? []).filter((id) => id !== proof.id)); }} />
+                                    {proof.name}
+                                </label>
+                            ))}
+                            {errors.attachment_ids && <p className="mt-1 text-xs text-danger">{errors.attachment_ids}</p>}
+                        </fieldset>
+                        {channel === 'email' ? (
+                            <>
+                                {!preview.email.configured && <p className="text-xs text-warning">{k('shareMailNotConfigured')}</p>}
+                                <Field label={k('shareTo')} error={errors.email}>
+                                    <input type="email" value={email} onChange={(event) => { setEmail(event.target.value); setResend(false); }} className="control-input w-full" maxLength={254} />
+                                </Field>
+                                <div>
+                                    <span className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-ink-faint">{k('sharePreview')}</span>
+                                    <p className="mb-1 text-sm font-medium text-ink">{preview.email.subject}</p>
+                                    <iframe title={k('sharePreview')} sandbox="" srcDoc={preview.email.html} className="h-56 w-full rounded-field border border-line bg-white" />
+                                </div>
+                                {already && (
+                                    <div className="rounded-field border border-warning/40 bg-warning-soft p-3 text-xs text-warning">
+                                        <p>{k('shareAlreadySent').replace('{to}', already.to).replace('{at}', already.at ? formatDateTime(already.at) : '—')} {already.origin === 'automatic' ? k('shareAutomatic') : ''}</p>
+                                        <label className="mt-2 flex items-center gap-2 text-ink"><input type="checkbox" checked={resend} onChange={(event) => setResend(event.target.checked)} />{k('shareResend')}</label>
+                                    </div>
+                                )}
+                                {errors.resend && <p className="text-xs text-danger">{errors.resend}</p>}
+                            </>
+                        ) : (
+                            <>
+                                <Field label={k('shareTo')} error={errors.phone}>
+                                    {usesUsername
+                                        ? <div className="rounded-field border border-line bg-raised px-3 py-2 text-ink">@{preview.whatsapp.destination.destination}</div>
+                                        : <input value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="+212 6 12 34 56 78" className="control-input w-full" />}
+                                </Field>
+                                {!link && <p className="text-xs text-ink-muted">{k('shareNoWhatsapp')}</p>}
+                                <Field label={k('sharePreview')} error={errors.message}>
+                                    <textarea rows={8} value={message} onChange={(event) => setMessage(event.target.value)} className="control-input w-full" maxLength={4000} />
+                                </Field>
+                                <p className="text-xs text-ink-faint">{k('shareWhatsappHelp')}</p>
+                            </>
+                        )}
+                        {errors.status && <p className="text-xs text-danger">{errors.status}</p>}
+                    </>
+                )}
+            </div>
         </Dialog>
     );
 }

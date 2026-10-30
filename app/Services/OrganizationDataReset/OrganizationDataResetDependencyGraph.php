@@ -29,7 +29,7 @@ class OrganizationDataResetDependencyGraph
         'financial_account_opening_positions', 'finance_month_reviews', 'commission_entries',
         'customer_returns', 'delivery_notes', 'invoices', 'invoice_families', 'quotations',
         'out_of_stock_articles', 'procurement_receipts', 'purchase_order_lines', 'purchase_orders', 'sales_order_procurements', 'transfer_requests', 'stock_transfers',
-        'fulfillment_attachments', 'fulfillment_items', 'fulfillments',
+        'fulfillment_customer_notifications', 'fulfillment_attachments', 'fulfillment_items', 'fulfillments',
         'sales_order_lines', 'sales_order_revisions', 'sales_order_addenda', 'sales_orders',
         'product_imports', 'product_cost_imports',
         'warehouse_replenishment_overrides', 'warehouse_replenishment_settings',

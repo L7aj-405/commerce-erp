@@ -4,9 +4,11 @@ namespace App\Actions\Fulfillment;
 
 use App\Enums\FulfillmentStatus;
 use App\Models\Fulfillment;
+use App\Models\FulfillmentCustomerNotification;
 use App\Models\OrganizationContact;
 use App\Models\SalesOrder;
 use App\Models\User;
+use App\Services\Fulfillment\FulfillmentCustomerNotifier;
 use App\Services\Fulfillment\FulfillmentEngine;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Validator;
@@ -21,7 +23,10 @@ use Illuminate\Validation\ValidationException;
  */
 class HandFulfillmentToCarrierAction
 {
-    public function __construct(private readonly FulfillmentEngine $engine) {}
+    public function __construct(
+        private readonly FulfillmentEngine $engine,
+        private readonly FulfillmentCustomerNotifier $notifier,
+    ) {}
 
     /** @return array<string, mixed> */
     public static function rules(): array
@@ -30,6 +35,7 @@ class HandFulfillmentToCarrierAction
             'carrier_contact_id' => ['required', 'integer', 'min:1'],
             'handed_at' => ['required', 'date'],
             'tracking_number' => ['nullable', 'string', 'max:128'],
+            'tracking_url' => ['nullable', 'string', 'max:500', 'url:http,https'],
             'carrier_reference' => ['nullable', 'string', 'max:128'],
             'package_count' => ['nullable', 'integer', 'min:1', 'max:9999'],
             'expected_delivery_at' => ['nullable', 'date'],
@@ -67,6 +73,7 @@ class HandFulfillmentToCarrierAction
             $attributes = [
                 'carrier_contact_id' => $carrier->getKey(),
                 'tracking_number' => filled($shipment['tracking_number'] ?? null) ? trim($shipment['tracking_number']) : null,
+                'tracking_url' => filled($shipment['tracking_url'] ?? null) ? trim($shipment['tracking_url']) : null,
                 'carrier_reference' => filled($shipment['carrier_reference'] ?? null) ? trim($shipment['carrier_reference']) : null,
                 'package_count' => $shipment['package_count'] ?? null,
                 'expected_delivery_at' => $shipment['expected_delivery_at'] ?? null,
@@ -94,10 +101,12 @@ class HandFulfillmentToCarrierAction
             $this->engine->record('fulfillment.handed_to_carrier', $actor, $order, $fulfillment, $from ? ['status' => $from] : [], [
                 'status' => FulfillmentStatus::HandedToCarrier->value,
                 'carrier_contact_id' => $carrier->getKey(), 'carrier_name' => $carrier->company_name ?: $carrier->full_name,
-                'tracking_number' => $fulfillment->tracking_number, 'carrier_reference' => $fulfillment->carrier_reference,
+                'tracking_number' => $fulfillment->tracking_number, 'tracking_url' => $fulfillment->tracking_url, 'carrier_reference' => $fulfillment->carrier_reference,
                 'package_count' => $fulfillment->package_count, 'handed_at' => $handedAt->toIso8601String(),
                 'consumed_reservation_ids' => $movements,
             ]);
+            // "Votre commande … a été confiée au transporteur" — queued after commit, once per shipment.
+            $this->notifier->request($fulfillment, FulfillmentCustomerNotification::EVENT_HANDED_TO_CARRIER);
 
             return $fulfillment->refresh();
         });

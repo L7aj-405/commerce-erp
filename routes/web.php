@@ -665,6 +665,9 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
             Route::post('/{fulfillment}/attachments', [FulfillmentController::class, 'attach'])->name('attachments.store');
             Route::get('/{fulfillment}/attachments/{attachment}', [FulfillmentController::class, 'showAttachment'])->name('attachments.show');
             Route::delete('/{fulfillment}/attachments/{attachment}', [FulfillmentController::class, 'removeAttachment'])->name('attachments.destroy');
+            // F1.2 "Partager au client" (email / WhatsApp click-to-chat); logistics only.
+            Route::get('/{fulfillment}/share', [FulfillmentController::class, 'sharePreview'])->name('share.preview');
+            Route::post('/{fulfillment}/share', [FulfillmentController::class, 'share'])->name('share');
         });
         Route::get('/orders/{order}/returns/create', [CustomerReturnController::class, 'create'])->name('orders.returns.create');
         Route::post('/orders/{order}/returns', [CustomerReturnController::class, 'store'])->name('orders.returns.store');
@@ -812,6 +815,13 @@ Route::get('/mcp/documents/invoices/{invoice}', McpInvoiceDocumentController::cl
     ->whereNumber('invoice')
     ->middleware([ValidateMcpDocumentSignature::class, 'throttle:30,1'])
     ->name('mcp.documents.invoice');
+
+// Public, signature-gated download of one shipment proof shared with the
+// customer ("Partager au client" over WhatsApp). The temporary signature binds
+// the URL to one attachment id + expiry; the controller re-checks the shipment.
+Route::get('/shared/fulfillment-proofs/{attachment}', [FulfillmentController::class, 'sharedProof'])
+    ->middleware(['signed', 'throttle:30,1'])
+    ->name('fulfillments.shared-proof');
 
 // Public, signature-gated read of one issued Devis PDF (WhatsApp / email sharing).
 Route::get('/quotations/{quotation}/shared-pdf', [QuotationRenderingController::class, 'shared'])

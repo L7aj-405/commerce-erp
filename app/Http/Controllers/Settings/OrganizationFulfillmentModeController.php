@@ -16,9 +16,13 @@ class OrganizationFulfillmentModeController extends Controller
     {
         $organization = $context->organizationOrFail();
         $this->authorize('updateSettings', $organization);
-        $data = $request->validate(['fulfillment_mode' => ['required', Rule::in(Fulfillment::MODES)]]);
+        $data = $request->validate([
+            'fulfillment_mode' => ['required', Rule::in(Fulfillment::MODES)],
+            'fulfillment_customer_notifications' => ['sometimes', 'boolean'],
+        ]);
 
-        $action->execute($request->user(), $organization, $data['fulfillment_mode']);
+        $action->execute($request->user(), $organization, $data['fulfillment_mode'],
+            array_key_exists('fulfillment_customer_notifications', $data) ? (bool) $data['fulfillment_customer_notifications'] : null);
 
         return back()->with('success', 'Mode d’expédition enregistré.');
     }

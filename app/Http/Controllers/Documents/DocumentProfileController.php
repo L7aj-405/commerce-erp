@@ -39,6 +39,7 @@ class DocumentProfileController extends Controller
                 'options' => BusinessTime::timezones(),
             ],
             'fulfillmentMode' => \App\Services\Fulfillment\FulfillmentEngine::modeFor($organization),
+            'fulfillmentCustomerNotifications' => \App\Services\Fulfillment\FulfillmentCustomerNotifier::enabledFor($organization),
         ]);
     }
 

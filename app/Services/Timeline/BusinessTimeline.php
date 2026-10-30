@@ -79,7 +79,8 @@ final class BusinessTimeline
 
     /** Business lifecycle only — edits of drafts, stamps and previews stay in the technical audit. */
     private const QUOTATION_EVENTS = ['quotation.created', 'quotation.issued', 'quotation.revision_started', 'quotation.accepted', 'quotation.rejected', 'quotation.converted'];
-    private const ORDER_EVENTS = ['sales_order.created', 'sales_order.confirmed', 'sales_order.fulfilled', 'sales_order.cancelled', 'sales_order.correction_started', 'sales_order.correction_completed'];
+    private const ORDER_EVENTS = ['sales_order.created', 'sales_order.confirmed', 'sales_order.fulfilled', 'sales_order.cancelled', 'sales_order.correction_started', 'sales_order.correction_completed',
+        'sales_order.shipment_shared_email', 'sales_order.shipment_shared_whatsapp'];
     private const INVOICE_EVENTS = ['invoice.issued', 'invoice.draft_cancelled'];
     private const CUSTOMER_EVENTS = ['customer.created', 'customer.updated'];
     private const CONTACT_EVENTS = ['contact.created', 'contact.updated', 'contact.archived'];
