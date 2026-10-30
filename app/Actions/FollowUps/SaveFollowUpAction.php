@@ -5,6 +5,8 @@ namespace App\Actions\FollowUps;
 use App\Enums\FollowUpPriority;
 use App\Enums\FollowUpStatus;
 use App\Models\Customer;
+use App\Models\Fulfillment;
+use App\Models\FulfillmentCustomerNotification;
 use App\Models\FollowUp;
 use App\Models\FollowUpRecurringRule;
 use App\Models\Invoice;
@@ -69,6 +71,8 @@ class SaveFollowUpAction
             'quotation_id' => ['sometimes', 'nullable', 'integer'],
             'invoice_id' => ['sometimes', 'nullable', 'integer'],
             'sales_order_id' => ['sometimes', 'nullable', 'integer'],
+            'fulfillment_id' => ['sometimes', 'nullable', 'string', 'max:26'],
+            'source_notification_id' => ['sometimes', 'nullable', 'integer'],
             // No `sometimes`: a due_time sent without a due_date must fail.
             'due_date' => ['nullable', 'date_format:Y-m-d', 'required_with:due_time'],
             'due_time' => ['sometimes', 'nullable', 'date_format:H:i'],
@@ -84,6 +88,15 @@ class SaveFollowUpAction
         $data = Validator::make($data, self::rules(true))->validate();
 
         return DB::transaction(function () use ($actor, $organization, $data) {
+            $source = $this->sourceNotification($actor, $organization, $data);
+            if ($source !== null) {
+                $existing = FollowUp::query()->where('organization_id', $organization->getKey())
+                    ->where('source_notification_id', $source->getKey())->first();
+                if ($existing !== null) {
+                    return $existing;
+                }
+            }
+
             $followUp = new FollowUp;
             $followUp->organization_id = $organization->getKey();
             $followUp->created_by_user_id = $actor->getKey();
@@ -94,6 +107,7 @@ class SaveFollowUpAction
             $followUp->version = 1;
 
             $this->applyLinks($actor, $organization, $followUp, $data);
+            $this->applyShipmentContext($organization, $followUp, $data, $source);
             $assigneeId = $this->requestedAssignee($actor, $organization, $data, (int) $actor->getKey());
             $this->assertAssignee($actor, $organization, $assigneeId, $followUp->store_id);
             $followUp->assigned_user_id = $assigneeId;
@@ -107,6 +121,58 @@ class SaveFollowUpAction
 
             return $followUp;
         });
+    }
+
+    /**
+     * Lock and validate the successful F1.2 manual share used as the durable
+     * idempotency source. A manager may finish a teammate's proposal; ordinary
+     * users may only consume their own share.
+     *
+     * @param array<string, mixed> $data
+     */
+    private function sourceNotification(User $actor, Organization $organization, array $data): ?FulfillmentCustomerNotification
+    {
+        if (! isset($data['source_notification_id'])) {
+            return null;
+        }
+
+        $notification = FulfillmentCustomerNotification::query()
+            ->where('organization_id', $organization->getKey())
+            ->whereKey((int) $data['source_notification_id'])->lockForUpdate()->first();
+        if (! $notification
+            || $notification->origin !== FulfillmentCustomerNotification::ORIGIN_MANUAL
+            || ! in_array($notification->status, [FulfillmentCustomerNotification::STATUS_SENT, FulfillmentCustomerNotification::STATUS_OPENED], true)
+            || ((int) $notification->sent_by_user_id !== (int) $actor->getKey() && ! $this->access->canManageAll($actor, $organization))) {
+            throw ValidationException::withMessages(['source_notification_id' => 'Ce partage client ne peut pas proposer ce suivi.']);
+        }
+
+        return $notification;
+    }
+
+    /** @param array<string, mixed> $data */
+    private function applyShipmentContext(Organization $organization, FollowUp $followUp, array $data, ?FulfillmentCustomerNotification $source): void
+    {
+        $fulfillmentId = $data['fulfillment_id'] ?? $source?->fulfillment_id;
+        if ($fulfillmentId === null) {
+            if ($source !== null) {
+                throw ValidationException::withMessages(['fulfillment_id' => 'Expédition introuvable pour ce partage.']);
+            }
+
+            return;
+        }
+
+        $fulfillment = Fulfillment::query()->where('organization_id', $organization->getKey())
+            ->whereKey((string) $fulfillmentId)->first(['id', 'organization_id', 'store_id', 'sales_order_id']);
+        if (! $fulfillment
+            || (int) $fulfillment->sales_order_id !== (int) $followUp->sales_order_id
+            || (int) $fulfillment->store_id !== (int) $followUp->store_id
+            || ($source !== null && ($source->fulfillment_id !== $fulfillment->getKey()
+                || (int) $source->sales_order_id !== (int) $followUp->sales_order_id))) {
+            throw ValidationException::withMessages(['fulfillment_id' => 'L’expédition ne correspond pas à cette commande.']);
+        }
+
+        $followUp->fulfillment_id = $fulfillment->getKey();
+        $followUp->source_notification_id = $source?->getKey();
     }
 
     /**
@@ -396,7 +462,7 @@ class SaveFollowUpAction
         ];
     }
 
-    /** @return array<string, int|null> */
+    /** @return array<string, int|string|null> */
     private function reference(FollowUp $followUp): array
     {
         return [
@@ -406,6 +472,8 @@ class SaveFollowUpAction
             'quotation_id' => $followUp->quotation_id,
             'invoice_id' => $followUp->invoice_id,
             'sales_order_id' => $followUp->sales_order_id,
+            'fulfillment_id' => $followUp->fulfillment_id,
+            'source_notification_id' => $followUp->source_notification_id,
         ];
     }
 

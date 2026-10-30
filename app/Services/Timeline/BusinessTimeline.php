@@ -84,7 +84,8 @@ final class BusinessTimeline
     private const INVOICE_EVENTS = ['invoice.issued', 'invoice.draft_cancelled'];
     private const CUSTOMER_EVENTS = ['customer.created', 'customer.updated'];
     private const CONTACT_EVENTS = ['contact.created', 'contact.updated', 'contact.archived'];
-    private const FOLLOW_UP_EVENTS = ['follow_up.created', 'follow_up.reassigned', 'follow_up.rescheduled', 'follow_up.completed', 'follow_up.cancelled', 'follow_up.reopened'];
+    private const FOLLOW_UP_EVENTS = ['follow_up.created', 'follow_up.reassigned', 'follow_up.rescheduled', 'follow_up.completed', 'follow_up.cancelled', 'follow_up.reopened',
+        'shipment_follow_up.reception_confirmed', 'shipment_follow_up.not_received', 'shipment_follow_up.client_unreachable', 'shipment_follow_up.delivery_problem'];
     private const ATTENTION_EVENTS = ['attention.claimed', 'attention.reassigned', 'attention.unassigned', 'attention.snoozed', 'attention.dismissed', 'attention.follow_up_created'];
 
     public function __construct(

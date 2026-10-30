@@ -17,6 +17,9 @@ type FormData = {
     assigned_user_id: number | '';
     customer_id: number | null;
     quotation_id: number | null;
+    sales_order_id: number | null;
+    fulfillment_id: string | null;
+    source_notification_id: number | null;
     expected_version?: number;
 };
 
@@ -29,29 +32,36 @@ export default function FollowUpFormDialog({
     prefill,
     defaults,
     submitUrl,
+    heading,
+    onSuccess,
 }: {
     open: boolean;
     onClose: () => void;
     context: FollowUpContext;
     followUp?: FollowUpItem | null;
-    prefill?: { customer_id: number | null; quotation_id: number | null };
+    prefill?: { customer_id: number | null; quotation_id: number | null; sales_order_id?: number | null; fulfillment_id?: string | null; source_notification_id?: number | null };
     /** W4.1: suggested values for a new follow-up (e.g. from an attention item). */
-    defaults?: { title?: string; due_date?: string };
+    defaults?: { title?: string; note?: string; priority?: FollowUpPriority; due_date?: string; due_time?: string };
     /** W4.1: create through another canonical endpoint (attention bridge); defaults to /work. */
     submitUrl?: string;
+    heading?: string;
+    onSuccess?: () => void;
 }) {
     const { t } = useI18n();
     const editing = Boolean(followUp);
     const form = useForm<FormData>({
         title: followUp?.title ?? defaults?.title ?? '',
-        note: followUp?.note ?? '',
-        priority: followUp?.priority ?? 'normal',
+        note: followUp?.note ?? defaults?.note ?? '',
+        priority: followUp?.priority ?? defaults?.priority ?? 'normal',
         due_date: followUp?.due_date ?? (editing ? '' : defaults?.due_date ?? context.today),
-        due_time: followUp?.due_time ?? '',
+        due_time: followUp?.due_time ?? (editing ? '' : defaults?.due_time ?? ''),
         // '' = Unassigned (manage_all only); new work defaults to the current user.
         assigned_user_id: followUp ? followUp.assignee?.id ?? '' : context.current_user_id,
         customer_id: followUp ? followUp.customer?.id ?? null : prefill?.customer_id ?? null,
         quotation_id: followUp ? followUp.quotation?.id ?? null : prefill?.quotation_id ?? null,
+        sales_order_id: followUp ? followUp.sales_order?.id ?? null : prefill?.sales_order_id ?? null,
+        fulfillment_id: followUp ? followUp.shipment?.id ?? null : prefill?.fulfillment_id ?? null,
+        source_notification_id: followUp ? null : prefill?.source_notification_id ?? null,
         ...(followUp ? { expected_version: followUp.version } : {}),
     });
 
@@ -70,13 +80,16 @@ export default function FollowUpFormDialog({
 
     const submit = (event: FormEvent) => {
         event.preventDefault();
-        const options = { preserveScroll: true, onSuccess: () => { form.reset(); onClose(); } };
+        const options = { preserveScroll: true, onSuccess: () => { form.reset(); onSuccess?.(); onClose(); } };
         form.transform((data) => {
             const payload: Partial<FormData> = { ...data, due_date: data.due_date || undefined, due_time: data.due_date ? data.due_time || undefined : undefined };
             if (editing) {
                 // Links are kept as-is while editing; reassigning needs manage_all.
                 delete payload.customer_id;
                 delete payload.quotation_id;
+                delete payload.sales_order_id;
+                delete payload.fulfillment_id;
+                delete payload.source_notification_id;
                 if (!payload.due_date) Object.assign(payload, { due_date: null, due_time: null });
             }
             if (!context.can_manage_all) delete payload.assigned_user_id;
@@ -92,7 +105,7 @@ export default function FollowUpFormDialog({
         <Dialog
             open={open}
             onClose={onClose}
-            title={editing ? t('work.editTitle') : t('work.newTitle')}
+            title={heading ?? (editing ? t('work.editTitle') : t('work.newTitle'))}
             description={context.timezone_configured ? t('work.timezoneHelp').replace('{timezone}', context.timezone) : t('work.timezoneUtc')}
             footer={
                 <div className="flex justify-end gap-2">

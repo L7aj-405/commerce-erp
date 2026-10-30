@@ -69,6 +69,7 @@ class HandleInertiaRequests extends Middleware
                 'success' => fn () => $request->session()->get('success'),
                 'warehouseCreatedId' => fn () => $request->session()->get('warehouse_created_id'),
                 'invitationUrl' => fn () => $request->session()->get('invitationUrl'),
+                'fulfillmentFollowUpProposal' => fn () => $request->session()->get('fulfillment_follow_up_proposal'),
             ],
         ];
     }

@@ -6,7 +6,7 @@ export type SharedPageProps = {
     notifications: NotificationSummary;
     /** PILOT-1.1: false during the closed pilot (registration routes answer 404). */
     features: { public_registration: boolean };
-    flash?: { success?: string; invitationUrl?: string };
+    flash?: { success?: string; invitationUrl?: string; fulfillmentFollowUpProposal?: unknown };
     [key: string]: unknown;
 };
 

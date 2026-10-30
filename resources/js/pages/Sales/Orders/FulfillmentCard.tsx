@@ -1,5 +1,7 @@
 import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
+import FollowUpFormDialog from '@/components/followups/FollowUpFormDialog';
+import type { FollowUpItem, ShipmentFollowUpProposal } from '@/components/followups/types';
 import { useI18n } from '@/i18n';
 import type { TranslationKey } from '@/i18n/translations';
 import { formatDateTime, formatQuantity } from '@/utils/format';
@@ -45,6 +47,7 @@ type Shipment = {
         sent_by: string | null;
         sent_at: string | null;
     }[];
+    follow_up: FollowUpItem | null;
     attachments: { id: string; name: string; category: string; mime_type: string; size_bytes: number; url: string }[];
     actions: Action[];
 };
@@ -52,6 +55,7 @@ export type FulfillmentPayload = {
     mode: 'simple' | 'advanced';
     state: 'unfulfilled' | 'partially_fulfilled' | 'fulfilled';
     delivery_state: 'not_delivered' | 'partially_delivered' | 'delivered';
+    logistics_state: 'unprepared' | 'preparing' | 'ready' | 'shipped' | 'delivered';
     awaiting_replenishment: boolean;
     lines: Line[];
     fulfillments: Shipment[];
@@ -229,6 +233,18 @@ function ShipmentRow({ shipment, base, canAttach, canRemove, onAction }: { shipm
                         </li>
                     ))}
                 </ul>
+            )}
+            {shipment.follow_up && (
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-field border border-info/25 bg-info-soft px-3 py-2 text-xs">
+                    <div className="min-w-0">
+                        <p className="font-medium text-ink">{k('customerFollowUp')} · {shipment.follow_up.status === 'open' ? k('followUpOpen') : k(`followUpOutcome.${shipment.follow_up.shipment_outcome ?? 'completed'}`)}</p>
+                        <p className="mt-0.5 text-ink-muted">
+                            {shipment.follow_up.assignee?.name ?? k('followUpUnassigned')}
+                            {shipment.follow_up.due_date ? ` · ${shipment.follow_up.due_date}${shipment.follow_up.due_time ? ` ${shipment.follow_up.due_time}` : ''}` : ''}
+                        </p>
+                    </div>
+                    <Button size="sm" variant="ghost" onClick={() => router.visit(`/work?focus=${shipment.follow_up?.id}`)}>{k('openFollowUp')}</Button>
+                </div>
             )}
             {(shipment.attachments.length > 0 || (canAttach && shipment.channel === 'carrier' && shipment.status !== 'cancelled')) && (
                 <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
@@ -499,6 +515,7 @@ function ShareDialog({ base, shipment, onClose }: { base: string; shipment: Ship
     const [operationId, setOperationId] = useState(() => crypto.randomUUID());
     const [errors, setErrors] = useState<Record<string, string>>({});
     const [processing, setProcessing] = useState(false);
+    const [followUpProposal, setFollowUpProposal] = useState<ShipmentFollowUpProposal | null>(null);
     const proofKey = proofs === null ? null : proofs.join(',');
 
     useEffect(() => {
@@ -521,7 +538,11 @@ function ShareDialog({ base, shipment, onClose }: { base: string; shipment: Ship
         setProcessing(true);
         router.post(url, { client_operation_id: operationId, attachment_ids: proofs ?? [], ...data } as never, {
             preserveScroll: true,
-            onSuccess: onClose,
+            onSuccess: (page) => {
+                const proposal = (page.props as { flash?: { fulfillmentFollowUpProposal?: ShipmentFollowUpProposal | null } }).flash?.fulfillmentFollowUpProposal;
+                if (proposal) setFollowUpProposal(proposal);
+                else onClose();
+            },
             // A failed attempt is final for its operation id: a new attempt gets a new one.
             onError: (failed) => { setErrors(failed as Record<string, string>); setOperationId(crypto.randomUUID()); },
             onFinish: () => setProcessing(false),
@@ -530,6 +551,19 @@ function ShareDialog({ base, shipment, onClose }: { base: string; shipment: Ship
     const usesUsername = preview?.whatsapp.destination.type === 'username';
     const link = preview ? whatsappLink(preview.whatsapp.destination, message, usesUsername ? undefined : phone) : null;
     const already = preview?.email.already_sent && preview.email.already_sent.to.toLowerCase() === email.trim().toLowerCase() ? preview.email.already_sent : null;
+
+    if (followUpProposal?.existing_follow_up_id) {
+        return (
+            <Dialog open onClose={onClose} title={k('followUpAlreadyCreated')} description={k('followUpAlreadyCreatedHelp')}
+                footer={<div className="flex justify-end gap-2"><Button variant="secondary" onClick={onClose}>{t('common.close')}</Button><Button onClick={() => router.visit(`/work?focus=${followUpProposal.existing_follow_up_id}`)}>{k('openFollowUp')}</Button></div>}>
+                <p className="px-4 py-5 text-sm text-ink-muted sm:px-6">{k('followUpDuplicateProtected')}</p>
+            </Dialog>
+        );
+    }
+    if (followUpProposal) {
+        return <FollowUpFormDialog open onClose={onClose} context={followUpProposal.context} prefill={followUpProposal.prefill}
+            defaults={followUpProposal.defaults} heading={k('createCustomerFollowUp')} />;
+    }
 
     return (
         <Dialog open onClose={() => !processing && onClose()} title={k('shareWithCustomer')} description={`${k('shipment')} ${shipment.sequence} — ${k('shareHint')}`} dismissible={!processing}

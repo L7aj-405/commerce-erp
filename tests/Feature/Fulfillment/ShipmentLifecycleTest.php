@@ -12,6 +12,8 @@ use App\Actions\Fulfillment\AttachFulfillmentProofAction;
 use App\Actions\Fulfillment\ShareFulfillmentWithCustomerAction;
 use App\Actions\Fulfillment\StartFulfillmentPreparationAction;
 use App\Actions\Fulfillment\UpdateFulfillmentShipmentDetailsAction;
+use App\Actions\FollowUps\RecordShipmentFollowUpOutcomeAction;
+use App\Actions\FollowUps\SaveFollowUpAction;
 use App\Actions\Sales\CancelSalesOrderAction;
 use App\Actions\Sales\ConfirmSalesOrderAction;
 use App\Actions\Sales\FulfillSalesOrderAction;
@@ -27,6 +29,7 @@ use App\Models\DeliveryNote;
 use App\Models\Fulfillment;
 use App\Models\FulfillmentAttachment;
 use App\Models\FulfillmentCustomerNotification;
+use App\Models\FollowUp;
 use App\Models\InventoryBalance;
 use App\Models\InventoryMovement;
 use App\Models\InventoryReservation;
@@ -41,6 +44,8 @@ use App\Models\Store;
 use App\Models\User;
 use App\Models\Warehouse;
 use App\Services\Fulfillment\FulfillmentCustomerNotifier;
+use App\Services\Fulfillment\ShipmentFollowUpSchedule;
+use App\Services\Fulfillment\ShipmentFollowUpService;
 use App\Services\Timeline\BusinessTimeline;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\UploadedFile;
@@ -143,6 +148,7 @@ class ShipmentLifecycleTest extends DocumentTestCase
         $this->assertSame([FulfillmentStatus::Delivered, '2026-10-29 09:50:00', $handedAt], [$delivered->status, $delivered->delivered_at->toDateTimeString(), $delivered->fresh()->handed_to_carrier_at->toDateTimeString()]);
         $this->assertSame($frozen, $this->frozenState($invoice, $note), 'Delivery is logistics only.');
         $this->assertSame('delivered', app(\App\Services\Fulfillment\FulfillmentQuery::class)->forOrder($this->order->fresh(), $this->owner)['delivery_state']);
+        $this->assertSame('delivered', app(\App\Services\Fulfillment\FulfillmentQuery::class)->forOrder($this->order->fresh(), $this->owner)['logistics_state']);
 
         // Double-click / retry: no second event, no timestamp change, still no movement.
         $again = app(MarkFulfillmentDeliveredAction::class)->execute($this->owner, $this->order, $shipment, null, 'handed_to_carrier');
@@ -271,6 +277,7 @@ class ShipmentLifecycleTest extends DocumentTestCase
         ])->assertSessionHasNoErrors();
         $this->actingAs($this->owner)->get("/sales/orders/{$this->order->id}")->assertOk()->assertInertia(fn ($page) => $page
             ->where('fulfillment.fulfillments.0.status', 'handed_to_carrier')
+            ->where('fulfillment.logistics_state', 'shipped')
             ->where('fulfillment.fulfillments.0.tracking_url', 'https://track.example.test/AMX-9')
             ->where('fulfillment.fulfillments.0.package_count', 2)
             ->where('fulfillment.fulfillments.0.actions', ['mark_delivered', 'edit_details', 'share_with_customer'])
@@ -282,6 +289,7 @@ class ShipmentLifecycleTest extends DocumentTestCase
         $this->assertSame(FulfillmentStatus::Delivered, $shipment->fresh()->status);
         $this->assertSame(1, AuditLog::query()->where('event', 'fulfillment.delivered')->count());
         $this->assertSame(2, $this->stockOuts());
+        $this->actingAs($this->owner)->get("/sales/orders/{$this->order->id}")->assertInertia(fn ($page) => $page->where('fulfillment.logistics_state', 'delivered'));
     }
 
     public function test_share_with_customer_by_email_previews_the_content_attaches_proofs_moves_nothing_and_never_sends_twice(): void
@@ -417,6 +425,102 @@ class ShipmentLifecycleTest extends DocumentTestCase
             ->where('fulfillment.fulfillments.0.customer_notifications.1.origin', 'manual')
             ->where('fulfillment.fulfillments.0.customer_notifications.1.channel', 'email')
             ->where('fulfillment.fulfillments.0.customer_notifications.1.sent_by', $this->owner->name));
+    }
+
+    public function test_successful_share_proposes_one_editable_shipment_follow_up_with_smart_working_day_defaults(): void
+    {
+        Mail::fake();
+        $this->configureOrganizationMail($this->organization);
+        $shipment = $this->handAll(['tracking_number' => 'AMX-F13']);
+        $notification = $this->share($shipment, [
+            'channel' => 'email', 'client_operation_id' => self::OP[0], 'email' => 'client.f1@example.test', 'resend' => true,
+        ]);
+
+        $proposal = app(ShipmentFollowUpService::class)->proposal($this->owner, $this->order->fresh(), $shipment, $notification);
+        $this->assertSame("Confirmer la réception de {$this->order->order_number} avec le client", $proposal['defaults']['title']);
+        $this->assertSame('Contacter le client pour confirmer la réception de la commande et vérifier que tout est conforme.', $proposal['defaults']['note']);
+        $this->assertSame(['normal', '2026-11-02', '10:00'], [$proposal['defaults']['priority'], $proposal['defaults']['due_date'], $proposal['defaults']['due_time']]);
+        $this->assertSame([$this->order->id, $this->customer->id, $this->store->id],
+            [$proposal['prefill']['sales_order_id'], $proposal['prefill']['customer_id'], $this->order->store_id]);
+        $this->assertSame($this->owner->id, $proposal['context']['current_user_id']);
+        $this->assertNull($proposal['existing_follow_up_id']);
+        $this->assertSame(0, FollowUp::query()->count(), 'A successful share proposes work but never creates it silently.');
+
+        $followUp = app(SaveFollowUpAction::class)->create($this->owner, $this->organization, [...$proposal['defaults'], ...$proposal['prefill']]);
+        $retry = app(SaveFollowUpAction::class)->create($this->owner, $this->organization, [...$proposal['defaults'], ...$proposal['prefill']]);
+        $this->assertTrue($followUp->is($retry));
+        $this->assertSame(1, FollowUp::query()->where('source_notification_id', $notification->id)->count());
+        $this->assertSame([$this->order->id, $this->customer->id, $this->store->id, $shipment->id, $this->owner->id], [
+            $followUp->sales_order_id, $followUp->customer_id, $followUp->store_id, $followUp->fulfillment_id, $followUp->assigned_user_id,
+        ]);
+        $retriedNotification = $this->share($shipment, [
+            'channel' => 'email', 'client_operation_id' => self::OP[0], 'email' => 'client.f1@example.test', 'resend' => true,
+        ]);
+        $retriedProposal = app(ShipmentFollowUpService::class)->proposal($this->owner, $this->order->fresh(), $shipment, $retriedNotification);
+        $this->assertSame($followUp->id, $retriedProposal['existing_follow_up_id']);
+
+        $schedule = app(ShipmentFollowUpSchedule::class);
+        $this->assertSame('2026-11-02', $schedule->suggestedDate(CarbonImmutable::parse('2026-10-30 14:00:00'))->toDateString(), 'Friday → Monday.');
+        $this->assertSame('2026-11-02', $schedule->suggestedDate(CarbonImmutable::parse('2026-10-31 14:00:00'))->toDateString(), 'Saturday → Monday.');
+        $this->assertSame('2026-11-02', $schedule->suggestedDate(CarbonImmutable::parse('2026-11-01 14:00:00'))->toDateString(), 'Sunday → Monday.');
+
+        $page = app(\App\Services\Fulfillment\FulfillmentQuery::class)->forOrder($this->order->fresh(), $this->owner);
+        $this->assertSame('shipped', $page['logistics_state']);
+        $this->assertSame($followUp->id, $page['fulfillments'][0]['follow_up']['id']);
+
+        // The HTTP share response carries the proposal instead of silently creating work.
+        $this->actingAs($this->owner)->post("/sales/orders/{$this->order->id}/fulfillments/{$shipment->id}/share", [
+            'channel' => 'whatsapp', 'client_operation_id' => self::OP[1], 'message' => 'Suivi client', 'phone' => '+212612345678',
+        ])->assertSessionHasNoErrors()->assertSessionHas('fulfillment_follow_up_proposal');
+        $this->assertSame('opened', FulfillmentCustomerNotification::query()->where('channel', 'whatsapp')->sole()->status);
+        $this->assertSame(1, FollowUp::query()->count(), 'The second share proposal must not auto-create another follow-up.');
+    }
+
+    public function test_shipment_follow_up_outcomes_use_canonical_delivery_and_never_mutate_stock_invoice_payment_or_delivery_note(): void
+    {
+        [$invoice, $note] = $this->paidInvoicedWithDeliveryNote();
+        $shipment = $this->handAll();
+        $frozen = $this->frozenState($invoice, $note);
+        $save = app(SaveFollowUpAction::class);
+        $outcomes = app(RecordShipmentFollowUpOutcomeAction::class);
+
+        // A delivery problem completes the work, exposes the linked order/support path and does not mark delivered.
+        $problem = $save->create($this->owner, $this->organization, [
+            'title' => 'Problème livraison', 'sales_order_id' => $this->order->id, 'fulfillment_id' => $shipment->id, 'due_date' => '2026-10-29',
+        ]);
+        $problem = $outcomes->execute($this->owner, $this->organization, $problem, [
+            'outcome' => 'delivery_problem', 'outcome_note' => 'Colis abîmé', 'expected_version' => 1,
+        ]);
+        $this->assertSame(['completed', 'delivery_problem', FulfillmentStatus::HandedToCarrier], [$problem->status->value, $problem->shipment_outcome, $shipment->fresh()->status]);
+        $this->assertDatabaseHas('audit_logs', ['event' => 'shipment_follow_up.delivery_problem', 'auditable_id' => (string) $problem->id]);
+
+        // A later explicit follow-up is allowed. Not received / unreachable reschedule the same open item.
+        $followUp = $save->create($this->owner, $this->organization, [
+            'title' => 'Confirmer réception', 'sales_order_id' => $this->order->id, 'fulfillment_id' => $shipment->id, 'due_date' => '2026-10-29',
+        ]);
+        $followUp = $outcomes->execute($this->owner, $this->organization, $followUp, [
+            'outcome' => 'not_received', 'outcome_note' => 'Toujours en route', 'due_date' => '2026-11-02', 'due_time' => '10:30', 'expected_version' => $followUp->version,
+        ]);
+        $this->assertSame(['open', 'not_received', '2026-11-02', FulfillmentStatus::HandedToCarrier], [$followUp->status->value, $followUp->shipment_outcome, $followUp->due_date, $shipment->fresh()->status]);
+        $followUp = $outcomes->execute($this->owner, $this->organization, $followUp, [
+            'outcome' => 'customer_unreachable', 'outcome_note' => 'Messagerie', 'due_date' => '2026-11-03', 'expected_version' => $followUp->version,
+        ]);
+        $this->assertSame(['open', 'customer_unreachable', '2026-11-03'], [$followUp->status->value, $followUp->shipment_outcome, $followUp->due_date]);
+
+        // Confirmed reception optionally marks delivered through the canonical action; stock has already left once.
+        $followUp = $outcomes->execute($this->owner, $this->organization, $followUp, [
+            'outcome' => 'received_ok', 'outcome_note' => 'Tout est conforme', 'mark_delivered' => true, 'expected_version' => $followUp->version,
+        ]);
+        $this->assertSame(['completed', 'received_ok', FulfillmentStatus::Delivered], [$followUp->status->value, $followUp->shipment_outcome, $shipment->fresh()->status]);
+        $this->assertSame($frozen, $this->frozenState($invoice, $note));
+        $this->assertSame(2, $this->stockOuts(), 'Reception confirmation must not create another stock OUT.');
+        $this->assertSame([InventoryReservationStatus::Consumed], InventoryReservation::query()->pluck('status')->unique()->values()->all());
+        foreach (['shipment_follow_up.not_received', 'shipment_follow_up.client_unreachable', 'shipment_follow_up.reception_confirmed'] as $event) {
+            $this->assertDatabaseHas('audit_logs', ['event' => $event, 'auditable_id' => (string) $followUp->id]);
+        }
+        $timeline = app(BusinessTimeline::class)->page($this->owner, $this->organization, 'sales_order', $this->order->id);
+        $this->assertContains('shipment_follow_up.reception_confirmed', array_column($timeline['entries'], 'event'));
+        $this->assertSame('delivered', app(\App\Services\Fulfillment\FulfillmentQuery::class)->forOrder($this->order->fresh(), $this->owner)['logistics_state']);
     }
 
 

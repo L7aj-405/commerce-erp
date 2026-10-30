@@ -10,6 +10,8 @@ use App\Models\FulfillmentAttachment;
 use App\Models\FulfillmentCustomerNotification;
 use App\Models\SalesOrder;
 use App\Models\User;
+use App\Services\FollowUps\FollowUpAccess;
+use App\Services\FollowUps\FollowUpQuery;
 use App\Support\InventoryQuantity;
 
 /**
@@ -20,7 +22,11 @@ use App\Support\InventoryQuantity;
  */
 final class FulfillmentQuery
 {
-    public function __construct(private readonly FulfillmentEngine $engine) {}
+    public function __construct(
+        private readonly FulfillmentEngine $engine,
+        private readonly FollowUpAccess $followUpAccess,
+        private readonly FollowUpQuery $followUpQuery,
+    ) {}
 
     /** @return array<string, mixed> */
     public function forOrder(SalesOrder $order, User $viewer): array
@@ -62,7 +68,8 @@ final class FulfillmentQuery
         $canShipMore = $confirmed && ! $order->awaitingReplenishment() && collect($lines)->contains(fn ($line) => InventoryQuantity::compare($line['shippable'], InventoryQuantity::ZERO) > 0);
         $articles = collect($lines)->keyBy('line_id');
 
-        $fulfillments = $order->fulfillments()->with(['items', 'carrier:id,full_name,company_name,phone', 'attachments', 'customerNotifications.sentBy:id,name', 'createdBy:id,name', 'handedBy:id,name'])
+        $fulfillments = $order->fulfillments()->with(['items', 'carrier:id,full_name,company_name,phone', 'attachments', 'customerNotifications.sentBy:id,name', 'createdBy:id,name', 'handedBy:id,name',
+            'followUps.assignee:id,name', 'followUps.customer:id,organization_id,display_name', 'followUps.salesOrder:id,organization_id,store_id,order_number,status', 'followUps.fulfillment:id,organization_id,sales_order_id,status'])
             ->orderBy('created_at')->orderBy('id')->get()
             ->values()
             ->map(fn (Fulfillment $fulfillment, int $index) => [
@@ -109,6 +116,10 @@ final class FulfillmentQuery
                     'sent_by' => $notification->sentBy?->name,
                     'sent_at' => ($notification->sent_at ?? ($notification->origin === FulfillmentCustomerNotification::ORIGIN_MANUAL ? $notification->created_at : null))?->toIso8601String(),
                 ])->all(),
+                'follow_up' => ($followUp = $fulfillment->followUps
+                    ->filter(fn ($item) => $this->followUpAccess->canView($viewer, $item))
+                    ->sortBy(fn ($item) => ($item->status->value === 'open' ? '0' : '1').str_pad((string) (999999999 - (int) $item->getKey()), 12, '0', STR_PAD_LEFT))
+                    ->first()) ? $this->followUpQuery->present($viewer, $order->organization, $followUp) : null,
                 'created_by' => $fulfillment->createdBy?->name,
                 'attachments' => $fulfillment->attachments->sortBy('created_at')->values()->map(fn (FulfillmentAttachment $attachment) => [
                     'id' => (string) $attachment->getKey(),
@@ -125,6 +136,7 @@ final class FulfillmentQuery
             'mode' => $mode,
             'state' => $order->fulfillment_status->value,
             'delivery_state' => $allDelivered ? 'delivered' : ($anyDelivered ? 'partially_delivered' : 'not_delivered'),
+            'logistics_state' => $allDelivered ? 'delivered' : $this->logisticsState($fulfillments),
             'awaiting_replenishment' => $confirmed && $order->awaitingReplenishment(),
             'lines' => $lines,
             'fulfillments' => $fulfillments,
@@ -134,6 +146,17 @@ final class FulfillmentQuery
             ])),
             'can' => [...$can, 'attach' => $can['manage'] || $can['dispatch']],
         ];
+    }
+
+    /** @param list<array<string, mixed>> $fulfillments */
+    private function logisticsState(array $fulfillments): string
+    {
+        $statuses = collect($fulfillments)->pluck('status');
+        if ($statuses->contains(fn (string $status) => in_array($status, ['handed_to_carrier', 'in_transit'], true))) return 'shipped';
+        if ($statuses->contains('ready')) return 'ready';
+        if ($statuses->contains('preparing')) return 'preparing';
+
+        return 'unprepared';
     }
 
     /** @param array<string, bool> $can @return list<string> */

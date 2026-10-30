@@ -14,7 +14,7 @@ export const orderStatusLabel: Record<string, string> = {
 export const fulfillmentLabel: Record<string, string> = {
     unfulfilled: 'À préparer',
     partially_fulfilled: 'Préparation partielle',
-    fulfilled: 'Livrée',
+    fulfilled: 'Expédiée',
 };
 
 export const paymentStatusLabel: Record<string, string> = {
@@ -99,7 +99,7 @@ export function deliveryNoteStatusTone(value: string): BadgeTone {
 
 const arabicLabels = new Map<Record<string, string>, Record<string, string>>([
     [orderStatusLabel, { draft: 'مسودة', confirmed: 'مؤكدة', cancelled: 'ملغاة' }],
-    [fulfillmentLabel, { unfulfilled: 'بانتظار التحضير', partially_fulfilled: 'محضّرة جزئياً', fulfilled: 'تم التسليم' }],
+    [fulfillmentLabel, { unfulfilled: 'بانتظار التحضير', partially_fulfilled: 'محضّرة جزئياً', fulfilled: 'تم الشحن' }],
     [paymentStatusLabel, { unpaid: 'غير مؤداة', partially_paid: 'مؤداة جزئياً', paid: 'مؤداة' }],
     [sourceLabel, { pos: 'نقطة البيع', manual: 'يدوي', ecommerce: 'تجارة إلكترونية' }],
     [paymentMethodLabel, { cash: 'نقداً', card: 'بطاقة / TPE', bank_transfer: 'تحويل بنكي', cheque: 'شيك' }],

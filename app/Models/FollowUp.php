@@ -32,6 +32,7 @@ class FollowUp extends Model
             'notified_at' => 'datetime',
             'completed_at' => 'datetime',
             'cancelled_at' => 'datetime',
+            'shipment_outcome_at' => 'datetime',
             'version' => 'integer',
         ];
     }
@@ -86,6 +87,18 @@ class FollowUp extends Model
     public function salesOrder(): BelongsTo
     {
         return $this->belongsTo(SalesOrder::class);
+    }
+
+    /** F1.3 shipment whose customer reception this work confirms. */
+    public function fulfillment(): BelongsTo
+    {
+        return $this->belongsTo(Fulfillment::class);
+    }
+
+    /** Successful manual share that proposed this operator-confirmed work item. */
+    public function sourceNotification(): BelongsTo
+    {
+        return $this->belongsTo(FulfillmentCustomerNotification::class, 'source_notification_id');
     }
 
     /** W3: the recurring rule that generated this occurrence (NULL for manual work). */

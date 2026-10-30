@@ -240,6 +240,7 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
     Route::post('/work', [FollowUpController::class, 'store'])->name('follow-ups.store');
     Route::patch('/work/{followUp}', [FollowUpController::class, 'update'])->name('follow-ups.update');
     Route::post('/work/{followUp}/transition', [FollowUpController::class, 'transition'])->name('follow-ups.transition');
+    Route::post('/work/{followUp}/shipment-outcome', [FollowUpController::class, 'shipmentOutcome'])->name('follow-ups.shipment-outcome');
     Route::post('/work/{followUp}/open-quotation', [FollowUpController::class, 'openQuotation'])->name('follow-ups.open-quotation');
     Route::post('/work/{followUp}/open-invoice', [FollowUpController::class, 'openInvoice'])->name('follow-ups.open-invoice');
     Route::post('/work/{followUp}/open-sales-order', [FollowUpController::class, 'openSalesOrder'])->name('follow-ups.open-sales-order');

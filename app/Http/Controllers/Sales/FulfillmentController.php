@@ -20,6 +20,7 @@ use App\Models\FulfillmentAttachment;
 use App\Models\OrganizationContact;
 use App\Models\SalesOrder;
 use App\Services\Fulfillment\FulfillmentEngine;
+use App\Services\Fulfillment\ShipmentFollowUpService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -159,11 +160,19 @@ class FulfillmentController extends Controller
         return response()->json($action->preview($request->user(), $order, $fulfillment, $request->boolean('proofs_chosen') ? ($data['attachment_ids'] ?? []) : null));
     }
 
-    public function share(Request $request, SalesOrder $order, Fulfillment $fulfillment, ShareFulfillmentWithCustomerAction $action): RedirectResponse
+    public function share(
+        Request $request,
+        SalesOrder $order,
+        Fulfillment $fulfillment,
+        ShareFulfillmentWithCustomerAction $action,
+        ShipmentFollowUpService $followUps,
+    ): RedirectResponse
     {
         $notification = $action->execute($request->user(), $order, $fulfillment, $request->only(ShareFulfillmentWithCustomerAction::FIELDS));
 
-        return back()->with('success', $notification->channel === 'whatsapp' ? 'Partage WhatsApp enregistré.' : 'Suivi envoyé au client par e-mail.');
+        return back()
+            ->with('success', $notification->channel === 'whatsapp' ? 'Partage WhatsApp enregistré.' : 'Suivi envoyé au client par e-mail.')
+            ->with('fulfillment_follow_up_proposal', $followUps->proposal($request->user(), $order, $fulfillment, $notification));
     }
 
     /** Signed link shared with the customer: one proof of a shipment that left with the carrier (never a cancelled or not yet handed-over one). */

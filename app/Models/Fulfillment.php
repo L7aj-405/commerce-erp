@@ -46,6 +46,7 @@ class Fulfillment extends Model
     public function items(): HasMany { return $this->hasMany(FulfillmentItem::class); }
     public function attachments(): HasMany { return $this->hasMany(FulfillmentAttachment::class); }
     public function customerNotifications(): HasMany { return $this->hasMany(FulfillmentCustomerNotification::class); }
+    public function followUps(): HasMany { return $this->hasMany(FollowUp::class); }
     public function createdBy(): BelongsTo { return $this->belongsTo(User::class, 'created_by_user_id'); }
     public function handedBy(): BelongsTo { return $this->belongsTo(User::class, 'handed_by_user_id'); }
 }

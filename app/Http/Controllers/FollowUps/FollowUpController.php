@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\FollowUps;
 
 use App\Actions\FollowUps\SaveFollowUpAction;
+use App\Actions\FollowUps\RecordShipmentFollowUpOutcomeAction;
 use App\Actions\FollowUps\TransitionFollowUpAction;
 use App\Enums\FollowUpStatus;
 use App\Http\Controllers\Controller;
@@ -20,7 +21,8 @@ class FollowUpController extends Controller
 {
     private const TABS = ['today', 'overdue', 'upcoming', 'completed', 'all'];
 
-    private const INPUT = ['title', 'note', 'priority', 'assigned_user_id', 'customer_id', 'quotation_id', 'invoice_id', 'sales_order_id', 'due_date', 'due_time', 'due_at', 'expected_version'];
+    private const INPUT = ['title', 'note', 'priority', 'assigned_user_id', 'customer_id', 'quotation_id', 'invoice_id', 'sales_order_id',
+        'fulfillment_id', 'source_notification_id', 'due_date', 'due_time', 'due_at', 'expected_version'];
 
     public function index(Request $request, ActiveTenantContext $context, FollowUpQuery $followUps): Response
     {
@@ -104,5 +106,14 @@ class FollowUpController extends Controller
         $action->execute($request->user(), $context->organizationOrFail(), $followUp, $request->only(['transition', 'outcome_note', 'expected_version']));
 
         return back()->with('success', 'Suivi mis à jour.');
+    }
+
+    public function shipmentOutcome(Request $request, ActiveTenantContext $context, FollowUp $followUp, RecordShipmentFollowUpOutcomeAction $action): RedirectResponse
+    {
+        $this->authorize('update', $followUp);
+        $action->execute($request->user(), $context->organizationOrFail(), $followUp,
+            $request->only(['outcome', 'outcome_note', 'due_date', 'due_time', 'mark_delivered', 'expected_version']));
+
+        return back()->with('success', 'Résultat du suivi enregistré.');
     }
 }

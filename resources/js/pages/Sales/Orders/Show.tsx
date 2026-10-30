@@ -4,6 +4,7 @@ import { Popover } from '@/components/pos/primitives';
 import ActivityTimeline from '@/components/timeline/ActivityTimeline';
 import SalesLayout from '@/layouts/SalesLayout';
 import { useI18n } from '@/i18n';
+import type { TranslationKey } from '@/i18n/translations';
 import FulfillmentCard, { type FulfillmentPayload } from './FulfillmentCard';
 import ProcurementReadinessCard, { type ProcurementPlan } from './ProcurementReadinessCard';
 import { formatDate, formatDateTime, formatMoney, formatQuantity } from '@/utils/format';
@@ -516,8 +517,8 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
                     <DocBadge tone={orderStatusTone(order.status)}>{label(orderStatusLabel, order.status)}</DocBadge>
                 </Card>
                 <Card label={t('orders.show.fulfillment')}>
-                    <DocBadge tone={fulfillmentTone(order.fulfillment_status)}>
-                        {label(fulfillmentLabel, order.fulfillment_status)}
+                    <DocBadge tone={fulfillment?.logistics_state === 'delivered' ? 'positive' : fulfillment?.logistics_state === 'shipped' ? 'info' : fulfillmentTone(order.fulfillment_status)}>
+                        {fulfillment ? t(`fulfillment.logistics.${fulfillment.logistics_state}` as TranslationKey) : label(fulfillmentLabel, order.fulfillment_status)}
                     </DocBadge>
                 </Card>
                 <Card label={t('common.payment')}>

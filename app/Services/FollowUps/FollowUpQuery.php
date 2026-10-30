@@ -11,6 +11,7 @@ use App\Models\SalesOrder;
 use App\Models\Organization;
 use App\Models\Quotation;
 use App\Models\User;
+use App\Services\Fulfillment\ShipmentFollowUpSchedule;
 use App\Support\BusinessTime;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -39,6 +40,7 @@ class FollowUpQuery
         private readonly FollowUpAccess $access,
         private readonly FollowUpAssignees $assignees,
         private readonly FollowUpRecurringQuery $recurring,
+        private readonly ShipmentFollowUpSchedule $shipmentSchedule,
     ) {}
 
     /** @return array<string, mixed> */
@@ -68,7 +70,7 @@ class FollowUpQuery
     public function search(User $user, Organization $organization, array $filters): LengthAwarePaginator
     {
         $query = $this->filtered($user, $organization, $filters)
-            ->with(['assignee:id,name', 'customer:id,organization_id,display_name', 'quotation:id,organization_id,store_id,quotation_number,status', 'invoice:id,organization_id,store_id,invoice_number,status', 'salesOrder:id,organization_id,store_id,order_number,status']);
+            ->with(['assignee:id,name', 'customer:id,organization_id,display_name', 'quotation:id,organization_id,store_id,quotation_number,status', 'invoice:id,organization_id,store_id,invoice_number,status', 'salesOrder:id,organization_id,store_id,order_number,status', 'fulfillment:id,organization_id,sales_order_id,status']);
 
         if (($filters['status'] ?? null) === FollowUpStatus::Completed->value) {
             $query->orderByDesc('completed_at')->orderByDesc('id');
@@ -217,7 +219,7 @@ class FollowUpQuery
     {
         return $this->access->visible($user, $organization)
             ->where($column, $id)
-            ->with(['assignee:id,name', 'customer:id,organization_id,display_name', 'quotation:id,organization_id,store_id,quotation_number,status', 'invoice:id,organization_id,store_id,invoice_number,status', 'salesOrder:id,organization_id,store_id,order_number,status'])
+            ->with(['assignee:id,name', 'customer:id,organization_id,display_name', 'quotation:id,organization_id,store_id,quotation_number,status', 'invoice:id,organization_id,store_id,invoice_number,status', 'salesOrder:id,organization_id,store_id,order_number,status', 'fulfillment:id,organization_id,sales_order_id,status'])
             ->orderByRaw("CASE WHEN status = 'open' THEN 0 ELSE 1 END")
             ->orderByRaw('CASE WHEN due_date IS NULL THEN 1 ELSE 0 END')->orderBy('due_date')->orderBy('due_at')->orderByDesc('id')
             ->limit($limit)->get()
@@ -237,6 +239,7 @@ class FollowUpQuery
         $quotation = $followUp->quotation instanceof Quotation && $this->access->allows($user, $organization, 'quotations.view') ? $followUp->quotation : null;
         $invoice = $followUp->invoice instanceof Invoice && $this->access->allows($user, $organization, 'invoices.view') ? $followUp->invoice : null;
         $order = $followUp->salesOrder instanceof SalesOrder && $this->access->allows($user, $organization, 'sales_orders.view') ? $followUp->salesOrder : null;
+        $fulfillment = $followUp->fulfillment;
 
         return [
             'id' => (int) $followUp->getKey(),
@@ -262,6 +265,16 @@ class FollowUpQuery
             'invoice' => $invoice ? ['id' => (int) $invoice->getKey(), 'number' => $invoice->invoice_number, 'can_open' => $this->access->hasStoreAccess($user, $invoice->store_id)] : null,
             // W4.5: opened through /work/{id}/open-sales-order (same safe store switch).
             'sales_order' => $order ? ['id' => (int) $order->getKey(), 'number' => $order->order_number, 'can_open' => $this->access->hasStoreAccess($user, $order->store_id)] : null,
+            'shipment' => $fulfillment ? [
+                'id' => (string) $fulfillment->getKey(),
+                'status' => $fulfillment->status->value,
+                'can_mark_delivered' => in_array($fulfillment->status->value, ['handed_to_carrier', 'in_transit'], true)
+                    && $this->access->allows($user, $organization, 'fulfillment.mark_delivered'),
+                'support_available' => $order !== null,
+            ] : null,
+            'shipment_outcome' => $followUp->shipment_outcome,
+            'shipment_outcome_at' => $followUp->shipment_outcome_at?->toIso8601String(),
+            'suggested_next_date' => $this->shipmentSchedule->suggestedDate(BusinessTime::now($organization))->toDateString(),
             'completed_at' => $followUp->completed_at?->toIso8601String(),
             'cancelled_at' => $followUp->cancelled_at?->toIso8601String(),
             'outcome_note' => $followUp->outcome_note,
