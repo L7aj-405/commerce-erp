@@ -52,6 +52,8 @@ type Props = {
     defaultWarehouseId: number | null;
     /** The member's own configured POS default (already validated server-side), or null. */
     memberDefaultWarehouseId: number | null;
+    /** The Store's default POS inventory location (when configured and eligible), or null. */
+    storeDefaultWarehouseId: number | null;
     activeSale: ActiveSale | null;
     heldSales: HeldSale[];
     brands: Option[];
@@ -86,6 +88,7 @@ export default function PosIndex({
     currencyCode,
     defaultWarehouseId,
     memberDefaultWarehouseId,
+    storeDefaultWarehouseId,
     activeSale: initialActiveSale,
     heldSales: initialHeldSales,
     brands,
@@ -587,7 +590,8 @@ export default function PosIndex({
                             {warehouses.map((warehouse) => (
                                 <option key={warehouse.id} value={warehouse.id}>
                                     {warehouse.name} · {warehouse.code}
-                                    {warehouse.id === memberDefaultWarehouseId ? ` (${t('pos.default')})` : ''}
+                                    {warehouse.kind ? ` — ${t(warehouse.kind === 'depot' ? 'pos.locationKind.depot' : 'pos.locationKind.store')}` : ''}
+                                    {warehouse.id === (storeDefaultWarehouseId ?? memberDefaultWarehouseId) ? ` (${t('pos.default')})` : ''}
                                 </option>
                             ))}
                         </select>

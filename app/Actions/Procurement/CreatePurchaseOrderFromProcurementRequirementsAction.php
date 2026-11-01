@@ -105,11 +105,15 @@ class CreatePurchaseOrderFromProcurementRequirementsAction
                 if ((int) $requirement->supplier_id !== (int) $supplier->getKey()) {
                     throw ValidationException::withMessages(['requirement_ids' => "Le besoin {$number} est confirmé auprès d’un autre fournisseur."]);
                 }
-                if ($requirement->status === SupplierProcurementStatus::Ordered) {
+                // Legacy: a requirement marked "ordered" by hand, with no purchase
+                // order behind it, is regularised by putting it on one.
+                $legacyOrdered = $requirement->status === SupplierProcurementStatus::Ordered
+                    && Decimal::compare($ordered[$requirement->getKey()] ?? '0.0000', '0') === 0;
+                if ($requirement->status === SupplierProcurementStatus::Ordered && ! $legacyOrdered) {
                     throw ValidationException::withMessages(['requirement_ids' => "Le besoin {$number} est déjà commandé au fournisseur."]);
                 }
                 // A partly received requirement may still have a quantity not yet ordered.
-                if (! in_array($requirement->status, [SupplierProcurementStatus::SupplierConfirmed, SupplierProcurementStatus::PartiallyReceived], true)) {
+                if (! $legacyOrdered && ! in_array($requirement->status, [SupplierProcurementStatus::SupplierConfirmed, SupplierProcurementStatus::PartiallyReceived], true)) {
                     throw ValidationException::withMessages(['requirement_ids' => "Le besoin {$number} n’est pas ouvert à la commande (disponibilité fournisseur non confirmée, annulé ou déjà traité)."]);
                 }
                 $order = $orders->get($requirement->sales_order_id);

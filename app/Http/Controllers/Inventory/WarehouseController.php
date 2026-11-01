@@ -48,6 +48,8 @@ class WarehouseController extends Controller
                     ],
                 ];
             }),
+            // Stores a location may belong to (null = storage-only depot).
+            'stores' => $organization->stores()->orderBy('name')->get(['id', 'name', 'code', 'status', 'default_warehouse_id']),
             'can' => [
                 'create' => request()->user()?->can('create', [Warehouse::class, $organization]) ?? false,
                 'update' => request()->user()?->hasPermission($organization, 'warehouses.update') ?? false,
@@ -84,6 +86,10 @@ class WarehouseController extends Controller
             'code' => ['required', 'string', 'max:64', Rule::unique('warehouses', 'code')->where('organization_id', $organizationId)->ignore($warehouse)],
             'description' => ['nullable', 'string', 'max:5000'],
             'status' => ['sometimes', Rule::enum(WarehouseStatus::class)],
+            // The Store the location physically belongs to; null = storage-only depot.
+            'store_id' => ['sometimes', 'nullable', 'integer', Rule::exists('stores', 'id')->where('organization_id', $organizationId)],
+            // A storage-only depot explicitly opened to direct POS sales.
+            'allow_direct_sales' => ['sometimes', 'boolean'],
         ];
     }
 }

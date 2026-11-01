@@ -26,8 +26,8 @@ use LogicException;
  * same units waits for this one and then sees its reservations. The cart's own
  * stock snapshot (the entry-time allocations) is never trusted:
  *
- *  1. company coverage — line by line, in line order, the quantity not covered
- *     by a confirmed legacy special order must fit the CURRENT free stock
+ *  1. company coverage — line by line, in line order, the quantity not already
+ *     physically received for the line (supplier goods held for it) must fit the CURRENT free stock
  *     (on hand − reserved). Every short line is reported at once and the whole
  *     checkout is rejected (PosStockConflictException) before anything is written;
  *  2. warehouse coverage — when the company still covers the cart but an
@@ -121,12 +121,16 @@ final class PosCartStockGuard
             ->get();
     }
 
-    /** Confirmed (or later) legacy POS special-order quantity on the line — still counts as coverage. */
+    /**
+     * Supplier goods already RECEIVED for the line (held by their reservation).
+     * A requirement merely "à commander" or ordered is not stock: such a cart is
+     * not an instant sale — it becomes a Sales Order Draft ("Créer la commande").
+     */
     private function legacyCoverage(SalesOrderLine $line): string
     {
         return $line->procurements
             ->filter(fn (SalesOrderProcurement $p) => $p->status->coversSalesLine())
-            ->reduce(fn (string $sum, SalesOrderProcurement $p) => Decimal::add($sum, (string) $p->quantity), '0.0000');
+            ->reduce(fn (string $sum, SalesOrderProcurement $p) => Decimal::add($sum, (string) $p->received_quantity), '0.0000');
     }
 
     /**

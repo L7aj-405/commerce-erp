@@ -11,12 +11,14 @@ use App\Actions\Sales\Concerns\AuthorizesSalesAction;
 use App\Enums\DeliveryNoteStatus;
 use App\Enums\InventoryReservationStatus;
 use App\Enums\InvoiceStatus;
+use App\Enums\PurchaseOrderStatus;
 use App\Enums\SalesOrderFulfillmentStatus;
 use App\Enums\SalesOrderStatus;
 use App\Enums\SupplierProcurementStatus;
 use App\Enums\TransferRequestStatus;
 use App\Models\InventoryReservation;
 use App\Models\Payment;
+use App\Models\PurchaseOrderLine;
 use App\Models\SalesOrder;
 use App\Models\SalesOrderProcurement;
 use App\Models\TransferRequest;
@@ -130,9 +132,15 @@ class CancelSalesOrderAction
                     'order' => "Approvisionnement {$orderedProcurement->procurement_number} déjà commandé au fournisseur. Réceptionnez-le ou annulez-le explicitement avant d’annuler la commande.",
                 ]);
             }
-            // A requirement only partly on a purchase order is still a supplier commitment.
-            $onPurchaseOrders = SalesOrderProcurement::activePurchaseOrderQuantities($order->organization_id, $procurements->modelKeys(), lock: true);
-            if ($partlyOrdered = $procurements->first(fn ($procurement) => isset($onPurchaseOrders[$procurement->getKey()]))) {
+            // Quantity still awaited from the supplier on an active purchase order is
+            // a live commitment; a fully received purchase order line is not (its
+            // goods are in stock and are released as free stock below).
+            $awaited = PurchaseOrderLine::query()->where('organization_id', $order->organization_id)
+                ->whereIn('sales_order_procurement_id', $procurements->modelKeys())
+                ->whereHas('purchaseOrder', fn ($query) => $query->where('status', '!=', PurchaseOrderStatus::Cancelled->value))
+                ->whereColumn('received_quantity', '<', 'quantity')
+                ->lockForUpdate()->pluck('sales_order_procurement_id')->map(fn ($id) => (int) $id)->flip();
+            if ($partlyOrdered = $procurements->first(fn ($procurement) => isset($awaited[(int) $procurement->getKey()]))) {
                 throw ValidationException::withMessages([
                     'order' => "Approvisionnement {$partlyOrdered->procurement_number} figure sur une commande fournisseur active. Annulez d’abord la commande fournisseur.",
                 ]);

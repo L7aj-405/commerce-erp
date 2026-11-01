@@ -308,11 +308,12 @@ class ReceiveProcurementAction
         }
 
         if ($lines->isEmpty()) {
-            if ($procurement->status === SupplierProcurementStatus::SupplierConfirmed) {
-                throw ValidationException::withMessages(['status' => 'Seul un approvisionnement commandé au fournisseur peut être réceptionné.']);
-            }
-
-            return collect([['line' => null, 'open' => Decimal::subtract((string) $procurement->quantity, (string) $procurement->received_quantity)]]);
+            // A receipt is always against a purchase order line: goods are only
+            // ever received for something actually ordered on a commande
+            // fournisseur. (Legacy receipts made without one stay readable.)
+            throw ValidationException::withMessages([
+                'purchase_order_line_id' => 'Réception impossible sans commande fournisseur : créez d’abord la commande fournisseur de ce besoin.',
+            ]);
         }
 
         PurchaseOrder::query()->where('organization_id', $procurement->organization_id)

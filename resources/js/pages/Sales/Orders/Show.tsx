@@ -1287,7 +1287,7 @@ function ProcurementPanel({ order, data }: { order: Order; data: ProcurementData
                                 </span>
                             </div>
                             <div className="mt-1 text-xs text-ink-muted">
-                                {row.supplier?.name ?? '—'} · {t('orders.show.availability')} : {t((`orders.show.availabilityStatus.${row.supplier_availability_status}`) as Parameters<typeof t>[0])}
+                                {row.supplier?.name ?? '—'}
                                 {row.supplier_reference ? ` · ${t('orders.show.refShort')} ${row.supplier_reference}` : ''}
                                 {row.expected_at ? ` · ${t('orders.show.estimatedReceipt')} ${formatDate(row.expected_at)}` : ''}
                                 {row.ordered_at ? ` · ${t('orders.show.ordered')} ${formatDate(row.ordered_at)}` : ''}
@@ -1406,16 +1406,12 @@ function RaiseProcurementForm({
 
 function ProcurementRowActions({ row, data }: { row: ProcurementRow; data: ProcurementData }) {
     const { t } = useI18n();
-    const [open, setOpen] = useState<'availability' | 'order' | 'receive' | 'supplier' | 'cancel' | null>(null);
-    const availability = useForm({ supplier_availability_status: 'confirmed_available', quantity: row.quantity, supplier_reference: row.supplier_reference ?? '', expected_at: row.expected_at ?? '' });
-    const orderForm = useForm({ supplier_reference: row.supplier_reference ?? '', expected_at: row.expected_at ?? '' });
-    const receive = useForm({ receiving_warehouse_id: data.warehouses[0]?.id ?? 0, quantity: row.quantity });
+    const [open, setOpen] = useState<'supplier' | 'cancel' | null>(null);
     const supplierForm = useForm({ supplier_id: data.suppliers[0]?.id ?? 0 });
     const cancelForm = useForm({ reason: '', acknowledge_ordered: false });
     const done = { preserveScroll: true, onSuccess: () => setOpen(null) };
 
     const canManage = data.can.manage;
-    const canReceive = data.can.receive;
     const isEditable = row.status === 'pending_supplier' || row.status === 'supplier_confirmed';
 
     if (row.status === 'cancelled' || row.status === 'unavailable' || row.status === 'received' || row.status === 'completed') {
@@ -1424,21 +1420,7 @@ function ProcurementRowActions({ row, data }: { row: ProcurementRow; data: Procu
 
     return (
         <div className="mt-2 flex flex-wrap gap-2">
-            {canManage && isEditable && (
-                <ActionButton onClick={() => setOpen(open === 'availability' ? null : 'availability')}>
-                    {t('orders.show.recordAvailability')}
-                </ActionButton>
-            )}
-            {canManage && row.status === 'supplier_confirmed' && (
-                <ActionButton onClick={() => setOpen(open === 'order' ? null : 'order')} primary>
-                    {t('orders.show.orderFromSupplier')}
-                </ActionButton>
-            )}
-            {canReceive && row.status === 'ordered' && (
-                <ActionButton onClick={() => setOpen(open === 'receive' ? null : 'receive')} primary>
-                    {t('orders.show.confirmReceipt')}
-                </ActionButton>
-            )}
+            {/* Ordering and receipt go through the purchase order (Approvisionnement card → « Créer la commande fournisseur », then the purchase order page). */}
             {canManage && isEditable && data.suppliers.length > 0 && (
                 <ActionButton onClick={() => setOpen(open === 'supplier' ? null : 'supplier')}>{t('orders.show.changeSupplier')}</ActionButton>
             )}
@@ -1446,126 +1428,6 @@ function ProcurementRowActions({ row, data }: { row: ProcurementRow; data: Procu
                 <ActionButton onClick={() => setOpen(open === 'cancel' ? null : 'cancel')} danger>
                     {t('common.cancel')}
                 </ActionButton>
-            )}
-
-            {open === 'availability' && (
-                <form
-                    onSubmit={(e) => {
-                        e.preventDefault();
-                        availability.patch(`/procurement/${row.id}/availability`, done);
-                    }}
-                    className="mt-1 w-full grid gap-2 rounded-field bg-raised p-3 sm:grid-cols-2"
-                >
-                    <label className="text-xs">
-                        {t('orders.show.availability')}
-                        <select
-                            value={availability.data.supplier_availability_status}
-                            onChange={(e) => availability.setData('supplier_availability_status', e.target.value)}
-                            className="mt-1 w-full rounded-field border border-line-strong px-2 py-1.5 text-sm"
-                        >
-                            <option value="confirmed_available">{t('orders.show.confirmedAvailable')}</option>
-                            <option value="pending_confirmation">{t('orders.show.toConfirm')}</option>
-                            <option value="unavailable">{t('common.unavailable')}</option>
-                        </select>
-                    </label>
-                    <label className="text-xs">
-                        {t('orders.show.confirmedQuantity')}
-                        <input
-                            inputMode="decimal"
-                            value={availability.data.quantity}
-                            onChange={(e) => availability.setData('quantity', e.target.value)}
-                            className="mt-1 w-full rounded-field border border-line-strong px-2 py-1.5 text-sm"
-                        />
-                    </label>
-                    <label className="text-xs">
-                        {t('orders.show.supplierReference')}
-                        <input
-                            value={availability.data.supplier_reference}
-                            onChange={(e) => availability.setData('supplier_reference', e.target.value)}
-                            className="mt-1 w-full rounded-field border border-line-strong px-2 py-1.5 text-sm"
-                        />
-                    </label>
-                    <label className="text-xs">
-                        {t('orders.show.estimatedReceipt')}
-                        <input
-                            type="date"
-                            value={availability.data.expected_at}
-                            onChange={(e) => availability.setData('expected_at', e.target.value)}
-                            className="mt-1 w-full rounded-field border border-line-strong px-2 py-1.5 text-sm"
-                        />
-                    </label>
-                    <FormErrors errors={availability.errors} />
-                    <SubmitRow processing={availability.processing} onCancel={() => setOpen(null)} label={t('common.save')} />
-                </form>
-            )}
-
-            {open === 'order' && (
-                <form
-                    onSubmit={(e) => {
-                        e.preventDefault();
-                        orderForm.post(`/procurement/${row.id}/order`, done);
-                    }}
-                    className="mt-1 w-full grid gap-2 rounded-field bg-raised p-3 sm:grid-cols-2"
-                >
-                    <label className="text-xs">
-                        {t('orders.show.supplierReference')}
-                        <input
-                            value={orderForm.data.supplier_reference}
-                            onChange={(e) => orderForm.setData('supplier_reference', e.target.value)}
-                            className="mt-1 w-full rounded-field border border-line-strong px-2 py-1.5 text-sm"
-                        />
-                    </label>
-                    <label className="text-xs">
-                        {t('orders.show.estimatedReceipt')}
-                        <input
-                            type="date"
-                            value={orderForm.data.expected_at}
-                            onChange={(e) => orderForm.setData('expected_at', e.target.value)}
-                            className="mt-1 w-full rounded-field border border-line-strong px-2 py-1.5 text-sm"
-                        />
-                    </label>
-                    <FormErrors errors={orderForm.errors} />
-                    <SubmitRow processing={orderForm.processing} onCancel={() => setOpen(null)} label={t('orders.show.confirmSupplierOrder')} />
-                </form>
-            )}
-
-            {open === 'receive' && (
-                <form
-                    onSubmit={(e) => {
-                        e.preventDefault();
-                        receive.post(`/procurement/${row.id}/receive`, done);
-                    }}
-                    className="mt-1 w-full grid gap-2 rounded-field bg-raised p-3 sm:grid-cols-2"
-                >
-                    <label className="text-xs">
-                        {t('orders.show.receivingWarehouse')}
-                        <select
-                            value={receive.data.receiving_warehouse_id}
-                            onChange={(e) => receive.setData('receiving_warehouse_id', Number(e.target.value))}
-                            className="mt-1 w-full rounded-field border border-line-strong px-2 py-1.5 text-sm"
-                        >
-                            {data.warehouses.map((w) => (
-                                <option key={w.id} value={w.id}>
-                                    {w.name} · {w.code}
-                                </option>
-                            ))}
-                        </select>
-                    </label>
-                    <label className="text-xs">
-                        {t('orders.show.receivedQuantity')}
-                        <input
-                            inputMode="decimal"
-                            value={receive.data.quantity}
-                            onChange={(e) => receive.setData('quantity', e.target.value)}
-                            className="mt-1 w-full rounded-field border border-line-strong px-2 py-1.5 text-sm"
-                        />
-                    </label>
-                    <p className="text-xs text-ink-faint sm:col-span-2">
-                        {t('orders.show.receiptHelp')}
-                    </p>
-                    <FormErrors errors={receive.errors} />
-                    <SubmitRow processing={receive.processing} onCancel={() => setOpen(null)} label={t('orders.show.confirmReceipt')} />
-                </form>
             )}
 
             {open === 'supplier' && (

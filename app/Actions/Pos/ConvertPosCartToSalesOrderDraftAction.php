@@ -62,7 +62,7 @@ class ConvertPosCartToSalesOrderDraftAction
             }
 
             $evaluation = $this->sourcing->evaluate($cart, lockRequests: true);
-            if ($evaluation['summary']['shortage_line_count'] === 0) {
+            if ($evaluation['summary']['shortage_line_count'] === 0 && $evaluation['summary']['requirement_line_count'] === 0) {
                 throw ValidationException::withMessages(['order' => 'Le stock couvre tout le panier : finalisez la vente au POS.']);
             }
             $unresolved = array_filter($evaluation['lines'], fn (array $line) => $line['requires_sourcing'] && ! $line['resolved']);

@@ -409,9 +409,11 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
         ->name('organizations.settings.update');
     Route::delete('/organizations/{organization}', [OrganizationController::class, 'destroy'])->name('organizations.destroy');
 
+    Route::get('/settings/stores', [StoreController::class, 'index'])->name('stores.index');
     Route::post('/stores', [StoreController::class, 'store'])->name('stores.store');
     Route::get('/stores/{store}', [StoreController::class, 'show'])->name('stores.show');
     Route::patch('/stores/{store}', [StoreController::class, 'update'])->name('stores.update');
+    Route::patch('/stores/{store}/status', [StoreController::class, 'updateStatus'])->name('stores.status');
     Route::delete('/stores/{store}', [StoreController::class, 'destroy'])->name('stores.destroy');
 
     Route::get('/organizations/{organization}/users-access', UsersAccessController::class)

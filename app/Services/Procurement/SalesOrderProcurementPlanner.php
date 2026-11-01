@@ -283,7 +283,6 @@ final class SalesOrderProcurementPlanner
         $ordered = '0.0000';
         $received = '0.0000';
         $held = '0.0000';
-        $commitment = '0.0000';
         $awaitingReceipt = false;
         $purchaseOrders = [];
         foreach ($covering as $procurement) {
@@ -297,14 +296,11 @@ final class SalesOrderProcurementPlanner
             $received = Decimal::add($received, (string) $procurement->received_quantity);
             $held = Decimal::add($held, $context['receipt_held']->get($procurement->getKey(), '0.0000'));
             $notReceived = $this->atLeastZero(Decimal::subtract((string) $procurement->quantity, (string) $procurement->received_quantity));
-            if ($procurement->source_quotation_id !== null || $procurement->source_supplier_request_id !== null) {
-                // Derived from pre-sale supplier evidence (quotation or POS cart):
-                // only the goods themselves cover it.
-                $awaitingReceipt = $awaitingReceipt || Decimal::compare($notReceived, '0') > 0;
-            } else {
-                // V1 special order: the confirmed supplier commitment covers it (unchanged rule).
-                $commitment = Decimal::add($commitment, $notReceived);
-            }
+            // Only the goods themselves cover an externally sourced quantity: a
+            // supplier "available", a requirement "à commander", a purchase order
+            // or an expected delivery never make a draft order confirmable — for
+            // every requirement, whatever its origin (Devis, POS cart, order).
+            $awaitingReceipt = $awaitingReceipt || Decimal::compare($notReceived, '0') > 0;
             foreach ($onPurchaseOrders as $poLine) {
                 $purchaseOrders[] = [
                     'id' => (int) $poLine->purchase_order_id,
@@ -349,11 +345,9 @@ final class SalesOrderProcurementPlanner
         };
 
         // Physical coverage: reserved to this order (allocations once confirmed;
-        // received supplier goods held while a draft) + free stock it may take +
-        // the V1 supplier commitment. Never a quotation-derived requirement not received.
-        $covered = $confirmed
-            ? Decimal::add($allocated, $commitment)
-            : Decimal::add(Decimal::add($stock, $held), $commitment);
+        // received supplier goods held while a draft) + free stock it may take.
+        // Never a requirement not yet received.
+        $covered = $confirmed ? $allocated : Decimal::add($stock, $held);
         $covered = Decimal::compare($covered, $quantity) > 0 ? $quantity : $covered;
         $awaitingReceipt = $candidate !== null || $awaitingReceipt;
 

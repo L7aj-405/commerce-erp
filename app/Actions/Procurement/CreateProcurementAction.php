@@ -19,10 +19,14 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 /**
- * Raise a supplier special-order requirement for one catalogue line of a DRAFT
- * customer Order whose quantity company stock cannot fully cover. Creates no
- * inventory effect and no second Sales Order line — the procured quantity is the
- * SUPPLIER_ORDER-sourced portion of the existing line.
+ * Raise a procurement requirement ("Besoin d'approvisionnement") for one
+ * catalogue line of a DRAFT customer Order whose quantity company stock cannot
+ * fully cover. The customer has committed: this is a purchasing need, born
+ * "À commander" (status `supplier_confirmed`) with the chosen supplier — not an
+ * availability question (that is pre-sale evidence on the Devis / POS cart). It
+ * is then ordered through a purchase order and received through it; the order
+ * can only be confirmed once the goods are physically received. Creates no
+ * inventory effect and no second Sales Order line.
  */
 class CreateProcurementAction
 {
@@ -93,8 +97,10 @@ class CreateProcurementAction
             $procurement->sales_order_line_id = $line->getKey();
             $procurement->product_variant_id = $line->product_variant_id;
             $procurement->quantity = $quantity;
-            $procurement->status = SupplierProcurementStatus::PendingSupplier;
-            $procurement->supplier_availability_status = SupplierAvailabilityStatus::PendingConfirmation;
+            $procurement->status = SupplierProcurementStatus::SupplierConfirmed; // "À commander"
+            // Legacy column (availability now lives on the evidence): not a supplier answer.
+            $procurement->supplier_availability_status = SupplierAvailabilityStatus::ConfirmedAvailable;
+            $procurement->confirmed_by_user_id = $actor->getKey();
             $procurement->supplier_reference = $data['supplier_reference'] ?? null;
             $procurement->expected_at = $data['expected_at'] ?? null;
             $procurement->notes = $data['notes'] ?? null;

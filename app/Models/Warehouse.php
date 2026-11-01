@@ -16,12 +16,23 @@ class Warehouse extends Model
 
     protected function casts(): array
     {
-        return ['status' => WarehouseStatus::class];
+        return ['status' => WarehouseStatus::class, 'allow_direct_sales' => 'boolean'];
     }
 
     public function organization(): BelongsTo
     {
         return $this->belongsTo(Organization::class);
+    }
+
+    /** The Store this location physically belongs to; null = storage-only depot. */
+    public function store(): BelongsTo
+    {
+        return $this->belongsTo(Store::class);
+    }
+
+    public function isStorageOnly(): bool
+    {
+        return $this->store_id === null;
     }
 
     public function balances(): HasMany

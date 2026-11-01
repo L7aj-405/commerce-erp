@@ -22,6 +22,18 @@ class Store extends Model
         ];
     }
 
+    /** The Store's primary POS inventory location (a convenience default, not a ledger). */
+    public function defaultWarehouse(): BelongsTo
+    {
+        return $this->belongsTo(Warehouse::class, 'default_warehouse_id');
+    }
+
+    /** Inventory locations physically belonging to this Store. */
+    public function warehouses(): HasMany
+    {
+        return $this->hasMany(Warehouse::class);
+    }
+
     public function organization(): BelongsTo
     {
         return $this->belongsTo(Organization::class);

@@ -2,13 +2,10 @@
 
 namespace Tests\Feature\Procurement;
 
-use App\Actions\Documents\CreateFullInvoiceFromSalesOrderAction;
 use App\Actions\Pos\CreatePosSaleAction;
-use App\Actions\Procurement\ChangeProcurementSupplierAction;
 use App\Actions\Procurement\CreateProcurementAction;
-use App\Actions\Procurement\OrderProcurementAction;
+use App\Actions\Procurement\CreatePurchaseOrderFromProcurementRequirementsAction;
 use App\Actions\Procurement\ReceiveProcurementAction;
-use App\Actions\Procurement\RecordSupplierAvailabilityAction;
 use App\Actions\Sales\ConfirmSalesOrderAction;
 use App\Actions\Sales\FulfillSalesOrderAction;
 use App\Actions\Sales\SaveSalesOrderLineAction;
@@ -25,8 +22,6 @@ use App\Models\Store;
 use App\Models\Supplier;
 use App\Models\User;
 use App\Models\Warehouse;
-use App\Services\PosStockAllocator;
-use App\Support\Decimal;
 use Illuminate\Validation\ValidationException;
 use Tests\Support\PosTestCase;
 
@@ -168,9 +163,9 @@ class PosSupplierProcurementTest extends PosTestCase
         $this->assertSame(0, SalesOrderProcurement::query()->count());
     }
 
-    // --- 8. existing Supplier used from the POS sourcing endpoints ----------
+    // --- 8. a requirement on a cart line is a need "à commander" --------------
 
-    public function test_pos_sourcing_creates_a_procurement_against_the_existing_supplier_via_json_endpoints(): void
+    public function test_a_requirement_raised_on_a_cart_line_is_to_order_and_availability_cannot_be_recorded_on_it(): void
     {
         [$owner, $org, $store, $showroom, $variant, $supplier] = $this->context('0.0000');
         [$draft, $line] = $this->posDraftWithLine($owner, $org, $store, $showroom, $variant, '3.0000');
@@ -183,164 +178,70 @@ class PosSupplierProcurementTest extends PosTestCase
 
         $this->assertSame(1, Supplier::query()->count(), 'no second supplier table/row is created');
         $procurement = SalesOrderProcurement::query()->whereKey($procurementId)->firstOrFail();
-        $this->assertSame($supplier->id, $procurement->supplier_id);
-        $this->assertSame($line->id, $procurement->sales_order_line_id);
+        $this->assertSame([$supplier->id, $line->id], [$procurement->supplier_id, $procurement->sales_order_line_id]);
+        $this->assertSame(SupplierProcurementStatus::SupplierConfirmed, $procurement->status); // "À commander"
 
+        // Supplier availability is pre-sale evidence, never a requirement state.
         $this->actingAs($owner)->patchJson("/procurement/{$procurementId}/availability", [
             'supplier_availability_status' => 'confirmed_available', 'quantity' => '3',
-        ])->assertOk();
-        $this->assertSame(SupplierProcurementStatus::SupplierConfirmed, $procurement->fresh()->status);
+        ])->assertUnprocessable();
     }
 
-    // --- 9. confirmed supplier quantity covers the POS shortage -------------
+    // --- 9–18. never an instant sale on a supplier promise -----------------------
 
-    public function test_confirmed_procurement_lets_the_pos_special_order_be_confirmed_and_paid(): void
+    public function test_a_cart_waiting_for_supplier_goods_is_never_an_instant_sale_and_takes_no_payment(): void
     {
         [$owner, $org, $store, $showroom, $variant, $supplier] = $this->context('0.0000');
         [$draft, $line] = $this->posDraftWithLine($owner, $org, $store, $showroom, $variant, '1.0000');
-        $procurement = app(CreateProcurementAction::class)->execute($owner, $draft, $line, $supplier, ['quantity' => '1.0000']);
-        app(RecordSupplierAvailabilityAction::class)->execute($owner, $procurement, ['supplier_availability_status' => 'confirmed_available']);
-
+        app(CreateProcurementAction::class)->execute($owner, $draft, $line, $supplier, ['quantity' => '1.0000']);
         $account = $this->createPosAccount($org, 'cash', 'POS-CASH');
-        $completed = app(CreatePosSaleAction::class)->execute($owner, $org, $store, $this->posDraftCheckoutPayload(
-            $draft->fresh(), [],
-        ));
 
-        $this->assertSame('confirmed', $completed->status->value);
-        $this->assertSame('unfulfilled', $completed->fulfillment_status->value);
-        $this->assertTrue($completed->awaitingSupplierProcurement());
-    }
+        try {
+            app(CreatePosSaleAction::class)->execute($owner, $org, $store, $this->posDraftCheckoutPayload(
+                $draft->fresh(), [$this->posPayment($account, '100.0000')],
+            ));
+            $this->fail('A supplier requirement is not stock: no instant sale.');
+        } catch (\App\Exceptions\Pos\PosStockConflictException $conflict) {
+            $this->assertSame('1.0000', $conflict->lines[0]['missing']);
+        }
 
-    // --- 10. pending supplier blocks confirmation ---------------------------
-
-    public function test_pending_supplier_availability_blocks_the_pos_order_from_being_confirmed(): void
-    {
-        [$owner, $org, $store, $showroom, $variant, $supplier] = $this->context('0.0000');
-        [$draft, $line] = $this->posDraftWithLine($owner, $org, $store, $showroom, $variant, '1.0000');
-        app(CreateProcurementAction::class)->execute($owner, $draft, $line, $supplier, ['quantity' => '1.0000']); // left pending
-
-        $account = $this->createPosAccount($org, 'cash', 'POS-CASH');
-        $this->expectException(ValidationException::class);
-        app(CreatePosSaleAction::class)->execute($owner, $org, $store, $this->posDraftCheckoutPayload(
-            $draft->fresh(), [],
-        ));
-    }
-
-    // --- 11. insufficient supplier coverage blocks confirmation -------------
-
-    public function test_a_confirmed_but_insufficient_supplier_quantity_still_blocks_confirmation(): void
-    {
-        [$owner, $org, $store, $showroom, $variant, $supplier] = $this->context('0.0000');
-        [$draft, $line] = $this->posDraftWithLine($owner, $org, $store, $showroom, $variant, '3.0000');
-        $procurement = app(CreateProcurementAction::class)->execute($owner, $draft, $line, $supplier, ['quantity' => '2.0000']);
-        app(RecordSupplierAvailabilityAction::class)->execute($owner, $procurement, ['supplier_availability_status' => 'confirmed_available', 'quantity' => '2.0000']);
-
-        $account = $this->createPosAccount($org, 'cash', 'POS-CASH');
-        $this->expectException(ValidationException::class);
-        app(CreatePosSaleAction::class)->execute($owner, $org, $store, $this->posDraftCheckoutPayload(
-            $draft->fresh(), [],
-        ));
-    }
-
-    // --- 12. supplier unavailable can be replaced ---------------------------
-
-    public function test_an_unavailable_supplier_can_be_replaced_and_the_order_then_confirmed(): void
-    {
-        [$owner, $org, $store, $showroom, $variant, $supplier] = $this->context('0.0000');
-        [$draft, $line] = $this->posDraftWithLine($owner, $org, $store, $showroom, $variant, '1.0000');
-        $procurement = app(CreateProcurementAction::class)->execute($owner, $draft, $line, $supplier, ['quantity' => '1.0000']);
-        app(RecordSupplierAvailabilityAction::class)->execute($owner, $procurement->fresh(), ['supplier_availability_status' => 'unavailable']);
-        $this->assertSame(SupplierProcurementStatus::Unavailable, $procurement->fresh()->status);
-
-        $other = new Supplier;
-        $other->organization_id = $org->getKey();
-        $other->name = 'Rabat Meubles';
-        $other->active = true;
-        $other->save();
-        $procurement = app(ChangeProcurementSupplierAction::class)->execute($owner, $procurement->fresh(), $other);
-        app(RecordSupplierAvailabilityAction::class)->execute($owner, $procurement->fresh(), ['supplier_availability_status' => 'confirmed_available']);
-
-        $account = $this->createPosAccount($org, 'cash', 'POS-CASH');
-        $completed = app(CreatePosSaleAction::class)->execute($owner, $org, $store, $this->posDraftCheckoutPayload(
-            $draft->fresh(), [],
-        ));
-        $this->assertSame('confirmed', $completed->status->value);
-    }
-
-    // --- 13/14. only company stock is reserved; no fake balance -------------
-
-    public function test_only_company_stock_is_reserved_and_the_supplier_portion_creates_no_fake_balance(): void
-    {
-        [$owner, $org, $store, $showroom, $variant, $supplier] = $this->context('3.0000');
-        [$draft, $line] = $this->posDraftWithLine($owner, $org, $store, $showroom, $variant, '5.0000');
-        $procurement = app(CreateProcurementAction::class)->execute($owner, $draft, $line, $supplier, ['quantity' => '2.0000']);
-        app(RecordSupplierAvailabilityAction::class)->execute($owner, $procurement->fresh(), ['supplier_availability_status' => 'confirmed_available']);
-
-        $account = $this->createPosAccount($org, 'cash', 'POS-CASH');
-        app(CreatePosSaleAction::class)->execute($owner, $org, $store, $this->posDraftCheckoutPayload(
-            $draft->fresh(), [],
-        ));
-
-        $reserved = InventoryReservation::query()->where('organization_id', $org->id)
-            ->where('status', 'active')->sum('quantity');
-        $this->assertSame(3.0, (float) $reserved, 'only the 3 company units are reserved');
-        $balance = InventoryBalance::query()->where('warehouse_id', $showroom->id)->where('product_variant_id', $variant->id)->first();
-        $this->assertSame(3.0, (float) $balance->on_hand, 'the supplier portion never touched on_hand');
+        $this->assertSame('draft', $draft->fresh()->status->value);
+        $this->assertSame(0, \App\Models\Payment::query()->count());
+        $this->assertSame(0, InventoryReservation::query()->count());
         $this->assertSame(0, InventoryMovement::query()->where('movement_type', 'supplier_receipt')->count());
     }
 
-    // --- 15/16/17. invoice + payment before receipt; fulfilment blocked -----
-
-    public function test_pos_special_order_can_be_invoiced_and_paid_before_receipt_but_not_fulfilled(): void
-    {
-        [$owner, $org, $store, $showroom, $variant, $supplier] = $this->context('0.0000');
-        [$draft, $line] = $this->posDraftWithLine($owner, $org, $store, $showroom, $variant, '1.0000');
-        $procurement = app(CreateProcurementAction::class)->execute($owner, $draft, $line, $supplier, ['quantity' => '1.0000']);
-        app(RecordSupplierAvailabilityAction::class)->execute($owner, $procurement->fresh(), ['supplier_availability_status' => 'confirmed_available']);
-
-        $account = $this->createPosAccount($org, 'cash', 'POS-CASH');
-        // Partial-but-nonzero payment while goods have not arrived.
-        $unitTotal = Decimal::divide($draft->fresh()->total_incl_tax, '2', 4);
-        $completed = app(CreatePosSaleAction::class)->execute($owner, $org, $store, $this->posDraftCheckoutPayload(
-            $draft->fresh(), [$this->posPayment($account, $unitTotal, ['cash_received' => $unitTotal])],
-        ));
-
-        $invoice = app(CreateFullInvoiceFromSalesOrderAction::class)->execute($owner, $completed->fresh());
-        $this->assertNotNull($invoice->id);
-
-        $this->expectException(ValidationException::class);
-        app(FulfillSalesOrderAction::class)->execute($owner, $completed->fresh());
-    }
-
-    // --- 18. receipt uses the existing earmarking workflow -------------------
-
-    public function test_receipt_earmarks_the_goods_and_then_fulfilment_succeeds(): void
-    {
-        [$owner, $org, $store, $showroom, $variant, $supplier] = $this->context('0.0000');
-        [$draft, $line] = $this->posDraftWithLine($owner, $org, $store, $showroom, $variant, '1.0000');
-        $procurement = app(CreateProcurementAction::class)->execute($owner, $draft, $line, $supplier, ['quantity' => '1.0000']);
-        app(RecordSupplierAvailabilityAction::class)->execute($owner, $procurement->fresh(), ['supplier_availability_status' => 'confirmed_available']);
-        $account = $this->createPosAccount($org, 'cash', 'POS-CASH');
-        $completed = app(CreatePosSaleAction::class)->execute($owner, $org, $store, $this->posDraftCheckoutPayload(
-            $draft->fresh(), [],
-        ));
-
-        $procurement = SalesOrderProcurement::query()->where('sales_order_id', $completed->id)->firstOrFail();
-        app(OrderProcurementAction::class)->execute($owner, $procurement->fresh());
-        app(ReceiveProcurementAction::class)->execute($owner, $procurement->fresh(), $showroom, []);
-
-        $fulfilled = app(FulfillSalesOrderAction::class)->execute($owner, $completed->fresh());
-        $this->assertSame('fulfilled', $fulfilled->fulfillment_status->value);
-    }
-
-    // --- 19. authoritative re-check at confirmation --------------------------
-
-    public function test_company_stock_movement_between_cart_and_checkout_is_re_validated_at_confirmation(): void
+    public function test_the_cart_becomes_an_order_draft_then_purchase_order_receipt_confirmation_and_fulfilment(): void
     {
         [$owner, $org, $store, $showroom, $variant, $supplier] = $this->context('3.0000');
         [$draft, $line] = $this->posDraftWithLine($owner, $org, $store, $showroom, $variant, '5.0000');
         $procurement = app(CreateProcurementAction::class)->execute($owner, $draft, $line, $supplier, ['quantity' => '2.0000']);
-        app(RecordSupplierAvailabilityAction::class)->execute($owner, $procurement->fresh(), ['supplier_availability_status' => 'confirmed_available']);
+
+        // The existing requirement covers the shortage: the cart converts without
+        // asking the supplier again and without a second requirement.
+        $order = app(\App\Actions\Pos\ConvertPosCartToSalesOrderDraftAction::class)->execute($owner, $draft->fresh());
+        $this->assertSame('draft', $order->status->value);
+        $this->assertSame(1, SalesOrderProcurement::query()->where('sales_order_id', $order->id)->count());
+        $this->assertConfirmationBlocked($owner, $order);
+
+        $po = app(CreatePurchaseOrderFromProcurementRequirementsAction::class)->execute($owner, $org, $supplier, [$procurement->id]);
+        $this->assertSame(3.0, (float) InventoryBalance::query()->where('warehouse_id', $showroom->id)->value('on_hand'), 'ordered is not received');
+        $this->assertConfirmationBlocked($owner, $order);
+
+        app(ReceiveProcurementAction::class)->execute($owner, $procurement->fresh(), $showroom, ['purchase_order_line_id' => $po->lines()->sole()->id]);
+        $confirmed = app(ConfirmSalesOrderAction::class)->execute($owner, $order->fresh());
+        $this->assertSame('confirmed', $confirmed->status->value);
+        $balance = InventoryBalance::query()->where('warehouse_id', $showroom->id)->where('product_variant_id', $variant->id)->first();
+        $this->assertSame([5.0, 5.0], [(float) $balance->on_hand, (float) $balance->reserved]);
+
+        $fulfilled = app(FulfillSalesOrderAction::class)->execute($owner, $confirmed->fresh());
+        $this->assertSame('fulfilled', $fulfilled->fulfillment_status->value);
+    }
+
+    public function test_company_stock_movement_between_cart_and_checkout_is_re_validated_at_finalization(): void
+    {
+        [$owner, $org, $store, $showroom, $variant] = $this->context('3.0000');
+        [$draft] = $this->posDraftWithLine($owner, $org, $store, $showroom, $variant, '3.0000');
 
         // Another operation consumes 2 of the 3 company units before checkout.
         $other = $this->createDraftOrder($owner, $org, $store, null);
@@ -350,11 +251,21 @@ class PosSupplierProcurementTest extends PosTestCase
         ]);
         app(ConfirmSalesOrderAction::class)->execute($owner, $other->fresh());
 
-        $account = $this->createPosAccount($org, 'cash', 'POS-CASH');
+        $this->createPosAccount($org, 'cash', 'POS-CASH');
         $this->expectException(ValidationException::class);
         app(CreatePosSaleAction::class)->execute($owner, $org, $store, $this->posDraftCheckoutPayload(
             $draft->fresh(), [],
         ));
+    }
+
+    private function assertConfirmationBlocked(User $owner, SalesOrder $order): void
+    {
+        try {
+            app(ConfirmSalesOrderAction::class)->execute($owner, $order->fresh());
+            $this->fail('The order must wait for the supplier goods.');
+        } catch (ValidationException) {
+        }
+        $this->assertSame('draft', $order->fresh()->status->value);
     }
 
     // --- 20. tenant isolation -------------------------------------------------

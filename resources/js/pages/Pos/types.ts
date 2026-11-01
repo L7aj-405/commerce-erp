@@ -1,6 +1,7 @@
 import type { LineSourcing } from '@/pages/Quotations/Sourcing';
 
-export type Warehouse = { id: number; name: string; code: string };
+/** A POS inventory location; `kind` = belongs to a Store, or storage-only depot. */
+export type Warehouse = { id: number; name: string; code: string; kind?: 'store' | 'depot' };
 export type TaxRate = { id: number; name: string; rate: string };
 export type Option = { id: number; name: string };
 export type Supplier = { id: number; name: string };
@@ -83,6 +84,8 @@ export type CartLine = {
     procurement?: LineProcurement | null;
     /** "Articles à sourcer": current-stock shortage + supplier evidence (server-computed). */
     sourcing?: LineSourcing | null;
+    /** Current free stock covering this line, in line order: at the cart's location, elsewhere, missing. */
+    stock_source?: { location: Warehouse | null; here: string; elsewhere: string; missing: string } | null;
 };
 export type ActiveSale = {
     id: number;
@@ -99,7 +102,7 @@ export type ActiveSale = {
     procurement_deficit?: boolean;
     awaiting_supplier_procurement?: boolean;
     procurements_count?: number;
-    sourcing_summary?: { shortage_line_count: number; unresolved_line_count: number; can_convert: boolean };
+    sourcing_summary?: { shortage_line_count: number; unresolved_line_count: number; requirement_line_count?: number; can_convert: boolean };
     checkout: {
         global_discount_type: 'none' | 'fixed' | 'percentage';
         global_discount_value: string;

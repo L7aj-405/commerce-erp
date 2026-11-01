@@ -242,6 +242,7 @@ export default function ApplicationShell({ children, wide = false, flush = false
                           },
                       ]
                     : []),
+                { href: '/settings/stores', label: t('nav.stores'), permission: 'stores.view', icon: <IconPin /> },
                 { href: '/quotation-settings', label: t('nav.quotationSettings'), permission: ['settings.view', 'settings.update'], icon: <IconFileText /> },
                 { href: '/document-stamp', label: t('nav.companyStamp'), permission: ['settings.view', 'settings.update'], icon: <IconStamp /> },
                 { href: '/return-policy', label: t('nav.returnPolicy'), permission: ['settings.view', 'settings.update'], icon: <IconRotateBack /> },
@@ -325,13 +326,14 @@ export default function ApplicationShell({ children, wide = false, flush = false
                 ))}
             </select>
             <select
-                aria-label={t('common.store')}
+                aria-label={t('shell.storeContext')}
+                title={t('shell.storeContext')}
                 value={tenant.store?.id ?? ''}
                 onChange={(event) => event.target.value && router.post(`/context/stores/${event.target.value}`)}
                 disabled={!tenant.organization}
                 className="h-11 max-w-full flex-1 rounded-field border border-line-strong bg-surface px-3 text-sm text-ink transition-soft focus:border-primary focus:outline-none disabled:opacity-50 sm:h-auto sm:max-w-56 sm:flex-none sm:py-2"
             >
-                <option value="">{t('common.store')}</option>
+                <option value="">{t('shell.storeContext')}</option>
                 {tenant.stores.map((item) => (
                     <option key={item.id} value={item.id}>
                         {item.name} · {item.code}

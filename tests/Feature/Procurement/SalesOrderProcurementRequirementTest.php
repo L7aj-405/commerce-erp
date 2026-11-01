@@ -263,19 +263,19 @@ class SalesOrderProcurementRequirementTest extends QuotationTestCase
         $this->assertTrue($this->plan($order)['summary']['confirmation_waits_for_receipt']);
     }
 
-    public function test_a_confirmed_order_can_still_order_a_requirement_raised_before_confirmation(): void
+    public function test_a_requirement_raised_on_an_order_is_ordered_through_a_purchase_order_and_confirmation_waits_for_receipt(): void
     {
-        // V1 special order (no quotation): supplier confirmed → order confirmed → purchase order.
+        // Requirement raised from the order itself (no quotation): "à commander" → purchase order → receipt → confirmation.
         $order = $this->createDraftOrder($this->owner, $this->organization, $this->store, null);
         $line = $this->addCatalogLine($this->owner, $order, $this->xlr, $this->warehouse, ['quantity' => '2']);
         $requirement = app(\App\Actions\Procurement\CreateProcurementAction::class)->execute($this->owner, $order->fresh(), $line->fresh(), $this->mifa, ['quantity' => '2']);
-        app(\App\Actions\Procurement\RecordSupplierAvailabilityAction::class)->execute($this->owner, $requirement->fresh(), ['supplier_availability_status' => 'confirmed_available']);
-        $this->assertSame('confirmed', app(ConfirmSalesOrderAction::class)->execute($this->owner, $order->fresh())->status->value);
+        $this->assertConfirmationBlocked($order);
 
         $purchaseOrder = $this->createPurchaseOrder($this->owner, [$requirement->id]);
 
         $this->assertSame(PurchaseOrderStatus::Ordered, $purchaseOrder->status);
         $this->assertSame(SupplierProcurementStatus::Ordered, $requirement->fresh()->status);
+        $this->assertConfirmationBlocked($order);
     }
 
     public function test_a_cancelled_sales_order_cannot_be_ordered_from_the_supplier(): void
@@ -532,8 +532,7 @@ class SalesOrderProcurementRequirementTest extends QuotationTestCase
 
         // The buyer finds a supplier: the line becomes procurement_required.
         $line = $order->lines()->where('product_variant_id', $this->xlr->id)->sole();
-        $requirement = app(\App\Actions\Procurement\CreateProcurementAction::class)->execute($this->owner, $order->fresh(), $line, $this->other, ['quantity' => '2']);
-        app(\App\Actions\Procurement\RecordSupplierAvailabilityAction::class)->execute($this->owner, $requirement->fresh(), ['supplier_availability_status' => 'confirmed_available']);
+        app(\App\Actions\Procurement\CreateProcurementAction::class)->execute($this->owner, $order->fresh(), $line, $this->other, ['quantity' => '2']);
         $this->travel(1)->hours();
         $this->scan();
 

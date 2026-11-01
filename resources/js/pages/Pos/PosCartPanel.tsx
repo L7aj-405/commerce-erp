@@ -336,8 +336,9 @@ export default function PosCartPanel({
                                                     {line.sourcing.resolved ? t('sourcing.available') : t('pos.toSource')}
                                                 </span>
                                                 <span className="text-ink-muted">
-                                                    {t('pos.availableQty')} <Quantity value={line.sourcing.internal_available ?? '0'} /> · {t('pos.missingQty')}{' '}
-                                                    <Quantity value={line.sourcing.shortage} />
+                                                    {t('pos.availableQty')}{' '}
+                                                    <Quantity value={line.stock_source ? String(Number(line.stock_source.here) + Number(line.stock_source.elsewhere)) : (line.sourcing.internal_available ?? '0')} />{' '}
+                                                    · {t('pos.missingQty')} <Quantity value={line.stock_source?.missing ?? line.sourcing.shortage} />
                                                 </span>
                                                 <button type="button" onClick={onOpenSourcing} className="font-semibold text-primary hover:underline">
                                                     {t('pos.checkAvailability')}
@@ -345,16 +346,22 @@ export default function PosCartPanel({
                                             </div>
                                         )}
                                         {line.line_type === 'catalog' &&
-                                            (line.procurement || (line.requires_replenishment && Number(line.to_procure ?? '0') <= 0)) && (
+                                            (line.procurement || Number(line.stock_source?.elsewhere ?? '0') > 0) && (
                                                 <div className="mt-1.5 space-y-0.5 text-[11px]">
                                                     {line.procurement && (
                                                         <p className="text-ink-muted">
                                                             {line.procurement.supplier?.name ?? t('pos.supplier')} · {line.procurement.status_label}
                                                         </p>
                                                     )}
-                                                    {line.requires_replenishment && Number(line.to_procure ?? '0') <= 0 && (
+                                                    {/* Only the part another location must supply — never the whole line. */}
+                                                    {line.stock_source && Number(line.stock_source.elsewhere) > 0 && (
                                                         <p className="text-warning">
-                                                            <Quantity value={line.remote_required ?? '0'} /> {t('pos.fromAnotherWarehouse')}
+                                                            {Number(line.stock_source.here) > 0 && (
+                                                                <>
+                                                                    <Quantity value={line.stock_source.here} /> {t('pos.availableHere')} ·{' '}
+                                                                </>
+                                                            )}
+                                                            <Quantity value={line.stock_source.elsewhere} /> {t('pos.fromOtherLocation')}
                                                         </p>
                                                     )}
                                                 </div>
@@ -382,7 +389,14 @@ export default function PosCartPanel({
                                 )}
                             </>
                         ) : (
-                            t('pos.supplierPending')
+                            <>
+                                {t('pos.supplierPending')}
+                                {canConvert && (
+                                    <button type="button" onClick={onOpenSourcing} className="ms-1 font-semibold underline">
+                                        {t('pos.createOrder')}
+                                    </button>
+                                )}
+                            </>
                         )}
                     </div>
                 )}

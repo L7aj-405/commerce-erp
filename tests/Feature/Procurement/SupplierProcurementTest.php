@@ -9,6 +9,7 @@ use App\Actions\Inventory\ShipTransferRequestAction;
 use App\Actions\Procurement\CancelProcurementAction;
 use App\Actions\Procurement\ChangeProcurementSupplierAction;
 use App\Actions\Procurement\CreateProcurementAction;
+use App\Actions\Procurement\CreatePurchaseOrderFromProcurementRequirementsAction;
 use App\Actions\Procurement\OrderProcurementAction;
 use App\Actions\Procurement\ReceiveProcurementAction;
 use App\Actions\Procurement\RecordSupplierAvailabilityAction;
@@ -18,14 +19,15 @@ use App\Actions\Sales\FulfillSalesOrderAction;
 use App\Enums\InventoryMovementType;
 use App\Enums\InventoryReservationStatus;
 use App\Enums\SalesOrderSource;
-use App\Enums\SupplierAvailabilityStatus;
 use App\Enums\SupplierProcurementStatus;
 use App\Models\InventoryBalance;
 use App\Models\InventoryMovement;
 use App\Models\InventoryReservation;
 use App\Models\Organization;
 use App\Models\ProductVariant;
+use App\Models\PurchaseOrder;
 use App\Models\SalesOrder;
+use App\Models\SalesOrderInventoryAllocation;
 use App\Models\SalesOrderLine;
 use App\Models\SalesOrderProcurement;
 use App\Models\Store;
@@ -33,10 +35,18 @@ use App\Models\Supplier;
 use App\Models\TransferRequest;
 use App\Models\User;
 use App\Models\Warehouse;
+use App\Services\InventoryReservationManager;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 use Tests\Support\SalesTestCase;
 
+/**
+ * Procurement requirement lifecycle from a Sales Order shortage, after the
+ * procurement cleanup: a requirement is a purchasing need ("À commander"),
+ * ordered ONLY through a purchase order, received ONLY through a purchase order
+ * line, and the order is confirmable only once the goods have physically
+ * arrived. Supplier availability is pre-sale evidence, not a requirement state.
+ */
 class SupplierProcurementTest extends SalesTestCase
 {
     /** @return array{User, Organization, Store, Warehouse, Warehouse, ProductVariant, Supplier} */
@@ -86,14 +96,60 @@ class SupplierProcurementTest extends SalesTestCase
         return app(CreateProcurementAction::class)->execute($owner, $order->fresh(), $line->fresh(), $supplier, ['quantity' => $qty]);
     }
 
-    private function confirmAvailability(User $owner, SalesOrderProcurement $p, string $status = 'confirmed_available'): SalesOrderProcurement
+    /** The only way to order: a real purchase order. */
+    private function placeOrder(User $owner, Organization $org, SalesOrderProcurement $p): PurchaseOrder
     {
-        return app(RecordSupplierAvailabilityAction::class)->execute($owner, $p->fresh(), ['supplier_availability_status' => $status]);
+        return app(CreatePurchaseOrderFromProcurementRequirementsAction::class)
+            ->execute($owner, $org, $p->supplier()->firstOrFail(), [$p->id], ['expected_delivery_date' => now()->addDays(5)->toDateString()]);
     }
 
-    // --- 1. company stock insufficient is detectable ----------------------
+    /** The only way to receive: against the requirement's purchase order line. */
+    private function receive(User $owner, SalesOrderProcurement $p, Warehouse $warehouse, array $data = []): SalesOrderProcurement
+    {
+        $line = $p->purchaseOrderLines()->firstOrFail();
 
-    public function test_a_line_can_be_flagged_as_exceeding_company_available_stock(): void
+        return app(ReceiveProcurementAction::class)->execute($owner, $p->fresh(), $warehouse, [...$data, 'purchase_order_line_id' => $line->id]);
+    }
+
+    /** Raise → purchase order → full receipt while the order is a draft. */
+    private function procureAndReceive(User $owner, Organization $org, SalesOrder $order, SalesOrderLine $line, Supplier $supplier, string $qty, Warehouse $at): SalesOrderProcurement
+    {
+        $p = $this->raise($owner, $order, $line, $supplier, $qty);
+        $this->placeOrder($owner, $org, $p);
+
+        return $this->receive($owner, $p->fresh(), $at);
+    }
+
+    /**
+     * Data as left by the pre-cleanup workflow: an order CONFIRMED on a supplier
+     * commitment (company portion reserved, supplier portion not yet received).
+     * Historical rows stay untouched and must still be orderable / receivable.
+     *
+     * @return array{SalesOrder, SalesOrderProcurement}
+     */
+    private function legacyConfirmedOrder(User $owner, Organization $org, Store $store, ProductVariant $variant, Warehouse $showroom, Supplier $supplier): array
+    {
+        [$order, $line] = $this->draftWithLine($owner, $org, $store, $variant, $showroom, '10.0000');
+        $p = $this->raise($owner, $order, $line, $supplier, '6.0000');
+
+        $line->allocations()->delete();
+        $allocation = new SalesOrderInventoryAllocation;
+        $allocation->organization_id = $org->id;
+        $allocation->sales_order_line_id = $line->id;
+        $allocation->warehouse_id = $showroom->id;
+        $allocation->quantity = '4.0000';
+        $allocation->save();
+        $reservation = app(InventoryReservationManager::class)->reserve($owner, $org, $showroom, $variant, '4.0000', SalesOrderInventoryAllocation::class, $allocation->id, $order->order_number);
+        $allocation->inventory_reservation_id = $reservation->id;
+        $allocation->save();
+        $order->forceFill(['status' => 'confirmed', 'confirmed_at' => now(), 'confirmed_by_user_id' => $owner->id])->save();
+
+        return [$order->fresh(), $p->fresh()];
+    }
+
+    // --- requirement = purchasing need, born "À commander" -------------------
+
+    public function test_a_requirement_is_a_need_to_order_not_an_availability_question(): void
     {
         [$owner, $org, $store, $showroom, , $variant, $supplier] = $this->context('4.0000');
         [$order, $line] = $this->draftWithLine($owner, $org, $store, $variant, $showroom, '10.0000');
@@ -101,231 +157,150 @@ class SupplierProcurementTest extends SalesTestCase
         $procurement = $this->raise($owner, $order, $line, $supplier, '6.0000');
 
         $this->assertSame('6.0000', $procurement->quantity);
-        $this->assertSame(SupplierProcurementStatus::PendingSupplier, $procurement->status);
-        $this->assertSame(SupplierAvailabilityStatus::PendingConfirmation, $procurement->supplier_availability_status);
+        $this->assertSame(SupplierProcurementStatus::SupplierConfirmed, $procurement->status);
+        $this->assertSame('À commander', $procurement->status->label());
         $this->assertDatabaseHas('audit_logs', ['event' => 'procurement.created', 'auditable_id' => $procurement->id]);
     }
 
-    // --- 2. split sourcing ---------------------------------------------------
-
-    public function test_split_sourcing_reserves_only_company_stock_and_procures_the_rest(): void
-    {
-        [$owner, $org, $store, $showroom, , $variant, $supplier] = $this->context('4.0000');
-        [$order, $line] = $this->draftWithLine($owner, $org, $store, $variant, $showroom, '10.0000');
-        $procurement = $this->confirmAvailability($owner, $this->raise($owner, $order, $line, $supplier, '6.0000'));
-
-        $confirmed = app(ConfirmSalesOrderAction::class)->execute($owner, $order->fresh());
-
-        $this->assertSame('confirmed', $confirmed->status->value);
-        $allocated = $line->fresh()->allocations()->sum('quantity');
-        $this->assertSame(4.0, (float) $allocated, 'only the company portion is allocated');
-        $reserved = InventoryBalance::query()->where('warehouse_id', $showroom->id)->where('product_variant_id', $variant->id)->value('reserved');
-        $this->assertSame(4.0, (float) $reserved, 'only company stock is reserved');
-        $this->assertTrue($order->fresh()->awaitingSupplierProcurement());
-        // one variant, one line — the invariant holds
-        $this->assertSame(1, SalesOrderLine::query()->where('sales_order_id', $order->id)->where('product_variant_id', $variant->id)->count());
-    }
-
-    // --- 3. confirmation blocked while supplier not confirmed --------------
-
-    public function test_confirmation_is_blocked_while_a_procurement_is_still_pending_supplier(): void
-    {
-        [$owner, $org, $store, $showroom, , $variant, $supplier] = $this->context('4.0000');
-        [$order, $line] = $this->draftWithLine($owner, $org, $store, $variant, $showroom, '10.0000');
-        $this->raise($owner, $order, $line, $supplier, '6.0000'); // left pending
-
-        $this->expectException(ValidationException::class);
-        app(ConfirmSalesOrderAction::class)->execute($owner, $order->fresh());
-    }
-
-    // --- 4. confirmation blocked when supplier unavailable ----------------
-
-    public function test_confirmation_is_blocked_when_the_supplier_marked_the_requirement_unavailable(): void
+    public function test_recording_supplier_availability_on_a_requirement_is_retired(): void
     {
         [$owner, $org, $store, $showroom, , $variant, $supplier] = $this->context('4.0000');
         [$order, $line] = $this->draftWithLine($owner, $org, $store, $variant, $showroom, '10.0000');
         $p = $this->raise($owner, $order, $line, $supplier, '6.0000');
-        app(RecordSupplierAvailabilityAction::class)->execute($owner, $p->fresh(), ['supplier_availability_status' => 'unavailable']);
 
-        $this->assertDatabaseHas('audit_logs', ['event' => 'procurement.supplier_unavailable', 'auditable_id' => $p->id]);
-        $this->expectException(ValidationException::class);
-        app(ConfirmSalesOrderAction::class)->execute($owner, $order->fresh());
+        foreach (['confirmed_available', 'unavailable', 'pending_confirmation'] as $status) {
+            try {
+                app(RecordSupplierAvailabilityAction::class)->execute($owner, $p->fresh(), ['supplier_availability_status' => $status]);
+                $this->fail('Availability is evidence, never a requirement state.');
+            } catch (ValidationException $e) {
+                $this->assertArrayHasKey('supplier_availability_status', $e->errors());
+            }
+        }
+        $this->assertSame(SupplierProcurementStatus::SupplierConfirmed, $p->fresh()->status);
     }
 
-    // --- 5. confirmation allowed when fully covered ----------------------
+    // --- ordering only through a purchase order --------------------------
 
-    public function test_confirmation_succeeds_when_company_plus_confirmed_supplier_cover_the_full_quantity(): void
+    public function test_a_requirement_cannot_be_marked_ordered_without_a_purchase_order(): void
     {
         [$owner, $org, $store, $showroom, , $variant, $supplier] = $this->context('4.0000');
         [$order, $line] = $this->draftWithLine($owner, $org, $store, $variant, $showroom, '10.0000');
-        $this->confirmAvailability($owner, $this->raise($owner, $order, $line, $supplier, '6.0000'));
+        $p = $this->raise($owner, $order, $line, $supplier, '6.0000');
 
-        $confirmed = app(ConfirmSalesOrderAction::class)->execute($owner, $order->fresh());
-        $this->assertSame('confirmed', $confirmed->status->value);
-    }
+        try {
+            app(OrderProcurementAction::class)->execute($owner, $p->fresh());
+            $this->fail('"Ordered" must mean a purchase order exists.');
+        } catch (ValidationException) {
+        }
+        $this->assertSame(SupplierProcurementStatus::SupplierConfirmed, $p->fresh()->status);
 
-    // --- 6. no reservation on the supplier portion ---------------------
-
-    public function test_no_inventory_reservation_is_created_for_the_supplier_portion_before_receipt(): void
-    {
-        [$owner, $org, $store, $showroom, , $variant, $supplier] = $this->context('4.0000');
-        [$order, $line] = $this->draftWithLine($owner, $org, $store, $variant, $showroom, '10.0000');
-        $this->confirmAvailability($owner, $this->raise($owner, $order, $line, $supplier, '6.0000'));
-        app(ConfirmSalesOrderAction::class)->execute($owner, $order->fresh());
-
-        $totalReserved = InventoryReservation::query()->where('organization_id', $org->id)
-            ->where('status', InventoryReservationStatus::Active->value)->sum('quantity');
-        $this->assertSame(4.0, (float) $totalReserved);
-    }
-
-    // --- 7. no fake stock for supplier availability -------------------
-
-    public function test_supplier_availability_creates_no_inventory_balance_or_movement(): void
-    {
-        [$owner, $org, $store, $showroom, $depot, $variant, $supplier] = $this->context('4.0000');
-        [$order, $line] = $this->draftWithLine($owner, $org, $store, $variant, $showroom, '10.0000');
-        $this->confirmAvailability($owner, $this->raise($owner, $order, $line, $supplier, '6.0000'));
-        app(ConfirmSalesOrderAction::class)->execute($owner, $order->fresh());
-
-        $this->assertDatabaseMissing('inventory_balances', ['warehouse_id' => $depot->id, 'product_variant_id' => $variant->id]);
-        $showroomOnHand = InventoryBalance::query()->where('warehouse_id', $showroom->id)->value('on_hand');
-        $this->assertSame(4.0, (float) $showroomOnHand, 'company on_hand untouched by procurement');
-        $this->assertSame(0, InventoryMovement::query()->where('movement_type', InventoryMovementType::SupplierReceipt->value)->count());
-    }
-
-    // --- 8. invoice may be issued before supplier receipt --------------
-
-    public function test_a_confirmed_order_covered_by_procurement_can_be_invoiced_before_receipt(): void
-    {
-        [$owner, $org, $store, $showroom, , $variant, $supplier] = $this->context('4.0000');
-        [$order, $line] = $this->draftWithLine($owner, $org, $store, $variant, $showroom, '10.0000');
-        $this->confirmAvailability($owner, $this->raise($owner, $order, $line, $supplier, '6.0000'));
-        $order = app(ConfirmSalesOrderAction::class)->execute($owner, $order->fresh());
-
-        $invoice = app(CreateFullInvoiceFromSalesOrderAction::class)->execute($owner, $order->fresh());
-        $this->assertNotNull($invoice->id);
-        $this->assertTrue($order->fresh()->awaitingSupplierProcurement());
-    }
-
-    // --- 9. order at supplier -----------------------------------------
-
-    public function test_ordering_at_the_supplier_works_on_a_draft_order_and_records_metadata(): void
-    {
-        [$owner, $org, $store, $showroom, , $variant, $supplier] = $this->context('4.0000');
-        [$order, $line] = $this->draftWithLine($owner, $org, $store, $variant, $showroom, '10.0000');
-        $p = $this->confirmAvailability($owner, $this->raise($owner, $order, $line, $supplier, '6.0000'));
-
-        // The supplier order is placed while the customer order is still a draft.
-        $p = app(OrderProcurementAction::class)->execute($owner, $p->fresh());
+        $po = $this->placeOrder($owner, $org, $p);
         $this->assertSame('draft', $order->fresh()->status->value);
-
-        $this->assertSame(SupplierProcurementStatus::Ordered, $p->status);
-        $this->assertNotNull($p->ordered_at);
-        $this->assertSame($owner->id, $p->ordered_by_user_id);
+        $this->assertSame(SupplierProcurementStatus::Ordered, $p->fresh()->status);
+        $this->assertNotNull($p->fresh()->ordered_at);
+        $this->assertSame('6.0000', $po->lines()->sole()->quantity);
         $this->assertDatabaseHas('audit_logs', ['event' => 'procurement.ordered', 'auditable_id' => $p->id]);
     }
 
-    // --- 10. earmarked receipt via the immutable ledger --------------
-
-    public function test_receipt_lands_real_stock_and_immediately_earmarks_it_for_the_order(): void
+    public function test_a_requirement_cannot_be_received_without_a_purchase_order_line(): void
     {
-        // Showroom before: on_hand 5, reserved 0, available 5.
+        [$owner, $org, $store, $showroom, , $variant, $supplier] = $this->context('4.0000');
+        [$order, $line] = $this->draftWithLine($owner, $org, $store, $variant, $showroom, '10.0000');
+        $p = $this->raise($owner, $order, $line, $supplier, '6.0000');
+
+        $this->expectException(ValidationException::class);
+        app(ReceiveProcurementAction::class)->execute($owner, $p->fresh(), $showroom, []);
+    }
+
+    // --- confirmation waits for the goods --------------------------------
+
+    public function test_confirmation_is_blocked_until_the_supplier_goods_are_physically_received(): void
+    {
+        [$owner, $org, $store, $showroom, , $variant, $supplier] = $this->context('4.0000');
+        [$order, $line] = $this->draftWithLine($owner, $org, $store, $variant, $showroom, '10.0000');
+        $p = $this->raise($owner, $order, $line, $supplier, '6.0000');
+
+        $this->assertConfirmationBlocked($owner, $order);   // to order
+        $this->placeOrder($owner, $org, $p);
+        $this->assertConfirmationBlocked($owner, $order);   // ordered, not received
+
+        $this->receive($owner, $p->fresh(), $showroom);
+        $confirmed = app(ConfirmSalesOrderAction::class)->execute($owner, $order->fresh());
+        $this->assertSame('confirmed', $confirmed->status->value);
+        $this->assertSame(10.0, (float) $line->fresh()->allocations()->sum('quantity'));
+        $this->assertSame(10.0, (float) InventoryBalance::query()->where('warehouse_id', $showroom->id)->value('reserved'));
+        $this->assertSame(1, SalesOrderLine::query()->where('sales_order_id', $order->id)->where('product_variant_id', $variant->id)->count());
+    }
+
+    public function test_a_requirement_alone_creates_no_stock_reservation_or_movement(): void
+    {
+        [$owner, $org, $store, $showroom, $depot, $variant, $supplier] = $this->context('4.0000');
+        [$order, $line] = $this->draftWithLine($owner, $org, $store, $variant, $showroom, '10.0000');
+        $p = $this->raise($owner, $order, $line, $supplier, '6.0000');
+        $this->placeOrder($owner, $org, $p);
+
+        $this->assertDatabaseMissing('inventory_balances', ['warehouse_id' => $depot->id, 'product_variant_id' => $variant->id]);
+        $this->assertSame(4.0, (float) InventoryBalance::query()->where('warehouse_id', $showroom->id)->value('on_hand'));
+        $this->assertSame(0, InventoryReservation::query()->where('organization_id', $org->id)->where('status', InventoryReservationStatus::Active->value)->count());
+        $this->assertSame(0, InventoryMovement::query()->where('movement_type', InventoryMovementType::SupplierReceipt->value)->count());
+    }
+
+    public function test_an_order_waiting_for_supplier_goods_cannot_be_invoiced_as_a_confirmed_sale(): void
+    {
+        [$owner, $org, $store, $showroom, , $variant, $supplier] = $this->context('4.0000');
+        [$order, $line] = $this->draftWithLine($owner, $org, $store, $variant, $showroom, '10.0000');
+        $this->placeOrder($owner, $org, $this->raise($owner, $order, $line, $supplier, '6.0000'));
+
+        $this->assertConfirmationBlocked($owner, $order);
+        $this->expectException(ValidationException::class);
+        app(CreateFullInvoiceFromSalesOrderAction::class)->execute($owner, $order->fresh());
+    }
+
+    // --- receipt through the purchase order ---------------------------------
+
+    public function test_receipt_lands_real_stock_and_holds_it_for_the_draft_order(): void
+    {
         [$owner, $org, $store, $showroom, , $variant, $supplier] = $this->context('5.0000');
         [$order, $line] = $this->draftWithLine($owner, $org, $store, $variant, $showroom, '8.0000');
-        // 5 company + 3 supplier
-        $p = $this->confirmAvailability($owner, $this->raise($owner, $order, $line, $supplier, '3.0000'));
-        app(ConfirmSalesOrderAction::class)->execute($owner, $order->fresh());
-        $p = app(OrderProcurementAction::class)->execute($owner, $p->fresh());
 
-        app(ReceiveProcurementAction::class)->execute($owner, $p->fresh(), $showroom, []);
+        $p = $this->procureAndReceive($owner, $org, $order, $line, $supplier, '3.0000', $showroom);
 
         $balance = InventoryBalance::query()->where('warehouse_id', $showroom->id)->where('product_variant_id', $variant->id)->first();
         $this->assertSame(8.0, (float) $balance->on_hand, 'on_hand 5 + 3');
-        $this->assertSame(8.0, (float) $balance->reserved, 'reserved 5 + 3 earmarked');
-        $this->assertSame(0.0, (float) $balance->on_hand - (float) $balance->reserved, 'available unchanged at 0 for the procured qty');
-
-        $movement = InventoryMovement::query()->where('movement_type', InventoryMovementType::SupplierReceipt->value)->first();
-        $this->assertNotNull($movement);
+        $this->assertSame(3.0, (float) $balance->reserved, 'the 3 received units are held for the order');
+        $movement = InventoryMovement::query()->where('movement_type', InventoryMovementType::SupplierReceipt->value)->firstOrFail();
         $this->assertSame(3.0, (float) $movement->quantity);
-        $this->assertSame(SalesOrderProcurement::class, $movement->reference_type);
         $this->assertSame(SupplierProcurementStatus::Received, $p->fresh()->status);
         $this->assertDatabaseHas('audit_logs', ['event' => 'procurement.received', 'auditable_id' => $p->id]);
-    }
 
-    // --- 11. immutable ledger not bypassed --------------------------
-
-    public function test_receipt_movement_is_immutable(): void
-    {
-        [$owner, $org, $store, $showroom, , $variant, $supplier] = $this->context('5.0000');
-        [$order, $line] = $this->draftWithLine($owner, $org, $store, $variant, $showroom, '8.0000');
-        $p = $this->confirmAvailability($owner, $this->raise($owner, $order, $line, $supplier, '3.0000'));
-        app(ConfirmSalesOrderAction::class)->execute($owner, $order->fresh());
-        $p = app(OrderProcurementAction::class)->execute($owner, $p->fresh());
-        app(ReceiveProcurementAction::class)->execute($owner, $p->fresh(), $showroom, []);
-
-        $movement = InventoryMovement::query()->where('movement_type', InventoryMovementType::SupplierReceipt->value)->firstOrFail();
         $this->expectException(\LogicException::class);
         $movement->quantity = '99.0000';
         $movement->save();
     }
 
-    // --- 12. receipt into the wrong warehouse triggers a transfer request ---
-
-    public function test_receipt_into_a_warehouse_other_than_the_orders_stock_raises_an_internal_transfer_request(): void
-    {
-        [$owner, $org, $store, $showroom, $depot, $variant, $supplier] = $this->context('4.0000');
-        [$order, $line] = $this->draftWithLine($owner, $org, $store, $variant, $showroom, '10.0000');
-        $p = $this->confirmAvailability($owner, $this->raise($owner, $order, $line, $supplier, '6.0000'));
-        app(ConfirmSalesOrderAction::class)->execute($owner, $order->fresh());
-        $p = app(OrderProcurementAction::class)->execute($owner, $p->fresh());
-
-        // goods physically arrive at the Depot, but the order's company stock sits in the Showroom
-        $p = app(ReceiveProcurementAction::class)->execute($owner, $p->fresh(), $depot, []);
-
-        $this->assertNotNull($p->transfer_request_id);
-        $request = TransferRequest::query()->whereKey($p->transfer_request_id)->firstOrFail();
-        $this->assertSame($depot->id, $request->source_warehouse_id);
-        $this->assertSame($showroom->id, $request->destination_warehouse_id);
-        $this->assertSame($order->id, $request->sales_order_id);
-        $this->assertSame(6.0, (float) $request->lines()->where('reason', 'order_fulfillment')->sum('quantity'));
-        // the earmark sits at the depot until the transfer is received
-        $depotReserved = InventoryBalance::query()->where('warehouse_id', $depot->id)->value('reserved');
-        $this->assertSame(6.0, (float) $depotReserved);
-    }
-
-    // --- 13. same-warehouse receipt creates no transfer request ---------
-
-    public function test_receipt_into_the_orders_own_warehouse_creates_no_transfer_request(): void
+    public function test_receiving_the_same_purchase_order_line_twice_never_double_counts_stock(): void
     {
         [$owner, $org, $store, $showroom, , $variant, $supplier] = $this->context('4.0000');
         [$order, $line] = $this->draftWithLine($owner, $org, $store, $variant, $showroom, '10.0000');
-        $p = $this->confirmAvailability($owner, $this->raise($owner, $order, $line, $supplier, '6.0000'));
-        app(ConfirmSalesOrderAction::class)->execute($owner, $order->fresh());
-        $p = app(OrderProcurementAction::class)->execute($owner, $p->fresh());
+        $p = $this->procureAndReceive($owner, $org, $order, $line, $supplier, '6.0000', $showroom);
 
-        $p = app(ReceiveProcurementAction::class)->execute($owner, $p->fresh(), $showroom, []);
-        $this->assertNull($p->transfer_request_id);
-        $this->assertSame(0, TransferRequest::query()->where('sales_order_id', $order->id)->count());
-    }
-
-    // --- 14. full fulfilment consumes the earmarked reservation -------
-
-    public function test_the_order_can_be_fulfilled_once_every_procurement_is_received(): void
-    {
-        [$owner, $org, $store, $showroom, , $variant, $supplier] = $this->context('4.0000');
-        [$order, $line] = $this->draftWithLine($owner, $org, $store, $variant, $showroom, '10.0000');
-        $p = $this->confirmAvailability($owner, $this->raise($owner, $order, $line, $supplier, '6.0000'));
-        $order = app(ConfirmSalesOrderAction::class)->execute($owner, $order->fresh());
-        $p = app(OrderProcurementAction::class)->execute($owner, $p->fresh());
-
-        // blocked before receipt
         try {
-            app(FulfillSalesOrderAction::class)->execute($owner, $order->fresh());
-            $this->fail('Fulfilment must be blocked while awaiting supplier procurement.');
+            $this->receive($owner, $p->fresh(), $showroom);
+            $this->fail('Nothing is left to receive on that purchase order line.');
         } catch (ValidationException) {
         }
 
-        app(ReceiveProcurementAction::class)->execute($owner, $p->fresh(), $showroom, []);
+        $this->assertSame(10.0, (float) InventoryBalance::query()->where('warehouse_id', $showroom->id)->value('on_hand'));
+        $this->assertSame(1, InventoryMovement::query()->where('movement_type', InventoryMovementType::SupplierReceipt->value)->count());
+    }
+
+    public function test_the_order_is_confirmed_and_fulfilled_once_every_procurement_is_received(): void
+    {
+        [$owner, $org, $store, $showroom, , $variant, $supplier] = $this->context('4.0000');
+        [$order, $line] = $this->draftWithLine($owner, $org, $store, $variant, $showroom, '10.0000');
+        $this->procureAndReceive($owner, $org, $order, $line, $supplier, '6.0000', $showroom);
+
+        $order = app(ConfirmSalesOrderAction::class)->execute($owner, $order->fresh());
         $fulfilled = app(FulfillSalesOrderAction::class)->execute($owner, $order->fresh());
         $this->assertSame('fulfilled', $fulfilled->fulfillment_status->value);
 
@@ -334,7 +309,52 @@ class SupplierProcurementTest extends SalesTestCase
         $this->assertSame(0.0, (float) $balance->reserved);
     }
 
-    // --- 15. procurement quantity equals what the customer needs -----
+    // --- historical (pre-cleanup) confirmed orders stay workable ------------
+
+    public function test_a_historically_confirmed_order_is_ordered_and_received_through_a_purchase_order(): void
+    {
+        [$owner, $org, $store, $showroom, $depot, $variant, $supplier] = $this->context('4.0000');
+        [$order, $p] = $this->legacyConfirmedOrder($owner, $org, $store, $variant, $showroom, $supplier);
+
+        // Fulfilment still waits for the supplier goods.
+        try {
+            app(FulfillSalesOrderAction::class)->execute($owner, $order->fresh());
+            $this->fail('Fulfilment must be blocked while awaiting supplier procurement.');
+        } catch (ValidationException) {
+        }
+
+        $this->placeOrder($owner, $org, $p);
+        // Goods arrive at the depot, the order's stock sits in the showroom → internal transfer.
+        $p = $this->receive($owner, $p->fresh(), $depot);
+        $request = TransferRequest::query()->whereKey($p->transfer_request_id)->firstOrFail();
+        $this->assertSame([$depot->id, $showroom->id, $order->id], [$request->source_warehouse_id, $request->destination_warehouse_id, $request->sales_order_id]);
+        $this->assertSame(6.0, (float) InventoryBalance::query()->where('warehouse_id', $depot->id)->value('reserved'));
+
+        app(PrepareTransferRequestAction::class)->execute($owner, $request->fresh());
+        app(ShipTransferRequestAction::class)->execute($owner, $request->fresh(), []);
+        app(ReceiveTransferRequestAction::class)->execute($owner, $request->fresh());
+        $showroomBalance = InventoryBalance::query()->where('warehouse_id', $showroom->id)->first();
+        $this->assertSame(10.0, (float) $showroomBalance->on_hand, '4 company + 6 procured now all in the showroom');
+        $this->assertSame(10.0, (float) $showroomBalance->reserved, 'all earmarked for the order');
+
+        $fulfilled = app(FulfillSalesOrderAction::class)->execute($owner, $order->fresh());
+        $this->assertSame('fulfilled', $fulfilled->fulfillment_status->value);
+    }
+
+    public function test_a_legacy_requirement_marked_ordered_without_a_purchase_order_is_regularised_on_one(): void
+    {
+        [$owner, $org, $store, $showroom, , $variant, $supplier] = $this->context('4.0000');
+        [$order, $line] = $this->draftWithLine($owner, $org, $store, $variant, $showroom, '10.0000');
+        $p = $this->raise($owner, $order, $line, $supplier, '6.0000');
+        $p->forceFill(['status' => SupplierProcurementStatus::Ordered, 'ordered_at' => now()])->save(); // pre-cleanup data
+
+        $po = $this->placeOrder($owner, $org, $p);
+        $this->assertSame('6.0000', $po->lines()->sole()->quantity);
+        $this->receive($owner, $p->fresh(), $showroom);
+        $this->assertSame(SupplierProcurementStatus::Received, $p->fresh()->status);
+    }
+
+    // --- guards ---------------------------------------------------------------
 
     public function test_procurement_quantity_cannot_exceed_the_sales_line_quantity(): void
     {
@@ -345,90 +365,52 @@ class SupplierProcurementTest extends SalesTestCase
         $this->raise($owner, $order, $line, $supplier, '11.0000');
     }
 
-    // --- 16. cancel before supplier order -> plain cancel ------------
-
-    public function test_a_procurement_not_yet_ordered_is_cancelled_cleanly(): void
+    public function test_a_requirement_not_yet_ordered_is_cancelled_cleanly(): void
     {
         [$owner, $org, $store, $showroom, , $variant, $supplier] = $this->context('4.0000');
         [$order, $line] = $this->draftWithLine($owner, $org, $store, $variant, $showroom, '10.0000');
-        $p = $this->confirmAvailability($owner, $this->raise($owner, $order, $line, $supplier, '6.0000'));
+        $p = $this->raise($owner, $order, $line, $supplier, '6.0000');
 
         $p = app(CancelProcurementAction::class)->execute($owner, $p->fresh(), 'Client a renoncé');
         $this->assertSame(SupplierProcurementStatus::Cancelled, $p->status);
         $this->assertDatabaseHas('audit_logs', ['event' => 'procurement.cancelled', 'auditable_id' => $p->id]);
     }
 
-    // --- 17. cancel after supplier order -> needs explicit decision --
-
-    public function test_cancelling_an_ordered_procurement_requires_explicit_acknowledgement(): void
+    public function test_cancelling_a_requirement_on_an_active_purchase_order_is_refused(): void
     {
         [$owner, $org, $store, $showroom, , $variant, $supplier] = $this->context('4.0000');
         [$order, $line] = $this->draftWithLine($owner, $org, $store, $variant, $showroom, '10.0000');
-        $p = $this->confirmAvailability($owner, $this->raise($owner, $order, $line, $supplier, '6.0000'));
-        app(ConfirmSalesOrderAction::class)->execute($owner, $order->fresh());
-        $p = app(OrderProcurementAction::class)->execute($owner, $p->fresh());
-
-        try {
-            app(CancelProcurementAction::class)->execute($owner, $p->fresh(), 'oops');
-            $this->fail('Expected a blocked cancel for an already-ordered procurement.');
-        } catch (ValidationException) {
-        }
-
-        $p = app(CancelProcurementAction::class)->execute($owner, $p->fresh(), 'Fournisseur en rupture', acknowledgeOrdered: true);
-        $this->assertSame(SupplierProcurementStatus::Cancelled, $p->status);
-    }
-
-    // --- 18. cancelling the sales order blocks on an ordered procurement --
-
-    public function test_cancelling_the_sales_order_is_blocked_by_an_ordered_procurement(): void
-    {
-        [$owner, $org, $store, $showroom, , $variant, $supplier] = $this->context('4.0000');
-        [$order, $line] = $this->draftWithLine($owner, $org, $store, $variant, $showroom, '10.0000');
-        $p = $this->confirmAvailability($owner, $this->raise($owner, $order, $line, $supplier, '6.0000'));
-        $order = app(ConfirmSalesOrderAction::class)->execute($owner, $order->fresh());
-        app(OrderProcurementAction::class)->execute($owner, $p->fresh());
+        $p = $this->raise($owner, $order, $line, $supplier, '6.0000');
+        $this->placeOrder($owner, $org, $p);
 
         $this->expectException(ValidationException::class);
-        app(CancelSalesOrderAction::class)->execute($owner, $order->fresh(), 'Annulation client');
+        app(CancelProcurementAction::class)->execute($owner, $p->fresh(), 'Fournisseur en rupture', acknowledgeOrdered: true);
     }
 
-    // --- 19. cancelling the sales order cancels not-yet-ordered procurements --
-
-    public function test_cancelling_the_sales_order_cancels_pending_procurements_and_releases_company_stock(): void
+    public function test_cancelling_the_draft_order_cancels_requirements_not_yet_ordered(): void
     {
         [$owner, $org, $store, $showroom, , $variant, $supplier] = $this->context('4.0000');
         [$order, $line] = $this->draftWithLine($owner, $org, $store, $variant, $showroom, '10.0000');
-        $p = $this->confirmAvailability($owner, $this->raise($owner, $order, $line, $supplier, '6.0000'));
-        $order = app(ConfirmSalesOrderAction::class)->execute($owner, $order->fresh());
+        $p = $this->raise($owner, $order, $line, $supplier, '6.0000');
 
         app(CancelSalesOrderAction::class)->execute($owner, $order->fresh(), 'Annulation client');
 
         $this->assertSame(SupplierProcurementStatus::Cancelled, $p->fresh()->status);
-        $reserved = InventoryBalance::query()->where('warehouse_id', $showroom->id)->value('reserved');
-        $this->assertSame(0.0, (float) $reserved, 'company reservation released');
+        $this->assertSame(0.0, (float) InventoryBalance::query()->where('warehouse_id', $showroom->id)->value('reserved'));
     }
 
-    // --- 20. received supplier stock survives order cancellation -----
-
-    public function test_received_supplier_stock_becomes_available_when_the_order_is_cancelled(): void
+    public function test_received_supplier_stock_becomes_free_when_the_draft_order_is_cancelled(): void
     {
         [$owner, $org, $store, $showroom, , $variant, $supplier] = $this->context('4.0000');
         [$order, $line] = $this->draftWithLine($owner, $org, $store, $variant, $showroom, '10.0000');
-        $p = $this->confirmAvailability($owner, $this->raise($owner, $order, $line, $supplier, '6.0000'));
-        $order = app(ConfirmSalesOrderAction::class)->execute($owner, $order->fresh());
-        $p = app(OrderProcurementAction::class)->execute($owner, $p->fresh());
-        app(ReceiveProcurementAction::class)->execute($owner, $p->fresh(), $showroom, []);
+        $this->procureAndReceive($owner, $org, $order, $line, $supplier, '6.0000', $showroom);
 
-        // on_hand is now 10 (4 + 6), all reserved
         app(CancelSalesOrderAction::class)->execute($owner, $order->fresh(), 'Annulation client');
 
         $balance = InventoryBalance::query()->where('warehouse_id', $showroom->id)->first();
         $this->assertSame(10.0, (float) $balance->on_hand, 'physical stock is retained — never destroyed');
         $this->assertSame(0.0, (float) $balance->reserved, 'the order earmark is released');
-        $this->assertDatabaseHas('audit_logs', ['event' => 'procurement.order_cancelled_stock_retained', 'auditable_id' => $p->id]);
     }
-
-    // --- 21. tenant isolation --------------------------------------
 
     public function test_a_procurement_cannot_reference_a_supplier_from_another_organization(): void
     {
@@ -443,72 +425,20 @@ class SupplierProcurementTest extends SalesTestCase
         $this->raise($owner, $order, $line, $foreignSupplier, '6.0000');
     }
 
-    // --- 22. change supplier before ordering -----------------------
-
-    public function test_the_supplier_can_be_replaced_while_the_procurement_is_not_yet_ordered(): void
+    public function test_the_supplier_can_be_replaced_while_the_requirement_is_not_yet_ordered(): void
     {
         [$owner, $org, $store, $showroom, , $variant, $supplier] = $this->context('4.0000');
         [$order, $line] = $this->draftWithLine($owner, $org, $store, $variant, $showroom, '10.0000');
-        $p = $this->confirmAvailability($owner, $this->raise($owner, $order, $line, $supplier, '6.0000'));
+        $p = $this->raise($owner, $order, $line, $supplier, '6.0000');
         $other = $this->makeSupplier($org, 'Rabat Meubles');
 
         $p = app(ChangeProcurementSupplierAction::class)->execute($owner, $p->fresh(), $other);
 
         $this->assertSame($other->id, $p->supplier_id);
-        $this->assertSame(SupplierProcurementStatus::PendingSupplier, $p->status);
-        $this->assertSame(SupplierAvailabilityStatus::PendingConfirmation, $p->supplier_availability_status);
+        $this->assertTrue($p->fresh()->status->isEditable());
     }
 
-    // --- 23. idempotent receipt (double click) --------------------
-
-    public function test_confirming_the_receipt_twice_does_not_double_count_stock(): void
-    {
-        [$owner, $org, $store, $showroom, , $variant, $supplier] = $this->context('4.0000');
-        [$order, $line] = $this->draftWithLine($owner, $org, $store, $variant, $showroom, '10.0000');
-        $p = $this->confirmAvailability($owner, $this->raise($owner, $order, $line, $supplier, '6.0000'));
-        app(ConfirmSalesOrderAction::class)->execute($owner, $order->fresh());
-        $p = app(OrderProcurementAction::class)->execute($owner, $p->fresh());
-
-        app(ReceiveProcurementAction::class)->execute($owner, $p->fresh(), $showroom, []);
-        app(ReceiveProcurementAction::class)->execute($owner, $p->fresh(), $showroom, []); // repeat
-
-        $balance = InventoryBalance::query()->where('warehouse_id', $showroom->id)->first();
-        $this->assertSame(10.0, (float) $balance->on_hand);
-        $this->assertSame(1, InventoryMovement::query()->where('movement_type', InventoryMovementType::SupplierReceipt->value)->count());
-    }
-
-    // --- 24. transfer receipt hands the earmark to the showroom -------
-
-    public function test_receiving_the_generated_transfer_request_moves_the_earmark_to_the_showroom(): void
-    {
-        [$owner, $org, $store, $showroom, $depot, $variant, $supplier] = $this->context('4.0000');
-        [$order, $line] = $this->draftWithLine($owner, $org, $store, $variant, $showroom, '10.0000');
-        $p = $this->confirmAvailability($owner, $this->raise($owner, $order, $line, $supplier, '6.0000'));
-        app(ConfirmSalesOrderAction::class)->execute($owner, $order->fresh());
-        $p = app(OrderProcurementAction::class)->execute($owner, $p->fresh());
-        $p = app(ReceiveProcurementAction::class)->execute($owner, $p->fresh(), $depot, []);
-
-        $request = TransferRequest::query()->whereKey($p->transfer_request_id)->firstOrFail();
-        app(PrepareTransferRequestAction::class)->execute($owner, $request->fresh());
-        app(ShipTransferRequestAction::class)->execute($owner, $request->fresh(), []);
-        app(ReceiveTransferRequestAction::class)->execute($owner, $request->fresh());
-
-        $depotBalance = InventoryBalance::query()->where('warehouse_id', $depot->id)->first();
-        $showroomBalance = InventoryBalance::query()->where('warehouse_id', $showroom->id)->first();
-        $this->assertSame(0.0, (float) $depotBalance->on_hand);
-        $this->assertSame(10.0, (float) $showroomBalance->on_hand, '4 company + 6 procured now all in the showroom');
-        $this->assertSame(10.0, (float) $showroomBalance->reserved, 'all earmarked for the order');
-    }
-
-    // --- 25. POS sales are out of scope for procurement -------------
-
-    /**
-     * A POS-sourced order may raise a supplier procurement too — see the
-     * "POS + Supplier Procurement" integration (tests/Feature/Procurement/PosSupplierProcurementTest.php)
-     * for the full POS-side coverage. Both surfaces operate on the same
-     * SalesOrderProcurement rows.
-     */
-    public function test_a_pos_sourced_order_can_also_raise_a_supplier_procurement(): void
+    public function test_a_pos_sourced_order_can_also_raise_a_requirement(): void
     {
         [$owner, $org, $store, $showroom, , $variant, $supplier] = $this->context('4.0000');
         $order = $this->createDraftOrder($owner, $org, $store, null);
@@ -521,5 +451,15 @@ class SupplierProcurementTest extends SalesTestCase
 
         $this->assertSame('6.0000', $procurement->quantity);
         $this->assertSame($order->id, $procurement->sales_order_id);
+    }
+
+    private function assertConfirmationBlocked(User $owner, SalesOrder $order): void
+    {
+        try {
+            app(ConfirmSalesOrderAction::class)->execute($owner, $order->fresh());
+            $this->fail('The order must wait for the supplier goods.');
+        } catch (ValidationException) {
+        }
+        $this->assertSame('draft', $order->fresh()->status->value);
     }
 }

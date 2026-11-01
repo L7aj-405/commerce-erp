@@ -40,6 +40,7 @@ use App\Services\ActiveTenantContext;
 use App\Services\AuditLogger;
 use App\Services\CustomerManager;
 use App\Services\Pos\PosCartSourcing;
+use App\Services\Pos\PosLocations;
 use App\Services\Procurement\SupplierCatalogQuery;
 use App\Services\Procurement\SupplierOptionsQuery;
 use App\Services\Procurement\SupplierRecommendationService;
@@ -50,7 +51,9 @@ use App\Support\Decimal;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cookie;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
@@ -58,6 +61,13 @@ use Inertia\Response;
 
 class PosController extends Controller
 {
+    /**
+     * Encrypted cookie identifying this POS terminal (browser/device). Each
+     * terminal of a Store has its own active cart. It only selects among carts
+     * of the active organisation + Store — never a source of tenancy.
+     */
+    public const TERMINAL_COOKIE = 'pos_terminal';
+
     public function index(
         Request $request,
         ActiveTenantContext $context,
@@ -68,22 +78,29 @@ class PosController extends Controller
         $this->authorizePosAccess($request, $organization);
         $store = $context->store();
 
+        // The terminal identity lives in a long-lived encrypted cookie; a browser
+        // opening the POS for the first time gets one (used from its next call).
+        $terminal = $this->terminalId($request);
+        if ($terminal === null) {
+            Cookie::queue(Cookie::make(self::TERMINAL_COOKIE, (string) Str::uuid(), 60 * 24 * 365 * 5));
+        }
+
+        $locations = app(PosLocations::class);
         $warehouses = $store
-            ? Warehouse::query()
-                ->where('organization_id', $organization->getKey())
-                ->where('status', WarehouseStatus::Active->value)
-                ->orderBy('name')
-                ->get(['id', 'name', 'code'])
+            ? $locations->eligible($organization, $store)->map(fn (Warehouse $w) => [
+                'id' => $w->id, 'name' => $w->name, 'code' => $w->code, 'kind' => PosLocations::kind($w),
+            ])->values()
             : collect();
 
-        $memberDefaultWarehouseId = $this->memberDefaultWarehouseId($request->user(), $organization, $warehouses->pluck('id')->all());
+        // Member's own default (shown as "(défaut)") and the resolved default:
+        // Store default location → member default → first eligible location.
+        $memberDefaultWarehouseId = $store ? $locations->memberDefaultId($organization, $store, $request->user()) : null;
+        $storeDefaultWarehouseId = $store?->default_warehouse_id && $warehouses->contains('id', (int) $store->default_warehouse_id)
+            ? (int) $store->default_warehouse_id : null;
 
-        $activeSaleModel = $store ? $this->activeDraftQuery($organization, $store)
-            ->with($this->draftRelations())
-            ->latest('updated_at')
-            ->first() : null;
+        $activeSaleModel = $store ? $this->activeDraft($organization, $store, $terminal) : null;
 
-        $initialWarehouseId = $memberDefaultWarehouseId ?? $warehouses->first()?->id;
+        $initialWarehouseId = $store ? $locations->defaultId($organization, $store, $request->user()) : null;
         if (
             $activeSaleModel
             && $initialWarehouseId
@@ -126,6 +143,7 @@ class PosController extends Controller
             // reinitialized to the member default, then the legacy fallback.
             'defaultWarehouseId' => $activeSaleModel?->pos_warehouse_id ?? $initialWarehouseId,
             'memberDefaultWarehouseId' => $memberDefaultWarehouseId,
+            'storeDefaultWarehouseId' => $storeDefaultWarehouseId,
             'activeSale' => $activeSaleModel ? $this->draftPayload($activeSaleModel, $posSummary) : null,
             'heldSales' => $heldSaleModels->map(fn (SalesOrder $order) => $this->heldSalePayload($order))->values(),
             'completedOrder' => $completedOrderModel ? $this->completedOrder($completedOrderModel, $paymentCalculator, $request->session()->get('pos.completed_tenders', [])) : null,
@@ -394,8 +412,9 @@ class PosController extends Controller
             'customer_id' => ['nullable', 'integer'],
         ]);
 
-        $warehouse = $this->warehouse($organization, (int) $data['warehouse_id']);
-        $active = $this->activeDraftQuery($organization, $store)->with($this->draftRelations())->latest('updated_at')->first();
+        $warehouse = app(PosLocations::class)->assertEligible($organization, $store, (int) $data['warehouse_id']);
+        $terminal = $this->terminalId($request);
+        $active = $this->activeDraft($organization, $store, $terminal);
 
         if (! $active) {
             $active = $createOrder->execute($request->user(), $organization, $store, [
@@ -405,6 +424,7 @@ class PosController extends Controller
                 'notes' => null,
             ], SalesOrderSource::Pos);
             $active->pos_warehouse_id = $warehouse->getKey();
+            $active->pos_terminal_id = $terminal;
             $active->pos_global_discount_type = SalesOrderDiscountType::None->value;
             $active->pos_global_discount_value = '0.0000';
             $active->pos_fulfillment_mode = 'pickup';
@@ -445,7 +465,7 @@ class PosController extends Controller
         }
 
         if (array_key_exists('warehouse_id', $data) && $data['warehouse_id'] !== null) {
-            $warehouse = $this->warehouse($organization, (int) $data['warehouse_id']);
+            $warehouse = app(PosLocations::class)->assertEligible($organization, $store, (int) $data['warehouse_id']);
             $order = $order->fresh(['lines.allocations']);
             abort_if($order->lines->isNotEmpty(), 409, 'Changez l’entrepôt uniquement avant d’ajouter des articles.');
             $order->pos_warehouse_id = $warehouse->getKey();
@@ -496,13 +516,20 @@ class PosController extends Controller
         $data = $this->validateDraftLine($request);
 
         if ($data['line_type'] === 'catalog') {
-            $warehouse = $this->draftWarehouseOrFail($organization, $order, $data['warehouse_id'] ?? null);
             $variant = $this->catalogVariantForPos($organization, (int) $data['product_variant_id']);
-            $line = $this->findIncrementableCatalogLine($order, $variant->getKey());
-            $quantity = $line ? Decimal::add($line->quantity, $data['quantity']) : $data['quantity'];
-            $this->assertCatalogAvailability($organization, $warehouse, $variant);
-            $payload = array_replace($data, ['warehouse_id' => $warehouse->getKey(), 'quantity' => $quantity]);
-            $saveLine->execute($request->user(), $order, $payload, $line);
+            // Find-or-increment under the cart row lock: two sessions adding the
+            // same article at the same time serialize here and end up as ONE
+            // line with the summed quantity, never two lines.
+            DB::transaction(function () use ($request, $organization, $order, $variant, $data, $saveLine) {
+                $cart = SalesOrder::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
+                $this->ensurePosDraft($cart);
+                $warehouse = $this->draftWarehouseOrFail($organization, $cart, $this->lineWarehouseId($cart, $data));
+                $this->assertCatalogAvailability($organization, $warehouse, $variant);
+                $line = $this->findIncrementableCatalogLine($cart, $variant, $data);
+                $quantity = $line ? Decimal::add($line->quantity, $data['quantity']) : $data['quantity'];
+                $payload = array_replace($data, ['warehouse_id' => $warehouse->getKey(), 'quantity' => $quantity]);
+                $saveLine->execute($request->user(), $cart, $payload, $line);
+            });
         } else {
             $saveLine->execute($request->user(), $order, $data);
         }
@@ -519,7 +546,7 @@ class PosController extends Controller
         $data = $this->validateDraftLine($request);
 
         if ($data['line_type'] === 'catalog') {
-            $warehouse = $this->draftWarehouseOrFail($organization, $order, $data['warehouse_id'] ?? $order->pos_warehouse_id);
+            $warehouse = $this->draftWarehouseOrFail($organization, $order, $this->lineWarehouseId($order, $data));
             $variant = $this->catalogVariantForPos($organization, (int) $data['product_variant_id']);
             $this->assertCatalogAvailability($organization, $warehouse, $variant);
             $data['warehouse_id'] = $warehouse->getKey();
@@ -560,7 +587,8 @@ class PosController extends Controller
 
         $active = null;
         if (($data['start_new_sale'] ?? false) === true) {
-            $warehouse = $this->warehouse($organization, (int) ($data['warehouse_id'] ?? $this->defaultWarehouseId($request->user(), $organization)));
+            $locations = app(PosLocations::class);
+            $warehouse = $locations->assertEligible($organization, $store, (int) ($data['warehouse_id'] ?? $locations->defaultId($organization, $store, $request->user())));
             $active = $createOrder->execute($request->user(), $organization, $store, [
                 'customer_id' => null,
                 'sale_date' => now()->toDateString(),
@@ -568,6 +596,7 @@ class PosController extends Controller
                 'notes' => null,
             ], SalesOrderSource::Pos);
             $active->pos_warehouse_id = $warehouse->getKey();
+            $active->pos_terminal_id = $this->terminalId($request);
             $active->pos_global_discount_type = SalesOrderDiscountType::None->value;
             $active->pos_global_discount_value = '0.0000';
             $active->pos_fulfillment_mode = 'pickup';
@@ -585,7 +614,8 @@ class PosController extends Controller
         $this->authorize('update', $order);
         $this->ensurePosDraft($order);
 
-        $current = $this->activeDraftQuery($organization, $store)->where('id', '!=', $order->getKey())->first();
+        $terminal = $this->terminalId($request);
+        $current = $this->activeDraftQuery($organization, $store, $terminal)->where('id', '!=', $order->getKey())->first();
         if ($current) {
             $current->pos_held_at = now();
             $current->save();
@@ -596,6 +626,8 @@ class PosController extends Controller
         }
 
         $order->pos_held_at = null;
+        // Resuming makes it THIS terminal's active cart.
+        $order->pos_terminal_id = $terminal;
         $order->touch();
         $order->save();
         $audit->record('sales_order.pos_resumed', $request->user(), $organization, $store, $order, newValues: [
@@ -613,7 +645,7 @@ class PosController extends Controller
         $this->ensurePosDraft($order);
         $cancelOrder->execute($request->user(), $order, 'POS hold discarded');
 
-        return $this->draftStateResponse($organization, $store, $this->activeDraftQuery($organization, $store)->with($this->draftRelations())->latest('updated_at')->first(), $posSummary);
+        return $this->draftStateResponse($organization, $store, $this->activeDraft($organization, $store, $this->terminalId($request)), $posSummary);
     }
 
     public function complete(CompletePosSaleRequest $request, ActiveTenantContext $context, CreatePosSaleAction $action): RedirectResponse|JsonResponse
@@ -837,15 +869,46 @@ class PosController extends Controller
         return $data;
     }
 
-    private function findIncrementableCatalogLine(SalesOrder $order, int $variantId): ?SalesOrderLine
+    /**
+     * The cart's own inventory anchor wins over the requesting session's
+     * selector: a cart has ONE operational location, whatever terminal adds the
+     * article. The request's warehouse only seeds a cart that has none yet.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private function lineWarehouseId(SalesOrder $cart, array $data): mixed
     {
-        return $order->lines()
+        return $cart->pos_warehouse_id ?: ($data['warehouse_id'] ?? null);
+    }
+
+    /**
+     * The existing line an added article joins: same catalogue variant and the
+     * same commercial conditions — the unit price and tax that this add would
+     * get, no line discount. The supplying warehouse is NOT part of a line's
+     * identity: where the units come from is the line's inventory allocation,
+     * never a reason for a second customer-facing line.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private function findIncrementableCatalogLine(SalesOrder $cart, ProductVariant $variant, array $data): ?SalesOrderLine
+    {
+        if (($data['discount_type'] ?? 'none') !== 'none' || Decimal::compare((string) ($data['discount_value'] ?? '0'), '0') !== 0) {
+            return null;
+        }
+        $price = app(ProductPriceResolver::class)->resolve($variant, $cart->store);
+        $unitPrice = Decimal::normalize((string) ($data['unit_price_excl_tax'] ?? $price['unit_price_ht'] ?? '0'));
+
+        return $cart->lines()
             ->where('line_type', 'catalog')
-            ->where('product_variant_id', $variantId)
+            ->where('product_variant_id', $variant->getKey())
             ->where('discount_type', 'none')
             ->where('discount_value', '0.0000')
-            ->whereHas('allocations', fn ($query) => $query->where('warehouse_id', $order->pos_warehouse_id))
-            ->first();
+            ->orderBy('position')->orderBy('id')
+            ->lockForUpdate()
+            ->get()
+            ->first(fn (SalesOrderLine $line) => Decimal::compare((string) $line->unit_price_excl_tax, $unitPrice) === 0
+                && (bool) $line->tax_unresolved === (bool) $price['config_missing']
+                && ($price['config_missing'] || Decimal::compare((string) $line->tax_rate, (string) ($price['tax_rate_value'] ?? '0')) === 0));
     }
 
     /**
@@ -879,18 +942,6 @@ class PosController extends Controller
         }
     }
 
-    private function defaultWarehouseId(User $user, Organization $organization): int
-    {
-        $activeWarehouseIds = Warehouse::query()
-            ->where('organization_id', $organization->getKey())
-            ->where('status', WarehouseStatus::Active->value)
-            ->orderBy('name')
-            ->pluck('id')
-            ->all();
-
-        return (int) ($this->memberDefaultWarehouseId($user, $organization, $activeWarehouseIds) ?? $activeWarehouseIds[0] ?? 0);
-    }
-
     private function initializeEmptyDraftWarehouse(SalesOrder $draft, int $warehouseId): SalesOrder
     {
         if ((int) $draft->pos_warehouse_id === $warehouseId || $draft->lines->isNotEmpty()) {
@@ -920,26 +971,11 @@ class PosController extends Controller
     }
 
     /**
-     * The member's configured POS default warehouse, or null when unset or no
-     * longer usable (inactive, removed, or not in this organization). Only a
-     * pre-selection: it never restricts nor grants warehouse access.
-     *
-     * @param  list<int>  $activeWarehouseIds  active warehouses of $organization
+     * The active (not held) carts of ONE terminal of this Store. A request
+     * without a terminal cookie (first page load, API clients) sees the legacy
+     * carts that belong to no terminal.
      */
-    private function memberDefaultWarehouseId(User $user, Organization $organization, array $activeWarehouseIds): ?int
-    {
-        $warehouseId = OrganizationMembership::query()
-            ->where('organization_id', $organization->getKey())
-            ->where('user_id', $user->getKey())
-            ->where('status', 'active')
-            ->value('default_warehouse_id');
-
-        return $warehouseId !== null && in_array((int) $warehouseId, array_map('intval', $activeWarehouseIds), true)
-            ? (int) $warehouseId
-            : null;
-    }
-
-    private function activeDraftQuery(Organization $organization, Store $store)
+    private function activeDraftQuery(Organization $organization, Store $store, ?string $terminal)
     {
         return SalesOrder::query()
             ->where('organization_id', $organization->getKey())
@@ -947,7 +983,40 @@ class PosController extends Controller
             ->where('source', SalesOrderSource::Pos->value)
             ->where('status', SalesOrderStatus::Draft->value)
             ->whereNull('pos_converted_at')
-            ->whereNull('pos_held_at');
+            ->whereNull('pos_held_at')
+            ->when($terminal, fn ($q, string $id) => $q->where('pos_terminal_id', $id), fn ($q) => $q->whereNull('pos_terminal_id'));
+    }
+
+    /**
+     * This terminal's active cart. A terminal without one adopts — once, under
+     * a row lock — the most recent active cart left over from before terminals
+     * existed, so no existing cart is lost; it never takes another terminal's.
+     */
+    private function activeDraft(Organization $organization, Store $store, ?string $terminal): ?SalesOrder
+    {
+        $own = $this->activeDraftQuery($organization, $store, $terminal)->with($this->draftRelations())->latest('updated_at')->first();
+        if ($own || $terminal === null) {
+            return $own;
+        }
+
+        return DB::transaction(function () use ($organization, $store, $terminal) {
+            $legacy = $this->activeDraftQuery($organization, $store, null)->latest('updated_at')->lockForUpdate()->first();
+            if (! $legacy) {
+                return null;
+            }
+            $legacy->pos_terminal_id = $terminal;
+            $legacy->save();
+
+            return $legacy->load($this->draftRelations());
+        });
+    }
+
+    /** The terminal UUID from the encrypted cookie, or null when absent / malformed. */
+    private function terminalId(Request $request): ?string
+    {
+        $value = $request->cookie(self::TERMINAL_COOKIE);
+
+        return is_string($value) && Str::isUuid($value) ? strtolower($value) : null;
     }
 
     private function heldDraftQuery(Organization $organization, Store $store)
@@ -1011,8 +1080,9 @@ class PosController extends Controller
         $orderDemand = $order->lines->whereNotNull('product_variant_id')->groupBy('product_variant_id')->map(
             fn ($lines) => $lines->reduce(fn (string $total, SalesOrderLine $line) => Decimal::add($total, $line->quantity), '0.0000'),
         );
+        $stockSources = $this->stockSources($order, $balances);
 
-        $lines = $order->lines->map(function (SalesOrderLine $line) use (&$warnings, $balances, $organizationAvailability, $orderDemand, $order, $sourcing) {
+        $lines = $order->lines->map(function (SalesOrderLine $line) use (&$warnings, $balances, $organizationAvailability, $orderDemand, $order, $sourcing, $stockSources) {
             $isCatalog = $line->line_type->value === 'catalog';
             $localBalance = $line->product_variant_id && $order->pos_warehouse_id
                 ? $balances->get($line->product_variant_id.':'.$order->pos_warehouse_id)
@@ -1088,6 +1158,9 @@ class PosController extends Controller
                     'procurement_confirmed_qty' => $procConfirmed,
                     'needs_procurement' => $needsProcurement,
                     'sourcing' => $sourcing['lines'][$line->getKey()] ?? null,
+                    // Where this line's units come from NOW: here (the cart's
+                    // location), elsewhere in the organisation, or missing.
+                    'stock_source' => $stockSources[$line->getKey()] ?? null,
                     'procurement' => $procRow ? [
                         'id' => $procRow->id,
                         'procurement_number' => $procRow->procurement_number,
@@ -1140,6 +1213,63 @@ class PosController extends Controller
                 'total' => $summary['total'],
             ],
         ];
+    }
+
+    /**
+     * Per catalogue line, from the CURRENT free stock (on hand − reserved) and in
+     * line order — so two lines of one article never both claim the same unit:
+     * how much the cart's own location covers, how much another active location
+     * of the organisation covers, and what is missing (→ À sourcer). A confirmed
+     * legacy special-order quantity is neither stock nor missing.
+     *
+     * @param  \Illuminate\Support\Collection<string, InventoryBalance>  $balances  keyed "variant:warehouse"
+     * @return array<int, array{location: ?array<string, mixed>, here: string, elsewhere: string, missing: string}>
+     */
+    private function stockSources(SalesOrder $order, \Illuminate\Support\Collection $balances): array
+    {
+        $here = [];
+        $elsewhere = [];
+        foreach ($balances as $balance) {
+            $available = Decimal::compare($balance->available, '0') > 0 ? Decimal::normalize($balance->available) : '0.0000';
+            $variantId = (int) $balance->product_variant_id;
+            if ((int) $balance->warehouse_id === (int) $order->pos_warehouse_id) {
+                $here[$variantId] = Decimal::add($here[$variantId] ?? '0.0000', $available);
+            } else {
+                $elsewhere[$variantId] = Decimal::add($elsewhere[$variantId] ?? '0.0000', $available);
+            }
+        }
+
+        $take = function (array &$pool, int $variantId, string $need): string {
+            $free = $pool[$variantId] ?? '0.0000';
+            $taken = Decimal::compare($free, $need) >= 0 ? $need : $free;
+            $pool[$variantId] = Decimal::subtract($free, $taken);
+
+            return $taken;
+        };
+
+        $result = [];
+        foreach ($order->lines->sortBy(fn (SalesOrderLine $line) => sprintf('%010d-%010d', $line->position, $line->id)) as $line) {
+            if ($line->line_type->value !== 'catalog' || ! $line->product_variant_id) {
+                continue;
+            }
+            $legacy = $line->procurements
+                ->filter(fn ($p) => $p->status->coversSalesLine())
+                ->reduce(fn (string $sum, $p) => Decimal::add($sum, (string) $p->quantity), '0.0000');
+            $need = Decimal::subtract((string) $line->quantity, $legacy);
+            $need = Decimal::compare($need, '0') > 0 ? $need : '0.0000';
+            $variantId = (int) $line->product_variant_id;
+            $fromHere = $take($here, $variantId, $need);
+            $fromElsewhere = $take($elsewhere, $variantId, Decimal::subtract($need, $fromHere));
+
+            $result[$line->getKey()] = [
+                'location' => $order->posWarehouse?->only(['id', 'name', 'code']),
+                'here' => $fromHere,
+                'elsewhere' => $fromElsewhere,
+                'missing' => Decimal::subtract(Decimal::subtract($need, $fromHere), $fromElsewhere),
+            ];
+        }
+
+        return $result;
     }
 
     /** @return array<string, mixed> */

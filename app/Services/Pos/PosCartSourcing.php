@@ -89,15 +89,20 @@ final class PosCartSourcing
 
         $shortageLines = array_filter($evaluation, fn (array $line) => $line['requires_sourcing']);
         $unresolved = array_filter($shortageLines, fn (array $line) => ! $line['resolved']);
+        // Lines already backed by a procurement requirement: supplier goods are
+        // needed, so the cart can only continue as a Sales Order Draft.
+        $requirementLines = array_filter($legacyCovered, fn (string $quantity) => Decimal::compare($quantity, '0') > 0);
 
         return [
             'lines' => $evaluation,
             'summary' => [
                 'shortage_line_count' => count($shortageLines),
                 'unresolved_line_count' => count($unresolved),
-                // Every shortage covered by stock or full supplier confirmation:
-                // the cart may become a Sales Order Draft (not a confirmed sale).
-                'can_convert' => $shortageLines !== [] && $unresolved === [],
+                'requirement_line_count' => count($requirementLines),
+                // Every shortage covered by stock, full supplier confirmation or an
+                // existing requirement: the cart may become a Sales Order Draft
+                // (never a confirmed sale on a supplier promise).
+                'can_convert' => ($shortageLines !== [] || $requirementLines !== []) && $unresolved === [],
             ],
         ];
     }

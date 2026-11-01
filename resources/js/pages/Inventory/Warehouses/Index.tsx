@@ -56,20 +56,96 @@ type Warehouse = {
     code: string;
     description: string | null;
     status: 'active' | 'inactive';
+    /** The Store this location belongs to; null = storage-only depot. */
+    store_id: number | null;
+    allow_direct_sales: boolean;
     product_count: number;
     unit_count: string;
     replenishment: { auto_replenish: boolean; default_minimum_quantity: string };
 };
+type StoreOption = { id: number; name: string; code: string; status: string; default_warehouse_id: number | null };
 type Props = {
     warehouses: Warehouse[];
+    stores: StoreOption[];
     can: { create: boolean; update: boolean; replenishment: boolean };
 };
+
+/** Name, code, Store association and the depot-only direct-sales exception. */
+function LocationForm({ warehouse, stores }: { warehouse: Warehouse; stores: StoreOption[] }) {
+    const { t } = useI18n();
+    const form = useForm({
+        name: warehouse.name,
+        code: warehouse.code,
+        description: warehouse.description ?? '',
+        status: warehouse.status,
+        store_id: warehouse.store_id,
+        allow_direct_sales: warehouse.allow_direct_sales,
+    });
+
+    return (
+        <details className="mt-4 rounded-field border border-line bg-raised p-4 text-sm">
+            <summary className="cursor-pointer select-none font-medium text-ink">{t('inventory.warehouses.edit')}</summary>
+            <form
+                onSubmit={(e) => {
+                    e.preventDefault();
+                    form.patch(`/inventory/warehouses/${warehouse.id}`, { preserveScroll: true });
+                }}
+                className="mt-3 grid gap-3"
+            >
+                <label className="text-[13px] font-medium text-ink">
+                    {t('inventory.warehouses.name')}
+                    <input value={form.data.name} onChange={(e) => form.setData('name', e.target.value)} className="control-input mt-1 w-full" />
+                    {form.errors.name && <span className="mt-1 block text-[13px] text-danger">{form.errors.name}</span>}
+                </label>
+                <label className="text-[13px] font-medium text-ink">
+                    {t('inventory.warehouses.code')}
+                    <input value={form.data.code} onChange={(e) => form.setData('code', e.target.value.toUpperCase())} className="control-input mt-1 w-full" />
+                    {form.errors.code && <span className="mt-1 block text-[13px] text-danger">{form.errors.code}</span>}
+                </label>
+                <label className="text-[13px] font-medium text-ink">
+                    {t('inventory.warehouses.store')}
+                    <select
+                        value={form.data.store_id ?? ''}
+                        onChange={(e) => form.setData('store_id', e.target.value ? Number(e.target.value) : null)}
+                        className="control-input mt-1 w-full"
+                    >
+                        <option value="">{t('inventory.warehouses.storageOnly')}</option>
+                        {stores.map((store) => (
+                            <option key={store.id} value={store.id}>{store.name} · {store.code}</option>
+                        ))}
+                    </select>
+                    {form.errors.store_id && <span className="mt-1 block text-[13px] text-danger">{form.errors.store_id}</span>}
+                </label>
+                {form.data.store_id === null && (
+                    <label className="flex items-start gap-2 text-[13px] text-ink">
+                        <input
+                            type="checkbox"
+                            checked={form.data.allow_direct_sales}
+                            onChange={(e) => form.setData('allow_direct_sales', e.target.checked)}
+                            className="mt-0.5 size-4 rounded border-line-strong text-primary focus:ring-primary"
+                        />
+                        <span>
+                            {t('inventory.warehouses.allowDirectSales')}
+                            <span className="block text-[12px] text-ink-faint">{t('inventory.warehouses.allowDirectSalesHelp')}</span>
+                        </span>
+                    </label>
+                )}
+                <div>
+                    <Button type="submit" variant="secondary" size="sm" loading={form.processing} disabled={!form.isDirty}>
+                        {t('common.save')}
+                    </Button>
+                </div>
+            </form>
+        </details>
+    );
+}
 type SharedProps = { flash?: { warehouseCreatedId?: number | null } };
 
-export default function WarehouseIndex({ warehouses, can }: Props) {
+export default function WarehouseIndex({ warehouses, stores, can }: Props) {
     const { t } = useI18n();
     const page = usePage<SharedProps>();
-    const createForm = useForm({ name: '', code: '', description: '' });
+    const createForm = useForm({ name: '', code: '', description: '', store_id: null as number | null });
+    const storeName = (id: number | null) => stores.find((s) => s.id === id)?.name ?? '';
     const justCreatedId = page.props.flash?.warehouseCreatedId ?? null;
 
     function create(event: FormEvent) {
@@ -82,6 +158,8 @@ export default function WarehouseIndex({ warehouses, can }: Props) {
             name: warehouse.name,
             code: warehouse.code,
             description: warehouse.description,
+            store_id: warehouse.store_id,
+            allow_direct_sales: warehouse.allow_direct_sales,
             status: warehouse.status === 'active' ? 'inactive' : 'active',
         }, { preserveScroll: true });
     }
@@ -109,6 +187,12 @@ export default function WarehouseIndex({ warehouses, can }: Props) {
                                 <div>
                                     <h2 className="text-base font-semibold text-ink">{warehouse.name}</h2>
                                     <p className="mt-0.5 text-[12px] font-medium uppercase tracking-wide text-ink-faint">{warehouse.code}</p>
+                                    <p className="mt-1 text-[12px] text-ink-muted">
+                                        {warehouse.store_id !== null
+                                            ? t('inventory.warehouses.kindStore').replace('{store}', storeName(warehouse.store_id))
+                                            : t('inventory.warehouses.kindDepot')}
+                                        {warehouse.store_id === null && warehouse.allow_direct_sales ? ` · ${t('inventory.warehouses.directSales')}` : ''}
+                                    </p>
                                 </div>
                                 <StatusBadge status={warehouse.status} />
                             </div>
@@ -135,6 +219,7 @@ export default function WarehouseIndex({ warehouses, can }: Props) {
                                     </button>
                                 )}
                             </div>
+                            {can.update && <LocationForm warehouse={warehouse} stores={stores} />}
                             {can.replenishment && <ReplenishmentForm warehouse={warehouse} />}
                             {warehouse.id === justCreatedId && (
                                 <div className="mt-4 rounded-field border border-success/30 bg-success-soft p-4 text-[13px] text-success">
@@ -164,6 +249,17 @@ export default function WarehouseIndex({ warehouses, can }: Props) {
                             {t('inventory.warehouses.code')} *
                             <input required value={createForm.data.code} onChange={event => createForm.setData('code', event.target.value.toUpperCase())} className="control-input mt-1.5 w-full" />
                             {createForm.errors.code && <p className="mt-1 text-[13px] text-danger">{createForm.errors.code}</p>}
+                        </label>
+                        <label className="text-[13px] font-medium text-ink">
+                            {t('inventory.warehouses.store')}
+                            <select
+                                value={createForm.data.store_id ?? ''}
+                                onChange={event => createForm.setData('store_id', event.target.value ? Number(event.target.value) : null)}
+                                className="control-input mt-1.5 w-full"
+                            >
+                                <option value="">{t('inventory.warehouses.storageOnly')}</option>
+                                {stores.map(store => <option key={store.id} value={store.id}>{store.name} · {store.code}</option>)}
+                            </select>
                         </label>
                         <label className="text-[13px] font-medium text-ink md:col-span-3">
                             {t('inventory.warehouses.addressDescription')}

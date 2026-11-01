@@ -57,13 +57,13 @@ class OrderProcurementAction
                 ]);
             }
 
-            // Partly on a purchase order: the rest is ordered through a purchase
-            // order too, never marked ordered without one. A purchase order that
-            // covers the whole quantity (CreatePurchaseOrderFromProcurementRequirementsAction) passes.
+            // "Commandé" means a real purchase order exists for the WHOLE quantity
+            // (CreatePurchaseOrderFromProcurementRequirementsAction is the only
+            // caller that passes). It is never set by hand any more.
             $onPurchaseOrders = $procurement->activePurchaseOrderQuantity(lock: true);
-            if (Decimal::compare($onPurchaseOrders, '0') > 0 && Decimal::compare($onPurchaseOrders, (string) $procurement->quantity) < 0) {
+            if (Decimal::compare($onPurchaseOrders, (string) $procurement->quantity) < 0) {
                 throw ValidationException::withMessages([
-                    'status' => 'Une partie de cet approvisionnement est déjà sur une commande fournisseur. Commandez le reste via une commande fournisseur.',
+                    'status' => 'Un besoin d’approvisionnement se commande via une commande fournisseur : créez la commande fournisseur.',
                 ]);
             }
 

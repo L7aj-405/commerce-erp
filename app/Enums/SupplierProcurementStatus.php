@@ -30,7 +30,7 @@ enum SupplierProcurementStatus: string
     {
         return match ($this) {
             self::PendingSupplier => 'En attente fournisseur',
-            self::SupplierConfirmed => 'Disponibilité confirmée',
+            self::SupplierConfirmed => 'À commander',
             self::Ordered => 'Commandé au fournisseur',
             self::PartiallyReceived => 'Partiellement réceptionné',
             self::Received => 'Réceptionné (réservé commande)',

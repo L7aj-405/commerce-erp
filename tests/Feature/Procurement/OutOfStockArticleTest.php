@@ -191,7 +191,7 @@ class OutOfStockArticleTest extends SalesTestCase
         $customLine = $this->addCustomLine($owner, $order->fresh(), ['description' => 'Microphone Modèle Z']);
         app(ReportOutOfStockArticleAction::class)->execute($owner, $order->fresh(), $customLine->fresh());
 
-        $this->assertSame('pending_supplier', $procurement->fresh()->status->value);
+        $this->assertSame('supplier_confirmed', $procurement->fresh()->status->value); // "À commander", untouched
         $this->assertSame(1, OutOfStockArticle::query()->where('organization_id', $org->getKey())->count());
     }
 }
