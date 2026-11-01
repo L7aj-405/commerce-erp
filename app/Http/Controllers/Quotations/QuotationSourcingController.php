@@ -6,12 +6,11 @@ use App\Actions\Quotations\CancelQuotationSupplierRequestAction;
 use App\Actions\Quotations\CreateQuotationSupplierRequestAction;
 use App\Actions\Quotations\RecordQuotationSupplierAvailabilityAction;
 use App\Http\Controllers\Controller;
-use App\Models\ProductSupplier;
 use App\Models\Quotation;
 use App\Models\QuotationLine;
 use App\Models\QuotationSupplierAvailabilityRequest;
-use App\Models\Supplier;
 use App\Services\Procurement\SupplierCatalogQuery;
+use App\Services\Procurement\SupplierOptionsQuery;
 use App\Services\Procurement\SupplierRecommendationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -24,32 +23,14 @@ use Illuminate\Http\Request;
 class QuotationSourcingController extends Controller
 {
     /** Known suppliers of the line's Product first, then other active suppliers matching the search. */
-    public function supplierOptions(Request $request, Quotation $quotation, QuotationLine $line): JsonResponse
+    public function supplierOptions(Request $request, Quotation $quotation, QuotationLine $line, SupplierOptionsQuery $options): JsonResponse
     {
         $this->authorize('update', $quotation);
         abort_unless($this->lineBelongs($line, $quotation), 404);
         abort_unless($request->user()->hasPermission($quotation->organization, 'suppliers.view'), 403);
         $search = trim((string) ($request->validate(['search' => ['nullable', 'string', 'max:255']])['search'] ?? ''));
 
-        $productId = $line->product_variant_id ? $line->productVariant()->value('product_id') : null;
-        $knownIds = $productId
-            ? ProductSupplier::query()->where('organization_id', $quotation->organization_id)->where('product_id', $productId)->limit(50)->pluck('supplier_id')
-            : collect();
-
-        $known = Supplier::query()
-            ->where('organization_id', $quotation->organization_id)->where('active', true)
-            ->whereIn('id', $knownIds)->orderBy('name')->get(['id', 'name', 'phone']);
-
-        $others = Supplier::query()
-            ->where('organization_id', $quotation->organization_id)->where('active', true)
-            ->whereNotIn('id', $known->pluck('id'))
-            ->when($search !== '', fn ($q) => $q->where('name', 'like', "%{$search}%"))
-            ->orderBy('name')->limit(20)->get(['id', 'name', 'phone']);
-
-        return response()->json(['data' => [
-            ...$known->map(fn (Supplier $s) => [...$s->only(['id', 'name', 'phone']), 'known' => true]),
-            ...$others->map(fn (Supplier $s) => [...$s->only(['id', 'name', 'phone']), 'known' => false]),
-        ]]);
+        return response()->json(['data' => $options->forVariant((int) $quotation->organization_id, $line->product_variant_id, $search)]);
     }
 
     /**

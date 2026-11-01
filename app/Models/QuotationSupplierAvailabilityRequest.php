@@ -5,10 +5,14 @@ namespace App\Models;
 use App\Enums\QuotationSupplierAvailabilityStatus;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 /**
- * Internal tracking of a supplier availability check for one Devis line. Never
- * rendered on a customer document and never a purchase order.
+ * Internal tracking of a supplier availability check — pre-sale sourcing
+ * evidence — for ONE line of exactly one context: a draft Devis line
+ * (quotation_id / quotation_line_id) or a POS cart line (sales_order_id /
+ * sales_order_line_id). Never rendered on a customer document and never a
+ * purchase order, a reservation or a stock movement.
  */
 class QuotationSupplierAvailabilityRequest extends Model
 {
@@ -45,6 +49,28 @@ class QuotationSupplierAvailabilityRequest extends Model
         return $this->belongsTo(QuotationLine::class);
     }
 
+    public function salesOrder(): BelongsTo
+    {
+        return $this->belongsTo(SalesOrder::class);
+    }
+
+    public function salesOrderLine(): BelongsTo
+    {
+        return $this->belongsTo(SalesOrderLine::class);
+    }
+
+    /** The procurement requirement this answer is the evidence of (at most one, DB-unique). */
+    public function derivedProcurement(): HasOne
+    {
+        return $this->hasOne(SalesOrderProcurement::class, 'source_supplier_request_id');
+    }
+
+    /** Evidence gathered from a POS cart (not from a Devis). */
+    public function isCartEvidence(): bool
+    {
+        return $this->sales_order_line_id !== null;
+    }
+
     public function supplier(): BelongsTo
     {
         return $this->belongsTo(Supplier::class);
@@ -61,9 +87,15 @@ class QuotationSupplierAvailabilityRequest extends Model
     }
 
     /** The request was made for the article the line currently carries. */
-    public function matchesLineArticle(QuotationLine $line): bool
+    public function matchesLineArticle(QuotationLine|SalesOrderLine $line): bool
     {
-        return (int) $this->product_variant_id === (int) $line->product_variant_id
-            && (int) $this->non_stock_item_id === (int) $line->non_stock_item_id;
+        return $this->matchesArticle($line->product_variant_id, $line instanceof QuotationLine ? $line->non_stock_item_id : null);
+    }
+
+    /** The request was made for this article (variant / non-stock item snapshot). */
+    public function matchesArticle(?int $productVariantId, ?int $nonStockItemId): bool
+    {
+        return (int) $this->product_variant_id === (int) $productVariantId
+            && (int) $this->non_stock_item_id === (int) $nonStockItemId;
     }
 }

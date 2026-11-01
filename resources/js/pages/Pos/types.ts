@@ -1,3 +1,5 @@
+import type { LineSourcing } from '@/pages/Quotations/Sourcing';
+
 export type Warehouse = { id: number; name: string; code: string };
 export type TaxRate = { id: number; name: string; rate: string };
 export type Option = { id: number; name: string };
@@ -79,6 +81,8 @@ export type CartLine = {
     procurement_confirmed_qty?: string;
     needs_procurement?: boolean;
     procurement?: LineProcurement | null;
+    /** "Articles à sourcer": current-stock shortage + supplier evidence (server-computed). */
+    sourcing?: LineSourcing | null;
 };
 export type ActiveSale = {
     id: number;
@@ -95,6 +99,7 @@ export type ActiveSale = {
     procurement_deficit?: boolean;
     awaiting_supplier_procurement?: boolean;
     procurements_count?: number;
+    sourcing_summary?: { shortage_line_count: number; unresolved_line_count: number; can_convert: boolean };
     checkout: {
         global_discount_type: 'none' | 'fixed' | 'percentage';
         global_discount_value: string;
@@ -126,4 +131,8 @@ export type HeldSale = {
     line_count: number;
     subtotal: string;
     currency_code: string;
+};
+export type StockConflict = {
+    message: string;
+    lines: Array<{ line_id: number; product_variant_id: number; product: string; requested: string; available: string; missing: string }>;
 };

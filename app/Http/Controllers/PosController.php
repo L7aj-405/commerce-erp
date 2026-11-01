@@ -2,7 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Actions\Pos\CancelCartSupplierRequestAction;
+use App\Actions\Pos\ConvertPosCartToSalesOrderDraftAction;
+use App\Actions\Pos\CreateCartSupplierRequestAction;
 use App\Actions\Pos\CreatePosSaleAction;
+use App\Actions\Pos\RecordCartSupplierAvailabilityAction;
 use App\Actions\Sales\CancelSalesOrderAction;
 use App\Actions\Sales\CreateSalesOrderAction;
 use App\Actions\Sales\RemoveSalesOrderLineAction;
@@ -15,6 +19,7 @@ use App\Enums\SalesOrderDiscountType;
 use App\Enums\SalesOrderSource;
 use App\Enums\SalesOrderStatus;
 use App\Enums\WarehouseStatus;
+use App\Exceptions\Pos\PosStockConflictException;
 use App\Http\Requests\Pos\CompletePosSaleRequest;
 use App\Models\Brand;
 use App\Models\Category;
@@ -24,6 +29,7 @@ use App\Models\InventoryBalance;
 use App\Models\Organization;
 use App\Models\OrganizationMembership;
 use App\Models\ProductVariant;
+use App\Models\QuotationSupplierAvailabilityRequest;
 use App\Models\SalesOrder;
 use App\Models\SalesOrderLine;
 use App\Models\Store;
@@ -33,6 +39,10 @@ use App\Models\Warehouse;
 use App\Services\ActiveTenantContext;
 use App\Services\AuditLogger;
 use App\Services\CustomerManager;
+use App\Services\Pos\PosCartSourcing;
+use App\Services\Procurement\SupplierCatalogQuery;
+use App\Services\Procurement\SupplierOptionsQuery;
+use App\Services\Procurement\SupplierRecommendationService;
 use App\Services\PosDraftCheckoutCalculator;
 use App\Services\ProductPriceResolver;
 use App\Services\SalesOrderPaymentCalculator;
@@ -120,6 +130,9 @@ class PosController extends Controller
             'heldSales' => $heldSaleModels->map(fn (SalesOrder $order) => $this->heldSalePayload($order))->values(),
             'completedOrder' => $completedOrderModel ? $this->completedOrder($completedOrderModel, $paymentCalculator, $request->session()->get('pos.completed_tenders', [])) : null,
             'createdCustomer' => $request->session()->get('pos.created_customer'),
+            // Set by a finalization rejected for a stock conflict: the operator is
+            // back on the SAME cart, with the affected articles listed.
+            'stockConflict' => $request->session()->get('pos.stock_conflict'),
             'financialAccounts' => $financialAccounts,
             'brands' => Brand::query()->where('organization_id', $organization->getKey())->where('status', CatalogStatus::Active->value)->orderBy('name')->get(['id', 'name']),
             'categories' => Category::query()->where('organization_id', $organization->getKey())->where('status', CatalogStatus::Active->value)->orderBy('name')->get(['id', 'name']),
@@ -137,6 +150,10 @@ class PosController extends Controller
                 'holdDraft' => $request->user()->hasPermission($organization, 'sales_orders.update'),
                 'cancelDraft' => $request->user()->hasPermission($organization, 'sales_orders.cancel'),
                 'manageProcurement' => $request->user()->hasPermission($organization, 'procurement.manage'),
+                // Same permissions the canonical cart sourcing actions enforce.
+                'requestSupplier' => $request->user()->hasPermission($organization, 'sales_orders.update')
+                    && $request->user()->hasPermission($organization, 'suppliers.view'),
+                'recordSupplier' => $request->user()->hasPermission($organization, 'procurement.manage'),
             ],
         ]);
     }
@@ -599,7 +616,7 @@ class PosController extends Controller
         return $this->draftStateResponse($organization, $store, $this->activeDraftQuery($organization, $store)->with($this->draftRelations())->latest('updated_at')->first(), $posSummary);
     }
 
-    public function complete(CompletePosSaleRequest $request, ActiveTenantContext $context, CreatePosSaleAction $action): RedirectResponse
+    public function complete(CompletePosSaleRequest $request, ActiveTenantContext $context, CreatePosSaleAction $action): RedirectResponse|JsonResponse
     {
         [$organization, $store] = $this->operationalContext($request, $context);
         $data = $request->validated();
@@ -608,11 +625,130 @@ class PosController extends Controller
             abort_unless($request->user()->hasPermission($organization, $permission), 403);
         }
 
-        $order = $action->execute($request->user(), $organization, $store, $data);
+        try {
+            $order = $action->execute($request->user(), $organization, $store, $data);
+        } catch (PosStockConflictException $conflict) {
+            // Nothing was written: the cart is intact and reopened as it was.
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'message' => PosStockConflictException::MESSAGE,
+                    'errors' => $conflict->errors(),
+                    'stock_conflict' => $conflict->payload(),
+                ], 422);
+            }
+
+            return redirect()->route('pos.index')
+                ->withErrors($conflict->errors())
+                ->with('pos.stock_conflict', $conflict->payload());
+        }
 
         return redirect()->route('pos.index')->with([
             'pos.completed_order_id' => $order->getKey(),
             'pos.completed_tenders' => $this->tenderSummary($data['payments']),
+        ]);
+    }
+
+    /** Supplier picker of "Demander au fournisseur" for one cart line (same query as the Devis). */
+    public function supplierOptions(Request $request, ActiveTenantContext $context, SalesOrder $order, SalesOrderLine $line, SupplierOptionsQuery $options): JsonResponse
+    {
+        [$organization] = $this->operationalContext($request, $context);
+        $this->authorize('update', $order);
+        $this->ensurePosDraft($order);
+        abort_unless($line->sales_order_id === $order->getKey(), 404);
+        abort_unless($request->user()->hasPermission($organization, 'suppliers.view'), 403);
+        $search = trim((string) ($request->validate(['search' => ['nullable', 'string', 'max:255']])['search'] ?? ''));
+
+        return response()->json(['data' => $options->forVariant((int) $organization->getKey(), $line->product_variant_id, $search)]);
+    }
+
+    /** Advisory ranked suppliers for one cart shortage (read-only; nothing is created by viewing it). */
+    public function supplierRecommendations(Request $request, ActiveTenantContext $context, SalesOrder $order, SalesOrderLine $line, PosCartSourcing $sourcing, SupplierRecommendationService $recommendations): JsonResponse
+    {
+        [$organization] = $this->operationalContext($request, $context);
+        $this->authorize('view', $order);
+        $this->ensurePosDraft($order);
+        abort_unless($line->sales_order_id === $order->getKey(), 404);
+        $user = $request->user();
+        abort_unless($user->hasPermission($organization, 'suppliers.view') && $user->hasPermission($organization, 'products.view'), 403);
+
+        $evaluation = $sourcing->evaluate($order)['lines'][$line->getKey()] ?? null;
+        $items = $evaluation && $evaluation['requires_sourcing'] ? [$line->getKey() => [
+            'product_variant_id' => (int) $line->product_variant_id,
+            'requested_quantity' => $evaluation['shortage'],
+            'pending_supplier_ids' => collect($evaluation['requests'])->where('status', 'pending')->pluck('supplier_id')->filter()->map(fn ($id) => (int) $id)->values()->all(),
+        ]] : [];
+        $result = $recommendations->recommendForVariants((int) $organization->getKey(), $items, SupplierCatalogQuery::canViewPrices($user, (int) $organization->getKey()));
+
+        return response()->json(['data' => [
+            'sales_order_line_id' => (int) $line->getKey(),
+            'recommendation_needed' => $items !== [],
+            ...($result[$line->getKey()] ?? ['requested_quantity' => $evaluation['shortage'] ?? '0.0000', 'recommendations' => []]),
+        ]]);
+    }
+
+    public function storeSupplierRequest(Request $request, ActiveTenantContext $context, SalesOrder $order, SalesOrderLine $line, CreateCartSupplierRequestAction $action, PosDraftCheckoutCalculator $posSummary): JsonResponse
+    {
+        [$organization, $store] = $this->operationalContext($request, $context);
+        $this->authorize('update', $order);
+        $this->ensurePosDraft($order);
+        abort_unless($line->sales_order_id === $order->getKey(), 404);
+        $data = $request->validate([
+            'supplier_id' => ['required', 'integer'],
+            'requested_quantity' => ['nullable', 'numeric', 'gt:0'],
+            'note' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        $action->execute($request->user(), $order, $line, $data);
+
+        return $this->draftStateResponse($organization, $store, $order->fresh($this->draftRelations()), $posSummary);
+    }
+
+    public function recordSupplierRequest(Request $request, ActiveTenantContext $context, SalesOrder $order, QuotationSupplierAvailabilityRequest $supplierRequest, RecordCartSupplierAvailabilityAction $action, PosDraftCheckoutCalculator $posSummary): JsonResponse
+    {
+        [$organization, $store] = $this->operationalContext($request, $context);
+        $this->authorize('view', $order);
+        $this->ensurePosDraft($order);
+        abort_unless((int) $supplierRequest->sales_order_id === (int) $order->getKey(), 404);
+        $data = $request->validate([
+            'outcome' => ['required', 'in:available,unavailable'],
+            'confirmed_quantity' => ['nullable', 'numeric', 'min:0'],
+            'note' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        $action->execute($request->user(), $order, $supplierRequest, $data);
+
+        return $this->draftStateResponse($organization, $store, $order->fresh($this->draftRelations()), $posSummary);
+    }
+
+    public function cancelSupplierRequest(Request $request, ActiveTenantContext $context, SalesOrder $order, QuotationSupplierAvailabilityRequest $supplierRequest, CancelCartSupplierRequestAction $action, PosDraftCheckoutCalculator $posSummary): JsonResponse
+    {
+        [$organization, $store] = $this->operationalContext($request, $context);
+        $this->authorize('view', $order);
+        $this->ensurePosDraft($order);
+        abort_unless((int) $supplierRequest->sales_order_id === (int) $order->getKey(), 404);
+
+        $action->execute($request->user(), $order, $supplierRequest);
+
+        return $this->draftStateResponse($organization, $store, $order->fresh($this->draftRelations()), $posSummary);
+    }
+
+    /** "Créer la commande": the fully sourced cart becomes a Sales Order Draft. */
+    public function convertDraft(Request $request, ActiveTenantContext $context, SalesOrder $order, ConvertPosCartToSalesOrderDraftAction $action, PosDraftCheckoutCalculator $posSummary): JsonResponse
+    {
+        [$organization, $store] = $this->operationalContext($request, $context);
+        $this->authorize('update', $order);
+        $this->ensurePosDraft($order);
+
+        $converted = $action->execute($request->user(), $order);
+        $state = $this->draftStateResponse($organization, $store, null, $posSummary)->getData(true);
+
+        return response()->json([
+            ...$state,
+            'sales_order' => [
+                'id' => $converted->getKey(),
+                'order_number' => $converted->order_number,
+                'url' => route('sales.orders.show', $converted),
+            ],
         ]);
     }
 
@@ -669,7 +805,8 @@ class PosController extends Controller
     {
         abort_unless(
             $order->source === SalesOrderSource::Pos
-            && $order->status === SalesOrderStatus::Draft,
+            && $order->status === SalesOrderStatus::Draft
+            && $order->pos_converted_at === null,
             404,
         );
     }
@@ -809,6 +946,7 @@ class PosController extends Controller
             ->where('store_id', $store->getKey())
             ->where('source', SalesOrderSource::Pos->value)
             ->where('status', SalesOrderStatus::Draft->value)
+            ->whereNull('pos_converted_at')
             ->whereNull('pos_held_at');
     }
 
@@ -819,6 +957,7 @@ class PosController extends Controller
             ->where('store_id', $store->getKey())
             ->where('source', SalesOrderSource::Pos->value)
             ->where('status', SalesOrderStatus::Draft->value)
+            ->whereNull('pos_converted_at')
             ->whereNotNull('pos_held_at');
     }
 
@@ -856,6 +995,8 @@ class PosController extends Controller
     {
         $order->loadMissing($this->draftRelations());
         $summary = $posSummary->summary($order);
+        // "Articles à sourcer": current-stock shortage and supplier evidence per line.
+        $sourcing = app(PosCartSourcing::class)->evaluate($order);
         $warnings = [];
         $variantIds = $order->lines->pluck('product_variant_id')->filter()->unique()->values();
         $balances = InventoryBalance::query()
@@ -871,7 +1012,7 @@ class PosController extends Controller
             fn ($lines) => $lines->reduce(fn (string $total, SalesOrderLine $line) => Decimal::add($total, $line->quantity), '0.0000'),
         );
 
-        $lines = $order->lines->map(function (SalesOrderLine $line) use (&$warnings, $balances, $organizationAvailability, $orderDemand, $order) {
+        $lines = $order->lines->map(function (SalesOrderLine $line) use (&$warnings, $balances, $organizationAvailability, $orderDemand, $order, $sourcing) {
             $isCatalog = $line->line_type->value === 'catalog';
             $localBalance = $line->product_variant_id && $order->pos_warehouse_id
                 ? $balances->get($line->product_variant_id.':'.$order->pos_warehouse_id)
@@ -946,6 +1087,7 @@ class PosController extends Controller
                     'to_procure' => $toProcure,
                     'procurement_confirmed_qty' => $procConfirmed,
                     'needs_procurement' => $needsProcurement,
+                    'sourcing' => $sourcing['lines'][$line->getKey()] ?? null,
                     'procurement' => $procRow ? [
                         'id' => $procRow->id,
                         'procurement_number' => $procRow->procurement_number,
@@ -973,6 +1115,7 @@ class PosController extends Controller
             'requires_replenishment' => Decimal::compare($remoteRequired, '0.0000') > 0,
             'remote_required' => $remoteRequired,
             'procurement_deficit' => $warnings !== [],
+            'sourcing_summary' => $sourcing['summary'],
             'awaiting_supplier_procurement' => $order->awaitingSupplierProcurement(),
             'procurements_count' => $order->lines->sum(fn (SalesOrderLine $line) => $line->procurements
                 ->reject(fn ($p) => in_array($p->status->value, ['cancelled', 'unavailable'], true))->count()),

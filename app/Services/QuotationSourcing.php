@@ -34,7 +34,9 @@ class QuotationSourcing
     public function evaluate(Quotation $quotation, bool $lockRequests = false): array
     {
         $lines = $quotation->lines()->get();
-        $available = $this->availableByVariant($quotation, $lines);
+        $variantIds = $lines
+            ->filter(fn (QuotationLine $l) => $l->line_type === QuotationLineType::Catalog && $l->product_variant_id)
+            ->pluck('product_variant_id')->all();
         $requests = QuotationSupplierAvailabilityRequest::query()
             ->where('organization_id', $quotation->organization_id)
             ->where('quotation_id', $quotation->getKey())
@@ -45,17 +47,43 @@ class QuotationSourcing
             ->get()
             ->groupBy('quotation_line_id');
 
-        // Internal stock is consumed in line order, so two lines of the same
-        // variant never both count the same units.
+        $rows = $lines->map(fn (QuotationLine $line) => [
+            'line_id' => (int) $line->getKey(),
+            'line_type' => $line->line_type->value,
+            'is_catalog' => $line->line_type === QuotationLineType::Catalog && $line->product_variant_id,
+            'product_variant_id' => $line->product_variant_id,
+            'non_stock_item_id' => $line->non_stock_item_id,
+            'quantity' => (string) $line->quantity,
+            'article' => trim(($line->product_name ?: $line->description).($line->variant_name ? ' — '.$line->variant_name : '')),
+            'reference' => $line->reference ?: $line->sku,
+        ])->all();
+
+        return $this->evaluateRows($rows, $this->availableByVariant((int) $quotation->organization_id, $variantIds), $requests);
+    }
+
+    /**
+     * The sourcing gate over normalized lines of ANY context (Devis lines, POS
+     * cart lines). Internal stock is consumed in line order, so two lines of the
+     * same variant never both count the same units. A line is resolved when its
+     * shortage is covered by supplier confirmations of which at least one is a
+     * full (or manual) confirmation — partial answers alone never satisfy it.
+     *
+     * @param  list<array{line_id: int, line_type: string, is_catalog: bool|int|null, product_variant_id: ?int, non_stock_item_id: ?int, quantity: string, article: string, reference: ?string}>  $rows
+     * @param  array<int, string>  $available  free stock per variant
+     * @param  Collection<int|string, Collection<int, QuotationSupplierAvailabilityRequest>>  $requestsByLine  non-cancelled requests keyed by line id
+     * @return array<int, array<string, mixed>> keyed by line id, in line order
+     */
+    public function evaluateRows(array $rows, array $available, Collection $requestsByLine): array
+    {
         $remaining = $available;
         $result = [];
 
-        foreach ($lines as $line) {
-            $quantity = Decimal::normalize((string) $line->quantity);
-            $isCatalog = $line->line_type === QuotationLineType::Catalog && $line->product_variant_id;
+        foreach ($rows as $row) {
+            $quantity = Decimal::normalize($row['quantity']);
+            $isCatalog = (bool) $row['is_catalog'];
 
             if ($isCatalog) {
-                $variantId = (int) $line->product_variant_id;
+                $variantId = (int) $row['product_variant_id'];
                 $stock = $remaining[$variantId] ?? '0.0000';
                 $fromStock = Decimal::compare($stock, $quantity) >= 0 ? $quantity : $this->atLeastZero($stock);
                 $remaining[$variantId] = Decimal::subtract($stock, $fromStock);
@@ -65,8 +93,8 @@ class QuotationSourcing
                 $shortage = $quantity;
             }
 
-            $lineRequests = ($requests->get($line->getKey()) ?? collect())
-                ->filter(fn (QuotationSupplierAvailabilityRequest $r) => $r->matchesLineArticle($line))
+            $lineRequests = ($requestsByLine->get($row['line_id']) ?? collect())
+                ->filter(fn (QuotationSupplierAvailabilityRequest $r) => $r->matchesArticle($row['product_variant_id'], $row['non_stock_item_id']))
                 ->values();
 
             $supplierConfirmed = $this->sumConfirmed($lineRequests, [Status::Available, Status::Partial]);
@@ -80,15 +108,15 @@ class QuotationSourcing
             $requiresSourcing = Decimal::compare($shortage, '0') > 0;
             $resolved = ! $requiresSourcing || ($hasGateConfirmation && Decimal::compare($covered, $shortage) >= 0);
 
-            $result[$line->getKey()] = [
-                'line_id' => (int) $line->getKey(),
-                'line_type' => $line->line_type->value,
-                'article' => trim(($line->product_name ?: $line->description).($line->variant_name ? ' — '.$line->variant_name : '')),
-                'reference' => $line->reference ?: $line->sku,
-                'product_variant_id' => $line->product_variant_id,
-                'non_stock_item_id' => $line->non_stock_item_id,
+            $result[$row['line_id']] = [
+                'line_id' => (int) $row['line_id'],
+                'line_type' => $row['line_type'],
+                'article' => $row['article'],
+                'reference' => $row['reference'],
+                'product_variant_id' => $row['product_variant_id'],
+                'non_stock_item_id' => $row['non_stock_item_id'],
                 'requested_quantity' => $quantity,
-                'internal_available' => $isCatalog ? $this->atLeastZero($available[(int) $line->product_variant_id] ?? '0.0000') : null,
+                'internal_available' => $isCatalog ? $this->atLeastZero($available[(int) $row['product_variant_id']] ?? '0.0000') : null,
                 'shortage' => $shortage,
                 'covered_quantity' => $covered,
                 'supplier_confirmed_quantity' => $supplierConfirmed,
@@ -221,22 +249,21 @@ class QuotationSourcing
 
     /**
      * Total available (on hand − reserved) per variant across the
-     * organisation's active warehouses — same basis as the Devis article search.
+     * organisation's active warehouses — same basis as the Devis article search
+     * and the POS company-wide allocator.
      *
-     * @param  Collection<int, QuotationLine>  $lines
+     * @param  array<int, int|string>  $variantIds
      * @return array<int, string>
      */
-    private function availableByVariant(Quotation $quotation, Collection $lines): array
+    public function availableByVariant(int $organizationId, array $variantIds): array
     {
-        $variantIds = $lines
-            ->filter(fn (QuotationLine $l) => $l->line_type === QuotationLineType::Catalog && $l->product_variant_id)
-            ->pluck('product_variant_id')->unique()->values();
-        if ($variantIds->isEmpty()) {
+        $variantIds = array_values(array_unique(array_map('intval', $variantIds)));
+        if ($variantIds === []) {
             return [];
         }
 
         return InventoryBalance::query()
-            ->where('organization_id', $quotation->organization_id)
+            ->where('organization_id', $organizationId)
             ->whereIn('product_variant_id', $variantIds)
             ->whereHas('warehouse', fn ($q) => $q->where('status', WarehouseStatus::Active->value))
             ->get()

@@ -9,7 +9,7 @@ import StatusBadge, { type StatusVariant } from '@/components/ui/StatusBadge';
 import { useI18n } from '@/i18n';
 import type { TranslationKey } from '@/i18n/translations';
 import ProcurementLayout from '@/layouts/ProcurementLayout';
-import { cancelSupplierRequest, RecordResultDialog, type SourcingRequest } from '@/pages/Quotations/Sourcing';
+import { cancelSupplierRequest, RecordResultDialog, type SourcingRequest, type SourcingTransport } from '@/pages/Quotations/Sourcing';
 import { formatDate, formatDateTime, formatQuantity } from '@/utils/format';
 import { Head, Link, router } from '@inertiajs/react';
 import type { ReactNode } from 'react';
@@ -20,7 +20,10 @@ type RequestStatus = 'pending' | 'available' | 'partial' | 'unavailable' | 'conf
 type Row = {
     id: number;
     status: RequestStatus;
-    quotation: { id: number; number: string | null; is_draft: boolean };
+    /** Where the evidence was gathered: a Devis line or a POS cart line. */
+    source: 'quotation' | 'pos';
+    quotation: { id: number; number: string | null; is_draft: boolean } | null;
+    cart: { id: number; number: string; is_open: boolean; stage: 'pos_cart' | 'order_draft' | 'closed' } | null;
     customer: { id: number | null; name: string | null };
     article: { line_type: 'catalog' | 'non_stock' | null; name: string | null; variant: string | null; reference: string | null };
     supplier_name: string | null;
@@ -33,12 +36,12 @@ type Row = {
     resolved_at: string | null;
 };
 type LinkData = { url: string | null; label: string; active: boolean };
-type Filters = { search?: string; status: string; supplier_id?: number | string; from?: string; to?: string };
+type Filters = { search?: string; status: string; source?: string; supplier_id?: number | string; from?: string; to?: string };
 type Props = {
     requests: { data: Row[]; links: LinkData[] };
     filters: Filters;
     suppliers: { id: number; name: string }[];
-    can: { record: boolean; cancel: boolean; viewCustomers: boolean };
+    can: { record: boolean; cancel: boolean; cancelCart: boolean; viewCustomers: boolean; viewSalesOrders: boolean };
 };
 
 const STATUSES: RequestStatus[] = ['pending', 'partial', 'available', 'unavailable', 'confirmed_manually', 'cancelled'];
@@ -51,6 +54,32 @@ const VARIANT: Record<RequestStatus, StatusVariant> = {
     cancelled: 'neutral',
 };
 const RELOAD = ['requests', 'suppliers', 'errors', 'flash'];
+
+/**
+ * POS cart rows answer through the inbox's own routes, which run the SAME cart
+ * actions as the POS "Articles à sourcer" modal.
+ */
+const cartTransport: SourcingTransport = {
+    recommendationsUrl: () => '',
+    optionsUrl: () => '',
+    createRequest: () => undefined,
+    recordResult: (requestId, payload, callbacks) =>
+        router.patch(`/procurement/supplier-requests/${requestId}`, payload, {
+            preserveScroll: true,
+            preserveState: true,
+            only: RELOAD,
+            onError: (e) => callbacks.onError?.(e),
+            onSuccess: () => callbacks.onSuccess?.(),
+            onFinish: () => callbacks.onFinish?.(),
+        }),
+    cancelRequest: (requestId, callbacks) =>
+        router.post(`/procurement/supplier-requests/${requestId}/cancel`, {}, {
+            preserveScroll: true,
+            preserveState: true,
+            only: RELOAD,
+            onFinish: () => callbacks.onFinish?.(),
+        }),
+};
 
 function statusKey(status: RequestStatus): TranslationKey {
     return `supplierRequests.status.${status}` as TranslationKey;
@@ -193,6 +222,7 @@ export default function SupplierRequestsIndex({ requests, filters, suppliers, ca
     const current = {
         search: filters.search || undefined,
         status: filters.status,
+        source: filters.source || undefined,
         supplier_id: filters.supplier_id ? String(filters.supplier_id) : undefined,
         from: filters.from || undefined,
         to: filters.to || undefined,
@@ -214,14 +244,45 @@ export default function SupplierRequestsIndex({ requests, filters, suppliers, ca
     }, [search]);
 
     // UI affordances only — the canonical actions re-check permission and draft state.
-    const canRecord = (row: Row) => can.record && row.quotation.is_draft && (row.status === 'pending' || row.status === 'partial');
-    const canCancel = (row: Row) => can.cancel && row.quotation.is_draft && row.status === 'pending';
+    const editable = (row: Row) => (row.quotation ? row.quotation.is_draft : row.cart?.is_open === true);
+    const canRecord = (row: Row) => can.record && editable(row) && (row.status === 'pending' || row.status === 'partial');
+    const canCancel = (row: Row) => (row.cart ? can.cancelCart : can.cancel) && editable(row) && row.status === 'pending';
     const cancel = (row: Row) => {
         setCancelling(row.id);
-        cancelSupplierRequest(row.quotation.id, row.id, { only: RELOAD, onFinish: () => setCancelling(null) });
+        if (row.quotation) {
+            cancelSupplierRequest(row.quotation.id, row.id, { only: RELOAD, onFinish: () => setCancelling(null) });
+        } else {
+            cartTransport.cancelRequest(row.id, { onFinish: () => setCancelling(null) });
+        }
     };
 
-    const quotationLabel = (row: Row) => row.quotation.number ?? `${t('supplierRequests.draft')} #${row.quotation.id}`;
+    const sourceLabel = (row: Row) =>
+        row.quotation ? (row.quotation.number ?? `${t('supplierRequests.draft')} #${row.quotation.id}`) : (row.cart?.number ?? '—');
+    const sourceHref = (row: Row): string | null =>
+        row.quotation ? `/quotations/${row.quotation.id}` : row.cart && can.viewSalesOrders ? `/sales/orders/${row.cart.id}` : null;
+
+    /** Source badge (Devis / Panier · POS) + link to the request's own Devis or cart order. */
+    const Source = ({ row, compact = false }: { row: Row; compact?: boolean }) => {
+        const href = sourceHref(row);
+        return (
+            <span className="inline-flex flex-col items-start gap-0.5">
+                <span className={`rounded px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide ${row.source === 'pos' ? 'bg-info-soft text-info' : 'bg-raised text-ink-muted'}`}>
+                    {row.source === 'pos' ? t('supplierRequests.sourceCart') : t('supplierRequests.sourceQuotation')}
+                </span>
+                {href ? (
+                    <Link href={href} className={`font-medium text-ink underline-offset-2 hover:underline ${compact ? 'underline' : ''}`}>
+                        {sourceLabel(row)}
+                    </Link>
+                ) : (
+                    <span className="font-medium text-ink">{sourceLabel(row)}</span>
+                )}
+                {row.quotation && !row.quotation.is_draft && <span className="block text-[11px] text-ink-faint">{t('supplierRequests.frozen')}</span>}
+                {row.cart && !row.cart.is_open && (
+                    <span className="block text-[11px] text-ink-faint">{t(`supplierRequests.cartStage.${row.cart.stage}` as TranslationKey)}</span>
+                )}
+            </span>
+        );
+    };
 
     const Article = ({ row }: { row: Row }) => (
         <div className="min-w-0">
@@ -326,6 +387,11 @@ export default function SupplierRequestsIndex({ requests, filters, suppliers, ca
                         </option>
                     ))}
                 </FilterSelect>
+                <FilterSelect aria-label={t('supplierRequests.source')} value={current.source ?? ''} onChange={(e) => visit({ source: e.target.value || undefined })}>
+                    <option value="">{t('supplierRequests.allSources')}</option>
+                    <option value="quotation">{t('supplierRequests.sourceQuotation')}</option>
+                    <option value="pos">{t('supplierRequests.sourceCart')}</option>
+                </FilterSelect>
                 <FilterSelect
                     aria-label={t('sourcing.supplier')}
                     value={current.supplier_id ?? ''}
@@ -359,7 +425,7 @@ export default function SupplierRequestsIndex({ requests, filters, suppliers, ca
                                 <tr className="[&>th]:px-2.5 [&>th]:py-3 [&>th]:font-medium [&>th]:whitespace-nowrap">
                                     <th>{t('common.status')}</th>
                                     <th className="w-[15rem]">{t('supplierRequests.article')}</th>
-                                    <th>{t('supplierRequests.quotation')}</th>
+                                    <th>{t('supplierRequests.source')}</th>
                                     <th>{t('supplierRequests.customer')}</th>
                                     <th>{t('sourcing.supplier')}</th>
                                     <th className="text-end">{t('supplierRequests.requestedQty')}</th>
@@ -379,10 +445,7 @@ export default function SupplierRequestsIndex({ requests, filters, suppliers, ca
                                             <Article row={row} />
                                         </td>
                                         <td className="whitespace-nowrap">
-                                            <Link href={`/quotations/${row.quotation.id}`} className="font-medium text-ink underline-offset-2 hover:underline">
-                                                {quotationLabel(row)}
-                                            </Link>
-                                            {!row.quotation.is_draft && <span className="block text-[11px] text-ink-faint">{t('supplierRequests.frozen')}</span>}
+                                            <Source row={row} />
                                         </td>
                                         <td className="max-w-[11rem]">
                                             <span className="line-clamp-2 break-words">
@@ -429,11 +492,9 @@ export default function SupplierRequestsIndex({ requests, filters, suppliers, ca
                                 </div>
                                 <dl className="mt-2.5 grid grid-cols-2 gap-x-3 gap-y-2 text-xs text-ink-muted">
                                     <div className="min-w-0">
-                                        <dt>{t('supplierRequests.quotation')}</dt>
+                                        <dt>{t('supplierRequests.source')}</dt>
                                         <dd>
-                                            <Link href={`/quotations/${row.quotation.id}`} className="font-medium text-ink underline">
-                                                {quotationLabel(row)}
-                                            </Link>
+                                            <Source row={row} compact />
                                         </dd>
                                     </div>
                                     <div className="min-w-0">
@@ -474,10 +535,11 @@ export default function SupplierRequestsIndex({ requests, filters, suppliers, ca
 
             {recording && (
                 <RecordResultDialog
-                    quotationId={recording.quotation.id}
+                    quotationId={recording.quotation?.id}
                     request={toSourcingRequest(recording)}
                     onClose={() => setRecording(null)}
                     only={RELOAD}
+                    transport={recording.quotation ? undefined : cartTransport}
                 />
             )}
 
@@ -485,15 +547,15 @@ export default function SupplierRequestsIndex({ requests, filters, suppliers, ca
                 open={detail !== null}
                 onClose={() => setDetail(null)}
                 title={t('supplierRequests.detailTitle')}
-                description={detail ? quotationLabel(detail) : undefined}
+                description={detail ? `${detail.source === 'pos' ? t('supplierRequests.sourceCart') : t('supplierRequests.sourceQuotation')} · ${sourceLabel(detail)}` : undefined}
                 footer={
                     <div className="flex justify-end gap-2">
-                        {detail && (
+                        {detail && sourceHref(detail) && (
                             <Link
-                                href={`/quotations/${detail.quotation.id}`}
+                                href={sourceHref(detail) as string}
                                 className="inline-flex min-h-10 items-center rounded-field border border-line-strong bg-surface px-4 text-sm text-ink hover:bg-raised"
                             >
-                                {t('supplierRequests.openQuotation')}
+                                {detail.quotation ? t('supplierRequests.openQuotation') : t('supplierRequests.openOrder')}
                             </Link>
                         )}
                         <Button variant="secondary" onClick={() => setDetail(null)}>

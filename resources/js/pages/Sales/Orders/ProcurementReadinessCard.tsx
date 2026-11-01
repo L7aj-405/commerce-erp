@@ -16,7 +16,7 @@ type PlanLine = {
     remaining_to_order: string;
     unresolved_reason: 'no_supplier_confirmation' | 'supplier_not_confirmed' | 'supplier_unavailable' | null;
     supplier: { id: number; name: string } | null;
-    availability: { status: string; source: 'quotation' | 'manual' | 'procurement' } | null;
+    availability: { status: string; source: 'quotation' | 'manual' | 'procurement' | 'cart' } | null;
     purchase_orders: {
         id: number;
         number: string | null;

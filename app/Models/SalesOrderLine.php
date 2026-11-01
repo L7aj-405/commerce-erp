@@ -72,6 +72,12 @@ class SalesOrderLine extends Model
         return $this->hasMany(SalesOrderProcurement::class);
     }
 
+    /** Pre-sale supplier availability evidence gathered from the POS cart. */
+    public function supplierAvailabilityRequests(): HasMany
+    {
+        return $this->hasMany(QuotationSupplierAvailabilityRequest::class);
+    }
+
     public function outOfStockArticle(): HasOne
     {
         return $this->hasOne(OutOfStockArticle::class);

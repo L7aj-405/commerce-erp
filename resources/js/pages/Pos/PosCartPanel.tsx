@@ -6,8 +6,7 @@ import { formatEditableNumber } from '@/utils/format';
 import { useI18n } from '@/i18n';
 import { useEffect, useRef, useState } from 'react';
 import type { PosPending } from './pos-shared';
-import PosProcurementPanel, { type ProcurementSubmit } from './PosProcurementPanel';
-import type { ActiveSale, CartLine, Supplier } from './types';
+import type { ActiveSale, CartLine, StockConflict } from './types';
 
 type Props = {
     sale: ActiveSale | null;
@@ -15,10 +14,11 @@ type Props = {
     pending: PosPending;
     canApplyDiscount: boolean;
     heldCount: number;
-    suppliers: Supplier[];
-    canManageProcurement: boolean;
-    procurementBusy: boolean;
-    onProcurementSubmit: (payload: ProcurementSubmit) => Promise<void>;
+    /** Set when the last finalization was rejected because stock changed. */
+    stockConflict: StockConflict | null;
+    onDismissConflict: () => void;
+    /** Opens "Articles à sourcer". */
+    onOpenSourcing: () => void;
     onQuantityChange: (line: CartLine, quantity: number) => void;
     onDiscountChange: (line: CartLine, type: CartLine['discount_type'], value: string) => void;
     onRemove: (line: CartLine) => void;
@@ -129,10 +129,9 @@ export default function PosCartPanel({
     pending,
     canApplyDiscount,
     heldCount,
-    suppliers,
-    canManageProcurement,
-    procurementBusy,
-    onProcurementSubmit,
+    stockConflict,
+    onDismissConflict,
+    onOpenSourcing,
     onQuantityChange,
     onDiscountChange,
     onRemove,
@@ -150,7 +149,8 @@ export default function PosCartPanel({
     const blocked = !sale || lines.length === 0 || (sale?.availability_warnings.length ?? 0) > 0;
     const procurementDeficit = sale?.procurement_deficit === true;
     const awaitingProcurement = sale?.awaiting_supplier_procurement === true;
-    const [showProcurement, setShowProcurement] = useState(false);
+    const toSourceCount = sale?.sourcing_summary?.shortage_line_count ?? 0;
+    const canConvert = sale?.sourcing_summary?.can_convert === true;
 
     // Subtle pulse on the cart counter whenever it grows.
     const [bump, setBump] = useState(false);
@@ -210,6 +210,44 @@ export default function PosCartPanel({
 
             {/* Items (internal scroll) */}
             <div className="min-h-0 flex-1 overflow-y-auto">
+                {stockConflict && (
+                    <div role="alert" className="m-3 rounded-field border border-danger/30 bg-danger-soft/50 px-3 py-2.5 text-[12px] text-danger">
+                        <div className="flex items-start justify-between gap-2">
+                            <p className="font-semibold">{stockConflict.message}</p>
+                            <button type="button" onClick={onDismissConflict} aria-label={t('common.close')} className="shrink-0 text-danger/70 hover:text-danger">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12" /></svg>
+                            </button>
+                        </div>
+                        <p className="mt-0.5 text-ink-muted">{t('pos.stockConflictHelp')}</p>
+                        {stockConflict.lines.length > 0 && (
+                            <table className="mt-2 w-full text-[11px] text-ink">
+                                <thead>
+                                    <tr className="text-ink-muted [&>th]:py-0.5 [&>th]:font-medium">
+                                        <th className="text-start">{t('sourcing.article')}</th>
+                                        <th className="text-end">{t('pos.requestedQty')}</th>
+                                        <th className="text-end">{t('pos.availableQty')}</th>
+                                        <th className="text-end">{t('pos.missingQty')}</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {stockConflict.lines.map((line) => (
+                                        <tr key={line.line_id} className="[&>td]:py-0.5">
+                                            <td className="truncate">{line.product}</td>
+                                            <td className="text-end tabular-nums"><Quantity value={line.requested} /></td>
+                                            <td className="text-end tabular-nums"><Quantity value={line.available} /></td>
+                                            <td className="text-end font-semibold tabular-nums text-danger"><Quantity value={line.missing} /></td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        )}
+                        {toSourceCount > 0 && (
+                            <button type="button" onClick={onOpenSourcing} className="mt-2 font-semibold underline">
+                                {t('pos.checkAvailability')}
+                            </button>
+                        )}
+                    </div>
+                )}
                 {lines.length === 0 ? (
                     <div className="flex h-full flex-col items-center justify-center px-8 text-center">
                         <span className="grid size-11 place-items-center rounded-full bg-sage text-ink-faint">
@@ -292,23 +330,27 @@ export default function PosCartPanel({
                                             <LineDiscount line={line} pending={linePending} onChange={(type, value) => onDiscountChange(line, type, value)} />
                                         )}
 
+                                        {line.line_type === 'catalog' && line.sourcing?.requires_sourcing && (
+                                            <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
+                                                <span className={`rounded-full px-1.5 py-0.5 font-semibold ${line.sourcing.resolved ? 'bg-success-soft text-success' : 'bg-warning-soft text-warning'}`}>
+                                                    {line.sourcing.resolved ? t('sourcing.available') : t('pos.toSource')}
+                                                </span>
+                                                <span className="text-ink-muted">
+                                                    {t('pos.availableQty')} <Quantity value={line.sourcing.internal_available ?? '0'} /> · {t('pos.missingQty')}{' '}
+                                                    <Quantity value={line.sourcing.shortage} />
+                                                </span>
+                                                <button type="button" onClick={onOpenSourcing} className="font-semibold text-primary hover:underline">
+                                                    {t('pos.checkAvailability')}
+                                                </button>
+                                            </div>
+                                        )}
                                         {line.line_type === 'catalog' &&
-                                            (Number(line.to_procure ?? '0') > 0 || line.procurement || line.requires_replenishment) && (
+                                            (line.procurement || (line.requires_replenishment && Number(line.to_procure ?? '0') <= 0)) && (
                                                 <div className="mt-1.5 space-y-0.5 text-[11px]">
-                                                    {Number(line.to_procure ?? '0') > 0 && (
-                                                        <p className={line.needs_procurement ? 'text-warning' : 'text-ink-muted'}>
-                                                            {t('pos.availableCompany')} : <Quantity value={line.company_covered ?? '0'} />
-                                                            {` · ${t('pos.toProcure')} : `}
-                                                            <Quantity value={line.to_procure ?? '0'} />
-                                                        </p>
-                                                    )}
                                                     {line.procurement && (
                                                         <p className="text-ink-muted">
                                                             {line.procurement.supplier?.name ?? t('pos.supplier')} · {line.procurement.status_label}
                                                         </p>
-                                                    )}
-                                                    {!line.procurement && line.needs_procurement && (
-                                                        <p className="font-medium text-warning">{t('pos.procureSupplier')}</p>
                                                     )}
                                                     {line.requires_replenishment && Number(line.to_procure ?? '0') <= 0 && (
                                                         <p className="text-warning">
@@ -326,31 +368,16 @@ export default function PosCartPanel({
                 )}
             </div>
 
-            {/* Supplier special-order sourcing */}
-            {sale && showProcurement && procurementDeficit && canManageProcurement && (
-                <PosProcurementPanel
-                    sale={sale}
-                    suppliers={suppliers}
-                    busy={procurementBusy}
-                    onSubmit={onProcurementSubmit}
-                    onClose={() => setShowProcurement(false)}
-                />
-            )}
-
             {/* Sticky totals + actions */}
             <div className="shrink-0 border-t border-line bg-raised p-3.5">
                 {(procurementDeficit || awaitingProcurement) && (
                     <div className="mb-3 rounded-field border border-warning/30 bg-warning-soft/40 px-3 py-2 text-[12px] text-warning">
                         {procurementDeficit ? (
                             <>
-                                {t('pos.outOfStockHelp')}
-                                {canManageProcurement && (
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowProcurement((v) => !v)}
-                                        className="ms-1 font-semibold underline"
-                                    >
-                                        {showProcurement ? t('pos.hide') : t('pos.procureAction')}
+                                {canConvert ? t('pos.sourcingReady') : t('pos.sourcingStockHelp')}
+                                {toSourceCount > 0 && (
+                                    <button type="button" onClick={onOpenSourcing} className="ms-1 font-semibold underline">
+                                        {canConvert ? t('pos.createOrder') : t('pos.checkAvailability')}
                                     </button>
                                 )}
                             </>

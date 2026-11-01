@@ -51,9 +51,14 @@ class ConfirmSalesOrderAction
      * draft (ReceiveProcurementAction), keyed by warehouse. A reservation of
      * another article, or holding more than was received, is a conflict.
      *
+     * A line sourced from several suppliers (one requirement each) may hold
+     * several receipt reservations at one warehouse: they are consolidated into
+     * the oldest one (release + increase under the balance lock — the reserved
+     * quantity never changes) so the line adopts exactly one per warehouse.
+     *
      * @return \Illuminate\Support\Collection<int, InventoryReservation>
      */
-    private function receiptHoldings(SalesOrder $order, SalesOrderLine $line): \Illuminate\Support\Collection
+    private function receiptHoldings(User $actor, SalesOrder $order, SalesOrderLine $line): \Illuminate\Support\Collection
     {
         $procurements = $line->procurements->filter(fn (SalesOrderProcurement $p) => Decimal::compare((string) $p->received_quantity, '0') > 0);
         if ($procurements->isEmpty()) {
@@ -65,12 +70,23 @@ class ConfirmSalesOrderAction
         $held = $reservations->reduce(fn (string $sum, InventoryReservation $r) => Decimal::add($sum, (string) $r->quantity), '0.0000');
         $received = $procurements->reduce(fn (string $sum, SalesOrderProcurement $p) => Decimal::add($sum, (string) $p->received_quantity), '0.0000');
         if ($reservations->contains(fn (InventoryReservation $r) => (int) $r->product_variant_id !== (int) $line->product_variant_id)
-            || Decimal::compare($held, $received) > 0
-            || $reservations->pluck('warehouse_id')->duplicates()->isNotEmpty()) {
+            || Decimal::compare($held, $received) > 0) {
             throw ValidationException::withMessages(['lines' => 'Réservation de réception fournisseur incohérente pour cette ligne.']);
         }
 
-        return $reservations->keyBy(fn (InventoryReservation $r) => (int) $r->warehouse_id);
+        return $reservations->groupBy(fn (InventoryReservation $r) => (int) $r->warehouse_id)
+            ->map(function ($atWarehouse) use ($actor, $order) {
+                $kept = $atWarehouse->first();
+                foreach ($atWarehouse->slice(1) as $extra) {
+                    $this->inventory->release($actor, $order->organization, $extra);
+                    $kept = $this->inventory->increase($actor, $order->organization, $kept, (string) $extra->quantity);
+                    ProcurementReceipt::query()->where('organization_id', $order->organization_id)
+                        ->where('inventory_reservation_id', $extra->getKey())
+                        ->update(['inventory_reservation_id' => $kept->getKey()]);
+                }
+
+                return $kept;
+            });
     }
 
     public function execute(User $actor, SalesOrder $order): SalesOrder
@@ -111,7 +127,9 @@ class ConfirmSalesOrderAction
                 throw ValidationException::withMessages(['procurement' => array_column($blockers, 'message')]);
             }
 
-            $isManual = $order->source !== SalesOrderSource::Pos;
+            // A POS cart converted to a Sales Order Draft left the instant-sale
+            // path: its company portion is re-derived like any manual order.
+            $isManual = $order->source !== SalesOrderSource::Pos || $order->pos_converted_at !== null;
             $allocations = collect();
             $increases = [];
             foreach ($lines as $line) {
@@ -156,7 +174,7 @@ class ConfirmSalesOrderAction
                 }
                 // Supplier goods received while the order was a draft: already in
                 // stock and reserved for this line, one reservation per warehouse.
-                $held = $this->receiptHoldings($order, $line);
+                $held = $this->receiptHoldings($actor, $order, $line);
                 $receivedHeld = $held->reduce(fn (string $sum, InventoryReservation $reservation) => Decimal::add($sum, (string) $reservation->quantity), '0.0000');
                 $companyTarget = Decimal::subtract(Decimal::subtract(Decimal::normalize($line->quantity), $supplierCovered), $receivedHeld);
                 if (Decimal::compare($companyTarget, '0') < 0) {

@@ -3,17 +3,13 @@
 namespace App\Actions\Quotations;
 
 use App\Actions\Quotations\Concerns\MutatesQuotation;
-use App\Enums\QuotationLineType;
-use App\Enums\QuotationSupplierAvailabilityStatus as Status;
-use App\Models\ProductSupplier;
 use App\Models\Quotation;
 use App\Models\QuotationLine;
 use App\Models\QuotationSupplierAvailabilityRequest;
-use App\Models\Supplier;
 use App\Models\User;
 use App\Services\AuditLogger;
+use App\Services\Procurement\SupplierAvailabilityRequestRules;
 use App\Services\QuotationSourcing;
-use App\Support\Decimal;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -27,6 +23,7 @@ class CreateQuotationSupplierRequestAction
 
     public function __construct(
         private readonly QuotationSourcing $sourcing,
+        private readonly SupplierAvailabilityRequestRules $rules,
         private readonly AuditLogger $audit,
     ) {}
 
@@ -45,51 +42,25 @@ class CreateQuotationSupplierRequestAction
                 throw ValidationException::withMessages(['line' => 'Cette ligne est entièrement couverte par le stock interne.']);
             }
 
-            $supplier = Supplier::query()
-                ->where('organization_id', $quotation->organization_id)
-                ->where('active', true)
-                ->whereKey($data['supplier_id'])
-                ->first();
-            if (! $supplier) {
-                throw ValidationException::withMessages(['supplier_id' => 'Fournisseur introuvable ou inactif.']);
-            }
+            $supplier = $this->rules->activeSupplier((int) $quotation->organization_id, $data['supplier_id']);
+            $quantity = $this->rules->requestedQuantity($data, $evaluation['shortage'], (string) $line->quantity);
+            $this->rules->assertNoPendingDuplicate(
+                QuotationSupplierAvailabilityRequest::query()
+                    ->where('organization_id', $quotation->organization_id)
+                    ->where('quotation_line_id', $line->getKey())
+                    ->where('supplier_id', $supplier->getKey())
+                    ->get(),
+                $supplier,
+                $line->product_variant_id,
+                $line->non_stock_item_id,
+            );
 
-            $quantity = filled($data['requested_quantity'] ?? null)
-                ? Decimal::positive((string) $data['requested_quantity'], 'requested_quantity')
-                : $evaluation['shortage'];
-            if (Decimal::compare($quantity, (string) $line->quantity) > 0) {
-                throw ValidationException::withMessages(['requested_quantity' => 'La quantité demandée ne peut pas dépasser la quantité de la ligne.']);
-            }
-
-            $duplicate = QuotationSupplierAvailabilityRequest::query()
-                ->where('organization_id', $quotation->organization_id)
-                ->where('quotation_line_id', $line->getKey())
-                ->where('supplier_id', $supplier->getKey())
-                ->where('status', Status::Pending->value)
-                ->get()
-                ->contains(fn (QuotationSupplierAvailabilityRequest $r) => $r->matchesLineArticle($line));
-            if ($duplicate) {
-                throw ValidationException::withMessages(['supplier_id' => 'Une demande est déjà en attente auprès de ce fournisseur pour cette ligne.']);
-            }
-
-            $request = new QuotationSupplierAvailabilityRequest;
-            $request->organization_id = $quotation->organization_id;
-            $request->store_id = $quotation->store_id;
-            $request->quotation_id = $quotation->getKey();
-            $request->quotation_line_id = $line->getKey();
-            $request->supplier_id = $supplier->getKey();
-            $request->product_variant_id = $line->product_variant_id;
-            $request->non_stock_item_id = $line->non_stock_item_id;
-            $request->requested_quantity = $quantity;
-            $request->status = Status::Pending;
-            $request->requested_by_user_id = $actor->getKey();
-            $request->requested_at = now();
-            $request->note = filled($data['note'] ?? null) ? trim((string) $data['note']) : null;
-            $request->save();
-
-            if ($line->line_type === QuotationLineType::Catalog && $line->product_variant_id) {
-                $this->rememberProductSupplier($actor, $line, $supplier);
-            }
+            $request = $this->rules->newPendingRequest($actor, [
+                'organization_id' => $quotation->organization_id,
+                'store_id' => $quotation->store_id,
+                'quotation_id' => $quotation->getKey(),
+                'quotation_line_id' => $line->getKey(),
+            ], $supplier, $line->product_variant_id, $line->non_stock_item_id, $quantity, $data['note'] ?? null);
 
             $this->audit->record('quotation_supplier_availability.requested', $actor, $quotation->organization, $quotation->store, $request, newValues: [
                 'quotation_id' => $quotation->getKey(),
@@ -101,23 +72,5 @@ class CreateQuotationSupplierRequestAction
 
             return $request;
         });
-    }
-
-    /** A supplier asked for a catalogue article becomes one of its known suppliers. */
-    private function rememberProductSupplier(User $actor, QuotationLine $line, Supplier $supplier): void
-    {
-        $productId = $line->productVariant()->value('product_id');
-        if (! $productId) {
-            return;
-        }
-
-        ProductSupplier::query()->insertOrIgnore([
-            'organization_id' => $line->organization_id,
-            'product_id' => $productId,
-            'supplier_id' => $supplier->getKey(),
-            'created_by_user_id' => $actor->getKey(),
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
     }
 }

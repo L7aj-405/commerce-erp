@@ -386,6 +386,14 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
         Route::post('/drafts/{order}/resume', [PosController::class, 'resumeDraft'])->name('drafts.resume');
         Route::delete('/drafts/{order}', [PosController::class, 'destroyDraft'])->name('drafts.destroy');
         Route::post('/sales', [PosController::class, 'complete'])->name('sales.store');
+        // F2 — supplier sourcing of cart shortages ("Articles à sourcer") and
+        // hand-over of a fully sourced cart as a Sales Order Draft.
+        Route::get('/drafts/{order}/lines/{line}/supplier-options', [PosController::class, 'supplierOptions'])->name('drafts.sourcing.supplier-options');
+        Route::get('/drafts/{order}/lines/{line}/supplier-recommendations', [PosController::class, 'supplierRecommendations'])->name('drafts.sourcing.supplier-recommendations');
+        Route::post('/drafts/{order}/lines/{line}/supplier-requests', [PosController::class, 'storeSupplierRequest'])->name('drafts.sourcing.store');
+        Route::patch('/drafts/{order}/supplier-requests/{supplierRequest}', [PosController::class, 'recordSupplierRequest'])->name('drafts.sourcing.record');
+        Route::post('/drafts/{order}/supplier-requests/{supplierRequest}/cancel', [PosController::class, 'cancelSupplierRequest'])->name('drafts.sourcing.cancel');
+        Route::post('/drafts/{order}/convert', [PosController::class, 'convertDraft'])->name('drafts.convert');
     });
     Route::post('/context/organizations/{organizationId}', [TenantContextController::class, 'organization'])
         ->whereNumber('organizationId')
@@ -687,9 +695,12 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
     // internal warehouse Transfer Requests above.
     Route::prefix('procurement')->name('procurement.')->group(function () {
         Route::get('/', [ProcurementController::class, 'index'])->name('index');
-        // Pre-sale supplier availability checks raised from Devis (inbox only;
-        // mutations reuse the quotations.sourcing.* routes).
+        // Pre-sale supplier availability checks raised from Devis or POS carts
+        // (one inbox; Devis mutations reuse the quotations.sourcing.* routes).
         Route::get('/supplier-requests', [QuotationSupplierRequestController::class, 'index'])->name('supplier-requests.index');
+        // POS-cart-origin requests answered from the inbox (Devis rows keep the quotations.sourcing.* routes).
+        Route::patch('/supplier-requests/{supplierRequest}', [QuotationSupplierRequestController::class, 'record'])->name('supplier-requests.record');
+        Route::post('/supplier-requests/{supplierRequest}/cancel', [QuotationSupplierRequestController::class, 'cancel'])->name('supplier-requests.cancel');
         Route::get('/purchase-orders', [PurchaseOrderController::class, 'index'])->name('purchase-orders.index');
         Route::get('/purchase-orders/{purchaseOrder}', [PurchaseOrderController::class, 'show'])->whereNumber('purchaseOrder')->name('purchase-orders.show');
         Route::post('/purchase-orders/{purchaseOrder}/cancel', [PurchaseOrderController::class, 'cancel'])->whereNumber('purchaseOrder')->name('purchase-orders.cancel');

@@ -17,9 +17,10 @@ import PosFilters, { emptyFilters, filtersActive, type CatalogueFilters } from '
 import PosReceipt from './PosReceipt';
 import PosReviewModal from './PosReviewModal';
 import PosSuccessToast from './PosSuccessToast';
-import type { ProcurementSubmit } from './PosProcurementPanel';
+import PosSourcingModal from './PosSourcingModal';
+import type { SourcingTransport } from '@/pages/Quotations/Sourcing';
 import type { Account, CheckoutState, PosPending, ReviewData } from './pos-shared';
-import type { ActiveSale, CartLine, Customer, HeldSale, Option, ProductResult, Supplier, Warehouse } from './types';
+import type { ActiveSale, CartLine, Customer, HeldSale, Option, ProductResult, StockConflict, Supplier, Warehouse } from './types';
 
 type Store = { id: number; name: string; code: string };
 type CompletedOrder = {
@@ -67,10 +68,14 @@ type Props = {
         holdDraft: boolean;
         cancelDraft: boolean;
         manageProcurement: boolean;
+        requestSupplier: boolean;
+        recordSupplier: boolean;
     };
     financialAccounts: Account[];
     createdCustomer: Customer | null;
     completedOrder: CompletedOrder | null;
+    /** Finalization rejected because stock changed since the cart was opened. */
+    stockConflict: StockConflict | null;
 };
 
 const PRINT_FLAG = 'pos.print_receipt';
@@ -85,10 +90,10 @@ export default function PosIndex({
     heldSales: initialHeldSales,
     brands,
     categories,
-    suppliers,
     can,
     financialAccounts,
     completedOrder,
+    stockConflict: initialStockConflict,
 }: Props) {
     const { t } = useI18n();
     const toast = useToast();
@@ -108,6 +113,21 @@ export default function PosIndex({
     const isDesktop = useMediaQuery('(min-width: 1024px)');
     const [mobileCartOpen, setMobileCartOpen] = useState(false);
     const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
+    const [stockConflict, setStockConflict] = useState<StockConflict | null>(initialStockConflict);
+    const [sourcingOpen, setSourcingOpen] = useState(false);
+    const [converting, setConverting] = useState(false);
+
+    // A rejected finalization lands back here on the SAME (untouched) cart: close
+    // the review, show the cart with the affected articles.
+    useEffect(() => {
+        setStockConflict(initialStockConflict);
+        if (initialStockConflict) {
+            setReviewData(null);
+            setCompleting(false);
+            setPanelMode('cart');
+            setMobileCartOpen(true);
+        }
+    }, [initialStockConflict]);
 
     // Immediate, optimistic quantity per line so +/- feels instant even while the
     // authoritative server write is in flight. Cleared once the server response
@@ -289,59 +309,59 @@ export default function PosIndex({
         sync(await posJson<DraftStatePayload>(`/pos/drafts/${activeSaleRef.current.id}`, { method: 'PATCH', body: fields }));
     }
 
-    /** Re-pull the active draft (and its supplier-procurement state) from the server. */
-    async function refreshDraft() {
-        if (!warehouseId) return;
-        sync(await posJson<DraftStatePayload>('/pos/drafts', { method: 'POST', body: { warehouse_id: warehouseId } }));
-    }
-
     /**
-     * Create (or update) the supplier procurement for one under-covered cart line
-     * through the SHARED procurement endpoints, then refresh the cart. POS and the
-     * back-office act on the same SalesOrderProcurement rows.
+     * The Devis sourcing dialogs, pointed at the cart's JSON routes. Every
+     * mutation returns the authoritative cart state, so "Articles à sourcer"
+     * re-renders with the line's new sourcing state and stays open.
      */
-    async function submitProcurement(payload: ProcurementSubmit) {
+    const cartTransport = useMemo<SourcingTransport>(() => {
+        const base = () => `/pos/drafts/${activeSaleRef.current?.id ?? 0}`;
+        const run = (call: () => Promise<DraftStatePayload>, callbacks: { onError?: (e: Record<string, string>) => void; onSuccess?: () => void; onFinish?: () => void }) => {
+            call()
+                .then((payload) => {
+                    sync(payload);
+                    callbacks.onSuccess?.();
+                })
+                .catch((error: unknown) => {
+                    const errors = (error as { errors?: Record<string, string[]> }).errors;
+                    const flat = errors ? Object.fromEntries(Object.entries(errors).map(([key, value]) => [key, value[0]])) : { order: posErrorMessage(error, t('pos.operationFailed')) };
+                    callbacks.onError?.(flat);
+                })
+                .finally(() => callbacks.onFinish?.());
+        };
+
+        return {
+            recommendationsUrl: (lineId) => `${base()}/lines/${lineId}/supplier-recommendations`,
+            optionsUrl: (lineId) => `${base()}/lines/${lineId}/supplier-options`,
+            createRequest: (lineId, payload, callbacks) =>
+                run(() => posJson<DraftStatePayload>(`${base()}/lines/${lineId}/supplier-requests`, { body: payload }), callbacks),
+            recordResult: (requestId, payload, callbacks) =>
+                run(() => posJson<DraftStatePayload>(`${base()}/supplier-requests/${requestId}`, { method: 'PATCH', body: payload }), callbacks),
+            cancelRequest: (requestId, callbacks) =>
+                run(() => posJson<DraftStatePayload>(`${base()}/supplier-requests/${requestId}/cancel`, {}), {
+                    ...callbacks,
+                    onError: (e) => toast.error(Object.values(e)[0] ?? t('pos.operationFailed')),
+                }),
+        };
+    }, [sync, t, toast]);
+
+    /** "Créer la commande": hand the fully sourced cart over as a Sales Order Draft. */
+    async function convertCart() {
         const sale = activeSaleRef.current;
-        if (!sale) return;
-        await perform(
-            'procurement:save',
-            async () => {
-                const existing = sale.lines.find((line) => line.id === payload.sales_order_line_id)?.procurement ?? null;
-                let procurementId = existing?.id ?? null;
-
-                if (!procurementId) {
-                    const created = await posJson<{ data: { id: number } }>(`/sales/orders/${sale.id}/procurements`, {
-                        method: 'POST',
-                        body: {
-                            sales_order_line_id: payload.sales_order_line_id,
-                            supplier_id: payload.supplier_id,
-                            quantity: payload.quantity,
-                            supplier_reference: payload.supplier_reference ?? null,
-                        },
-                    });
-                    procurementId = created.data.id;
-                } else if (existing && existing.supplier?.id !== payload.supplier_id) {
-                    await posJson(`/procurement/${procurementId}/supplier`, {
-                        method: 'PATCH',
-                        body: { supplier_id: payload.supplier_id },
-                    });
-                }
-
-                if (procurementId) {
-                    await posJson(`/procurement/${procurementId}/availability`, {
-                        method: 'PATCH',
-                        body: {
-                            supplier_availability_status: payload.supplier_availability_status,
-                            quantity: payload.quantity,
-                            supplier_reference: payload.supplier_reference ?? null,
-                        },
-                    });
-                }
-
-                await refreshDraft();
-            },
-            { success: t('pos.procurementSaved') },
-        );
+        if (!sale || converting) return;
+        setConverting(true);
+        try {
+            const result = await posJson<DraftStatePayload & { sales_order: { id: number; order_number: string; url: string } }>(`/pos/drafts/${sale.id}/convert`, {});
+            sync(result);
+            setSourcingOpen(false);
+            setStockConflict(null);
+            toast.success(t('pos.orderCreated').replace('{number}', result.sales_order.order_number));
+            router.visit(result.sales_order.url);
+        } catch (error) {
+            toast.error(posErrorMessage(error, t('pos.operationFailed')));
+        } finally {
+            setConverting(false);
+        }
     }
 
     function changeGlobalDiscount(type: 'none' | 'fixed' | 'percentage', value: string) {
@@ -608,10 +628,9 @@ export default function PosIndex({
                                     pending={posPending}
                                     canApplyDiscount={can.applyDiscount}
                                     heldCount={heldSales.length}
-                                    suppliers={suppliers}
-                                    canManageProcurement={can.manageProcurement}
-                                    procurementBusy={pending.isPending('procurement:save')}
-                                    onProcurementSubmit={submitProcurement}
+                                    stockConflict={stockConflict}
+                                    onDismissConflict={() => setStockConflict(null)}
+                                    onOpenSourcing={() => setSourcingOpen(true)}
                                     onQuantityChange={changeQuantity}
                                     onDiscountChange={changeLineDiscount}
                                     onRemove={removeLine}
@@ -681,10 +700,9 @@ export default function PosIndex({
                             pending={posPending}
                             canApplyDiscount={can.applyDiscount}
                             heldCount={heldSales.length}
-                            suppliers={suppliers}
-                            canManageProcurement={can.manageProcurement}
-                            procurementBusy={pending.isPending('procurement:save')}
-                            onProcurementSubmit={submitProcurement}
+                            stockConflict={stockConflict}
+                            onDismissConflict={() => setStockConflict(null)}
+                            onOpenSourcing={() => setSourcingOpen(true)}
                             onQuantityChange={changeQuantity}
                             onDiscountChange={changeLineDiscount}
                             onRemove={removeLine}
@@ -741,6 +759,18 @@ export default function PosIndex({
                 onResume={resumeHeldSale}
                 onDelete={deleteHeldSale}
             />
+
+            {activeSale && sourcingOpen && (
+                <PosSourcingModal
+                    open
+                    sale={activeSale}
+                    transport={cartTransport}
+                    can={{ request: can.requestSupplier, record: can.recordSupplier, convert: can.updateDraft }}
+                    converting={converting}
+                    onConvert={() => void convertCart()}
+                    onClose={() => setSourcingOpen(false)}
+                />
+            )}
 
             {activeSale && (
                 <PosReviewModal

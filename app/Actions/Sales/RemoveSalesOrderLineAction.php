@@ -31,6 +31,9 @@ class RemoveSalesOrderLineAction
                 ]);
             }
             $line->allocations()->delete();
+            // Pre-sale supplier availability evidence gathered for this cart line
+            // (never a commitment) disappears with it, exactly like a Devis line's.
+            $line->supplierAvailabilityRequests()->whereDoesntHave('derivedProcurement')->delete();
             $line->delete();
             $this->totals->recalculate($order);
         });

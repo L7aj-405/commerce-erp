@@ -94,6 +94,56 @@ const REQUEST_STATUS: Record<SourcingRequest["status"], TranslationKey> = {
 
 const RELOAD = ["sourcing", "errors", "flash"];
 
+type Callbacks = {
+    onError?: (errors: Record<string, string>) => void;
+    onSuccess?: () => void;
+    onFinish?: () => void;
+};
+
+/**
+ * Where the canonical sourcing dialogs send their requests. The Devis editor
+ * and the Achats inbox use the quotation routes (Inertia partial reloads); the
+ * POS cart ("Articles à sourcer") uses its own JSON routes over the SAME
+ * supplier availability records and rules.
+ */
+export type SourcingTransport = {
+    recommendationsUrl: (lineId: number) => string;
+    optionsUrl: (lineId: number) => string;
+    createRequest: (
+        lineId: number,
+        payload: { supplier_id: number; requested_quantity: string | null; note: string | null },
+        callbacks: Callbacks,
+    ) => void;
+    recordResult: (
+        requestId: number,
+        payload: { outcome: "available" | "unavailable"; confirmed_quantity: string | null; note: string | null },
+        callbacks: Callbacks,
+    ) => void;
+    cancelRequest: (requestId: number, callbacks: Callbacks) => void;
+};
+
+export function quotationTransport(quotationId: number, only: string[] = RELOAD): SourcingTransport {
+    const options = (callbacks: Callbacks) => ({
+        preserveScroll: true,
+        preserveState: true,
+        only,
+        onError: (e: Record<string, string>) => callbacks.onError?.(e),
+        onSuccess: () => callbacks.onSuccess?.(),
+        onFinish: () => callbacks.onFinish?.(),
+    });
+
+    return {
+        recommendationsUrl: (lineId) => `/quotations/${quotationId}/lines/${lineId}/supplier-recommendations`,
+        optionsUrl: (lineId) => `/quotations/${quotationId}/lines/${lineId}/supplier-options`,
+        createRequest: (lineId, payload, callbacks) =>
+            router.post(`/quotations/${quotationId}/lines/${lineId}/supplier-requests`, payload, options(callbacks)),
+        recordResult: (requestId, payload, callbacks) =>
+            router.patch(`/quotations/${quotationId}/supplier-requests/${requestId}`, payload, options(callbacks)),
+        cancelRequest: (requestId, callbacks) =>
+            router.post(`/quotations/${quotationId}/supplier-requests/${requestId}/cancel`, {}, options(callbacks)),
+    };
+}
+
 /**
  * Cancel through the canonical sourcing route. Shared by the Devis editor and
  * the Achats › Demandes fournisseur inbox (which reloads different props).
@@ -219,12 +269,19 @@ export function SourcingPanel({
     quotationId,
     sourcing,
     can,
+    transport: transportProp,
+    createLabel,
 }: {
     quotationId: number;
     sourcing: LineSourcing;
     can: SourcingCan;
+    /** Defaults to the Devis routes of `quotationId`. */
+    transport?: SourcingTransport;
+    /** Label of the first-request button (defaults to the Devis wording). */
+    createLabel?: string;
 }) {
     const { t } = useI18n();
+    const transport = transportProp ?? quotationTransport(quotationId);
     const detailsId = useId();
     const [requestOpen, setRequestOpen] = useState(false);
     const [expanded, setExpanded] = useState(false);
@@ -352,7 +409,7 @@ export function SourcingPanel({
                             <TruckIcon />
                             {hasRequests
                                 ? t("sourcing.newRequest")
-                                : t("sourcing.createRequest")}
+                                : (createLabel ?? t("sourcing.createRequest"))}
                         </Button>
                     )}
                     {hasRequests && (
@@ -394,7 +451,7 @@ export function SourcingPanel({
                     {sourcing.requests.map((r) => (
                         <RequestRow
                             key={r.id}
-                            quotationId={quotationId}
+                            transport={transport}
                             request={r}
                             can={can}
                         />
@@ -403,7 +460,7 @@ export function SourcingPanel({
             )}
             {requestOpen && (
                 <SupplierRequestDialog
-                    quotationId={quotationId}
+                    transport={transport}
                     sourcing={sourcing}
                     onClose={() => setRequestOpen(false)}
                 />
@@ -413,11 +470,11 @@ export function SourcingPanel({
 }
 
 function RequestRow({
-    quotationId,
+    transport,
     request,
     can,
 }: {
-    quotationId: number;
+    transport: SourcingTransport;
     request: SourcingRequest;
     can: SourcingCan;
 }) {
@@ -428,7 +485,7 @@ function RequestRow({
 
     const cancel = () => {
         setBusy(true);
-        cancelSupplierRequest(quotationId, request.id, {
+        transport.cancelRequest(request.id, {
             onFinish: () => setBusy(false),
         });
     };
@@ -518,7 +575,7 @@ function RequestRow({
             )}
             {recordOpen && (
                 <RecordResultDialog
-                    quotationId={quotationId}
+                    transport={transport}
                     request={request}
                     onClose={() => setRecordOpen(false)}
                 />
@@ -527,12 +584,12 @@ function RequestRow({
     );
 }
 
-function SupplierRequestDialog({
-    quotationId,
+export function SupplierRequestDialog({
+    transport,
     sourcing,
     onClose,
 }: {
-    quotationId: number;
+    transport: SourcingTransport;
     sourcing: LineSourcing;
     onClose: () => void;
 }) {
@@ -555,7 +612,7 @@ function SupplierRequestDialog({
     // Advisory ranking (B2): read once per open; nothing is created by viewing it.
     useEffect(() => {
         const ctrl = new AbortController();
-        fetch(`/quotations/${quotationId}/lines/${sourcing.line_id}/supplier-recommendations`, {
+        fetch(transport.recommendationsUrl(sourcing.line_id), {
             headers: { Accept: "application/json", "X-Requested-With": "XMLHttpRequest" },
             signal: ctrl.signal,
         })
@@ -567,7 +624,7 @@ function SupplierRequestDialog({
             })
             .finally(() => setRecoLoading(false));
         return () => ctrl.abort();
-    }, [quotationId, sourcing.line_id]);
+    }, [sourcing.line_id]);
 
     useEffect(() => {
         const ctrl = new AbortController();
@@ -575,7 +632,7 @@ function SupplierRequestDialog({
             setLoading(true);
             try {
                 const url = new URL(
-                    `/quotations/${quotationId}/lines/${sourcing.line_id}/supplier-options`,
+                    transport.optionsUrl(sourcing.line_id),
                     window.location.origin,
                 );
                 if (search.trim() !== "")
@@ -604,23 +661,20 @@ function SupplierRequestDialog({
             ctrl.abort();
             window.clearTimeout(h);
         };
-    }, [search, quotationId, sourcing.line_id]);
+    }, [search, sourcing.line_id]);
 
     /** The canonical availability request for one explicitly chosen supplier. */
     const request = (chosen: number, fromRecommendation: boolean) => {
         setProcessing(true);
         if (fromRecommendation) setProcessingId(chosen);
-        router.post(
-            `/quotations/${quotationId}/lines/${sourcing.line_id}/supplier-requests`,
+        transport.createRequest(
+            sourcing.line_id,
             {
                 supplier_id: chosen,
                 requested_quantity: quantity.trim() || null,
                 note: note.trim() || null,
             },
             {
-                preserveScroll: true,
-                preserveState: true,
-                only: RELOAD,
                 onError: (e) => setErrors(e),
                 onSuccess: () => onClose(),
                 onFinish: () => {
@@ -765,9 +819,9 @@ function SupplierRequestDialog({
                         className="mt-1 w-full rounded-field border border-line-strong px-2 py-1 text-sm text-ink"
                     />
                 </label>
-                {(errors.line || errors.quotation) && (
+                {(errors.line || errors.quotation || errors.order) && (
                     <p className="text-xs text-danger">
-                        {errors.line ?? errors.quotation}
+                        {errors.line ?? errors.quotation ?? errors.order}
                     </p>
                 )}
             </div>
@@ -780,14 +834,18 @@ export function RecordResultDialog({
     request,
     onClose,
     only = RELOAD,
+    transport: transportProp,
 }: {
-    quotationId: number;
+    quotationId?: number;
     request: SourcingRequest;
     onClose: () => void;
     /** Inertia partial-reload keys after saving (the inbox reloads its list). */
     only?: string[];
+    /** Defaults to the Devis routes of `quotationId`. */
+    transport?: SourcingTransport;
 }) {
     const { t } = useI18n();
+    const transport = transportProp ?? quotationTransport(quotationId ?? 0, only);
     const [outcome, setOutcome] = useState<"available" | "unavailable">(
         request.status === "unavailable" ? "unavailable" : "available",
     );
@@ -800,8 +858,8 @@ export function RecordResultDialog({
 
     const submit = () => {
         setProcessing(true);
-        router.patch(
-            `/quotations/${quotationId}/supplier-requests/${request.id}`,
+        transport.recordResult(
+            request.id,
             {
                 outcome,
                 confirmed_quantity:
@@ -809,9 +867,6 @@ export function RecordResultDialog({
                 note: note.trim() || null,
             },
             {
-                preserveScroll: true,
-                preserveState: true,
-                only,
                 onError: (e) => setErrors(e),
                 onSuccess: () => onClose(),
                 onFinish: () => setProcessing(false),
@@ -881,9 +936,9 @@ export function RecordResultDialog({
                         className="mt-1 w-full rounded-field border border-line-strong px-2 py-1 text-sm text-ink"
                     />
                 </label>
-                {(errors.status || errors.quotation) && (
+                {(errors.status || errors.quotation || errors.order) && (
                     <p className="text-xs text-danger">
-                        {errors.status ?? errors.quotation}
+                        {errors.status ?? errors.quotation ?? errors.order}
                     </p>
                 )}
             </div>

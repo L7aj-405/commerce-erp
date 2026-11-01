@@ -46,7 +46,8 @@ use Illuminate\Support\Collection;
  * coverage makes a line confirmation-ready: stock reserved to the order
  * (received supplier goods included) or free internal stock — never a supplier
  * confirmation, a purchase order or an expected delivery for a requirement
- * derived from the quotation.
+ * derived from pre-sale supplier evidence (the quotation, or the POS cart it was
+ * converted from).
  */
 final class SalesOrderProcurementPlanner
 {
@@ -176,7 +177,7 @@ final class SalesOrderProcurementPlanner
 
         $sourceRequestIds = $procurements->pluck('source_supplier_request_id')->filter()->unique()->values()->all();
         $sourceRequests = $sourceRequestIds === [] ? collect() : QuotationSupplierAvailabilityRequest::query()
-            ->where('organization_id', $order->organization_id)->whereKey($sourceRequestIds)->get(['id', 'status'])->keyBy('id');
+            ->where('organization_id', $order->organization_id)->whereKey($sourceRequestIds)->get(['id', 'status', 'sales_order_line_id'])->keyBy('id');
 
         $quotation = Quotation::query()->where('organization_id', $order->organization_id)
             ->where('converted_sales_order_id', $order->getKey())->first(['id', 'organization_id', 'quotation_number', 'revision_number']);
@@ -296,8 +297,9 @@ final class SalesOrderProcurementPlanner
             $received = Decimal::add($received, (string) $procurement->received_quantity);
             $held = Decimal::add($held, $context['receipt_held']->get($procurement->getKey(), '0.0000'));
             $notReceived = $this->atLeastZero(Decimal::subtract((string) $procurement->quantity, (string) $procurement->received_quantity));
-            if ($procurement->source_quotation_id !== null) {
-                // Derived from the quotation: only the goods themselves cover it.
+            if ($procurement->source_quotation_id !== null || $procurement->source_supplier_request_id !== null) {
+                // Derived from pre-sale supplier evidence (quotation or POS cart):
+                // only the goods themselves cover it.
                 $awaitingReceipt = $awaitingReceipt || Decimal::compare($notReceived, '0') > 0;
             } else {
                 // V1 special order: the confirmed supplier commitment covers it (unchanged rule).
@@ -406,7 +408,12 @@ final class SalesOrderProcurementPlanner
 
         return [
             'status' => $procurement->supplier_availability_status->value,
-            'source' => $request === null ? 'procurement' : ($request->status === QuotationSupplierAvailabilityStatus::ConfirmedManually ? 'manual' : 'quotation'),
+            'source' => match (true) {
+                $request === null => 'procurement',
+                $request->status === QuotationSupplierAvailabilityStatus::ConfirmedManually => 'manual',
+                $request->sales_order_line_id !== null => 'cart',
+                default => 'quotation',
+            },
         ];
     }
 

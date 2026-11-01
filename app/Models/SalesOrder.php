@@ -42,6 +42,7 @@ class SalesOrder extends Model
             'pos_global_discount_value' => 'decimal:4',
             'pos_shipping_fee' => 'decimal:4',
             'pos_held_at' => 'datetime',
+            'pos_converted_at' => 'datetime',
         ];
     }
 
@@ -155,6 +156,12 @@ class SalesOrder extends Model
     public function procurements(): HasMany
     {
         return $this->hasMany(SalesOrderProcurement::class);
+    }
+
+    /** Pre-sale supplier availability evidence gathered from the POS cart. */
+    public function supplierAvailabilityRequests(): HasMany
+    {
+        return $this->hasMany(QuotationSupplierAvailabilityRequest::class);
     }
 
     /**
