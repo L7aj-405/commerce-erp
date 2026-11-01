@@ -7,7 +7,6 @@ use App\Models\WooCommerceIntegration;
 use App\Services\Security\OutboundDestinationGuard;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
-use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -35,26 +34,93 @@ use Illuminate\Support\Facades\Log;
  * the request URL itself is untouched, so TLS SNI/certificate verification
  * and the Host header still use the real hostname; only the low-level
  * connect target is fixed. `verify` is never touched (stays enabled).
+ *
+ * Rate limits (F3): every call of one client instance (one per sync run /
+ * connection test) shares ONE request policy ({@see WooCommerceRetryPolicy}):
+ *  - pacing: a minimum interval between two requests, so a sync never fires
+ *    product-page → variations → variations bursts;
+ *  - 429: Retry-After honoured (seconds or HTTP-date) and never shortened —
+ *    a wait longer than the configured maximum stops the run as rate-limited
+ *    instead; without Retry-After, exponential backoff with jitter;
+ *  - 500/502/503/504 and connection failures: bounded exponential backoff;
+ *  - 401/403, 404 and other 4xx: never retried;
+ *  - a total backoff budget per run keeps the queue job far below its timeout.
+ * Every retry / final failure emits a safe diagnostic event (endpoint path,
+ * page, product id, status, attempt, Retry-After, rate-limit headers, duration)
+ * — never the consumer key/secret, the Authorization header or a body.
  */
 class WooCommerceClient
 {
     private const MAX_REDIRECTS = 3;
 
+    /** Response headers worth recording when a request is throttled (lower-case). */
+    private const RATE_LIMIT_HEADERS = [
+        'retry-after', 'x-ratelimit-limit', 'x-ratelimit-remaining', 'x-ratelimit-reset',
+        'ratelimit-limit', 'ratelimit-remaining', 'ratelimit-reset', 'ratelimit-policy',
+    ];
+
+    private WooCommerceRetryPolicy $policy;
+
+    private WooCommerceClock $clock;
+
+    /** @var (callable(array<string, mixed>): void)|null */
+    private $listener = null;
+
+    private ?float $lastRequestAt = null;
+
+    private float $totalBackoff = 0.0;
+
+    private int $requestCount = 0;
+
+    /** @var array<int, array<string, mixed>>|null run-level memo of the category tree */
+    private ?array $categories = null;
+
     public function __construct(
         private readonly WooCommerceIntegration $integration,
         private readonly OutboundDestinationGuard $guard,
-    ) {}
+        ?WooCommerceRetryPolicy $policy = null,
+        ?WooCommerceClock $clock = null,
+    ) {
+        $this->policy = $policy ?? WooCommerceRetryPolicy::forSync();
+        $this->clock = $clock ?? app(WooCommerceClock::class);
+    }
 
     public static function for(WooCommerceIntegration $integration): self
     {
         return new self($integration, app(OutboundDestinationGuard::class));
     }
 
+    /**
+     * Receive safe diagnostic events: `retrying` (before a backoff wait),
+     * `recovered` (a retried request finally succeeded) and `failed`.
+     *
+     * @param  callable(array<string, mixed>): void  $listener
+     */
+    public function onEvent(callable $listener): self
+    {
+        $this->listener = $listener;
+
+        return $this;
+    }
+
+    /** HTTP requests actually sent by this client (attempts included). */
+    public function requestCount(): int
+    {
+        return $this->requestCount;
+    }
+
+    /** Seconds spent waiting on backoff so far (pacing excluded). */
+    public function totalBackoffSeconds(): float
+    {
+        return $this->totalBackoff;
+    }
+
     /** A lightweight authenticated probe used by "Test connection". */
     public function ping(): void
     {
         // `products?per_page=1` requires both a reachable wc/v3 route and valid auth.
-        $this->get('products', ['per_page' => 1]);
+        // Interactive: at most one short retry — a web request never waits minutes.
+        $this->get('products', ['per_page' => 1], WooCommerceRetryPolicy::interactive());
     }
 
     /**
@@ -83,9 +149,13 @@ class WooCommerceClient
      */
     public function getAllProductCategories(): array
     {
+        if ($this->categories !== null) {
+            return $this->categories; // already loaded during this run
+        }
+
         $all = [];
         $page = 1;
-        $perPage = (int) config('woocommerce.per_page', 50);
+        $perPage = self::perPage();
         $maxPages = (int) config('woocommerce.max_pages', 2000);
 
         do {
@@ -95,33 +165,29 @@ class WooCommerceClient
             $page++;
         } while ($page <= $totalPages && $page <= $maxPages);
 
-        return $all;
+        return $this->categories = $all;
     }
 
-    /** @return array<int, array<string, mixed>> */
-    public function getTaxClasses(): array
-    {
-        try {
-            return $this->get('taxes/classes')->json() ?? [];
-        } catch (WooCommerceApiException) {
-            return [];
-        }
-    }
-
-    /** Woo "General" settings — used to detect whether prices include tax. */
+    /**
+     * Woo "General" settings — whether prices include tax. Null when the setting
+     * holds no recognised value; a failed request throws (the caller decides
+     * whether to fall back, and records it — never a silent default).
+     */
     public function getPricesIncludeTax(): ?bool
     {
-        try {
-            $value = $this->get('settings/general/woocommerce_prices_include_tax')->json('value');
+        $value = $this->get('settings/general/woocommerce_prices_include_tax')->json('value');
 
-            return match ((string) $value) {
-                'yes' => true,
-                'no' => false,
-                default => null,
-            };
-        } catch (WooCommerceApiException) {
-            return null;
-        }
+        return match ((string) $value) {
+            'yes' => true,
+            'no' => false,
+            default => null,
+        };
+    }
+
+    /** Items per page: the configured value, within the WP REST limit (1..100). */
+    public static function perPage(): int
+    {
+        return max(1, min(100, (int) config('woocommerce.per_page', 100)));
     }
 
     /**
@@ -144,23 +210,93 @@ class WooCommerceClient
         ];
     }
 
-    /** @param array<string, mixed> $query */
-    private function get(string $path, array $query = []): Response
+    /**
+     * One logical GET: paced, retried according to the policy, diagnosed.
+     *
+     * @param  array<string, mixed>  $query
+     */
+    private function get(string $path, array $query = [], ?WooCommerceRetryPolicy $policy = null): Response
+    {
+        $policy ??= $this->policy;
+        $retries = 0;
+
+        while (true) {
+            $this->pace($policy);
+            $started = $this->clock->now();
+            $response = null;
+            $connectionFailed = false;
+
+            try {
+                $response = $this->send($path, $query);
+            } catch (ConnectionException) {
+                $connectionFailed = true;
+            } finally {
+                $this->lastRequestAt = $this->clock->now();
+                $this->requestCount++;
+            }
+
+            $event = $this->diagnostics($path, $query, $response, $connectionFailed, $retries + 1, $policy, $this->lastRequestAt - $started);
+
+            if ($response !== null && $response->successful()) {
+                if ($retries > 0) {
+                    $this->emit('recovered', $event);
+                }
+
+                return $response;
+            }
+
+            $status = $response?->status();
+            $retryable = $connectionFailed || ($status !== null && $policy->isRetryableStatus($status));
+            if (! $retryable) {
+                throw $this->fail($event, $connectionFailed ? $this->unreachable() : $this->classifyStatus((int) $status));
+            }
+
+            // How long the server asked us to wait (429, or 503 maintenance).
+            $retryAfter = $response ? WooCommerceRetryPolicy::retryAfterSeconds($response->header('Retry-After'), $this->clock->now()) : null;
+            $event['retry_after_seconds'] = $retryAfter;
+            $final = $connectionFailed ? $this->unreachable() : $this->classifyStatus((int) $status);
+
+            if ($retries >= $policy->maxRetries) {
+                throw $this->fail($event, $final);
+            }
+            if ($retryAfter !== null && $retryAfter > $policy->maxDelaySeconds) {
+                // Never shortened: stop and say when the store accepts requests again.
+                throw $this->fail($event + ['reason' => 'retry_after_exceeds_max_delay'], $final);
+            }
+
+            $delay = $retryAfter ?? $policy->backoff($retries + 1, $this->clock->jitter());
+            if ($this->totalBackoff + $delay > $policy->maxTotalBackoffSeconds) {
+                throw $this->fail($event + ['reason' => 'backoff_budget_exhausted'], $final);
+            }
+
+            $retries++;
+            $this->emit('retrying', $event + [
+                'retry_in_seconds' => $delay,
+                'retry_at' => date(DATE_ATOM, (int) ceil($this->clock->now() + $delay)),
+                'next_attempt' => $retries + 1,
+            ]);
+            $this->clock->sleep($delay);
+            $this->totalBackoff += $delay;
+        }
+    }
+
+    /**
+     * One HTTP attempt, following (and re-validating) redirects. Returns the
+     * final response whatever its status; throws ConnectionException on a
+     * network failure and WooCommerceApiException on an unsafe redirect.
+     *
+     * @param  array<string, mixed>  $query
+     */
+    private function send(string $path, array $query): Response
     {
         $url = $this->absoluteUrl($path);
         $pin = $this->guardUrl($url);
 
         for ($redirects = 0; ; $redirects++) {
-            try {
-                $response = $this->request($pin)->get($url, $query);
-            } catch (ConnectionException) {
-                throw new WooCommerceApiException(WooCommerceApiException::UNREACHABLE, 'Boutique inaccessible.');
-            } catch (RequestException $exception) {
-                throw $this->classifyStatus($exception->response->status());
-            }
+            $response = $this->request($pin)->get($url, $query);
 
             if (! in_array($response->status(), [301, 302, 303, 307, 308], true)) {
-                break;
+                return $response;
             }
 
             if ($redirects >= self::MAX_REDIRECTS) {
@@ -188,12 +324,80 @@ class WooCommerceClient
             $pin = $this->guardUrl($url);
             $query = [];
         }
+    }
 
-        if ($response->successful()) {
-            return $response;
+    /** Minimum spacing between two requests of this client (no bursts). */
+    private function pace(WooCommerceRetryPolicy $policy): void
+    {
+        if ($this->lastRequestAt === null || $policy->minIntervalSeconds <= 0) {
+            return;
+        }
+        $wait = $policy->minIntervalSeconds - ($this->clock->now() - $this->lastRequestAt);
+        if ($wait > 0) {
+            $this->clock->sleep($wait);
+        }
+    }
+
+    /**
+     * Safe diagnostics of one attempt. The path is relative to wc/v3 (the store
+     * host and credentials are never part of it); only paging parameters of the
+     * query are kept.
+     *
+     * @param  array<string, mixed>  $query
+     * @return array<string, mixed>
+     */
+    private function diagnostics(string $path, array $query, ?Response $response, bool $connectionFailed, int $attempt, WooCommerceRetryPolicy $policy, float $duration): array
+    {
+        $endpoint = preg_replace('#products/\d+/variations#', 'products/{id}/variations', ltrim($path, '/'));
+        preg_match('#products/(\d+)/variations#', $path, $product);
+
+        $rateLimit = [];
+        if ($response !== null) {
+            foreach (self::RATE_LIMIT_HEADERS as $header) {
+                $value = $response->header($header);
+                if ($value !== '') {
+                    $rateLimit[$header] = mb_substr($value, 0, 64);
+                }
+            }
         }
 
-        throw $this->classifyStatus($response->status());
+        return [
+            'endpoint' => $endpoint,
+            'page' => isset($query['page']) ? (int) $query['page'] : null,
+            'per_page' => isset($query['per_page']) ? (int) $query['per_page'] : null,
+            'product_id' => isset($product[1]) ? (int) $product[1] : null,
+            'status' => $response?->status(),
+            'error' => $connectionFailed ? 'connection' : null,
+            'attempt' => $attempt,
+            'max_attempts' => $policy->maxRetries + 1,
+            'rate_limit_headers' => $rateLimit,
+            'duration_ms' => (int) round(max(0, $duration) * 1000),
+        ];
+    }
+
+    /** @param array<string, mixed> $event */
+    private function fail(array $event, WooCommerceApiException $exception): WooCommerceApiException
+    {
+        $this->emit('failed', $event);
+
+        return $exception->withContext($event);
+    }
+
+    /** @param array<string, mixed> $event */
+    private function emit(string $type, array $event): void
+    {
+        $context = ['integration_id' => $this->integration->getKey(), 'organization_id' => $this->integration->organization_id, 'event' => $type, ...$event];
+        if ($type !== 'recovered') {
+            Log::warning('woocommerce.request_'.$type, $context);
+        }
+        if ($this->listener) {
+            ($this->listener)(['type' => $type, ...$event]);
+        }
+    }
+
+    private function unreachable(): WooCommerceApiException
+    {
+        return new WooCommerceApiException(WooCommerceApiException::UNREACHABLE, 'Boutique inaccessible.');
     }
 
     /** Resolves a Location header (absolute URL or absolute path) against the current request URL. */
@@ -266,7 +470,7 @@ class WooCommerceClient
         return match (true) {
             $status === 401 || $status === 403 => new WooCommerceApiException(WooCommerceApiException::AUTH, 'Identifiants WooCommerce invalides.'),
             $status === 404 => new WooCommerceApiException(WooCommerceApiException::API_UNAVAILABLE, 'WooCommerce REST API indisponible.'),
-            $status === 429 => new WooCommerceApiException(WooCommerceApiException::TRANSIENT, 'WooCommerce a temporairement refusé la requête.'),
+            $status === 429 => new WooCommerceApiException(WooCommerceApiException::RATE_LIMITED, 'Limite de requêtes WooCommerce atteinte.'),
             $status >= 500 => new WooCommerceApiException(WooCommerceApiException::API_UNAVAILABLE, 'WooCommerce REST API indisponible.'),
             default => new WooCommerceApiException(WooCommerceApiException::INVALID_RESPONSE, 'Réponse WooCommerce inattendue.'),
         };
@@ -292,14 +496,8 @@ class WooCommerceClient
             ->withBasicAuth($this->integration->consumer_key, $this->integration->consumer_secret)
             ->acceptJson()
             ->connectTimeout((int) config('woocommerce.connect_timeout', 10))
-            ->timeout((int) config('woocommerce.request_timeout', 30))
-            ->retry(
-                (int) config('woocommerce.retry_times', 2),
-                (int) config('woocommerce.retry_backoff_ms', 500),
-                // Only retry genuinely transient conditions.
-                when: fn ($exception, $request) => $exception instanceof ConnectionException
-                    || ($exception instanceof RequestException && in_array($exception->response->status(), [429, 500, 502, 503, 504], true)),
-                throw: true,
-            );
+            // No HTTP-client retry here: get() owns the rate-limit-aware retry
+            // policy (pacing, Retry-After, backoff) for every attempt.
+            ->timeout((int) config('woocommerce.request_timeout', 30));
     }
 }

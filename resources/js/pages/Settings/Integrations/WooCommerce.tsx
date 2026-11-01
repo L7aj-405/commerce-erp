@@ -5,6 +5,7 @@ import PageHeader from '@/components/ui/PageHeader';
 import { InlineLoader } from '@/components/ui/Spinner';
 import ApplicationShell from '@/layouts/ApplicationShell';
 import { useI18n } from '@/i18n';
+import type { TranslationKey } from '@/i18n/translations';
 import { formatDateTime } from '@/utils/format';
 import { Head, router, useForm } from '@inertiajs/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -28,7 +29,50 @@ type SyncRun = {
     stock_adjustments: number;
     message: string | null;
     errors: Array<{ remote_id: string | null; message: string }> | null;
+    /** Live position: starting, loading_*, importing_products, rate_limited / retrying (waiting), completed, failed. */
+    phase?: string | null;
+    progress?: {
+        page?: number | null;
+        total_pages?: number | null;
+        product_id?: number | null;
+        retry_at?: string | null;
+        retry_in_seconds?: number | null;
+        retry_status?: number | null;
+        attempt?: number | null;
+        max_attempts?: number | null;
+    } | null;
+    failure_reason?: string | null;
+    failed_during?: string | null;
+    api_requests?: number;
+    rate_limit_hits?: number;
+    api_diagnostics?: Array<{
+        at: string;
+        type: string;
+        location?: string;
+        status?: number | null;
+        error?: string | null;
+        attempt?: number;
+        max_attempts?: number;
+        retry_after_seconds?: number | null;
+        retry_in_seconds?: number | null;
+        duration_ms?: number;
+    }> | null;
 };
+
+const fill = (text: string, values: Record<string, string | number | null | undefined>) =>
+    text.replace(/\{(\w+)\}/g, (_, key: string) => String(values[key] ?? '?'));
+
+/** Seconds left before a backoff ends, from the server's retry_at (live countdown). */
+function useCountdown(retryAt: string | null | undefined): number | null {
+    const [now, setNow] = useState(() => Date.now());
+    useEffect(() => {
+        if (!retryAt) return;
+        const timer = window.setInterval(() => setNow(Date.now()), 1000);
+        return () => window.clearInterval(timer);
+    }, [retryAt]);
+    if (!retryAt) return null;
+    return Math.max(0, Math.ceil((new Date(retryAt).getTime() - now) / 1000));
+}
 
 type Integration = {
     id: number;
@@ -102,6 +146,33 @@ export default function WooCommerceSettings({ integration, runs, warehouses, sto
     useEffect(() => {
         setLiveRun(latestRun);
     }, [latestRun]);
+
+    const countdown = useCountdown(liveRun?.status === 'running' ? liveRun?.progress?.retry_at : null);
+    const waiting = liveRun?.status === 'running' && (liveRun.phase === 'rate_limited' || liveRun.phase === 'retrying');
+
+    /** Human progress line of the live run (never "0 produits" while preparing). */
+    const phaseText = (run: SyncRun): string | null => {
+        const p = run.progress ?? {};
+        switch (run.phase) {
+            case 'starting':
+            case 'loading_settings':
+            case 'loading_categories':
+                return t(`woo.phase.${run.phase}` as TranslationKey);
+            case 'loading_products':
+                return p.total_pages ? fill(t('woo.phase.loading_products'), { page: p.page, total: p.total_pages }) : fill(t('woo.phase.loading_products_first'), { page: p.page });
+            case 'loading_variations':
+                return fill(t('woo.phase.loading_variations'), { product: p.product_id, page: p.page, total: p.total_pages });
+            case 'importing_products':
+                return fill(t('woo.phase.importing_products'), { page: p.page, total: p.total_pages });
+            case 'rate_limited':
+            case 'retrying':
+                return `${fill(t(`woo.phase.${run.phase}` as TranslationKey), { seconds: countdown ?? Math.ceil(p.retry_in_seconds ?? 0) })}${
+                    p.attempt && p.max_attempts ? ` (${fill(t('woo.phase.attempt'), { attempt: p.attempt, max: p.max_attempts })})` : ''
+                }`;
+            default:
+                return null;
+        }
+    };
 
     // Poll after dispatch as well as while a run is active: the queue may not
     // have created its run row yet when the POST response returns.
@@ -376,13 +447,21 @@ export default function WooCommerceSettings({ integration, runs, warehouses, sto
                                 <span className={`rounded-full px-2 py-0.5 text-[12px] font-semibold ${
                                     liveRun?.status === 'completed' ? 'bg-success-soft text-success'
                                         : liveRun?.status === 'failed' ? 'bg-danger-soft text-danger'
-                                            : liveRun?.status === 'completed_with_errors' ? 'bg-warning-soft text-warning'
+                                            : liveRun?.status === 'completed_with_errors' || waiting ? 'bg-warning-soft text-warning'
                                                 : 'bg-sage text-ink-muted'
                                 }`}>
-                                    {awaitingRun ? t('woo.starting') : statusLabels[liveRun!.status] ?? liveRun!.status}
+                                    {awaitingRun ? t('woo.starting') : waiting ? t('woo.statusRateLimitedRunning') : statusLabels[liveRun!.status] ?? liveRun!.status}
                                 </span>
                             </div>
                             {awaitingRun && <InlineLoader label={t('woo.syncStarting')} className="mt-3 text-[13px]" />}
+                            {liveRun && !awaitingRun && liveRun.status === 'running' && phaseText(liveRun) && (
+                                <p aria-live="polite" className={`mt-3 text-[13px] ${waiting ? 'text-warning' : 'text-ink-muted'}`}>
+                                    {waiting ? phaseText(liveRun) : <InlineLoader label={phaseText(liveRun) ?? ''} />}
+                                </p>
+                            )}
+                            {liveRun && !awaitingRun && liveRun.status === 'failed' && liveRun.failed_during && (
+                                <p className="mt-3 text-[13px] font-medium text-danger">{fill(t('woo.failedDuring'), { location: liveRun.failed_during })}</p>
+                            )}
                             {liveRun && !awaitingRun && <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5 text-[13px]">
                                 <div className="flex justify-between"><dt className="text-ink-muted">{t('woo.read')}</dt><dd className="tabular-nums">{liveRun.products_read}</dd></div>
                                 <div className="flex justify-between"><dt className="text-ink-muted">{t('woo.created')}</dt><dd className="tabular-nums">{liveRun.products_created}</dd></div>
@@ -393,6 +472,31 @@ export default function WooCommerceSettings({ integration, runs, warehouses, sto
                                 <div className="flex justify-between"><dt className="text-ink-muted">{t('woo.inError')}</dt><dd className={`tabular-nums ${liveRun.products_failed > 0 ? 'text-danger' : ''}`}>{liveRun.products_failed}</dd></div>
                             </dl>}
                             {liveRun && !awaitingRun && liveRun.message && <p className="mt-3 whitespace-pre-line text-[12px] text-ink-muted">{liveRun.message}</p>}
+                            {liveRun && !awaitingRun && (liveRun.api_requests ?? 0) > 0 && (
+                                <p className="mt-2 text-[12px] text-ink-faint">
+                                    {fill(t('woo.apiStats'), { requests: liveRun.api_requests, limited: liveRun.rate_limit_hits ?? 0 })}
+                                </p>
+                            )}
+                            {liveRun && !awaitingRun && (liveRun.api_diagnostics?.length ?? 0) > 0 && (
+                                <details className="mt-2 text-[12px] text-ink-muted">
+                                    <summary className="cursor-pointer select-none">{t('woo.diagnostics')} ({liveRun.api_diagnostics!.length})</summary>
+                                    <ul className="mt-1 max-h-40 space-y-1 overflow-y-auto rounded-field bg-raised p-2 font-mono text-[11px]">
+                                        {liveRun.api_diagnostics!.slice(-10).reverse().map((d, index) => (
+                                            <li key={index}>
+                                                {[
+                                                    d.status ? `HTTP ${d.status}` : d.error,
+                                                    d.location,
+                                                    d.attempt && d.max_attempts ? `${d.attempt}/${d.max_attempts}` : null,
+                                                    d.retry_after_seconds != null ? `Retry-After ${d.retry_after_seconds}s` : null,
+                                                    d.retry_in_seconds != null ? `→ ${d.retry_in_seconds}s` : null,
+                                                    d.type === 'failed' ? '✗' : null,
+                                                    d.duration_ms != null ? `${d.duration_ms} ms` : null,
+                                                ].filter(Boolean).join(' · ')}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </details>
+                            )}
                             {liveRun && !awaitingRun && (liveRun.errors?.length ?? 0) > 0 && (
                                 <ul className="mt-3 max-h-40 space-y-1 overflow-y-auto rounded-field bg-raised p-2 text-[12px] text-ink-muted">
                                     {liveRun.errors!.slice(0, 50).map((error, index) => (

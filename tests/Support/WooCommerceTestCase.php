@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Models\Warehouse;
 use App\Models\WooCommerceIntegration;
 use App\Models\WooCommerceSyncRun;
+use App\Services\WooCommerce\WooCommerceClock;
 use Illuminate\Http\Client\Factory as HttpFactory;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
@@ -25,14 +26,18 @@ abstract class WooCommerceTestCase extends SalesTestCase
 {
     protected string $secret = 'cs_super_secret_do_not_leak_1234567890';
 
+    protected FakeWooCommerceClock $wooClock;
+
     protected function setUp(): void
     {
         parent::setUp();
 
         $this->withFreshAuthentication();
 
-        // Keep the client's transient-retry loop from sleeping in tests.
-        config(['woocommerce.retry_times' => 1, 'woocommerce.retry_backoff_ms' => 0]);
+        // The client never really sleeps in tests: pacing and backoff advance a
+        // fake clock that records every wait.
+        $this->wooClock = new FakeWooCommerceClock;
+        $this->app->instance(WooCommerceClock::class, $this->wooClock);
     }
 
     /**

@@ -160,7 +160,21 @@ Processes (Coolify, supervised):
 Queue facts: `retry_after=3900` must stay strictly greater than the longest
 job timeout (3600 s, WooCommerce sync). The worker is required for scheduled
 organization backups, Google Drive backup copies, WooCommerce sync, MCP
-product operations and the worker heartbeat. Failed jobs:
+product operations and the worker heartbeat.
+
+WooCommerce sync and rate limits: a 429 / 5xx is retried **inside** the run
+(Retry-After honoured, otherwise exponential backoff with jitter), never by
+re-queuing the job (`$tries = 1`). The run's total backoff budget
+(`WOOCOMMERCE_MAX_TOTAL_BACKOFF_SECONDS`, default 900) must stay well below the
+job timeout (3600). Optional tuning (defaults shown):
+`WOOCOMMERCE_PER_PAGE=100` (WP REST max), `WOOCOMMERCE_MIN_REQUEST_INTERVAL_MS=250`,
+`WOOCOMMERCE_MAX_RETRIES=5`, `WOOCOMMERCE_RETRY_BASE_DELAY_MS=1000`,
+`WOOCOMMERCE_RETRY_JITTER=0.25`, `WOOCOMMERCE_MAX_RETRY_DELAY_SECONDS=120`.
+If a store's host/CDN still throttles, raise the request interval (e.g. 1000)
+rather than retries, and ask the host to allow-list the ERP server IP for
+`/wp-json/wc/v3/*`.
+
+Failed jobs:
 
 ```bash
 php artisan queue:failed            # list

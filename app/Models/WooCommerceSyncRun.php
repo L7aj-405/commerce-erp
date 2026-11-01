@@ -15,6 +15,32 @@ class WooCommerceSyncRun extends Model
 
     public const STATUS_FAILED = 'failed';
 
+    /* Phases (live position of a run; `status` stays the lifecycle). */
+    public const PHASE_STARTING = 'starting';
+
+    public const PHASE_LOADING_SETTINGS = 'loading_settings';
+
+    public const PHASE_LOADING_CATEGORIES = 'loading_categories';
+
+    public const PHASE_LOADING_PRODUCTS = 'loading_products';
+
+    public const PHASE_LOADING_VARIATIONS = 'loading_variations';
+
+    public const PHASE_IMPORTING_PRODUCTS = 'importing_products';
+
+    /** Waiting out a 429 (Retry-After / backoff) — still running, not failed. */
+    public const PHASE_RATE_LIMITED = 'rate_limited';
+
+    /** Waiting out a 5xx / connection error backoff — still running. */
+    public const PHASE_RETRYING = 'retrying';
+
+    public const PHASE_COMPLETED = 'completed';
+
+    public const PHASE_FAILED = 'failed';
+
+    /** Most recent API diagnostics kept on a run. */
+    public const MAX_DIAGNOSTICS = 50;
+
     protected $table = 'woocommerce_sync_runs';
 
     protected $guarded = ['*'];
@@ -25,6 +51,8 @@ class WooCommerceSyncRun extends Model
             'started_at' => 'datetime',
             'completed_at' => 'datetime',
             'errors' => 'array',
+            'progress' => 'array',
+            'api_diagnostics' => 'array',
         ];
     }
 

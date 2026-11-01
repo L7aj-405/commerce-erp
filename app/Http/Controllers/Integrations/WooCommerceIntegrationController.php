@@ -27,6 +27,14 @@ use Inertia\Response;
 
 class WooCommerceIntegrationController extends Controller
 {
+    /** Run fields shown to the operator: counters, live phase / progress, safe API diagnostics. */
+    private const RUN_COLUMNS = [
+        'id', 'type', 'mode', 'status', 'phase', 'progress', 'failure_reason', 'failed_during', 'started_at', 'completed_at',
+        'products_read', 'products_created', 'products_updated', 'products_skipped',
+        'products_failed', 'variants_synced', 'categories_synced', 'stock_adjustments',
+        'api_requests', 'rate_limit_hits', 'message', 'errors', 'api_diagnostics',
+    ];
+
     public function index(Request $request, ActiveTenantContext $context): Response
     {
         $organization = $context->organizationOrFail();
@@ -40,11 +48,7 @@ class WooCommerceIntegrationController extends Controller
         $runs = $integration
             ? WooCommerceSyncRun::query()
                 ->where('woocommerce_integration_id', $integration->getKey())
-                ->latest('id')->limit(10)->get([
-                    'id', 'type', 'mode', 'status', 'started_at', 'completed_at',
-                    'products_read', 'products_created', 'products_updated', 'products_skipped',
-                    'products_failed', 'variants_synced', 'categories_synced', 'stock_adjustments', 'message', 'errors',
-                ])
+                ->latest('id')->limit(10)->get(self::RUN_COLUMNS)
             : collect();
 
         return Inertia::render('Settings/Integrations/WooCommerce', [
@@ -165,11 +169,7 @@ class WooCommerceIntegrationController extends Controller
         $run = WooCommerceSyncRun::query()
             ->where('woocommerce_integration_id', $integration->getKey())
             ->latest('id')
-            ->first([
-                'id', 'mode', 'status', 'started_at', 'completed_at',
-                'products_read', 'products_created', 'products_updated', 'products_skipped',
-                'products_failed', 'variants_synced', 'categories_synced', 'stock_adjustments', 'message', 'errors',
-            ]);
+            ->first(self::RUN_COLUMNS);
 
         return response()->json([
             'run' => $run,

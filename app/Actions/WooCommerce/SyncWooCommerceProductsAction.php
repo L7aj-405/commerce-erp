@@ -43,6 +43,19 @@ use Throwable;
  * Products / Variants keyed by integration-scoped remote mappings, so re-running
  * never duplicates. Each product is processed in its own small transaction — one
  * bad product is recorded and skipped, the rest continue.
+ *
+ * Observability (F3): the run persists its live `phase` / `progress` (settings,
+ * categories, "Produits — page 3 / 12", variations of product #X, a 429 wait
+ * with its retry time), the API diagnostics of every throttled / failed request
+ * and, when it fails, where (`failed_during`) and why (`failure_reason`).
+ * Rate limits are absorbed inside the run by the client's controlled backoff —
+ * never by re-dispatching the whole job.
+ *
+ * Restart, not resume: WooCommerce has no stable "after id" cursor and page
+ * numbers shift when the catalogue changes, so a page cursor could skip
+ * products. A failed run is simply re-run from the start; the idempotent upserts
+ * keep that free of duplicates (products, variants, channel identifiers), and
+ * stock moves only by the delta to Woo's current quantity.
  */
 class SyncWooCommerceProductsAction
 {
@@ -52,6 +65,14 @@ class SyncWooCommerceProductsAction
     private array $stockReconciliationMessages = [];
 
     private int $stockReconciliationsOmitted = 0;
+
+    /** Phase / progress the run is working on (restored after a backoff wait). */
+    private string $activePhase = WooCommerceSyncRun::PHASE_STARTING;
+
+    /** @var array<string, mixed> */
+    private array $activeProgress = [];
+
+    private ?WooCommerceClient $client = null;
 
     public function __construct(
         private readonly WooCommerceProductNormalizer $normalizer,
@@ -93,6 +114,8 @@ class SyncWooCommerceProductsAction
         $run->type = 'products';
         $run->mode = $mode;
         $run->status = WooCommerceSyncRun::STATUS_RUNNING;
+        $run->phase = WooCommerceSyncRun::PHASE_STARTING;
+        $run->progress = [];
         $run->started_at = now();
         $run->triggered_by_user_id = $actor->getKey();
         $run->errors = [];
@@ -103,14 +126,19 @@ class SyncWooCommerceProductsAction
             'run_id' => $run->getKey(), 'mode' => $mode, 'sync_stock' => $integration->sync_stock,
         ]);
 
+        $this->client = $client;
+        $this->activePhase = WooCommerceSyncRun::PHASE_STARTING;
+        $this->activeProgress = [];
+        $client->onEvent(fn (array $event) => $this->onApiEvent($run, $event));
+
         try {
-            $priceMeaning = $this->resolvePriceMeaning($integration, $client);
+            $priceMeaning = $this->resolvePriceMeaning($integration, $client, $run);
 
             $categories = new WooCategorySynchronizer($integration);
-            $categories->prime($this->safe(fn () => $client->getAllProductCategories()) ?? []);
+            $categories->prime($this->loadCategories($client, $run));
 
             $query = [
-                'per_page' => (int) config('woocommerce.per_page', 50),
+                'per_page' => WooCommerceClient::perPage(),
                 'orderby' => 'id',
                 'order' => 'asc',
             ];
@@ -122,18 +150,30 @@ class SyncWooCommerceProductsAction
             $maxPages = (int) config('woocommerce.max_pages', 2000);
             $newestModified = $integration->last_product_modified_cursor;
 
+            $totalPages = null;
             do {
+                $this->setPhase($run, WooCommerceSyncRun::PHASE_LOADING_PRODUCTS, ['page' => $page, 'total_pages' => $totalPages]);
                 $result = $client->getProducts($query + ['page' => $page]);
                 $totalPages = max(1, $result['total_pages']);
+                $this->setPhase($run, WooCommerceSyncRun::PHASE_IMPORTING_PRODUCTS, [
+                    'page' => $page, 'total_pages' => $totalPages, 'total_products' => $result['total'],
+                ]);
 
                 foreach ($result['items'] as $raw) {
                     $run->increment('products_read');
                     $remoteId = $raw['id'] ?? null;
 
                     try {
-                        $variations = ($raw['type'] ?? 'simple') === 'variable'
-                            ? $this->fetchVariations($client, (int) $remoteId)
-                            : [];
+                        $variations = [];
+                        if (($raw['type'] ?? 'simple') === 'variable') {
+                            $this->setPhase($run, WooCommerceSyncRun::PHASE_LOADING_VARIATIONS, [
+                                'page' => $page, 'total_pages' => $totalPages, 'total_products' => $result['total'], 'product_id' => (int) $remoteId,
+                            ]);
+                            $variations = $this->fetchVariations($client, (int) $remoteId);
+                            $this->setPhase($run, WooCommerceSyncRun::PHASE_IMPORTING_PRODUCTS, [
+                                'page' => $page, 'total_pages' => $totalPages, 'total_products' => $result['total'], 'product_id' => (int) $remoteId,
+                            ]);
+                        }
                         $normalized = $this->normalizer->normalize($raw, $variations, $integration);
 
                         DB::transaction(fn () => $this->syncProduct(
@@ -167,6 +207,9 @@ class SyncWooCommerceProductsAction
                 }
             }
             $run->completed_at = now();
+            $run->phase = WooCommerceSyncRun::PHASE_COMPLETED;
+            $run->progress = ['total_pages' => $totalPages, 'pages_read' => $page - 1];
+            $run->api_requests = $client->requestCount();
             $run->save();
 
             $integration->forceFill([
@@ -175,11 +218,15 @@ class SyncWooCommerceProductsAction
                 'synced_product_count' => $this->mappedProductCount($integration),
             ])->save();
         } catch (WooCommerceApiException $exception) {
-            $this->failRun($run, $exception->userMessage());
+            $during = $this->describeLocation($exception->context);
+            $this->failRun($run, $exception->userMessage()." Échec pendant : {$during}."
+                .' Les produits déjà importés sont conservés ; relancer la synchronisation reprend depuis le début sans créer de doublons.',
+                $exception->category, $during);
         } catch (Throwable $exception) {
             report($exception);
-            $this->failRun($run, 'Une erreur inattendue a interrompu la synchronisation.');
+            $this->failRun($run, 'Une erreur inattendue a interrompu la synchronisation.', 'unexpected', $this->describeLocation([]));
         } finally {
+            $this->client = null;
             $lock->release();
         }
 
@@ -716,13 +763,25 @@ class SyncWooCommerceProductsAction
     }
 
     /** @return array{includes_tax: bool, label: string, detected: bool} */
-    private function resolvePriceMeaning(WooCommerceIntegration $integration, WooCommerceClient $client): array
+    private function resolvePriceMeaning(WooCommerceIntegration $integration, WooCommerceClient $client, WooCommerceSyncRun $run): array
     {
         if ($integration->prices_include_tax !== null) {
             return ['includes_tax' => $integration->prices_include_tax, 'label' => $integration->prices_include_tax ? 'TTC' : 'HT', 'detected' => false];
         }
 
-        $detected = $this->safe(fn () => $client->getPricesIncludeTax());
+        // Read once, then stored on the integration: later runs skip this request.
+        $this->setPhase($run, WooCommerceSyncRun::PHASE_LOADING_SETTINGS, []);
+        try {
+            $detected = $client->getPricesIncludeTax();
+        } catch (WooCommerceApiException $exception) {
+            // Only a missing / unreadable setting falls back to the default — and
+            // says so. A rate limit, auth or network failure stops the run.
+            if (! in_array($exception->category, [WooCommerceApiException::API_UNAVAILABLE, WooCommerceApiException::INVALID_RESPONSE], true)) {
+                throw $exception;
+            }
+            $this->recordIssue($run, null, 'Avertissement : réglage WooCommerce « prix saisis TTC/HT » non lisible ('.$exception->userMessage().') — prix interprétés TTC par défaut.');
+            $detected = null;
+        }
         if ($detected !== null) {
             $integration->forceFill(['prices_include_tax' => $detected])->save();
 
@@ -742,7 +801,7 @@ class SyncWooCommerceProductsAction
 
         do {
             $result = $client->getProductVariations($productId, [
-                'per_page' => (int) config('woocommerce.per_page', 50),
+                'per_page' => WooCommerceClient::perPage(),
                 'page' => $page,
             ]);
             $all = array_merge($all, $result['items']);
@@ -764,12 +823,131 @@ class SyncWooCommerceProductsAction
             ->count('product_id');
     }
 
-    private function failRun(WooCommerceSyncRun $run, string $message): void
+    private function failRun(WooCommerceSyncRun $run, string $message, string $reason, string $during): void
     {
         $run->status = WooCommerceSyncRun::STATUS_FAILED;
+        $run->phase = WooCommerceSyncRun::PHASE_FAILED;
+        $run->progress = $this->activeProgress;
+        $run->failure_reason = $reason;
+        $run->failed_during = Str::limit($during, 250, '');
         $run->message = $message;
         $run->completed_at = now();
+        $run->api_requests = $this->client?->requestCount() ?? $run->api_requests;
         $run->save();
+    }
+
+    /* -------------------------------------------------------------------------
+     |  Metadata, phases, progress and API diagnostics
+     * ---------------------------------------------------------------------- */
+
+    /**
+     * The category tree, loaded once per run. A failure that only concerns this
+     * optional metadata is recorded as a visible warning and the run continues
+     * with categories taken from the products themselves; a rate limit, an
+     * authentication, network or SSRF failure stops the run (products would
+     * fail the same way).
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function loadCategories(WooCommerceClient $client, WooCommerceSyncRun $run): array
+    {
+        $this->setPhase($run, WooCommerceSyncRun::PHASE_LOADING_CATEGORIES, []);
+
+        try {
+            return $client->getAllProductCategories();
+        } catch (WooCommerceApiException $exception) {
+            if (! in_array($exception->category, [WooCommerceApiException::API_UNAVAILABLE, WooCommerceApiException::INVALID_RESPONSE, WooCommerceApiException::TRANSIENT], true)) {
+                throw $exception;
+            }
+            $this->recordIssue($run, null, 'Avertissement : catégories WooCommerce non chargées ('.$exception->userMessage().') — hiérarchie non mise à jour, catégories reprises depuis les produits.');
+
+            return [];
+        }
+    }
+
+    /** @param array<string, mixed> $progress */
+    private function setPhase(WooCommerceSyncRun $run, string $phase, array $progress): void
+    {
+        $this->activePhase = $phase;
+        $this->activeProgress = $progress;
+        $run->phase = $phase;
+        $run->progress = $progress;
+        $run->api_requests = $this->client?->requestCount() ?? $run->api_requests;
+        $run->saveQuietly();
+    }
+
+    /**
+     * Client events: a backoff wait is shown as a live `rate_limited` /
+     * `retrying` phase (never as a failure) and the work phase is restored once
+     * the request succeeds; every throttled / failed request is kept in the
+     * run's API diagnostics.
+     *
+     * @param  array<string, mixed>  $event
+     */
+    private function onApiEvent(WooCommerceSyncRun $run, array $event): void
+    {
+        if ($event['type'] === 'recovered') {
+            $run->phase = $this->activePhase;
+            $run->progress = $this->activeProgress;
+            $run->api_requests = $this->client?->requestCount() ?? $run->api_requests;
+            $run->saveQuietly();
+
+            return;
+        }
+
+        $diagnostics = $run->api_diagnostics ?? [];
+        $diagnostics[] = [
+            'at' => now()->toIso8601String(),
+            'phase' => $this->activePhase,
+            'location' => $this->describeLocation($event),
+            ...array_intersect_key($event, array_flip([
+                'type', 'endpoint', 'page', 'per_page', 'product_id', 'status', 'error', 'attempt', 'max_attempts',
+                'retry_after_seconds', 'retry_in_seconds', 'rate_limit_headers', 'duration_ms', 'reason',
+            ])),
+        ];
+        $run->api_diagnostics = array_slice($diagnostics, -WooCommerceSyncRun::MAX_DIAGNOSTICS);
+        if (($event['status'] ?? null) === 429) {
+            $run->rate_limit_hits = (int) $run->rate_limit_hits + 1;
+        }
+
+        if ($event['type'] === 'retrying') {
+            $run->phase = ($event['status'] ?? null) === 429 ? WooCommerceSyncRun::PHASE_RATE_LIMITED : WooCommerceSyncRun::PHASE_RETRYING;
+            $run->progress = [
+                ...$this->activeProgress,
+                'resume_phase' => $this->activePhase,
+                'retry_status' => $event['status'] ?? null,
+                'retry_in_seconds' => $event['retry_in_seconds'] ?? null,
+                'retry_at' => $event['retry_at'] ?? null,
+                'retry_after_seconds' => $event['retry_after_seconds'] ?? null,
+                'attempt' => $event['next_attempt'] ?? null,
+                'max_attempts' => $event['max_attempts'] ?? null,
+            ];
+        }
+        $run->api_requests = $this->client?->requestCount() ?? $run->api_requests;
+        $run->saveQuietly();
+    }
+
+    /**
+     * Human location of the work in progress (or of a failed request), e.g.
+     * "Produits — page 3 / 12" or "Variantes du produit Woo #123 — page 2".
+     *
+     * @param  array<string, mixed>  $request  safe request diagnostics, when known
+     */
+    private function describeLocation(array $request): string
+    {
+        $progress = $this->activeProgress;
+        $pageOf = fn (?int $page) => $page === null ? '' : ' — page '.$page.(isset($progress['total_pages']) ? ' / '.$progress['total_pages'] : '');
+
+        return match ($this->activePhase) {
+            WooCommerceSyncRun::PHASE_LOADING_SETTINGS => 'réglages WooCommerce (prix TTC/HT)',
+            WooCommerceSyncRun::PHASE_LOADING_CATEGORIES => 'catégories WooCommerce'.(isset($request['page']) ? ' — page '.$request['page'] : ''),
+            WooCommerceSyncRun::PHASE_LOADING_PRODUCTS => 'produits WooCommerce'.$pageOf($request['page'] ?? $progress['page'] ?? null),
+            WooCommerceSyncRun::PHASE_LOADING_VARIATIONS => 'variantes du produit Woo #'.($request['product_id'] ?? $progress['product_id'] ?? '?')
+                .(isset($request['page']) ? ' — page '.$request['page'] : '')
+                .(isset($progress['page']) ? ' (produits page '.$progress['page'].(isset($progress['total_pages']) ? ' / '.$progress['total_pages'] : '').')' : ''),
+            WooCommerceSyncRun::PHASE_IMPORTING_PRODUCTS => 'import des produits'.$pageOf($progress['page'] ?? null),
+            default => 'préparation / connexion',
+        };
     }
 
     private function recordIssue(WooCommerceSyncRun $run, mixed $remoteId, string $message): void
@@ -793,15 +971,5 @@ class SyncWooCommerceProductsAction
         $first = reset($all);
 
         return is_array($first) ? (string) ($first[0] ?? 'Refusé.') : (string) $first;
-    }
-
-    /** @template T @param callable():T $callback @return T|null */
-    private function safe(callable $callback): mixed
-    {
-        try {
-            return $callback();
-        } catch (WooCommerceApiException) {
-            return null;
-        }
     }
 }
