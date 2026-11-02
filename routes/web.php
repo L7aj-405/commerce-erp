@@ -508,7 +508,12 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
         // → shipped → received). Distinct from the completed movements above.
         Route::get('/transfer-requests', [TransferRequestController::class, 'index'])->name('transfer-requests.index');
         Route::post('/transfer-requests/replenish', [TransferRequestController::class, 'replenish'])->name('transfer-requests.replenish');
+        Route::get('/transfer-requests/create', [TransferRequestController::class, 'create'])->name('transfer-requests.create');
+        Route::post('/transfer-requests', [TransferRequestController::class, 'store'])->name('transfer-requests.store');
         Route::get('/transfer-requests/{transferRequest}', [TransferRequestController::class, 'show'])->name('transfer-requests.show');
+        Route::get('/transfer-requests/{transferRequest}/edit', [TransferRequestController::class, 'edit'])->name('transfer-requests.edit');
+        Route::put('/transfer-requests/{transferRequest}/lines', [TransferRequestController::class, 'updateLines'])->name('transfer-requests.lines');
+        Route::post('/transfer-requests/{transferRequest}/restore', [TransferRequestController::class, 'restore'])->name('transfer-requests.restore');
         Route::post('/transfer-requests/{transferRequest}/prepare', [TransferRequestController::class, 'prepare'])->name('transfer-requests.prepare');
         Route::patch('/transfer-requests/{transferRequest}/driver', [TransferRequestController::class, 'assignDriver'])->name('transfer-requests.driver');
         Route::post('/transfer-requests/{transferRequest}/ship', [TransferRequestController::class, 'ship'])->name('transfer-requests.ship');

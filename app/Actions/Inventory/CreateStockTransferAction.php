@@ -9,16 +9,28 @@ use App\Models\StockTransferLine;
 use App\Models\User;
 use App\Models\Warehouse;
 use App\Services\AuditLogger;
+use App\Services\ShowroomReplenishmentPlanner;
 use App\Services\StockTransferNumberGenerator;
 use App\Support\InventoryQuantity;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
+/**
+ * Immediate, completed stock transfer (paired ledger movements).
+ *
+ * A DIRECT transfer is a voluntary commitment of source stock, so it may not
+ * consume units already promised to open transfer requests (replenishment /
+ * manual lines, which are not reservations): `$respectTransferPromises`.
+ * Receiving a transfer request passes `false` — those units are the promised
+ * ones and have physically left already, so the receipt must never be blocked.
+ */
 class CreateStockTransferAction
 {
     public function __construct(
         private readonly TransferInventoryAction $transfers,
         private readonly StockTransferNumberGenerator $numbers,
         private readonly AuditLogger $audit,
+        private readonly ShowroomReplenishmentPlanner $planner,
     ) {}
 
     /**
@@ -32,8 +44,9 @@ class CreateStockTransferAction
         array $lines,
         string $reason,
         string $permission = 'inventory.transfer',
+        bool $respectTransferPromises = true,
     ): StockTransfer {
-        return DB::transaction(function () use ($actor, $organization, $source, $destination, $lines, $reason, $permission) {
+        return DB::transaction(function () use ($actor, $organization, $source, $destination, $lines, $reason, $permission, $respectTransferPromises) {
             $transferNumber = $this->numbers->next($organization);
             $movements = $this->transfers->executeMany(
                 $actor,
@@ -45,6 +58,10 @@ class CreateStockTransferAction
                 $transferNumber,
                 $permission,
             );
+
+            if ($respectTransferPromises) {
+                $this->assertPromisesStillCovered($organization, $source, $movements);
+            }
 
             $transfer = new StockTransfer;
             $transfer->organization_id = $organization->getKey();
@@ -82,5 +99,41 @@ class CreateStockTransferAction
 
             return $transfer;
         });
+    }
+
+    /**
+     * Checked AFTER the movement, while TransferInventoryAction still holds the
+     * source balance locks: the planning lock is then taken in the same order
+     * as order confirmation (balances → planning), so no deadlock cycle. A
+     * shortfall rolls the whole transfer back.
+     *
+     * @param  list<array{variant: ProductVariant, quantity: string}>  $movements
+     */
+    private function assertPromisesStillCovered(Organization $organization, Warehouse $source, array $movements): void
+    {
+        $this->planner->lockPlanning($organization->getKey());
+
+        $variants = collect($movements)->mapWithKeys(fn ($m) => [$m['variant']->getKey() => $m['variant']]);
+        $shortfalls = $this->planner->promiseShortfalls($organization->getKey(), $source->getKey(), $variants->keys()->all());
+        if ($shortfalls === []) {
+            return;
+        }
+
+        $errors = [];
+        foreach (array_values($movements) as $index => $movement) {
+            $row = $shortfalls[$movement['variant']->getKey()] ?? null;
+            if ($row === null) {
+                continue;
+            }
+            $free = InventoryQuantity::subtract(InventoryQuantity::add($row['available'], $movement['quantity']), $row['committed']);
+            $free = InventoryQuantity::compare($free, InventoryQuantity::ZERO) > 0 ? $free : InventoryQuantity::ZERO;
+            $errors["lines.{$index}.quantity"] = sprintf(
+                'Stock promis à des demandes de transfert ouvertes (%s) : seulement %s transférable(s) directement. Modifiez ou annulez la demande d’abord.',
+                implode(', ', $row['requests']),
+                rtrim(rtrim($free, '0'), '.'),
+            );
+        }
+
+        throw ValidationException::withMessages($errors);
     }
 }

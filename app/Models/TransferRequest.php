@@ -23,6 +23,8 @@ class TransferRequest extends Model
             'shipped_at' => 'datetime',
             'received_at' => 'datetime',
             'cancelled_at' => 'datetime',
+            'restored_at' => 'datetime',
+            'lock_version' => 'integer',
         ];
     }
 
@@ -74,6 +76,11 @@ class TransferRequest extends Model
     public function receivedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'received_by_user_id');
+    }
+
+    public function restoredBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'restored_by_user_id');
     }
 
     /** Soft link to the ERP user chosen as chauffeur, if any (name is snapshotted separately). */

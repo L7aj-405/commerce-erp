@@ -114,6 +114,7 @@ class ReceiveTransferRequestAction
                 $actor, $organization, $source, $destination, $moveLines,
                 "Réception demande {$request->request_number}",
                 'inventory.transfer_requests.receive',
+                respectTransferPromises: false,
             );
 
             // --- 3. re-earmark the Order quantity at the destination ---

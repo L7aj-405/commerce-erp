@@ -4,17 +4,26 @@ namespace App\Http\Controllers\Inventory;
 
 use App\Actions\Inventory\AssignTransferRequestDriverAction;
 use App\Actions\Inventory\CancelTransferRequestAction;
+use App\Actions\Inventory\CreateManualTransferRequestAction;
 use App\Actions\Inventory\PlanShowroomReplenishmentAction;
 use App\Actions\Inventory\PrepareTransferRequestAction;
 use App\Actions\Inventory\ReceiveTransferRequestAction;
+use App\Actions\Inventory\RestoreTransferRequestAction;
 use App\Actions\Inventory\ShipTransferRequestAction;
+use App\Actions\Inventory\UpdateTransferRequestLinesAction;
+use App\Enums\TransferRequestReason;
 use App\Enums\TransferRequestStatus;
 use App\Http\Controllers\Controller;
+use App\Models\InventoryBalance;
+use App\Models\Organization;
+use App\Models\ProductVariant;
 use App\Models\TransferRequest;
 use App\Models\Warehouse;
 use App\Services\ActiveTenantContext;
 use App\Services\DocumentPdfService;
+use App\Services\ShowroomReplenishmentPlanner;
 use App\Services\TransferRequestDocumentRenderer;
+use App\Support\InventoryQuantity;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -25,6 +34,9 @@ use Throwable;
 
 class TransferRequestController extends Controller
 {
+    /** Max catalogue rows returned to the picker — the list itself scrolls. */
+    private const CATALOGUE_LIMIT = 30;
+
     public function index(Request $request, ActiveTenantContext $context): InertiaResponse
     {
         $organization = $context->organizationOrFail();
@@ -57,6 +69,7 @@ class TransferRequestController extends Controller
                 'sales_order' => $req->salesOrder?->only(['id', 'order_number']),
                 'reasons' => $req->lines->pluck('reason')->map(fn ($r) => $r->value)->unique()->values(),
                 'unit_count' => $req->lines->reduce(fn ($c, $l) => $c + (float) $l->quantity, 0.0),
+                'restored' => $req->restored_at !== null,
                 'created_at' => $req->created_at?->toIso8601String(),
             ]);
 
@@ -75,7 +88,150 @@ class TransferRequestController extends Controller
         ]);
     }
 
-    public function show(Request $request, TransferRequest $transferRequest): InertiaResponse
+    /** "Créer une demande" — manual request form (optionally pre-filled from a cancelled request). */
+    public function create(Request $request, ActiveTenantContext $context, ShowroomReplenishmentPlanner $planner): InertiaResponse
+    {
+        $organization = $context->organizationOrFail();
+        abort_unless($request->user()->hasPermission($organization, 'inventory.transfer_requests.manage'), 403);
+
+        $filters = $this->pickerFilters($request, $organization);
+
+        $prefill = null;
+        if ($filters['from'] ?? null) {
+            $from = TransferRequest::query()->where('organization_id', $organization->getKey())->whereKey($filters['from'])
+                ->with('lines')->first();
+            if ($from) {
+                $prefill = [
+                    'request_number' => $from->request_number,
+                    'source_warehouse_id' => $from->source_warehouse_id,
+                    'destination_warehouse_id' => $from->destination_warehouse_id,
+                    'lines' => $from->lines
+                        ->reject(fn ($l) => $l->reason === TransferRequestReason::OrderFulfillment)
+                        ->groupBy('product_variant_id')
+                        ->map(fn ($lines, $variantId) => [
+                            'product_variant_id' => (int) $variantId,
+                            'quantity' => $lines->reduce(fn ($c, $l) => InventoryQuantity::add($c, $l->quantity), InventoryQuantity::ZERO),
+                        ])->values()->all(),
+                ];
+                $filters['source_warehouse_id'] ??= $from->source_warehouse_id;
+                $filters['destination_warehouse_id'] ??= $from->destination_warehouse_id;
+                $filters['selected'] = collect($prefill['lines'])->pluck('product_variant_id')->implode(',');
+            }
+        }
+
+        return Inertia::render('Inventory/TransferRequests/Form', [
+            'mode' => 'create',
+            'request' => null,
+            'prefill' => $prefill,
+            'filters' => $filters,
+            'warehouses' => $this->activeWarehouses($organization),
+            'searchResults' => fn () => $this->catalogue($planner, $organization, $filters, null),
+            'selectedStock' => fn () => $this->selectedStock($planner, $organization, $filters, null),
+            'operationId' => (string) str()->uuid(),
+        ]);
+    }
+
+    public function store(Request $request, ActiveTenantContext $context, CreateManualTransferRequestAction $action): RedirectResponse
+    {
+        $organization = $context->organizationOrFail();
+        abort_unless($request->user()->hasPermission($organization, 'inventory.transfer_requests.manage'), 403);
+
+        $data = $request->validate([
+            'source_warehouse_id' => ['required', 'integer'],
+            'destination_warehouse_id' => ['required', 'integer', 'different:source_warehouse_id'],
+            'note' => ['nullable', 'string', 'max:2000'],
+            'operation_id' => ['nullable', 'string', 'max:64'],
+            'lines' => ['required', 'array', 'min:1', 'max:200'],
+            'lines.*.product_variant_id' => ['required', 'integer', 'distinct'],
+            'lines.*.quantity' => ['required', 'numeric', 'gt:0', 'decimal:0,4'],
+        ], [
+            'destination_warehouse_id.different' => 'La destination doit être différente de la source.',
+            'lines.required' => 'Ajoutez au moins un article.',
+        ]);
+
+        $created = $action->execute(
+            $request->user(), $organization,
+            (int) $data['source_warehouse_id'], (int) $data['destination_warehouse_id'],
+            $data['lines'], $data['note'] ?? null, $data['operation_id'] ?? null,
+        );
+
+        return redirect()->route('inventory.transfer-requests.show', $created)
+            ->with('success', "Demande {$created->request_number} créée.");
+    }
+
+    public function edit(Request $request, TransferRequest $transferRequest, ShowroomReplenishmentPlanner $planner): InertiaResponse|RedirectResponse
+    {
+        $this->authorize('manage', $transferRequest);
+        if ($transferRequest->status !== TransferRequestStatus::Requested) {
+            return redirect()->route('inventory.transfer-requests.show', $transferRequest)
+                ->with('error', 'Seule une demande « demandée » peut être modifiée.');
+        }
+
+        $organization = $transferRequest->organization;
+        $filters = $this->pickerFilters($request, $organization);
+        $filters['source_warehouse_id'] = $transferRequest->source_warehouse_id;
+        $filters['destination_warehouse_id'] = $transferRequest->destination_warehouse_id;
+
+        $transferRequest->load(['sourceWarehouse:id,name,code', 'destinationWarehouse:id,name,code', 'salesOrder:id,order_number',
+            'lines.productVariant:id,product_id,label,sku,reference', 'lines.productVariant.product:id,name,brand_id', 'lines.productVariant.product.brand:id,name']);
+        $stock = $this->stockFor($planner, $organization, $transferRequest->source_warehouse_id, $transferRequest->destination_warehouse_id,
+            $transferRequest->lines->pluck('product_variant_id')->all(), $transferRequest->getKey());
+
+        return Inertia::render('Inventory/TransferRequests/Form', [
+            'mode' => 'edit',
+            'request' => [
+                'id' => $transferRequest->id,
+                'request_number' => $transferRequest->request_number,
+                'lock_version' => (int) $transferRequest->lock_version,
+                'note' => $transferRequest->note,
+                'source' => $transferRequest->sourceWarehouse?->only(['id', 'name', 'code']),
+                'destination' => $transferRequest->destinationWarehouse?->only(['id', 'name', 'code']),
+                'sales_order' => $transferRequest->salesOrder?->only(['id', 'order_number']),
+                'lines' => $transferRequest->lines->map(fn ($line) => [
+                    'id' => $line->id,
+                    'product_variant_id' => (int) $line->product_variant_id,
+                    'reason' => $line->reason->value,
+                    'protected' => $line->reason === TransferRequestReason::OrderFulfillment,
+                    'quantity' => $line->quantity,
+                    ...$this->variantPayload($line->productVariant),
+                    'stock' => $stock[(int) $line->product_variant_id] ?? null,
+                ])->values(),
+            ],
+            'prefill' => null,
+            'filters' => $filters,
+            'warehouses' => $this->activeWarehouses($organization),
+            'searchResults' => fn () => $this->catalogue($planner, $organization, $filters, $transferRequest->getKey()),
+            'selectedStock' => fn () => $this->selectedStock($planner, $organization, $filters, $transferRequest->getKey()),
+            'operationId' => null,
+        ]);
+    }
+
+    public function updateLines(Request $request, TransferRequest $transferRequest, UpdateTransferRequestLinesAction $action): RedirectResponse
+    {
+        $this->authorize('manage', $transferRequest);
+        $data = $request->validate([
+            'lock_version' => ['required', 'integer', 'min:0'],
+            'note' => ['nullable', 'string', 'max:2000'],
+            'lines' => ['present', 'array', 'max:200'],
+            'lines.*.id' => ['nullable', 'integer'],
+            'lines.*.product_variant_id' => ['required', 'integer'],
+            'lines.*.quantity' => ['required', 'numeric', 'gt:0', 'decimal:0,4'],
+        ]);
+
+        $action->execute($request->user(), $transferRequest, (int) $data['lock_version'], $data['lines'], $data['note'] ?? '');
+
+        return redirect()->route('inventory.transfer-requests.show', $transferRequest)->with('success', 'Demande de transfert mise à jour.');
+    }
+
+    public function restore(Request $request, TransferRequest $transferRequest, RestoreTransferRequestAction $action): RedirectResponse
+    {
+        $this->authorize('manage', $transferRequest);
+        $action->execute($request->user(), $transferRequest);
+
+        return back()->with('success', 'Demande de transfert rétablie. Elle doit être préparée à nouveau.');
+    }
+
+    public function show(Request $request, TransferRequest $transferRequest, RestoreTransferRequestAction $restore, ShowroomReplenishmentPlanner $planner): InertiaResponse
     {
         $this->authorize('view', $transferRequest);
 
@@ -84,18 +240,25 @@ class TransferRequestController extends Controller
             'salesOrder:id,order_number,status,fulfillment_status',
             'stockTransfer:id,transfer_number,transferred_at',
             'lines.productVariant:id,product_id,label,sku,reference', 'lines.productVariant.product:id,name',
-            'requestedBy:id,name', 'preparedBy:id,name', 'shippedBy:id,name', 'receivedBy:id,name', 'driver:id,name',
+            'requestedBy:id,name', 'preparedBy:id,name', 'shippedBy:id,name', 'receivedBy:id,name', 'driver:id,name', 'restoredBy:id,name',
         ]);
 
         $canManage = $request->user()->can('manage', $transferRequest);
 
+        // Source stock is only useful while the request can still be edited or reviewed.
+        $stock = $canManage && in_array($transferRequest->status, [TransferRequestStatus::Requested, TransferRequestStatus::Preparing], true)
+            ? $planner->transferableMap($transferRequest->organization_id, $transferRequest->source_warehouse_id,
+                $transferRequest->lines->pluck('product_variant_id')->map(fn ($id) => (int) $id)->all(), $transferRequest->getKey())
+            : [];
+
         return Inertia::render('Inventory/TransferRequests/Show', [
             'request' => [
                 ...$transferRequest->only([
-                    'id', 'request_number', 'status', 'cancellation_reason',
-                    'requested_at', 'prepared_at', 'shipped_at', 'received_at', 'cancelled_at',
+                    'id', 'request_number', 'status', 'cancellation_reason', 'note',
+                    'requested_at', 'prepared_at', 'shipped_at', 'received_at', 'cancelled_at', 'restored_at',
                     'driver_name', 'driver_phone', 'vehicle', 'vehicle_registration', 'shipping_note', 'driver_user_id',
                 ]),
+                'lock_version' => (int) $transferRequest->lock_version,
                 'source' => $transferRequest->sourceWarehouse?->only(['id', 'name', 'code']),
                 'destination' => $transferRequest->destinationWarehouse?->only(['id', 'name', 'code']),
                 'sales_order' => $transferRequest->salesOrder?->only(['id', 'order_number', 'status', 'fulfillment_status']),
@@ -104,18 +267,25 @@ class TransferRequestController extends Controller
                 'prepared_by' => $transferRequest->preparedBy?->only(['name']),
                 'shipped_by' => $transferRequest->shippedBy?->only(['name']),
                 'received_by' => $transferRequest->receivedBy?->only(['name']),
+                'restored_by' => $transferRequest->restoredBy?->only(['name']),
                 'bon_de_sortie_available' => $transferRequest->bonDeSortieAvailable(),
                 'lines' => $transferRequest->lines->map(fn ($line) => [
                     'id' => $line->id,
                     'reason' => $line->reason->value,
                     'reason_label' => $line->reason->label(),
+                    'protected' => $line->reason === TransferRequestReason::OrderFulfillment,
                     'quantity' => $line->quantity,
+                    'requested_quantity' => $line->requested_quantity,
                     'product_name' => $line->productVariant?->product?->name,
                     'variant_label' => $line->productVariant?->label,
                     'sku' => $line->productVariant?->sku,
                     'reference' => $line->productVariant?->reference,
+                    'transferable' => $stock[(int) $line->product_variant_id]['transferable'] ?? null,
                 ]),
             ],
+            'restore' => $canManage && $transferRequest->status === TransferRequestStatus::Cancelled
+                ? $restore->assess($transferRequest)
+                : null,
             // Bounded list for the "Chauffeur / Livreur" picker — the driver need
             // not be an ERP user, so a free-text name is also accepted.
             'members' => $canManage
@@ -144,7 +314,18 @@ class TransferRequestController extends Controller
     public function ship(Request $request, TransferRequest $transferRequest, ShipTransferRequestAction $action): RedirectResponse
     {
         $this->authorize('manage', $transferRequest);
-        $action->execute($request->user(), $transferRequest, $request->validate($this->driverRules($transferRequest)));
+        $shipment = $request->validate($this->driverRules($transferRequest));
+        $review = $request->validate([
+            'lock_version' => ['nullable', 'integer', 'min:0'],
+            'lines' => ['nullable', 'array', 'max:500'],
+            'lines.*' => ['required', 'numeric', 'min:0', 'decimal:0,4'],
+        ]);
+
+        $action->execute(
+            $request->user(), $transferRequest, $shipment,
+            isset($review['lines']) ? $review['lines'] : null,
+            isset($review['lock_version']) ? (int) $review['lock_version'] : null,
+        );
 
         return back()->with('success', 'Demande de transfert expédiée.');
     }
@@ -221,8 +402,11 @@ class TransferRequestController extends Controller
     public function cancel(Request $request, TransferRequest $transferRequest, CancelTransferRequestAction $action): RedirectResponse
     {
         $this->authorize('manage', $transferRequest);
-        $data = $request->validate(['reason' => ['nullable', 'string', 'max:2000']]);
-        $action->execute($request->user(), $transferRequest, $data['reason'] ?? null);
+        $data = $request->validate(['reason' => ['required', 'string', 'min:3', 'max:2000']], [
+            'reason.required' => 'Le motif d’annulation est obligatoire.',
+            'reason.min' => 'Précisez le motif d’annulation (3 caractères minimum).',
+        ]);
+        $action->execute($request->user(), $transferRequest, $data['reason']);
 
         return back()->with('success', 'Demande de transfert annulée.');
     }
@@ -243,5 +427,147 @@ class TransferRequestController extends Controller
         return back()->with('success', count($created) === 0
             ? 'Aucun réassort nécessaire.'
             : count($created).' demande(s) de réassort créée(s) ou complétée(s).');
+    }
+
+    // --- request form helpers ----------------------------------------------
+
+    /** @return array<string, mixed> */
+    private function pickerFilters(Request $request, Organization $organization): array
+    {
+        $activeWarehouse = Rule::exists('warehouses', 'id')->where(fn ($query) => $query
+            ->where('organization_id', $organization->getKey())->where('status', 'active'));
+
+        $filters = $request->validate([
+            'source_warehouse_id' => ['nullable', 'integer', $activeWarehouse],
+            'destination_warehouse_id' => ['nullable', 'integer', $activeWarehouse],
+            'search' => ['nullable', 'string', 'max:255'],
+            'selected' => ['nullable', 'string', 'max:4000', 'regex:/^[0-9,]*$/'],
+            'from' => ['nullable', 'integer'],
+        ]);
+
+        foreach (['source_warehouse_id', 'destination_warehouse_id', 'from'] as $key) {
+            if (isset($filters[$key])) {
+                $filters[$key] = (int) $filters[$key];
+            }
+        }
+
+        return $filters;
+    }
+
+    private function activeWarehouses(Organization $organization)
+    {
+        return Warehouse::query()
+            ->where('organization_id', $organization->getKey())->where('status', 'active')
+            ->orderBy('name')->get(['id', 'name', 'code']);
+    }
+
+    /**
+     * Bounded product search at the source: only variants with available
+     * stock there, each with its transferable quantity (available minus what
+     * other active requests already promise) and the destination's stock.
+     *
+     * @param  array<string, mixed>  $filters
+     * @return list<array<string, mixed>>
+     */
+    private function catalogue(ShowroomReplenishmentPlanner $planner, Organization $organization, array $filters, ?int $excludeRequestId): array
+    {
+        $sourceId = $filters['source_warehouse_id'] ?? null;
+        if (! $sourceId) {
+            return [];
+        }
+        $search = trim((string) ($filters['search'] ?? ''));
+
+        $variants = ProductVariant::query()
+            ->where('organization_id', $organization->getKey())
+            ->where('status', 'active')
+            ->with(['product:id,name,brand_id', 'product.brand:id,name'])
+            ->whereHas('inventoryBalances', fn ($query) => $query
+                ->where('organization_id', $organization->getKey())
+                ->where('warehouse_id', $sourceId)
+                ->whereRaw('(on_hand - reserved) > 0'))
+            ->when($search !== '', fn ($query) => $query->where(fn ($query) => $query
+                ->where('sku', 'like', "%{$search}%")
+                ->orWhere('reference', 'like', "%{$search}%")
+                ->orWhere('barcode', 'like', "%{$search}%")
+                ->orWhere('label', 'like', "%{$search}%")
+                ->orWhereHas('product', fn ($product) => $product
+                    ->where('name', 'like', "%{$search}%")
+                    ->orWhereHas('brand', fn ($brand) => $brand->where('name', 'like', "%{$search}%")))))
+            ->orderBy('sku')
+            ->limit(self::CATALOGUE_LIMIT)
+            ->get(['id', 'product_id', 'label', 'sku', 'reference', 'barcode']);
+
+        $stock = $this->stockFor($planner, $organization, (int) $sourceId, $filters['destination_warehouse_id'] ?? null, $variants->modelKeys(), $excludeRequestId);
+
+        return $variants->map(fn (ProductVariant $variant) => [
+            'product_variant_id' => $variant->getKey(),
+            ...$this->variantPayload($variant),
+            'stock' => $stock[$variant->getKey()] ?? null,
+        ])->values()->all();
+    }
+
+    /**
+     * Fresh stock for the lines already in the picker (after a source change
+     * or simply to show current numbers next to each selected line).
+     *
+     * @param  array<string, mixed>  $filters
+     * @return array<int, array<string, string>>
+     */
+    private function selectedStock(ShowroomReplenishmentPlanner $planner, Organization $organization, array $filters, ?int $excludeRequestId): array
+    {
+        $ids = array_values(array_filter(array_map('intval', explode(',', (string) ($filters['selected'] ?? '')))));
+        if (! ($filters['source_warehouse_id'] ?? null) || $ids === []) {
+            return [];
+        }
+        $ids = ProductVariant::query()->where('organization_id', $organization->getKey())->whereIn('id', array_slice($ids, 0, 200))->pluck('id')->all();
+
+        $variants = ProductVariant::query()->whereIn('id', $ids)
+            ->with(['product:id,name,brand_id', 'product.brand:id,name'])
+            ->get(['id', 'product_id', 'label', 'sku', 'reference', 'barcode'])->keyBy('id');
+        $stock = $this->stockFor($planner, $organization, (int) $filters['source_warehouse_id'], $filters['destination_warehouse_id'] ?? null, $ids, $excludeRequestId);
+
+        $out = [];
+        foreach ($variants as $id => $variant) {
+            $out[$id] = ['product_variant_id' => $id, ...$this->variantPayload($variant), 'stock' => $stock[$id] ?? null];
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  list<int|string>  $variantIds
+     * @return array<int, array<string, string>>
+     */
+    private function stockFor(ShowroomReplenishmentPlanner $planner, Organization $organization, int $sourceId, ?int $destinationId, array $variantIds, ?int $excludeRequestId): array
+    {
+        $variantIds = array_map('intval', $variantIds);
+        $source = $planner->transferableMap($organization->getKey(), $sourceId, $variantIds, $excludeRequestId);
+
+        $destination = $destinationId
+            ? InventoryBalance::query()->where('organization_id', $organization->getKey())->where('warehouse_id', $destinationId)
+                ->whereIn('product_variant_id', $variantIds ?: [0])->pluck('on_hand', 'product_variant_id')
+            : collect();
+
+        $out = [];
+        foreach ($source as $variantId => $row) {
+            $out[$variantId] = [
+                ...$row,
+                'destination_on_hand' => $destination->has($variantId) ? InventoryQuantity::normalize((string) $destination[$variantId]) : InventoryQuantity::ZERO,
+            ];
+        }
+
+        return $out;
+    }
+
+    /** @return array<string, mixed> */
+    private function variantPayload(?ProductVariant $variant): array
+    {
+        return [
+            'product_name' => $variant?->product?->name,
+            'label' => $variant?->label,
+            'sku' => $variant?->sku,
+            'reference' => $variant?->reference,
+            'brand' => $variant?->product?->brand?->name,
+        ];
     }
 }

@@ -1,4 +1,4 @@
-import { Button } from '@/components/ui/Button';
+import { Button, ButtonLink } from '@/components/ui/Button';
 import EmptyState from '@/components/ui/EmptyState';
 import PageHeader from '@/components/ui/PageHeader';
 import Pagination from '@/components/ui/Pagination';
@@ -78,6 +78,9 @@ export default function TransferRequestIndex({ requests, filters, warehouses, ca
             <PageHeader
                 title={t('inventory.requests.title')}
                 description={t('inventory.requests.description')}
+                actions={can.manage && warehouses.length > 1 ? (
+                    <ButtonLink href="/inventory/transfer-requests/create">+ {t('inventory.requestForm.createTitle')}</ButtonLink>
+                ) : undefined}
             />
 
             <section className="mb-5 rounded-card border border-line bg-surface p-4 shadow-soft">

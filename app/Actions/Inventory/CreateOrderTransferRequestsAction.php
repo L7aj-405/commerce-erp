@@ -52,6 +52,10 @@ class CreateOrderTransferRequestsAction
             return;
         }
 
+        // Same organization-wide planning lock as the manual sweep: a sweep and a
+        // POS confirmation never compute the same deficit from one snapshot.
+        $this->planner->lockPlanning((int) $order->organization_id);
+
         $order->loadMissing('lines.allocations');
         $isPickup = $order->pos_fulfillment_mode !== 'delivery';
 
@@ -160,6 +164,24 @@ class CreateOrderTransferRequestsAction
 
         if ($request) {
             if ($request->status === TransferRequestStatus::Cancelled) {
+                // Reopening the (order, source) slot for a re-confirmed order.
+                // The lines of the cancelled lifecycle are stale: they were not
+                // counted as incoming when this run's deficits were computed, so
+                // keeping them would silently inflate the request. Drop them and
+                // let this run upsert the authoritative quantities. The earlier
+                // cancellation remains in the audit log.
+                $staleLines = $request->lines()->get(['product_variant_id', 'quantity', 'reason']);
+                $request->lines()->delete();
+                $this->audit->record('transfer_request.reopened_by_order', $actor, $order->organization, auditable: $request, oldValues: [
+                    'cancelled_at' => $request->cancelled_at?->toIso8601String(),
+                    'cancellation_reason' => $request->cancellation_reason,
+                    'lines' => $staleLines->map(fn ($l) => [
+                        'product_variant_id' => (int) $l->product_variant_id,
+                        'quantity' => $l->quantity,
+                        'reason' => $l->reason->value,
+                    ])->all(),
+                ], newValues: ['request_number' => $request->request_number, 'sales_order_id' => $order->getKey()]);
+
                 $request->status = TransferRequestStatus::Requested;
                 $request->destination_warehouse_id = $destinationId;
                 $request->requested_by_user_id = $actor->getKey();
@@ -169,6 +191,7 @@ class CreateOrderTransferRequestsAction
                 $request->cancelled_by_user_id = null;
                 $request->cancelled_at = null;
                 $request->cancellation_reason = null;
+                $request->lock_version = (int) $request->lock_version + 1;
                 $request->save();
             }
 
@@ -199,9 +222,14 @@ class CreateOrderTransferRequestsAction
             ->first();
 
         if ($line) {
-            // A retried confirmation must not accumulate; the authoritative
-            // quantity is the one just recomputed.
-            $line->quantity = InventoryQuantity::normalize($quantity);
+            // ORDER_FULFILLMENT: the authoritative quantity is the one just
+            // recomputed from the allocations — a retry must not accumulate.
+            // MINIMUM_REPLENISHMENT: the deficit was computed WITH this line
+            // already counted as incoming, so it is the missing top-up and is
+            // added (overwriting would silently drop the earlier top-up).
+            $line->quantity = $reason === TransferRequestReason::MinimumReplenishment
+                ? InventoryQuantity::add($line->quantity, $quantity)
+                : InventoryQuantity::normalize($quantity);
             $line->sales_order_line_id = $salesOrderLineId ?? $line->sales_order_line_id;
             $line->save();
 

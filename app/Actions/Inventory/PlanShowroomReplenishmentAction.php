@@ -27,6 +27,14 @@ use Illuminate\Validation\ValidationException;
  * variant. Self-deduping — an already active replenishment request keeps the
  * deficit at zero (§9).
  *
+ * Determinism: the whole read-decide-write cycle runs inside ONE transaction
+ * holding the organization's planning lock, so a double click, a second
+ * manager or a POS confirmation running at the same moment can never decide
+ * from the same snapshot and stack the same deficit twice. Cancelled requests
+ * are never counted (only requested / preparing / shipped are "incoming"), and
+ * sources are capped at their transferable stock (available minus what other
+ * active requests already promise).
+ *
  * @return list<int>  ids of the transfer requests created or extended
  */
 class PlanShowroomReplenishmentAction
@@ -50,17 +58,20 @@ class PlanShowroomReplenishmentAction
             ]);
         }
 
-        $variantIds = $this->planner->candidateVariantIds($organization->getKey(), $warehouse->getKey());
-        $deficits = $this->planner->deficits($organization->getKey(), $warehouse->getKey(), $variantIds);
-
         $touched = [];
 
-        DB::transaction(function () use ($actor, $organization, $warehouse, $deficits, &$touched) {
+        DB::transaction(function () use ($actor, $organization, $warehouse, &$touched) {
+            $this->planner->lockPlanning($organization->getKey());
+
+            $variantIds = $this->planner->candidateVariantIds($organization->getKey(), $warehouse->getKey());
+            $deficits = $this->planner->deficits($organization->getKey(), $warehouse->getKey(), $variantIds);
+            ksort($deficits);
+
             foreach ($deficits as $variantId => $deficit) {
                 foreach ($this->planner->sourcesFor($organization->getKey(), $warehouse->getKey(), (int) $variantId, $deficit) as $source) {
                     $request = $this->replenishmentRequest($actor, $organization, (int) $source['warehouse_id'], $warehouse->getKey());
                     $this->addLine($request, (int) $variantId, $source['quantity']);
-                    $touched[$request->getKey()] = $request->getKey();
+                    $touched[$request->getKey()] = $request;
 
                     $this->audit->record('auto_replenishment.created', $actor, $organization, auditable: $request, newValues: [
                         'request_number' => $request->request_number,
@@ -72,9 +83,14 @@ class PlanShowroomReplenishmentAction
                     ]);
                 }
             }
+
+            // Any open editor on a request we just extended must reload.
+            foreach ($touched as $request) {
+                TransferRequest::query()->whereKey($request->getKey())->increment('lock_version');
+            }
         });
 
-        return array_values($touched);
+        return array_map('intval', array_keys($touched));
     }
 
     private function replenishmentRequest(User $actor, Organization $organization, int $sourceId, int $destinationId): TransferRequest
@@ -85,6 +101,15 @@ class PlanShowroomReplenishmentAction
             ->where('source_warehouse_id', $sourceId)
             ->where('destination_warehouse_id', $destinationId)
             ->where('status', TransferRequestStatus::Requested->value)
+            // Only extend a purely automatic replenishment request. Merging into
+            // a request that carries other demand (manual lines…) made the
+            // sweep's own lines smaller (that demand counted as incoming), and
+            // cancelling "the generated request" then also cancelled the other
+            // demand — so the next run produced larger lines for the same
+            // inventory (the reported 1 → 2). Replenishment lines merged here
+            // accumulate on the same line, so cancel + regenerate is exact.
+            ->whereDoesntHave('lines', fn ($query) => $query->where('reason', '!=', TransferRequestReason::MinimumReplenishment->value))
+            ->orderBy('id')
             ->first();
 
         if ($existing) {
@@ -114,6 +139,9 @@ class PlanShowroomReplenishmentAction
             ->first();
 
         if ($line) {
+            // The existing line was already counted as incoming when the
+            // deficit was computed (under the planning lock), so the deficit
+            // is exactly the missing top-up: adding it is not double counting.
             $line->quantity = InventoryQuantity::add($line->quantity, $quantity);
             $line->save();
 

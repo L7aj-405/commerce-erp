@@ -11,6 +11,7 @@ use App\Models\InventoryBalance;
 use App\Models\ProductVariant;
 use App\Models\Warehouse;
 use App\Services\ActiveTenantContext;
+use App\Services\ShowroomReplenishmentPlanner;
 use App\Support\InventoryQuantity;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Http\RedirectResponse;
@@ -147,12 +148,28 @@ class InventoryStockController extends Controller
         return back();
     }
 
-    public function adjustment(Request $request, ActiveTenantContext $context, AdjustInventoryAction $action): RedirectResponse
+    public function adjustment(Request $request, ActiveTenantContext $context, AdjustInventoryAction $action, ShowroomReplenishmentPlanner $planner): RedirectResponse
     {
         $organization = $context->organizationOrFail();
         $this->authorize('adjust', [InventoryBalance::class, $organization]);
         $data = $request->validate($this->operationRules($organization->getKey(), true));
-        $action->execute($request->user(), $organization, $this->warehouse($organization->getKey(), $data['warehouse_id']), $this->variant($organization->getKey(), $data['product_variant_id']), InventoryMovementType::from($data['type']), $data['quantity'], $data['reason'], $data['reference'] ?? null);
+        $type = InventoryMovementType::from($data['type']);
+        $warehouse = $this->warehouse($organization->getKey(), $data['warehouse_id']);
+        $variant = $this->variant($organization->getKey(), $data['product_variant_id']);
+        $action->execute($request->user(), $organization, $warehouse, $variant, $type, $data['quantity'], $data['reason'], $data['reference'] ?? null);
+
+        // A stock-out adjustment records physical reality and is never blocked,
+        // but it may leave open transfer requests promising more than remains.
+        if ($type === InventoryMovementType::AdjustmentOut) {
+            $shortfall = $planner->promiseShortfalls($organization->getKey(), $warehouse->getKey(), [$variant->getKey()])[$variant->getKey()] ?? null;
+            if ($shortfall !== null) {
+                return back()->with('success', sprintf(
+                    'Ajustement enregistré. Attention : il manque %s unité(s) pour honorer les demandes de transfert ouvertes %s — ajustez-les avant expédition.',
+                    rtrim(rtrim($shortfall['short'], '0'), '.'),
+                    implode(', ', $shortfall['requests']),
+                ));
+            }
+        }
 
         return back();
     }

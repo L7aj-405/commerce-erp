@@ -13,6 +13,8 @@ use App\Models\Warehouse;
 use App\Models\WarehouseReplenishmentOverride;
 use App\Models\WarehouseReplenishmentSetting;
 use App\Support\InventoryQuantity;
+use Illuminate\Support\Facades\DB;
+use LogicException;
 
 /**
  * Minimum-stock replenishment maths for an operational warehouse (the POS
@@ -29,9 +31,172 @@ use App\Support\InventoryQuantity;
  * transfers are earmarked for a customer and do NOT count as free incoming
  * stock — only MINIMUM_REPLENISHMENT / MANUAL incoming does. Replenishment is
  * best-effort and always yields priority to customer demand (§18).
+ *
+ * Source side: a source can only give what is `transferable` = available
+ * (on_hand − reserved) − quantity already promised by other ACTIVE outgoing
+ * MINIMUM_REPLENISHMENT / MANUAL lines. Those promises are not reservations
+ * (the units stay in the source's on_hand until receipt), so without this
+ * netting two requests could promise the same physical units. ORDER_FULFILLMENT
+ * lines are NOT netted: their quantity is already a reservation at the source
+ * and therefore already excluded from `available`.
+ *
+ * Writers that act on these numbers (sweep, order confirmation, manual
+ * creation, edit, restore) must hold {@see lockPlanning()} for the
+ * organization so two of them can never decide from the same snapshot.
  */
 class ShowroomReplenishmentPlanner
 {
+    /** Statuses whose lines still represent stock on its way (not yet in the destination's on_hand). */
+    public const ACTIVE_STATUSES = ['requested', 'preparing', 'shipped'];
+
+    /** Line reasons that represent free (non-customer) stock movement. */
+    public const FREE_REASONS = ['minimum_replenishment', 'manual'];
+
+    /**
+     * Serialise every transfer-request planning decision of one organization.
+     * Reuses the organization's `transfer_request_sequences` row (the row the
+     * number generator locks anyway) so there is exactly one lock to take and
+     * no lock-ordering deadlock between planners. Must run inside a
+     * transaction; the lock is held until it commits.
+     */
+    public function lockPlanning(int $organizationId): void
+    {
+        if (DB::transactionLevel() < 1) {
+            throw new LogicException('Transfer request planning must run inside a database transaction.');
+        }
+
+        DB::table('transfer_request_sequences')->insertOrIgnore([
+            'organization_id' => $organizationId,
+            'next_number' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('transfer_request_sequences')
+            ->where('organization_id', $organizationId)
+            ->lockForUpdate()
+            ->value('next_number');
+    }
+
+    /**
+     * Free-stock quantities already promised OUT of `$sourceWarehouseId` by
+     * active requests (minimum replenishment / manual lines only).
+     *
+     * @param  list<int>  $variantIds
+     * @return array<int, string>  variant id => committed quantity
+     */
+    public function committedOutgoing(int $organizationId, int $sourceWarehouseId, array $variantIds, ?int $excludeRequestId = null): array
+    {
+        $variantIds = array_values(array_unique(array_map('intval', $variantIds)));
+        if ($variantIds === []) {
+            return [];
+        }
+
+        $out = [];
+        TransferRequestLine::query()
+            ->join('transfer_requests as tr', 'tr.id', '=', 'transfer_request_lines.transfer_request_id')
+            ->where('transfer_request_lines.organization_id', $organizationId)
+            ->where('tr.organization_id', $organizationId)
+            ->where('tr.source_warehouse_id', $sourceWarehouseId)
+            ->whereIn('tr.status', self::ACTIVE_STATUSES)
+            ->when($excludeRequestId !== null, fn ($query) => $query->where('tr.id', '!=', $excludeRequestId))
+            ->whereIn('transfer_request_lines.product_variant_id', $variantIds)
+            ->whereIn('transfer_request_lines.reason', self::FREE_REASONS)
+            ->get(['transfer_request_lines.product_variant_id', 'transfer_request_lines.quantity'])
+            ->each(function ($row) use (&$out) {
+                $variantId = (int) $row->product_variant_id;
+                $out[$variantId] = InventoryQuantity::add($out[$variantId] ?? InventoryQuantity::ZERO, $row->quantity);
+            });
+
+        return $out;
+    }
+
+    /**
+     * What a source can still promise for one variant: available − active free
+     * outgoing commitments, floored at zero.
+     */
+    public function transferableAt(int $organizationId, int $warehouseId, int $variantId, ?int $excludeRequestId = null): string
+    {
+        return $this->transferableMap($organizationId, $warehouseId, [$variantId], $excludeRequestId)[$variantId]['transferable'];
+    }
+
+    /**
+     * Batched stock picture of a source for the request editors and planners.
+     *
+     * @param  list<int>  $variantIds
+     * @return array<int, array{on_hand: string, reserved: string, available: string, committed: string, transferable: string}>
+     */
+    public function transferableMap(int $organizationId, int $warehouseId, array $variantIds, ?int $excludeRequestId = null): array
+    {
+        $variantIds = array_values(array_unique(array_map('intval', $variantIds)));
+        if ($variantIds === []) {
+            return [];
+        }
+
+        $balances = InventoryBalance::query()
+            ->where('organization_id', $organizationId)
+            ->where('warehouse_id', $warehouseId)
+            ->whereIn('product_variant_id', $variantIds)
+            ->get(['product_variant_id', 'on_hand', 'reserved'])
+            ->keyBy(fn ($b) => (int) $b->product_variant_id);
+        $committed = $this->committedOutgoing($organizationId, $warehouseId, $variantIds, $excludeRequestId);
+
+        $out = [];
+        foreach ($variantIds as $variantId) {
+            $balance = $balances->get($variantId);
+            $onHand = $balance ? InventoryQuantity::normalize((string) $balance->on_hand) : InventoryQuantity::ZERO;
+            $reserved = $balance ? InventoryQuantity::normalize((string) $balance->reserved) : InventoryQuantity::ZERO;
+            $available = InventoryQuantity::subtract($onHand, $reserved);
+            $promised = $committed[$variantId] ?? InventoryQuantity::ZERO;
+            $transferable = InventoryQuantity::subtract($available, $promised);
+
+            $out[$variantId] = [
+                'on_hand' => $onHand,
+                'reserved' => $reserved,
+                'available' => $available,
+                'committed' => $promised,
+                'transferable' => InventoryQuantity::compare($transferable, InventoryQuantity::ZERO) > 0 ? $transferable : InventoryQuantity::ZERO,
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Variants whose current available stock at `$warehouseId` no longer covers
+     * what active requests promise out of it (available < committed).
+     *
+     * @param  list<int>  $variantIds
+     * @return array<int, array{available: string, committed: string, short: string, requests: list<string>}>
+     */
+    public function promiseShortfalls(int $organizationId, int $warehouseId, array $variantIds): array
+    {
+        $out = [];
+        foreach ($this->transferableMap($organizationId, $warehouseId, $variantIds) as $variantId => $row) {
+            $short = InventoryQuantity::subtract($row['committed'], $row['available']);
+            if (InventoryQuantity::compare($short, InventoryQuantity::ZERO) <= 0) {
+                continue;
+            }
+            $out[$variantId] = [
+                'available' => $row['available'],
+                'committed' => $row['committed'],
+                'short' => $short,
+                'requests' => TransferRequestLine::query()
+                    ->join('transfer_requests as tr', 'tr.id', '=', 'transfer_request_lines.transfer_request_id')
+                    ->where('transfer_request_lines.organization_id', $organizationId)
+                    ->where('tr.organization_id', $organizationId)
+                    ->where('tr.source_warehouse_id', $warehouseId)
+                    ->whereIn('tr.status', self::ACTIVE_STATUSES)
+                    ->where('transfer_request_lines.product_variant_id', $variantId)
+                    ->whereIn('transfer_request_lines.reason', self::FREE_REASONS)
+                    ->orderBy('tr.id')->limit(5)->distinct()
+                    ->pluck('tr.request_number')->all(),
+            ];
+        }
+
+        return $out;
+    }
+
     /** Automatic replenishment master switch for a warehouse. */
     public function isEnabled(int $organizationId, int $warehouseId): bool
     {
@@ -255,7 +420,7 @@ class ShowroomReplenishmentPlanner
     /**
      * Deterministic same-organization sources able to cover `$quantity` of a
      * variant, preferred source first then ascending warehouse id, each capped
-     * at its transferable `available` minus `$alreadyClaimed[warehouseId]`.
+     * at its {@see transferableAt()} minus `$alreadyClaimed[warehouseId]`.
      * Best-effort — the returned lines may sum to less than `$quantity`; the
      * caller decides whether a shortfall blocks (customer Order) or is simply
      * dropped (minimum replenishment).
@@ -290,8 +455,10 @@ class ShowroomReplenishmentPlanner
 
         $lines = [];
         foreach ($warehouseIds as $warehouseId) {
+            // Transferable, not merely available: units already promised to
+            // another active request must not be promised a second time.
             $available = InventoryQuantity::subtract(
-                $this->availableAt($organizationId, $warehouseId, $variantId),
+                $this->transferableAt($organizationId, $warehouseId, $variantId),
                 $alreadyClaimed[$warehouseId] ?? InventoryQuantity::ZERO,
             );
             if (InventoryQuantity::compare($available, InventoryQuantity::ZERO) <= 0) {

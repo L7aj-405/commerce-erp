@@ -32,6 +32,7 @@ class PrepareTransferRequestAction
             $request->status = TransferRequestStatus::Preparing;
             $request->prepared_by_user_id = $actor->getKey();
             $request->prepared_at = now();
+            $request->lock_version = (int) $request->lock_version + 1;
             $request->save();
 
             $this->audit->record('transfer_request.prepared', $actor, $request->organization, auditable: $request, newValues: [
