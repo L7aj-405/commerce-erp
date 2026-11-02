@@ -574,6 +574,11 @@ class TransferRequestEditingTest extends PosTestCase
         $assessment = app(RestoreTransferRequestAction::class)->assess($request->fresh());
         $this->assertTrue($assessment['eligible'], json_encode($assessment));
 
+        // Regression: the detail page loads warehouses with a partial column
+        // list; the assessment it shows must still see them as active.
+        $this->actingAs($this->owner)->get(route('inventory.transfer-requests.show', $request))
+            ->assertInertia(fn (AssertableInertia $page) => $page->where('restore.eligible', true)->where('restore.blockers', []));
+
         $this->actingAs($this->owner)->post(route('inventory.transfer-requests.restore', $request))->assertRedirect();
         $request->refresh();
         $this->assertSame(TransferRequestStatus::Requested, $request->status);

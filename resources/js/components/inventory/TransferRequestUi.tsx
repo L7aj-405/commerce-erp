@@ -95,7 +95,7 @@ export function RouteLabel({ source, destination, compact = false }: { source: W
     return (
         <span className="inline-flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5">
             <span className="min-w-0 truncate font-medium text-ink">{source?.name ?? '—'}</span>
-            <span aria-hidden="true" className="text-ink-faint">→</span>
+            <span aria-hidden="true" className="inline-block text-ink-faint rtl:-scale-x-100">→</span>
             <span className="min-w-0 truncate font-medium text-ink">{destination?.name ?? '—'}</span>
             {!compact && (source?.code || destination?.code) && (
                 <span className="w-full text-xs text-ink-faint" dir="ltr">

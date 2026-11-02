@@ -12,6 +12,7 @@ use App\Models\SalesOrderInventoryAllocation;
 use App\Models\TransferRequest;
 use App\Models\TransferRequestLine;
 use App\Models\User;
+use App\Models\Warehouse;
 use App\Services\AuditLogger;
 use App\Services\ShowroomReplenishmentPlanner;
 use App\Support\InventoryQuantity;
@@ -65,7 +66,12 @@ class RestoreTransferRequestAction
         if ($request->lines->isEmpty()) {
             return ['eligible' => false, 'blockers' => ['La demande ne contient plus aucune ligne.']];
         }
-        if ($request->sourceWarehouse?->status !== WarehouseStatus::Active || $request->destinationWarehouse?->status !== WarehouseStatus::Active) {
+        // Read the status directly: callers (the detail page) may have loaded the
+        // warehouse relations with a partial column list that omits it.
+        $activeRoute = Warehouse::query()->where('organization_id', $org)
+            ->whereIn('id', [$request->source_warehouse_id, $request->destination_warehouse_id])
+            ->where('status', WarehouseStatus::Active->value)->count();
+        if ($activeRoute < 2) {
             $blockers[] = 'La source ou la destination n’est plus active.';
         }
 

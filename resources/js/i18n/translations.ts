@@ -4680,6 +4680,7 @@ export const fr = {
     "inventory.trq.evYieldedDetail": "{qty} u. retirée(s) au profit de la commande {order} — ligne {old} → {new}",
     "inventory.trq.filters": "Filtres",
     "inventory.trq.lockedHelp": "Quantité figée depuis la préparation",
+    "inventory.trq.toDestination": "vers {code}",
 } as const;
 
 export type TranslationKey = keyof typeof fr;
@@ -9213,4 +9214,5 @@ export const ar: Record<TranslationKey, string> = {
     "inventory.trq.evYieldedDetail": "{qty} وحدة سُحبت لصالح الطلب {order} — البند {old} ← {new}",
     "inventory.trq.filters": "عوامل التصفية",
     "inventory.trq.lockedHelp": "كمية ثابتة منذ التحضير",
+    "inventory.trq.toDestination": "إلى {code}",
 };

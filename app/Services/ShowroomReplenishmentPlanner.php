@@ -189,8 +189,10 @@ class ShowroomReplenishmentPlanner
                     ->whereIn('tr.status', self::ACTIVE_STATUSES)
                     ->where('transfer_request_lines.product_variant_id', $variantId)
                     ->whereIn('transfer_request_lines.reason', self::FREE_REASONS)
-                    ->orderBy('tr.id')->limit(5)->distinct()
-                    ->pluck('tr.request_number')->all(),
+                    // tr.id must be selected: MySQL rejects DISTINCT + ORDER BY on an unselected column.
+                    ->distinct()->orderBy('tr.id')->limit(5)
+                    ->get(['tr.id', 'tr.request_number'])
+                    ->pluck('request_number')->all(),
             ];
         }
 

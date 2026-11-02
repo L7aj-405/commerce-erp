@@ -284,7 +284,7 @@ export default function TransferRequestShow({ request, breakdown, history, membe
                         </div>
                         <p className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-ink-muted">
                             <span className="font-medium text-ink">{src}</span>
-                            <span aria-hidden="true">→</span>
+                            <span aria-hidden="true" className="inline-block rtl:-scale-x-100">→</span>
                             <span className="font-medium text-ink">{dst}</span>
                             {request.sales_order && (
                                 <>
@@ -392,7 +392,7 @@ export default function TransferRequestShow({ request, breakdown, history, membe
                         { label: t('inventory.trq.metricTotal'), value: formatQuantity(total), helper: t('inventory.trq.productsValue').replace('{count}', String(breakdown.length)) },
                         { label: t('inventory.trq.metricCustomer'), value: formatQuantity(forCustomer), helper: isOrder ? t('inventory.trq.protectedHelp') : '—', tone: forCustomer > 0 ? 'text-danger' : undefined },
                         { label: t('inventory.trq.metricReplenishment'), value: formatQuantity(forReplenishment), helper: request.status === 'requested' ? t('inventory.trq.adjustableHelp') : t('inventory.trq.lockedHelp') },
-                        { label: t('inventory.trq.metricRoute'), value: request.source?.code ?? '—', helper: `→ ${request.destination?.code ?? '—'}` },
+                        { label: t('inventory.trq.metricRoute'), value: request.source?.code ?? '—', helper: t('inventory.trq.toDestination').replace('{code}', request.destination?.code ?? '—') },
                     ].map((m) => (
                         <div key={m.label} className="rounded-card border border-line bg-surface px-4 py-3 shadow-soft">
                             <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-faint">{m.label}</p>
