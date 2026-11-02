@@ -565,6 +565,23 @@ class TransferRequestController extends Controller
         $max0 = fn (string $q) => InventoryQuantity::compare($q, $zero) > 0 ? $q : $zero;
         $min = fn (string $a, string $b) => InventoryQuantity::compare($a, $b) < 0 ? $a : $b;
 
+        // Which general requests each product's replenishment was moved from
+        // (bounded; the full trail stays in the history panel).
+        $reallocatedFrom = [];
+        AuditLog::query()
+            ->where('organization_id', $orgId)
+            ->where('auditable_type', $request->getMorphClass())
+            ->where('auditable_id', $request->getKey())
+            ->where('event', 'transfer_request.replenishment_received_from_general')
+            ->latest('id')->limit(50)->get(['new_values'])
+            ->each(function ($log) use (&$reallocatedFrom) {
+                $variant = (int) ($log->new_values['product_variant_id'] ?? 0);
+                $number = $log->new_values['request_number'] ?? null;
+                if ($variant && $number && ! in_array($number, $reallocatedFrom[$variant] ?? [], true)) {
+                    $reallocatedFrom[$variant][] = $number;
+                }
+            });
+
         $out = [];
         foreach ($request->lines->groupBy(fn ($l) => (int) $l->product_variant_id) as $variantId => $lines) {
             $sum = fn (TransferRequestReason $reason) => $lines->filter(fn ($l) => $l->reason === $reason)
@@ -589,6 +606,8 @@ class TransferRequestController extends Controller
             $src = $sourceBalances->get($variantId);
             $transferable = $sourceStock[$variantId]['transferable'] ?? null;
             $shortage = $transferable !== null ? $max0(InventoryQuantity::subtract($free, $transferable)) : $zero;
+            $projected = $active ? InventoryQuantity::add($destAvailable, InventoryQuantity::add($incomingElsewhere, $free)) : null;
+            $minimum = $minimums[$variantId] ?? null;
 
             $out[] = [
                 'product_variant_id' => $variantId,
@@ -602,17 +621,21 @@ class TransferRequestController extends Controller
                 'for_customer_other_sources' => $otherOrderRouted[$variantId] ?? $zero,
                 'replenishment' => $replenishment,
                 'reallocated' => $min($reallocated, $replenishment),
+                'reallocated_from' => $reallocatedFrom[$variantId] ?? [],
                 'manual' => $manual,
                 'total' => InventoryQuantity::add($forCustomer, $free),
                 'other_active_incoming' => $incomingElsewhere,
-                'minimum' => $minimums[$variantId] ?? null,
+                'minimum' => $minimum,
                 'destination_on_hand' => $destOnHand,
                 'destination_available' => $destAvailable,
                 // Once the customer is served: free destination stock (the
                 // customer's units are reserved, so already excluded) plus every
                 // free unit still on its way, including this request's.
-                'projected_after_fulfillment' => $active
-                    ? InventoryQuantity::add($destAvailable, InventoryQuantity::add($incomingElsewhere, $free))
+                'projected_after_fulfillment' => $projected,
+                // Units the minimum will still miss after everything on its way
+                // arrives — shown, never fabricated.
+                'minimum_shortage' => $projected !== null && $minimum !== null && InventoryQuantity::compare($minimum, $zero) > 0
+                    ? $max0(InventoryQuantity::subtract($minimum, $projected))
                     : null,
                 'source_on_hand' => $src ? InventoryQuantity::normalize((string) $src->on_hand) : $zero,
                 'source_reserved' => $src ? InventoryQuantity::normalize((string) $src->reserved) : $zero,

@@ -3,8 +3,6 @@
 namespace App\Services;
 
 use App\Enums\CatalogStatus;
-use App\Enums\TransferRequestReason;
-use App\Enums\TransferRequestStatus;
 use App\Enums\WarehouseStatus;
 use App\Models\InventoryBalance;
 use App\Models\ProductVariant;
@@ -65,17 +63,27 @@ class ShowroomReplenishmentPlanner
             throw new LogicException('Transfer request planning must run inside a database transaction.');
         }
 
-        DB::table('transfer_request_sequences')->insertOrIgnore([
-            'organization_id' => $organizationId,
-            'next_number' => 1,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
-
-        DB::table('transfer_request_sequences')
+        // Lock the existing row directly. INSERT IGNORE on an existing key
+        // takes a SHARED lock first; two sessions both upgrading that to
+        // exclusive deadlocked (seen on MySQL with parallel sweeps). Insert
+        // only when the row is genuinely missing (first planning ever).
+        $locked = DB::table('transfer_request_sequences')
             ->where('organization_id', $organizationId)
             ->lockForUpdate()
             ->value('next_number');
+
+        if ($locked === null) {
+            DB::table('transfer_request_sequences')->insertOrIgnore([
+                'organization_id' => $organizationId,
+                'next_number' => 1,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+            DB::table('transfer_request_sequences')
+                ->where('organization_id', $organizationId)
+                ->lockForUpdate()
+                ->value('next_number');
+        }
     }
 
     /**
@@ -102,6 +110,10 @@ class ShowroomReplenishmentPlanner
             ->when($excludeRequestId !== null, fn ($query) => $query->where('tr.id', '!=', $excludeRequestId))
             ->whereIn('transfer_request_lines.product_variant_id', $variantIds)
             ->whereIn('transfer_request_lines.reason', self::FREE_REASONS)
+            // Locking read: sees the latest committed requests even when the
+            // caller's transaction snapshot predates the planning lock (POS
+            // checkout reads before confirming; MySQL REPEATABLE READ).
+            ->sharedLock()
             ->get(['transfer_request_lines.product_variant_id', 'transfer_request_lines.quantity'])
             ->each(function ($row) use (&$out) {
                 $variantId = (int) $row->product_variant_id;
@@ -256,23 +268,7 @@ class ShowroomReplenishmentPlanner
      */
     public function incomingReplenishmentQty(int $organizationId, int $warehouseId, int $variantId, ?int $excludeRequestId = null): string
     {
-        return TransferRequestLine::query()
-            ->where('transfer_request_lines.organization_id', $organizationId)
-            ->where('product_variant_id', $variantId)
-            ->whereIn('reason', [TransferRequestReason::MinimumReplenishment->value, TransferRequestReason::Manual->value])
-            ->whereHas('transferRequest', function ($query) use ($warehouseId, $excludeRequestId) {
-                $query->where('destination_warehouse_id', $warehouseId)
-                    ->whereIn('status', [
-                        TransferRequestStatus::Requested->value,
-                        TransferRequestStatus::Preparing->value,
-                        TransferRequestStatus::Shipped->value,
-                    ]);
-                if ($excludeRequestId !== null) {
-                    $query->where('id', '!=', $excludeRequestId);
-                }
-            })
-            ->get(['quantity'])
-            ->reduce(fn (string $carry, TransferRequestLine $line) => InventoryQuantity::add($carry, $line->quantity), InventoryQuantity::ZERO);
+        return $this->incomingFreeMap($organizationId, $warehouseId, [$variantId], $excludeRequestId)[$variantId] ?? InventoryQuantity::ZERO;
     }
 
     /**
@@ -452,6 +448,10 @@ class ShowroomReplenishmentPlanner
             ->when($excludeRequestId !== null, fn ($query) => $query->where('tr.id', '!=', $excludeRequestId))
             ->whereIn('transfer_request_lines.product_variant_id', $variantIds)
             ->whereIn('transfer_request_lines.reason', self::FREE_REASONS)
+            // Locking read: sees the latest committed requests even when the
+            // caller's transaction snapshot predates the planning lock (POS
+            // checkout reads before confirming; MySQL REPEATABLE READ).
+            ->sharedLock()
             ->get(['transfer_request_lines.product_variant_id', 'transfer_request_lines.quantity'])
             ->each(function ($row) use (&$out) {
                 $variantId = (int) $row->product_variant_id;

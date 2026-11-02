@@ -199,6 +199,7 @@ class CreateOrderTransferRequestsAction
                 ->where('transfer_request_lines.reason', TransferRequestReason::MinimumReplenishment->value)
                 ->orderByDesc('transfer_request_lines.id')
                 ->select('transfer_request_lines.*')
+                ->sharedLock() // latest committed rows, whatever the caller's snapshot
                 ->get();
 
             foreach ($lines as $line) {
@@ -250,6 +251,10 @@ class CreateOrderTransferRequestsAction
                 ->orderBy('tr.source_warehouse_id')
                 ->orderBy('transfer_request_lines.id')
                 ->select('transfer_request_lines.*', 'tr.source_warehouse_id as route_source_id')
+                // Locking read: a general request committed by a concurrent
+                // sweep just before we got the planning lock must be seen here,
+                // or it would be left in place AND topped up again (5, not 4).
+                ->sharedLock()
                 ->get();
             if ($candidates->isEmpty()) {
                 continue;
@@ -265,9 +270,15 @@ class CreateOrderTransferRequestsAction
                 }
                 $take = InventoryQuantity::compare($line->quantity, $need) < 0 ? InventoryQuantity::normalize($line->quantity) : $need;
                 $target = $orderRequests[(int) $line->route_source_id];
-                $moved = $this->releaseFromLine($actor, $order, $line, $take, 'transfer_request.replenishment_reallocated_to_order', $target);
+                [$moved, $trail] = $this->releaseFromLine($actor, $order, $line, $take, 'transfer_request.replenishment_reallocated_to_order', $target);
                 if (InventoryQuantity::compare($moved, InventoryQuantity::ZERO) > 0) {
+                    $before = $this->replenishmentQuantity($target, $variantId);
                     $this->upsertLine($target, $variantId, $moved, TransferRequestReason::MinimumReplenishment, null, reallocated: true);
+                    // Receiving side of the trail: where it came from, how much,
+                    // and this request's resulting replenishment quantity.
+                    $this->audit->record('transfer_request.replenishment_received_from_general', $actor, $order->organization, auditable: $target,
+                        oldValues: ['quantity' => $before],
+                        newValues: ['quantity' => $this->replenishmentQuantity($target, $variantId)] + $trail);
                     $need = InventoryQuantity::subtract($need, $moved);
                 }
             }
@@ -282,7 +293,21 @@ class CreateOrderTransferRequestsAction
      * line for history. Audited on the source request with old/new quantities
      * and the customer order, and on the receiving request when there is one.
      */
-    private function releaseFromLine(User $actor, SalesOrder $order, TransferRequestLine $line, string $quantity, string $event, ?TransferRequest $target): string
+    /** Current MINIMUM_REPLENISHMENT quantity of a variant on a request. */
+    private function replenishmentQuantity(TransferRequest $request, int $variantId): string
+    {
+        $quantity = TransferRequestLine::query()
+            ->where('organization_id', $request->organization_id)
+            ->where('transfer_request_id', $request->getKey())
+            ->where('product_variant_id', $variantId)
+            ->where('reason', TransferRequestReason::MinimumReplenishment->value)
+            ->value('quantity');
+
+        return $quantity !== null ? InventoryQuantity::normalize((string) $quantity) : InventoryQuantity::ZERO;
+    }
+
+    /** @return array{0: string, 1: array<string, mixed>} [quantity taken, audit trail values] */
+    private function releaseFromLine(User $actor, SalesOrder $order, TransferRequestLine $line, string $quantity, string $event, ?TransferRequest $target): array
     {
         $request = TransferRequest::query()
             ->where('organization_id', $line->organization_id)
@@ -291,7 +316,7 @@ class CreateOrderTransferRequestsAction
             ->firstOrFail();
         $line = TransferRequestLine::query()->whereKey($line->getKey())->where('organization_id', $line->organization_id)->lockForUpdate()->first();
         if (! $line || $request->status !== TransferRequestStatus::Requested) {
-            return InventoryQuantity::ZERO;
+            return [InventoryQuantity::ZERO, []];
         }
 
         $old = InventoryQuantity::normalize($line->quantity);
@@ -333,11 +358,7 @@ class CreateOrderTransferRequestsAction
         ];
         $this->audit->record($event, $actor, $order->organization, auditable: $request, oldValues: ['quantity' => $old], newValues: ['quantity' => $new] + $values);
 
-        if ($target) {
-            $this->audit->record('transfer_request.replenishment_received_from_general', $actor, $order->organization, auditable: $target, newValues: $values + ['from_request_id' => $request->getKey()]);
-        }
-
-        return $take;
+        return [$take, $values + ['from_request_id' => $request->getKey()]];
     }
 
     private function requestFor(User $actor, SalesOrder $order, int $sourceId, int $destinationId): TransferRequest
@@ -346,6 +367,7 @@ class CreateOrderTransferRequestsAction
             ->where('organization_id', $order->organization_id)
             ->where('sales_order_id', $order->getKey())
             ->where('source_warehouse_id', $sourceId)
+            ->lockForUpdate()
             ->first();
 
         if ($request) {
@@ -405,6 +427,7 @@ class CreateOrderTransferRequestsAction
             ->where('transfer_request_id', $request->getKey())
             ->where('product_variant_id', $variantId)
             ->where('reason', $reason->value)
+            ->lockForUpdate()
             ->first();
 
         if ($line) {

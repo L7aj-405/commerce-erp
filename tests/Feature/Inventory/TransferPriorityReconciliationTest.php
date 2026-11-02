@@ -173,6 +173,13 @@ class TransferPriorityReconciliationTest extends PosTestCase
         $this->assertSame('1.0000', $log->old_values['quantity']);
         $this->assertSame('0.0000', $log->new_values['quantity']);
         $this->assertSame($order->order_number, $log->new_values['sales_order_number']);
+        // Receiving side: source request, moved quantity and this request's resulting replenishment.
+        $received = \App\Models\AuditLog::query()->where('event', 'transfer_request.replenishment_received_from_general')->firstOrFail();
+        $this->assertSame($request->id, (int) $received->auditable_id);
+        $this->assertSame($general->request_number, $received->new_values['request_number']);
+        $this->assertSame('1.0000', $received->new_values['moved_quantity']);
+        $this->assertSame('0.0000', $received->old_values['quantity']);
+        $this->assertSame('1.0000', $received->new_values['quantity']); // the +1 top-up is added afterwards
 
         // Customer reservation at SP untouched; nothing left to promise there.
         $this->assertSame('2.0000', $this->balance($this->org, $this->sp, $beta)->reserved);
@@ -211,6 +218,8 @@ class TransferPriorityReconciliationTest extends PosTestCase
                 ->where('breakdown.0.source_reserved', '2.0000')
                 ->where('breakdown.0.source_transferable', '2.0000')
                 ->where('breakdown.0.shortage', '0.0000')
+                ->where('breakdown.0.minimum_shortage', '0.0000')
+                ->where('breakdown.0.reallocated_from', [TransferRequest::query()->whereNull('sales_order_id')->value('request_number')])
                 ->has('history', fn (AssertableInertia $history) => $history->etc())
             );
     }
@@ -269,6 +278,9 @@ class TransferPriorityReconciliationTest extends PosTestCase
         $this->actingAs($this->owner)->get(route('inventory.transfer-requests.show', $request))
             ->assertInertia(fn (AssertableInertia $page) => $page
                 ->where('breakdown.0.projected_after_fulfillment', '1.0000') // below minimum 2 — shown, not fabricated
+                ->where('breakdown.0.minimum_shortage', '1.0000')
+                ->where('breakdown.0.for_customer', '2.0000')
+                ->where('breakdown.0.replenishment', '1.0000')
                 ->where('breakdown.0.minimum', '2.0000'));
     }
 
@@ -315,6 +327,64 @@ class TransferPriorityReconciliationTest extends PosTestCase
     }
 
     // === 5. Requested / Preparing / Shipped general requests ===============
+
+    public function test_three_transferable_units_give_customer_two_optional_one_and_a_shortage_of_one(): void
+    {
+        // No general request at all: SP has exactly 3, the customer takes 2 of them.
+        $this->world([1], [3]);
+        $beta = $this->variants[0];
+        $order = $this->pickupOrder($beta, '3.0000');
+        $request = $this->orderRequest($order);
+
+        $this->assertSame(['minimum_replenishment' => '1.0000', 'order_fulfillment' => '2.0000'], $this->byReason($request, $beta));
+        $this->assertSame(3.0, $this->activeTotal($beta, $this->sp), 'Never fabricate a fourth unit.');
+        $this->actingAs($this->owner)->get(route('inventory.transfer-requests.show', $request))
+            ->assertInertia(fn (AssertableInertia $page) => $page->where('breakdown.0.minimum_shortage', '1.0000'));
+    }
+
+    public function test_reallocated_general_request_cannot_be_restored_into_a_duplicate(): void
+    {
+        $this->world([1], [4]);
+        $beta = $this->variants[0];
+        $general = TransferRequest::query()->findOrFail($this->sweep()[0]);
+        $this->pickupOrder($beta, '3.0000');
+        $general->refresh();
+        $this->assertSame(TransferRequestStatus::Cancelled, $general->status);
+
+        $assessment = app(\App\Actions\Inventory\RestoreTransferRequestAction::class)->assess($general);
+        $this->assertFalse($assessment['eligible'], 'Restoring would promise the moved unit twice.');
+        $this->actingAs($this->owner)->post(route('inventory.transfer-requests.restore', $general))->assertSessionHasErrors();
+        $this->assertSame(TransferRequestStatus::Cancelled, $general->fresh()->status);
+        $this->assertSame(4.0, $this->activeTotal($beta, $this->sp));
+    }
+
+    public function test_preparer_can_drop_optional_replenishment_but_never_the_customer_quantity(): void
+    {
+        $this->world([1], [4]);
+        $beta = $this->variants[0];
+        $this->sweep();
+        $order = $this->pickupOrder($beta, '3.0000');
+        $request = $this->orderRequest($order);
+        app(PrepareTransferRequestAction::class)->execute($this->owner, $request->fresh());
+        $of = $request->lines->firstWhere('reason', TransferRequestReason::OrderFulfillment);
+        $mr = $request->lines->firstWhere('reason', TransferRequestReason::MinimumReplenishment);
+
+        // Reducing the customer quantity is refused…
+        try {
+            app(ShipTransferRequestAction::class)->execute($this->owner, $request->fresh(), [], [$of->id => '1', $mr->id => '2'], (int) $request->fresh()->lock_version);
+            $this->fail('The customer quantity must ship in full.');
+        } catch (\Illuminate\Validation\ValidationException) {
+        }
+        // …dropping the optional replenishment is allowed and audited.
+        app(ShipTransferRequestAction::class)->execute($this->owner, $request->fresh(), [], [$of->id => '2', $mr->id => '0'], (int) $request->fresh()->lock_version);
+        $this->assertSame(['order_fulfillment' => '2.0000'], $this->byReason($request, $beta));
+        $this->assertSame(TransferRequestStatus::Shipped, $request->fresh()->status);
+        $this->assertSame('2.0000', $this->balance($this->org, $this->sp, $beta)->reserved);
+        $this->assertDatabaseHas('audit_logs', ['event' => 'transfer_request.preparation_adjusted', 'auditable_id' => $request->id]);
+        // The dropped minimum top-up is proposed again by the next evaluation.
+        $this->sweep();
+        $this->assertSame(4.0, $this->activeTotal($beta, $this->sp));
+    }
 
     public function test_preparing_and_shipped_general_requests_are_never_altered(): void
     {

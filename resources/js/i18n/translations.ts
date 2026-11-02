@@ -4681,6 +4681,13 @@ export const fr = {
     "inventory.trq.filters": "Filtres",
     "inventory.trq.lockedHelp": "Quantité figée depuis la préparation",
     "inventory.trq.toDestination": "vers {code}",
+    "inventory.trq.mandatory": "Obligatoire",
+    "inventory.trq.optional": "Optionnel",
+    "inventory.trq.whyTotal": "Pourquoi {total} ? {customer} pour le client (obligatoire) + {minimum} pour revenir au stock minimum de {target} après sa livraison (optionnel) = {total}.",
+    "inventory.trq.bdOptionalHint": "Réductible avant expédition si le stock manque",
+    "inventory.trq.bdReallocatedRow": "dont repris de {requests}",
+    "inventory.trq.bdReallocatedHint": "Déjà demandé en réassort général, rattaché ici — inclus, pas en plus",
+    "inventory.trq.minimumShortage": "Il manquera {qty} unité(s) pour atteindre le stock minimum : stock source insuffisant.",
 } as const;
 
 export type TranslationKey = keyof typeof fr;
@@ -9215,4 +9222,11 @@ export const ar: Record<TranslationKey, string> = {
     "inventory.trq.filters": "عوامل التصفية",
     "inventory.trq.lockedHelp": "كمية ثابتة منذ التحضير",
     "inventory.trq.toDestination": "إلى {code}",
+    "inventory.trq.mandatory": "إلزامي",
+    "inventory.trq.optional": "اختياري",
+    "inventory.trq.whyTotal": "لماذا {total}؟ {customer} للعميل (إلزامي) + {minimum} لاستعادة الحد الأدنى للمخزون {target} بعد التسليم (اختياري) = {total}.",
+    "inventory.trq.bdOptionalHint": "قابل للتقليل قبل الشحن إذا نقص المخزون",
+    "inventory.trq.bdReallocatedRow": "منها مأخوذ من {requests}",
+    "inventory.trq.bdReallocatedHint": "مطلوب مسبقًا كتموين عام، أُلحق هنا — مُدرج وليس إضافيًا",
+    "inventory.trq.minimumShortage": "سينقص {qty} وحدة لبلوغ الحد الأدنى: مخزون المصدر غير كافٍ.",
 };

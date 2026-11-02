@@ -43,6 +43,8 @@ type Breakdown = {
     for_customer_other_sources: string;
     replenishment: string;
     reallocated: string;
+    reallocated_from: string[];
+    minimum_shortage: string | null;
     manual: string;
     total: string;
     other_active_incoming: string;
@@ -143,6 +145,14 @@ function DriverFields({ form, members }: { form: DriverFormLike; members: Member
 }
 
 /** One "Description — Quantité" row of the per-product breakdown. */
+/** "Obligatoire" / "Optionnel" chip — text, not colour alone. */
+function NeedTag({ kind }: { kind: 'mandatory' | 'optional' }) {
+    const { t } = useI18n();
+    return kind === 'mandatory'
+        ? <span className="ms-1.5 rounded border border-danger/25 bg-danger-soft px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide text-danger">{t('inventory.trq.mandatory')}</span>
+        : <span className="ms-1.5 rounded border border-line-strong bg-surface px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide text-ink-muted">{t('inventory.trq.optional')}</span>;
+}
+
 function QtyRow({ label, value, hint, strong = false, tone, icon }: { label: ReactNode; value: ReactNode; hint?: ReactNode; strong?: boolean; tone?: 'muted' | 'danger' | 'success'; icon?: ReactNode }) {
     return (
         <div className={`flex items-baseline justify-between gap-3 py-1.5 ${strong ? 'mt-1 border-t border-line pt-2.5' : ''}`}>
@@ -436,6 +446,15 @@ export default function TransferRequestShow({ request, breakdown, history, membe
                                         <span className="shrink-0 rounded-md bg-raised px-2 py-1 text-sm font-bold tabular-nums text-ink" dir="ltr">{formatQuantity(b.total)}</span>
                                     </div>
 
+                                    {isOrder && n(b.for_customer) > 0 && n(b.replenishment) > 0 && (
+                                        <p className="mt-3 rounded-field border border-primary/15 bg-sage/50 px-3 py-2 text-[13px] text-ink">
+                                            {t('inventory.trq.whyTotal')
+                                                .replace('{customer}', formatQuantity(b.for_customer))
+                                                .replace('{minimum}', formatQuantity(b.replenishment))
+                                                .replace('{target}', formatQuantity(b.minimum ?? 0))
+                                                .replaceAll('{total}', formatQuantity(b.total))}
+                                        </p>
+                                    )}
                                     <dl className="mt-3 rounded-field border border-line bg-raised/40 px-3 py-1.5">
                                         {b.customer_quantity !== null && (
                                             <QtyRow label={t('inventory.trq.bdCustomerOrder')} value={formatQuantity(b.customer_quantity)} tone="muted" />
@@ -449,16 +468,24 @@ export default function TransferRequestShow({ request, breakdown, history, membe
                                         {n(b.for_customer) > 0 && (
                                             <QtyRow
                                                 icon={<span aria-hidden="true" className="text-[11px]">🔒</span>}
-                                                label={t('inventory.trq.bdForCustomer').replace('{source}', src)}
+                                                label={<>{t('inventory.trq.bdForCustomer').replace('{source}', src)}{isOrder && <NeedTag kind="mandatory" />}</>}
                                                 hint={t('inventory.trq.bdProtected')}
                                                 value={formatQuantity(b.for_customer)}
                                             />
                                         )}
                                         {n(b.replenishment) > 0 && (
                                             <QtyRow
-                                                label={isOrder ? t('inventory.trq.bdExtraMinimum') : t('inventory.trq.bdMinimum')}
-                                                hint={n(b.reallocated) > 0 ? t('inventory.trq.bdReallocated').replace('{qty}', formatQuantity(b.reallocated)) : undefined}
+                                                label={<>{isOrder ? t('inventory.trq.bdExtraMinimum') : t('inventory.trq.bdMinimum')}{isOrder && <NeedTag kind="optional" />}</>}
+                                                hint={isOrder ? t('inventory.trq.bdOptionalHint') : undefined}
                                                 value={formatQuantity(b.replenishment)}
+                                            />
+                                        )}
+                                        {n(b.reallocated) > 0 && (
+                                            <QtyRow
+                                                tone="muted"
+                                                label={t('inventory.trq.bdReallocatedRow').replace('{requests}', b.reallocated_from.join(', ') || '—')}
+                                                hint={t('inventory.trq.bdReallocatedHint')}
+                                                value={formatQuantity(b.reallocated)}
                                             />
                                         )}
                                         {n(b.manual) > 0 && <QtyRow label={t('inventory.trq.bdManual')} value={formatQuantity(b.manual)} />}
@@ -514,7 +541,13 @@ export default function TransferRequestShow({ request, breakdown, history, membe
                                                 />
                                             )}
                                         </dl>
-                                        {belowMinimum && <p className="mt-1.5 text-xs font-medium text-warning">{t('inventory.trq.belowMinimum')}</p>}
+                                        {belowMinimum && (
+                                            <p className="mt-1.5 text-xs font-medium text-warning">
+                                                {n(b.minimum_shortage) > 0
+                                                    ? t('inventory.trq.minimumShortage').replace('{qty}', formatQuantity(b.minimum_shortage ?? 0))
+                                                    : t('inventory.trq.belowMinimum')}
+                                            </p>
+                                        )}
                                     </div>
                                 </div>
                             </article>
