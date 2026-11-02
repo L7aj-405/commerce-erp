@@ -15,6 +15,7 @@ class TransferRequestLine extends Model
         return [
             'quantity' => 'decimal:4',
             'requested_quantity' => 'decimal:4',
+            'reallocated_quantity' => 'decimal:4',
             'reason' => TransferRequestReason::class,
         ];
     }

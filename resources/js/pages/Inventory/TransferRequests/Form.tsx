@@ -1,4 +1,5 @@
 import TransferLinePicker, { type PickerItem, type PickerLine } from '@/components/inventory/TransferLinePicker';
+import { PriorityBadge, TransferTypeBadge } from '@/components/inventory/TransferRequestUi';
 import { Button, ButtonLink } from '@/components/ui/Button';
 import EmptyState from '@/components/ui/EmptyState';
 import PageHeader from '@/components/ui/PageHeader';
@@ -218,9 +219,13 @@ export default function TransferRequestForm({ mode, request, prefill, filters, w
                     </div>
                 )}
                 {editing && request.sales_order && (
-                    <p className="mt-3 text-xs text-ink-muted">
-                        {t('inventory.requestForm.orderLinked').replace('{order}', request.sales_order.order_number)}
-                    </p>
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                        <TransferTypeBadge type="order" />
+                        <PriorityBadge priority="high" />
+                        <p className="text-xs text-ink-muted">
+                            {t('inventory.requestForm.orderLinked').replace('{order}', request.sales_order.order_number)}
+                        </p>
+                    </div>
                 )}
             </section>
 

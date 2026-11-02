@@ -92,10 +92,21 @@ class CreateOrderTransferRequestsAction
             }
         }
 
+        // --- 0. Customer priority at the source ---------------------------------
+        // The order's reservations at a remote source were taken from
+        // `available` regardless of what open replenishment promised out of it.
+        // Replenishment is optional: where the promises no longer fit, the
+        // not-yet-prepared MINIMUM_REPLENISHMENT lines yield (newest first).
+        foreach ($remote as $sourceId => $variants) {
+            $this->yieldReplenishmentToOrder($actor, $order, (int) $sourceId, array_keys($variants));
+        }
+
         // --- A. ORDER_FULFILLMENT (pickup only) --------------------------------
+        $orderRequests = [];
         if ($isPickup) {
             foreach ($remote as $sourceId => $variants) {
                 $request = $this->requestFor($actor, $order, (int) $sourceId, $showroomId);
+                $orderRequests[(int) $sourceId] = $request;
 
                 foreach ($variants as $variantId => $data) {
                     $this->upsertLine($request, (int) $variantId, $data['qty'], TransferRequestReason::OrderFulfillment, $data['line_id']);
@@ -113,6 +124,14 @@ class CreateOrderTransferRequestsAction
         }
 
         // --- B. MINIMUM_REPLENISHMENT (always, for every order variant) -------
+        // First pull the relevant open general replenishment onto the customer
+        // request of the same route, so ONE request carries the whole picture
+        // ("2 for the customer + 2 to restore the minimum") instead of two
+        // requests whose sum the warehouse has to reconstruct. A move keeps the
+        // total incoming unchanged, so the deficit below stays exact.
+        ksort($orderRequests);
+        $this->reallocateGeneralReplenishment($actor, $order, $showroomId, $orderRequests, array_values($orderVariantIds));
+
         $this->appendReplenishment($actor, $order, $showroomId, array_values($orderVariantIds), $remoteSourceByVariant);
     }
 
@@ -152,6 +171,173 @@ class CreateOrderTransferRequestsAction
                 ]);
             }
         }
+    }
+
+    /**
+     * Customer priority: shrink not-yet-prepared MINIMUM_REPLENISHMENT lines
+     * leaving `$sourceId` until the source's available stock (after this
+     * order's reservation) covers every remaining free promise again.
+     * Preparing / shipped requests and MANUAL lines are never touched; any
+     * shortfall left on them is surfaced on the request screens.
+     *
+     * @param  list<int>  $variantIds
+     */
+    private function yieldReplenishmentToOrder(User $actor, SalesOrder $order, int $sourceId, array $variantIds): void
+    {
+        $organizationId = (int) $order->organization_id;
+
+        foreach ($this->planner->promiseShortfalls($organizationId, $sourceId, $variantIds) as $variantId => $shortfall) {
+            $short = $shortfall['short'];
+
+            $lines = TransferRequestLine::query()
+                ->join('transfer_requests as tr', 'tr.id', '=', 'transfer_request_lines.transfer_request_id')
+                ->where('transfer_request_lines.organization_id', $organizationId)
+                ->where('tr.organization_id', $organizationId)
+                ->where('tr.source_warehouse_id', $sourceId)
+                ->where('tr.status', TransferRequestStatus::Requested->value)
+                ->where('transfer_request_lines.product_variant_id', $variantId)
+                ->where('transfer_request_lines.reason', TransferRequestReason::MinimumReplenishment->value)
+                ->orderByDesc('transfer_request_lines.id')
+                ->select('transfer_request_lines.*')
+                ->get();
+
+            foreach ($lines as $line) {
+                if (InventoryQuantity::compare($short, InventoryQuantity::ZERO) <= 0) {
+                    break;
+                }
+                $take = InventoryQuantity::compare($line->quantity, $short) < 0 ? InventoryQuantity::normalize($line->quantity) : $short;
+                $this->releaseFromLine($actor, $order, $line, $take, 'transfer_request.replenishment_yielded_to_order', null);
+                $short = InventoryQuantity::subtract($short, $take);
+            }
+        }
+    }
+
+    /**
+     * Move open general (not order-linked, still `requested`) replenishment for
+     * the order's variants onto the order's own request of the same route —
+     * only up to what the Showroom still needs once this customer is served
+     * (minimum − available − incoming that stays where it is). Unrelated
+     * products of a general request are never touched; a general request left
+     * with nothing is cancelled with an explicit reason (kept in history).
+     *
+     * @param  array<int, TransferRequest>  $orderRequests  source id => this order's request
+     * @param  list<int>  $variantIds
+     */
+    private function reallocateGeneralReplenishment(User $actor, SalesOrder $order, int $showroomId, array $orderRequests, array $variantIds): void
+    {
+        $organizationId = (int) $order->organization_id;
+        if ($orderRequests === [] || $variantIds === [] || ! $this->planner->isEnabled($organizationId, $showroomId)) {
+            return;
+        }
+
+        sort($variantIds);
+        foreach ($variantIds as $variantId) {
+            $minimum = $this->planner->minimumFor($organizationId, $showroomId, $variantId);
+            if (InventoryQuantity::compare($minimum, InventoryQuantity::ZERO) <= 0) {
+                continue;
+            }
+
+            $candidates = TransferRequestLine::query()
+                ->join('transfer_requests as tr', 'tr.id', '=', 'transfer_request_lines.transfer_request_id')
+                ->where('transfer_request_lines.organization_id', $organizationId)
+                ->where('tr.organization_id', $organizationId)
+                ->whereNull('tr.sales_order_id')
+                ->where('tr.destination_warehouse_id', $showroomId)
+                ->whereIn('tr.source_warehouse_id', array_keys($orderRequests))
+                ->where('tr.status', TransferRequestStatus::Requested->value)
+                ->where('transfer_request_lines.product_variant_id', $variantId)
+                ->where('transfer_request_lines.reason', TransferRequestReason::MinimumReplenishment->value)
+                ->orderBy('tr.source_warehouse_id')
+                ->orderBy('transfer_request_lines.id')
+                ->select('transfer_request_lines.*', 'tr.source_warehouse_id as route_source_id')
+                ->get();
+            if ($candidates->isEmpty()) {
+                continue;
+            }
+
+            $candidateTotal = $candidates->reduce(fn (string $c, $l) => InventoryQuantity::add($c, $l->quantity), InventoryQuantity::ZERO);
+            $staying = InventoryQuantity::subtract($this->planner->incomingReplenishmentQty($organizationId, $showroomId, $variantId), $candidateTotal);
+            $need = InventoryQuantity::subtract($minimum, InventoryQuantity::add($this->planner->availableAt($organizationId, $showroomId, $variantId), $staying));
+
+            foreach ($candidates as $line) {
+                if (InventoryQuantity::compare($need, InventoryQuantity::ZERO) <= 0) {
+                    break;
+                }
+                $take = InventoryQuantity::compare($line->quantity, $need) < 0 ? InventoryQuantity::normalize($line->quantity) : $need;
+                $target = $orderRequests[(int) $line->route_source_id];
+                $moved = $this->releaseFromLine($actor, $order, $line, $take, 'transfer_request.replenishment_reallocated_to_order', $target);
+                if (InventoryQuantity::compare($moved, InventoryQuantity::ZERO) > 0) {
+                    $this->upsertLine($target, $variantId, $moved, TransferRequestReason::MinimumReplenishment, null, reallocated: true);
+                    $need = InventoryQuantity::subtract($need, $moved);
+                }
+            }
+        }
+    }
+
+    /**
+     * Take `$quantity` off a requested replenishment line (re-read under lock)
+     * and return what was actually taken. The line is reduced, removed (other
+     * products remain on its request) or — when it was the request's only
+     * demand — its request is cancelled with an explicit reason, keeping the
+     * line for history. Audited on the source request with old/new quantities
+     * and the customer order, and on the receiving request when there is one.
+     */
+    private function releaseFromLine(User $actor, SalesOrder $order, TransferRequestLine $line, string $quantity, string $event, ?TransferRequest $target): string
+    {
+        $request = TransferRequest::query()
+            ->where('organization_id', $line->organization_id)
+            ->whereKey($line->transfer_request_id)
+            ->lockForUpdate()
+            ->firstOrFail();
+        $line = TransferRequestLine::query()->whereKey($line->getKey())->where('organization_id', $line->organization_id)->lockForUpdate()->first();
+        if (! $line || $request->status !== TransferRequestStatus::Requested) {
+            return InventoryQuantity::ZERO;
+        }
+
+        $old = InventoryQuantity::normalize($line->quantity);
+        $take = InventoryQuantity::compare($old, $quantity) < 0 ? $old : InventoryQuantity::normalize($quantity);
+        $new = InventoryQuantity::subtract($old, $take);
+        $otherLines = $request->lines()->whereKeyNot($line->getKey())->exists();
+        $outcome = 'reduced';
+
+        if (InventoryQuantity::compare($new, InventoryQuantity::ZERO) > 0) {
+            $line->quantity = $new;
+            $line->save();
+        } elseif ($otherLines) {
+            $line->delete();
+            $outcome = 'line_removed';
+        } else {
+            // Its only demand moved / yielded: cancel it with an explicit reason
+            // (no longer counted as incoming) and keep the line as history.
+            $outcome = 'request_cancelled';
+            $request->status = TransferRequestStatus::Cancelled;
+            $request->cancelled_by_user_id = $actor->getKey();
+            $request->cancelled_at = now();
+            $request->cancellation_reason = $target
+                ? "Réassort réaffecté à la demande {$target->request_number} (commande client {$order->order_number})."
+                : "Stock source réservé en priorité pour la commande client {$order->order_number}.";
+        }
+        $request->lock_version = (int) $request->lock_version + 1;
+        $request->save();
+
+        $values = [
+            'request_number' => $request->request_number,
+            'product_variant_id' => (int) $line->product_variant_id,
+            'reason' => TransferRequestReason::MinimumReplenishment->value,
+            'sales_order_id' => $order->getKey(),
+            'sales_order_number' => $order->order_number,
+            'moved_quantity' => $take,
+            'outcome' => $outcome,
+            'target_request_id' => $target?->getKey(),
+            'target_request_number' => $target?->request_number,
+        ];
+        $this->audit->record($event, $actor, $order->organization, auditable: $request, oldValues: ['quantity' => $old], newValues: ['quantity' => $new] + $values);
+
+        if ($target) {
+            $this->audit->record('transfer_request.replenishment_received_from_general', $actor, $order->organization, auditable: $target, newValues: $values + ['from_request_id' => $request->getKey()]);
+        }
+
+        return $take;
     }
 
     private function requestFor(User $actor, SalesOrder $order, int $sourceId, int $destinationId): TransferRequest
@@ -212,7 +398,7 @@ class CreateOrderTransferRequestsAction
         return $request;
     }
 
-    private function upsertLine(TransferRequest $request, int $variantId, string $quantity, TransferRequestReason $reason, ?int $salesOrderLineId): void
+    private function upsertLine(TransferRequest $request, int $variantId, string $quantity, TransferRequestReason $reason, ?int $salesOrderLineId, bool $reallocated = false): void
     {
         $line = TransferRequestLine::query()
             ->where('organization_id', $request->organization_id)
@@ -231,6 +417,9 @@ class CreateOrderTransferRequestsAction
                 ? InventoryQuantity::add($line->quantity, $quantity)
                 : InventoryQuantity::normalize($quantity);
             $line->sales_order_line_id = $salesOrderLineId ?? $line->sales_order_line_id;
+            if ($reallocated) {
+                $line->reallocated_quantity = InventoryQuantity::add($line->reallocated_quantity ?? InventoryQuantity::ZERO, $quantity);
+            }
             $line->save();
 
             return;
@@ -243,6 +432,7 @@ class CreateOrderTransferRequestsAction
         $line->quantity = InventoryQuantity::normalize($quantity);
         $line->reason = $reason;
         $line->sales_order_line_id = $salesOrderLineId;
+        $line->reallocated_quantity = $reallocated ? InventoryQuantity::normalize($quantity) : null;
         $line->save();
     }
 }

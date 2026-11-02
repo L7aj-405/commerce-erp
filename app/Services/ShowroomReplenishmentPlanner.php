@@ -360,18 +360,7 @@ class ShowroomReplenishmentPlanner
             return [];
         }
 
-        $overrides = WarehouseReplenishmentOverride::query()
-            ->where('organization_id', $organizationId)
-            ->where('warehouse_id', $warehouseId)
-            ->whereIn('product_variant_id', $variantIds)
-            ->pluck('minimum_quantity', 'product_variant_id');
-
-        $default = WarehouseReplenishmentSetting::query()
-            ->where('organization_id', $organizationId)
-            ->where('warehouse_id', $warehouseId)
-            ->where('auto_replenish', true)
-            ->value('default_minimum_quantity');
-        $default = $default !== null ? InventoryQuantity::normalize((string) $default) : InventoryQuantity::ZERO;
+        $minimums = $this->minimumsMap($organizationId, $warehouseId, $variantIds);
 
         $available = InventoryBalance::query()
             ->where('organization_id', $organizationId)
@@ -380,26 +369,11 @@ class ShowroomReplenishmentPlanner
             ->get(['product_variant_id', 'on_hand', 'reserved'])
             ->mapWithKeys(fn ($b) => [(int) $b->product_variant_id => InventoryQuantity::subtract($b->on_hand, $b->reserved)]);
 
-        $incoming = TransferRequestLine::query()
-            ->where('transfer_request_lines.organization_id', $organizationId)
-            ->whereIn('product_variant_id', $variantIds)
-            ->whereIn('reason', [TransferRequestReason::MinimumReplenishment->value, TransferRequestReason::Manual->value])
-            ->whereHas('transferRequest', fn ($query) => $query
-                ->where('destination_warehouse_id', $warehouseId)
-                ->whereIn('status', [
-                    TransferRequestStatus::Requested->value,
-                    TransferRequestStatus::Preparing->value,
-                    TransferRequestStatus::Shipped->value,
-                ]))
-            ->get(['product_variant_id', 'quantity'])
-            ->groupBy('product_variant_id')
-            ->map(fn ($rows) => $rows->reduce(fn (string $c, $r) => InventoryQuantity::add($c, $r->quantity), InventoryQuantity::ZERO));
+        $incoming = collect($this->incomingFreeMap($organizationId, $warehouseId, $variantIds));
 
         $out = [];
         foreach ($variantIds as $variantId) {
-            $minimum = isset($overrides[$variantId])
-                ? InventoryQuantity::normalize((string) $overrides[$variantId])
-                : $default;
+            $minimum = $minimums[$variantId];
             if (InventoryQuantity::compare($minimum, InventoryQuantity::ZERO) <= 0) {
                 continue;
             }
@@ -413,6 +387,74 @@ class ShowroomReplenishmentPlanner
                 $out[$variantId] = $deficit;
             }
         }
+
+        return $out;
+    }
+
+    /**
+     * Batched {@see minimumFor()}: override → warehouse default (when automatic
+     * replenishment is on) → 0.
+     *
+     * @param  list<int>  $variantIds
+     * @return array<int, string>
+     */
+    public function minimumsMap(int $organizationId, int $warehouseId, array $variantIds): array
+    {
+        $variantIds = array_values(array_unique(array_map('intval', $variantIds)));
+        if ($variantIds === []) {
+            return [];
+        }
+
+        $overrides = WarehouseReplenishmentOverride::query()
+            ->where('organization_id', $organizationId)
+            ->where('warehouse_id', $warehouseId)
+            ->whereIn('product_variant_id', $variantIds)
+            ->pluck('minimum_quantity', 'product_variant_id');
+
+        $default = WarehouseReplenishmentSetting::query()
+            ->where('organization_id', $organizationId)
+            ->where('warehouse_id', $warehouseId)
+            ->where('auto_replenish', true)
+            ->value('default_minimum_quantity');
+        $default = $default !== null ? InventoryQuantity::normalize((string) $default) : InventoryQuantity::ZERO;
+
+        $out = [];
+        foreach ($variantIds as $variantId) {
+            $out[$variantId] = isset($overrides[$variantId]) ? InventoryQuantity::normalize((string) $overrides[$variantId]) : $default;
+        }
+
+        return $out;
+    }
+
+    /**
+     * Batched {@see incomingReplenishmentQty()}: free (replenishment / manual)
+     * quantity on its way to `$warehouseId` on active requests.
+     *
+     * @param  list<int>  $variantIds
+     * @return array<int, string>  variant id => quantity (only variants with incoming stock)
+     */
+    public function incomingFreeMap(int $organizationId, int $warehouseId, array $variantIds, ?int $excludeRequestId = null): array
+    {
+        $variantIds = array_values(array_unique(array_map('intval', $variantIds)));
+        if ($variantIds === []) {
+            return [];
+        }
+
+        $out = [];
+        TransferRequestLine::query()
+            ->join('transfer_requests as tr', 'tr.id', '=', 'transfer_request_lines.transfer_request_id')
+            ->where('transfer_request_lines.organization_id', $organizationId)
+            ->where('tr.organization_id', $organizationId)
+            ->where('tr.destination_warehouse_id', $warehouseId)
+            ->whereIn('tr.status', self::ACTIVE_STATUSES)
+            ->when($excludeRequestId !== null, fn ($query) => $query->where('tr.id', '!=', $excludeRequestId))
+            ->whereIn('transfer_request_lines.product_variant_id', $variantIds)
+            ->whereIn('transfer_request_lines.reason', self::FREE_REASONS)
+            ->get(['transfer_request_lines.product_variant_id', 'transfer_request_lines.quantity'])
+            ->each(function ($row) use (&$out) {
+                $variantId = (int) $row->product_variant_id;
+                $out[$variantId] = InventoryQuantity::add($out[$variantId] ?? InventoryQuantity::ZERO, $row->quantity);
+            });
 
         return $out;
     }

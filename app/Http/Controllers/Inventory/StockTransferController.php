@@ -6,6 +6,7 @@ use App\Actions\Inventory\CreateStockTransferAction;
 use App\Http\Controllers\Controller;
 use App\Models\ProductVariant;
 use App\Models\StockTransfer;
+use App\Models\TransferRequest;
 use App\Models\Warehouse;
 use App\Services\ActiveTenantContext;
 use App\Support\InventoryQuantity;
@@ -204,6 +205,12 @@ class StockTransferController extends Controller
                 'lines.productVariant:id,product_id,label,sku',
                 'lines.productVariant.product:id,name',
             ]),
+            // The transfer request this physical movement fulfilled, if any.
+            'origin' => TransferRequest::query()
+                ->where('organization_id', $transfer->organization_id)
+                ->where('stock_transfer_id', $transfer->getKey())
+                ->first(['id', 'request_number', 'sales_order_id'])
+                ?->only(['id', 'request_number', 'sales_order_id']),
         ]);
     }
 }
