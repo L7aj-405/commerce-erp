@@ -11,6 +11,8 @@ use App\Actions\Inventory\ReceiveTransferRequestAction;
 use App\Actions\Inventory\RestoreTransferRequestAction;
 use App\Actions\Inventory\ShipTransferRequestAction;
 use App\Actions\Inventory\UpdateTransferRequestLinesAction;
+use App\Enums\InventoryReservationStatus;
+use App\Enums\PosFulfillmentOrigin;
 use App\Enums\TransferRequestReason;
 use App\Enums\TransferRequestStatus;
 use App\Http\Controllers\Controller;
@@ -18,6 +20,7 @@ use App\Models\AuditLog;
 use App\Models\InventoryBalance;
 use App\Models\Organization;
 use App\Models\ProductVariant;
+use App\Models\SalesOrderInventoryAllocation;
 use App\Models\SalesOrderLine;
 use App\Models\TransferRequest;
 use App\Models\TransferRequestLine;
@@ -86,6 +89,7 @@ class TransferRequestController extends Controller
                 'destination' => $req->destinationWarehouse?->only(['id', 'name', 'code']),
                 'sales_order' => $req->salesOrder?->only(['id', 'order_number']),
                 'reasons' => $req->lines->pluck('reason')->map(fn ($r) => $r->value)->unique()->values(),
+                'customer_transfer' => $req->lines->contains(fn ($l) => $l->reason === TransferRequestReason::OrderFulfillment),
                 'product_count' => $req->lines->count(),
                 'unit_count' => $req->lines->reduce(fn ($c, $l) => $c + (float) $l->quantity, 0.0),
                 'restored' => $req->restored_at !== null,
@@ -271,7 +275,8 @@ class TransferRequestController extends Controller
 
         $transferRequest->load([
             'sourceWarehouse:id,name,code', 'destinationWarehouse:id,name,code',
-            'salesOrder:id,order_number,status,fulfillment_status,customer_id', 'salesOrder.customer:id,display_name',
+            'salesOrder:id,organization_id,order_number,status,fulfillment_status,customer_id,source,pos_warehouse_id,pos_fulfillment_mode,pos_fulfillment_origin',
+            'salesOrder.customer:id,display_name',
             'stockTransfer:id,transfer_number,transferred_at',
             'lines.productVariant:id,product_id,label,sku,reference', 'lines.productVariant.product:id,name',
             'requestedBy:id,name', 'preparedBy:id,name', 'shippedBy:id,name', 'receivedBy:id,name', 'driver:id,name', 'restoredBy:id,name',
@@ -306,7 +311,12 @@ class TransferRequestController extends Controller
                     ...$transferRequest->salesOrder->only(['id', 'order_number', 'fulfillment_status']),
                     'status' => $transferRequest->salesOrder->status?->value ?? $transferRequest->salesOrder->status,
                     'customer' => $transferRequest->salesOrder->customer?->display_name,
+                    'fulfillment_mode' => $transferRequest->salesOrder->pos_fulfillment_mode,
+                    'fulfillment_origin' => $transferRequest->salesOrder->fulfillmentOrigin()?->value,
                 ] : null,
+                // An order-linked request may carry only replenishment (direct
+                // dispatch): it is then NOT a customer transfer.
+                'customer_transfer' => $transferRequest->lines->contains(fn ($l) => $l->reason === TransferRequestReason::OrderFulfillment),
                 'stock_transfer' => $transferRequest->stockTransfer?->only(['id', 'transfer_number', 'transferred_at']),
                 'requested_by' => $transferRequest->requestedBy?->only(['name']),
                 'prepared_by' => $transferRequest->preparedBy?->only(['name']),
@@ -541,7 +551,32 @@ class TransferRequestController extends Controller
         // stable before and after receipt.
         $ordered = [];
         $otherOrderRouted = [];
+        // Authoritative customer allocations of the order, per variant and
+        // warehouse: where each customer unit actually sits / is reserved.
+        $allocations = [];
+        $origin = $request->salesOrder?->fulfillmentOrigin();
         if ($request->sales_order_id !== null) {
+            SalesOrderInventoryAllocation::query()
+                ->join('sales_order_lines as l', 'l.id', '=', 'sales_order_inventory_allocations.sales_order_line_id')
+                ->join('warehouses as w', 'w.id', '=', 'sales_order_inventory_allocations.warehouse_id')
+                ->leftJoin('inventory_reservations as r', 'r.id', '=', 'sales_order_inventory_allocations.inventory_reservation_id')
+                ->where('sales_order_inventory_allocations.organization_id', $orgId)
+                ->where('l.organization_id', $orgId)->where('l.sales_order_id', $request->sales_order_id)
+                ->whereIn('l.product_variant_id', $variantIds)
+                ->orderBy('w.id')
+                ->get(['l.product_variant_id', 'sales_order_inventory_allocations.warehouse_id', 'w.name as warehouse_name',
+                    'sales_order_inventory_allocations.quantity', 'r.status as reservation_status'])
+                ->each(function ($row) use (&$allocations) {
+                    $variant = (int) $row->product_variant_id;
+                    $warehouse = (int) $row->warehouse_id;
+                    $current = $allocations[$variant][$warehouse] ?? ['warehouse_id' => $warehouse, 'warehouse' => $row->warehouse_name, 'quantity' => InventoryQuantity::ZERO, 'reserved' => InventoryQuantity::ZERO];
+                    $current['quantity'] = InventoryQuantity::add($current['quantity'], (string) $row->quantity);
+                    if ($row->reservation_status === InventoryReservationStatus::Active->value) {
+                        $current['reserved'] = InventoryQuantity::add($current['reserved'], (string) $row->quantity);
+                    }
+                    $allocations[$variant][$warehouse] = $current;
+                });
+
             SalesOrderLine::query()->where('organization_id', $orgId)->where('sales_order_id', $request->sales_order_id)
                 ->whereIn('product_variant_id', $variantIds)->get(['product_variant_id', 'quantity'])
                 ->each(function ($line) use (&$ordered) {
@@ -594,9 +629,23 @@ class TransferRequestController extends Controller
             $free = InventoryQuantity::add($replenishment, $manual);
 
             $customerQty = $ordered[$variantId] ?? null;
-            $coveredAtDestination = $customerQty !== null
-                ? $max0(InventoryQuantity::subtract(InventoryQuantity::subtract($customerQty, $forCustomer), $otherOrderRouted[$variantId] ?? $zero))
-                : null;
+            $variantAllocations = array_values($allocations[$variantId] ?? []);
+            $allocatedAt = fn (int $warehouseId) => collect($variantAllocations)->where('warehouse_id', $warehouseId)
+                ->reduce(fn (string $c, array $a) => InventoryQuantity::add($c, $a['quantity']), $zero);
+            $directDispatch = null;
+            if ($customerQty === null) {
+                $coveredAtDestination = null;
+            } elseif ($origin === PosFulfillmentOrigin::Direct) {
+                // Direct dispatch: only what is allocated AT the destination is
+                // covered there; the rest leaves straight from its own warehouse.
+                $coveredAtDestination = $allocatedAt($destId);
+                $directDispatch = $max0(InventoryQuantity::subtract($customerQty, $coveredAtDestination));
+            } else {
+                // Showroom origin: everything not travelling on a customer
+                // transfer is the Showroom's own stock (stable after receipt,
+                // when the moved reservation is relocated to the Showroom).
+                $coveredAtDestination = $max0(InventoryQuantity::subtract(InventoryQuantity::subtract($customerQty, $forCustomer), $otherOrderRouted[$variantId] ?? $zero));
+            }
 
             $dest = $destination->get($variantId);
             $destOnHand = $dest ? InventoryQuantity::normalize((string) $dest->on_hand) : $zero;
@@ -617,6 +666,13 @@ class TransferRequestController extends Controller
                 'reference' => $lines->first()->productVariant?->reference,
                 'customer_quantity' => $customerQty,
                 'covered_at_destination' => $coveredAtDestination,
+                // Units of a direct-dispatch order that ship from their own
+                // warehouse (never routed through the destination).
+                'direct_dispatch' => $directDispatch,
+                // Where the customer's units are allocated, and still reserved.
+                'customer_allocations' => $variantAllocations,
+                'reserved_at_source' => collect($variantAllocations)->where('warehouse_id', (int) $request->source_warehouse_id)
+                    ->reduce(fn (string $c, array $a) => InventoryQuantity::add($c, $a['reserved']), $zero),
                 'for_customer' => $forCustomer,
                 'for_customer_other_sources' => $otherOrderRouted[$variantId] ?? $zero,
                 'replenishment' => $replenishment,

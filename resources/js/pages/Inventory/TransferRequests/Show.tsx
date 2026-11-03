@@ -39,6 +39,10 @@ type Breakdown = {
     reference: string | null;
     customer_quantity: string | null;
     covered_at_destination: string | null;
+    /** Direct dispatch only: customer units leaving straight from their own warehouse. */
+    direct_dispatch: string | null;
+    customer_allocations: { warehouse_id: number; warehouse: string; quantity: string; reserved: string }[];
+    reserved_at_source: string;
     for_customer: string;
     for_customer_other_sources: string;
     replenishment: string;
@@ -85,7 +89,17 @@ type Req = {
     bon_de_sortie_available: boolean;
     source: WarehouseRef;
     destination: WarehouseRef;
-    sales_order: { id: number; order_number: string; status: string; fulfillment_status: string; customer: string | null } | null;
+    sales_order: {
+        id: number;
+        order_number: string;
+        status: string;
+        fulfillment_status: string;
+        customer: string | null;
+        fulfillment_mode: 'pickup' | 'delivery' | null;
+        fulfillment_origin: 'showroom' | 'direct' | null;
+    } | null;
+    /** Carries protected customer stock (ORDER_FULFILLMENT lines). */
+    customer_transfer: boolean;
     stock_transfer: { id: number; transfer_number: string; transferred_at: string } | null;
     requested_by: { name: string } | null;
     prepared_by: { name: string } | null;
@@ -207,6 +221,9 @@ export default function TransferRequestShow({ request, breakdown, history, membe
     const totalShortage = breakdown.reduce((s, b) => s + n(b.shortage), 0);
     const pageErrorList = ['status', 'restore', 'reason', 'lock_version', 'lines'].map((k) => pageErrors[k]).filter(Boolean) as string[];
     const isOrder = request.sales_order !== null;
+    // Order-linked but carrying replenishment only (direct dispatch order).
+    const replenishmentOnlyForOrder = isOrder && !request.customer_transfer;
+    const origin = request.sales_order?.fulfillment_origin ?? null;
     const linesByVariant = useMemo(() => {
         const map: Record<number, Line[]> = {};
         request.lines.forEach((l) => (map[l.product_variant_id] ??= []).push(l));
@@ -304,6 +321,16 @@ export default function TransferRequestShow({ request, breakdown, history, membe
                                         <Link href={`/sales/orders/${request.sales_order.id}`} className="font-medium text-ink underline-offset-2 hover:underline"><bdi>{request.sales_order.order_number}</bdi></Link>
                                         {request.sales_order.customer ? ` — ${request.sales_order.customer}` : ''}
                                     </span>
+                                    {origin && (
+                                        <span className="inline-flex flex-wrap items-center gap-1.5">
+                                            <span className="rounded-full bg-raised px-2 py-0.5 text-xs font-medium text-ink">
+                                                {request.sales_order.fulfillment_mode === 'delivery' ? t('inventory.trq.modeDelivery') : t('inventory.trq.modePickup')}
+                                            </span>
+                                            <span className="rounded-full bg-sage px-2 py-0.5 text-xs font-medium text-ink">
+                                                {origin === 'direct' ? t('inventory.trq.originDirect') : t('inventory.trq.originShowroom').replace('{warehouse}', dst)}
+                                            </span>
+                                        </span>
+                                    )}
                                 </>
                             )}
                         </p>
@@ -400,7 +427,7 @@ export default function TransferRequestShow({ request, breakdown, history, membe
                 <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
                     {[
                         { label: t('inventory.trq.metricTotal'), value: formatQuantity(total), helper: t('inventory.trq.productsValue').replace('{count}', String(breakdown.length)) },
-                        { label: t('inventory.trq.metricCustomer'), value: formatQuantity(forCustomer), helper: isOrder ? t('inventory.trq.protectedHelp') : '—', tone: forCustomer > 0 ? 'text-danger' : undefined },
+                        { label: t('inventory.trq.metricCustomer'), value: formatQuantity(forCustomer), helper: replenishmentOnlyForOrder ? t('inventory.trq.noCustomerTransferHelp') : isOrder ? t('inventory.trq.protectedHelp') : '—', tone: forCustomer > 0 ? 'text-danger' : undefined },
                         { label: t('inventory.trq.metricReplenishment'), value: formatQuantity(forReplenishment), helper: request.status === 'requested' ? t('inventory.trq.adjustableHelp') : t('inventory.trq.lockedHelp') },
                         { label: t('inventory.trq.metricRoute'), value: request.source?.code ?? '—', helper: t('inventory.trq.toDestination').replace('{code}', request.destination?.code ?? '—') },
                     ].map((m) => (
@@ -414,6 +441,12 @@ export default function TransferRequestShow({ request, breakdown, history, membe
 
                 {request.note && (
                     <Notice tone="info" title={t('inventory.requestForm.note')}>{request.note}</Notice>
+                )}
+
+                {replenishmentOnlyForOrder && (
+                    <Notice tone="info" title={t('inventory.trq.replenishmentOnlyTitle')}>
+                        {t('inventory.trq.replenishmentOnlyBody').replace('{order}', request.sales_order?.order_number ?? '').replace('{destination}', dst)}
+                    </Notice>
                 )}
 
                 {isOrder && reallocatedFrom.length > 0 && (
@@ -462,6 +495,25 @@ export default function TransferRequestShow({ request, breakdown, history, membe
                                         {b.covered_at_destination !== null && n(b.customer_quantity) > 0 && (
                                             <QtyRow label={t('inventory.trq.bdCoveredBy').replace('{warehouse}', dst)} value={formatQuantity(b.covered_at_destination)} tone="muted" />
                                         )}
+                                        {origin === 'showroom' && n(b.reserved_at_source) > 0 && (
+                                            <QtyRow
+                                                tone="muted"
+                                                label={t('inventory.trq.bdReservedAtSource').replace('{source}', src)}
+                                                hint={t('inventory.trq.bdReservedAtSourceHint')}
+                                                value={formatQuantity(b.reserved_at_source)}
+                                            />
+                                        )}
+                                        {origin === 'direct' && b.customer_allocations
+                                            .filter((a) => a.warehouse_id !== request.destination?.id && n(a.quantity) > 0)
+                                            .map((a) => (
+                                                <QtyRow
+                                                    key={a.warehouse_id}
+                                                    tone="muted"
+                                                    label={t('inventory.trq.bdDirectFrom').replace('{warehouse}', a.warehouse)}
+                                                    hint={t('inventory.trq.bdDirectFromHint')}
+                                                    value={formatQuantity(a.quantity)}
+                                                />
+                                            ))}
                                         {n(b.for_customer_other_sources) > 0 && (
                                             <QtyRow label={t('inventory.trq.bdOtherSources')} value={formatQuantity(b.for_customer_other_sources)} tone="muted" />
                                         )}

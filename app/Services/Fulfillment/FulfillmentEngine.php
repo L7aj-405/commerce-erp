@@ -6,6 +6,7 @@ use App\Actions\Sales\Concerns\AuthorizesSalesAction;
 use App\Actions\WooCommerce\RecordWooCommerceStockTaskAction;
 use App\Enums\FulfillmentStatus;
 use App\Enums\InventoryReservationStatus;
+use App\Enums\PosFulfillmentOrigin;
 use App\Enums\SalesOrderFulfillmentStatus;
 use App\Enums\SalesOrderLineType;
 use App\Enums\SalesOrderStatus;
@@ -266,12 +267,17 @@ final class FulfillmentEngine
         if ($fulfillment->stock_consumed_at !== null) return [];
         $consumed = [];
         $items = $fulfillment->items()->orderBy('id')->get();
+        // Showroom origin: goods leave from the Showroom only. A reservation still
+        // sitting in another warehouse must first arrive on its customer transfer
+        // (which relocates it); it is never consumed at the source.
+        $showroomOnly = $order->fulfillmentOrigin() === PosFulfillmentOrigin::Showroom ? (int) $order->pos_warehouse_id : null;
         foreach ($items as $item) {
             $line = SalesOrderLine::query()->where('organization_id', $order->organization_id)->whereKey($item->sales_order_line_id)->firstOrFail();
             if ($line->line_type !== SalesOrderLineType::Catalog || $line->product_variant_id === null) continue;
             $remaining = InventoryQuantity::normalize((string) $item->quantity);
             $allocations = SalesOrderInventoryAllocation::query()->where('organization_id', $order->organization_id)
                 ->where('sales_order_line_id', $line->getKey())->whereNotNull('inventory_reservation_id')
+                ->when($showroomOnly !== null, fn ($query) => $query->where('warehouse_id', $showroomOnly))
                 ->orderBy('warehouse_id')->orderBy('id')->lockForUpdate()->with('inventoryReservation.warehouse', 'inventoryReservation.productVariant')->get();
             foreach ($allocations as $allocation) {
                 if (InventoryQuantity::compare($remaining, InventoryQuantity::ZERO) <= 0) break;
@@ -291,7 +297,9 @@ final class FulfillmentEngine
                 $remaining = InventoryQuantity::subtract($remaining, $take);
             }
             if (InventoryQuantity::compare($remaining, InventoryQuantity::ZERO) > 0) {
-                throw ValidationException::withMessages(["items.{$line->getKey()}" => 'Le stock réservé de cette ligne ne couvre pas la quantité expédiée.']);
+                throw ValidationException::withMessages(["items.{$line->getKey()}" => $showroomOnly !== null
+                    ? 'Préparation depuis le Showroom : une partie du stock réservé de cette ligne est encore dans un autre entrepôt. Réceptionnez d’abord le transfert client.'
+                    : 'Le stock réservé de cette ligne ne couvre pas la quantité expédiée.']);
             }
         }
         $fulfillment->stock_consumed_at = now();

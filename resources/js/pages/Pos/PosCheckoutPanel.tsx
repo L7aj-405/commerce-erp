@@ -12,6 +12,7 @@ import {
     type Account,
     type CheckoutState,
     type CustomerForm,
+    type FulfillmentOrigin,
     type PaymentDraft,
     type PaymentMethod,
     type ReviewData,
@@ -22,6 +23,7 @@ import {
     compatibleAccounts,
     customerFormFrom,
     customerTypeFor,
+    defaultOriginFor,
     firstCompatibleAccountId,
     normalizeAmount,
     positiveAmount,
@@ -60,6 +62,20 @@ function Section({ title, children, action }: { title: string; children: ReactNo
 
 const fieldClass = 'h-9 w-full rounded-field border border-line-strong bg-surface px-2.5 text-[13px] outline-none transition-soft focus:border-primary';
 
+/** One-sentence consequence of the chosen origin, shown before confirming. */
+export function originExplanation(
+    origin: FulfillmentOrigin,
+    remote: boolean,
+    remoteCount: string,
+    showroom: string,
+    t: (key: 'pos.originShowroomRemote' | 'pos.originShowroomLocal' | 'pos.originDirectRemote' | 'pos.originDirectLocal') => string,
+): string {
+    const key = origin === 'showroom'
+        ? (remote ? 'pos.originShowroomRemote' : 'pos.originShowroomLocal')
+        : (remote ? 'pos.originDirectRemote' : 'pos.originDirectLocal');
+    return t(key).replace('{count}', remoteCount).replace('{warehouse}', showroom);
+}
+
 export default function PosCheckoutPanel({
     sale,
     currencyCode,
@@ -88,6 +104,7 @@ export default function PosCheckoutPanel({
     };
     const [checkoutState, setCheckoutState] = useState<CheckoutState>({
         fulfillment_mode: sale.checkout.fulfillment_mode,
+        fulfillment_origin: sale.checkout.fulfillment_origin ?? defaultOriginFor(sale.checkout.fulfillment_mode),
         shipping_fee: sale.checkout.shipping_fee,
         delivery_address: sale.checkout.delivery_address ?? '',
         delivery_phone: sale.checkout.delivery_phone ?? '',
@@ -177,6 +194,7 @@ export default function PosCheckoutPanel({
         try {
             await onCheckoutStateSave({
                 fulfillment_mode: next.fulfillment_mode,
+                fulfillment_origin: next.fulfillment_origin,
                 shipping_fee: next.fulfillment_mode === 'delivery' ? next.shipping_fee || '0' : '0',
                 delivery_address: next.fulfillment_mode === 'delivery' ? next.delivery_address : '',
                 delivery_phone: next.fulfillment_mode === 'delivery' ? next.delivery_phone : '',
@@ -191,8 +209,23 @@ export default function PosCheckoutPanel({
 
     function setFulfillment(mode: 'pickup' | 'delivery') {
         const next: CheckoutState = mode === 'pickup'
-            ? { fulfillment_mode: 'pickup', shipping_fee: '0', delivery_address: '', delivery_phone: '', delivery_notes: '' }
-            : { ...checkoutState, fulfillment_mode: 'delivery' };
+            ? { fulfillment_mode: 'pickup', fulfillment_origin: 'showroom', shipping_fee: '0', delivery_address: '', delivery_phone: '', delivery_notes: '' }
+            : { ...checkoutState, fulfillment_mode: 'delivery', fulfillment_origin: defaultOriginFor('delivery') };
+        setError('');
+        setCheckoutState(next);
+        void saveCheckoutState(next);
+    }
+
+    function setOrigin(origin: FulfillmentOrigin) {
+        // A pickup is handed over at the Showroom counter: direct dispatch is
+        // refused with an explanation, never silently switched.
+        if (checkoutState.fulfillment_mode === 'pickup' && origin === 'direct') {
+            setError(t('pos.originPickupDirectBlocked'));
+            return;
+        }
+        if (origin === checkoutState.fulfillment_origin) return;
+        const next: CheckoutState = { ...checkoutState, fulfillment_origin: origin };
+        setError('');
         setCheckoutState(next);
         void saveCheckoutState(next);
     }
@@ -291,6 +324,7 @@ export default function PosCheckoutPanel({
         const active = payments.filter((payment) => payment.method && positiveAmount(payment.amount) > 0);
         onReview({
             fulfillment_mode: checkoutState.fulfillment_mode,
+            fulfillment_origin: checkoutState.fulfillment_origin,
             totals: {
                 subtotal_excl_tax: sale.summary.subtotal_excl_tax,
                 discount: discountTotal.toFixed(4),
@@ -431,12 +465,6 @@ export default function PosCheckoutPanel({
                         </button>
                     </div>
 
-                    {checkoutState.fulfillment_mode === 'pickup' && sale.requires_replenishment && (
-                        <p className="mt-2 rounded-field bg-warning-soft px-3 py-2 text-[12px] text-warning">
-                            {t('pos.remoteUnitsHelp').replace('{count}', String(sale.remote_required))}
-                        </p>
-                    )}
-
                     {checkoutState.fulfillment_mode === 'delivery' && (
                         <div className="mt-2.5 space-y-2">
                             <textarea
@@ -475,6 +503,36 @@ export default function PosCheckoutPanel({
                             />
                         </div>
                     )}
+                </Section>
+
+                {/* Fulfillment origin — where the goods physically leave from */}
+                <Section title={t('pos.originTitle')}>
+                    <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label={t('pos.originTitle')}>
+                        {(['showroom', 'direct'] as const).map((origin) => {
+                            const selected = checkoutState.fulfillment_origin === origin;
+                            const unsupported = origin === 'direct' && checkoutState.fulfillment_mode === 'pickup';
+                            return (
+                                <button
+                                    key={origin}
+                                    type="button"
+                                    role="radio"
+                                    aria-checked={selected}
+                                    aria-disabled={unsupported}
+                                    title={unsupported ? t('pos.originPickupDirectBlocked') : undefined}
+                                    onClick={() => setOrigin(origin)}
+                                    className={`rounded-field border p-2.5 text-start transition-soft ${selected ? 'border-primary bg-sage' : 'border-line-strong hover:bg-raised'} ${unsupported ? 'cursor-not-allowed opacity-50' : ''}`}
+                                >
+                                    <span className="text-[13px] font-semibold text-ink">{origin === 'showroom' ? `🏬 ${t('pos.originShowroom')}` : `📦 ${t('pos.originDirect')}`}</span>
+                                    <span className="mt-0.5 block text-[11px] text-ink-muted">
+                                        {origin === 'showroom' ? t('pos.originShowroomHelp') : t('pos.originDirectHelp')}
+                                    </span>
+                                </button>
+                            );
+                        })}
+                    </div>
+                    <p className={`mt-2 rounded-field px-3 py-2 text-[12px] ${checkoutState.fulfillment_origin === 'showroom' && sale.requires_replenishment ? 'bg-warning-soft text-warning' : 'bg-raised text-ink-muted'}`}>
+                        {originExplanation(checkoutState.fulfillment_origin, sale.requires_replenishment, String(Number(sale.remote_required)), sale.warehouse?.name ?? t('pos.originShowroomFallback'), t)}
+                    </p>
                 </Section>
 
                 {/* Payment */}

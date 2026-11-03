@@ -4,6 +4,7 @@ import { Spinner } from "@/components/ui/Spinner";
 import { useI18n } from "@/i18n";
 import { useEffect } from "react";
 import type { ReviewData } from "./pos-shared";
+import { originExplanation } from "./PosCheckoutPanel";
 import type { ActiveSale } from "./types";
 
 type Props = {
@@ -61,6 +62,11 @@ export default function PosReviewModal({
                         {data.fulfillment_mode === "delivery"
                             ? `🚚 ${t("pos.deliveryLater")}`
                             : `⚡ ${t("pos.pickupNow")}`}
+                    </span>
+                    <span className="ms-1.5 mt-2 inline-flex rounded-full bg-raised px-2.5 py-1 text-[12px] font-semibold text-ink">
+                        {data.fulfillment_origin === "direct"
+                            ? `📦 ${t("pos.originDirect")}`
+                            : `🏬 ${t("pos.originShowroom")}`}
                     </span>
                 </div>
 
@@ -309,15 +315,17 @@ export default function PosReviewModal({
                         </div>
                     </div>
 
-                    {data.fulfillment_mode === "pickup" &&
-                        data.requires_replenishment && (
-                            <p className="rounded-field bg-warning-soft px-3 py-2 text-[12px] text-warning">
-                                {t("pos.remotePreparation").replace(
-                                    "{count}",
-                                    String(Number(data.remote_required)),
-                                )}
-                            </p>
+                    <p
+                        className={`rounded-field px-3 py-2 text-[12px] ${data.fulfillment_origin === "showroom" && data.requires_replenishment ? "bg-warning-soft text-warning" : "bg-raised text-ink-muted"}`}
+                    >
+                        {originExplanation(
+                            data.fulfillment_origin,
+                            data.requires_replenishment,
+                            String(Number(data.remote_required)),
+                            sale.warehouse?.name ?? t("pos.originShowroomFallback"),
+                            t,
                         )}
+                    </p>
                     {sale.awaiting_supplier_procurement && (
                         <p className="rounded-field bg-warning-soft px-3 py-2 text-[12px] text-warning">
                             {t("pos.specialOrderHelp")}

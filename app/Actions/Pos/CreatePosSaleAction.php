@@ -8,6 +8,7 @@ use App\Actions\Sales\CreateSalesOrderAction;
 use App\Actions\Sales\FulfillSalesOrderAction;
 use App\Actions\Sales\SaveSalesOrderLineAction;
 use App\Enums\PaymentMethod;
+use App\Enums\PosFulfillmentOrigin;
 use App\Enums\SalesOrderSource;
 use App\Enums\SalesOrderStatus;
 use App\Models\Organization;
@@ -90,6 +91,13 @@ class CreatePosSaleAction
                 // stale warehouse allocations before anything is written.
                 $this->stockGuard->assertCovered($draft);
 
+                // Fulfillment origin: an explicit choice in this checkout wins,
+                // then the one saved on the cart, then the delivery method's
+                // default. Unsupported combinations are refused.
+                $draft->pos_fulfillment_origin = $this->resolveOrigin(
+                    $draft->pos_fulfillment_mode, $data['fulfillment_origin'] ?? null, $draft->pos_fulfillment_origin,
+                );
+
                 $checkoutHash = $this->draftCheckoutHash($draft, $payments);
                 $existing = $this->findExisting($organization, $store, $data['client_operation_id'], true);
                 if ($existing) {
@@ -107,6 +115,7 @@ class CreatePosSaleAction
                 $draft->save();
 
                 $confirmed = $this->confirmOrder->execute($actor, $draft->fresh());
+                $this->recordOrigin($actor, $confirmed, isset($data['fulfillment_origin']));
                 $requiresReplenishment = $this->requiresReplenishment($confirmed, (int) $draft->pos_warehouse_id);
                 // A confirmed order still waiting on supplier-procured goods is a
                 // special order: it is not fulfilled on the spot and the customer
@@ -204,6 +213,7 @@ class CreatePosSaleAction
                 $order->pos_checkout_hash = $checkoutHash;
                 $order->pos_warehouse_id = (int) $data['warehouse_id'];
                 $order->pos_fulfillment_mode = $data['fulfillment_mode'] ?? 'pickup';
+                $order->pos_fulfillment_origin = $this->resolveOrigin($order->pos_fulfillment_mode, $data['fulfillment_origin'] ?? null, null);
                 $order->save();
 
                 foreach ($lines as $line) {
@@ -215,6 +225,7 @@ class CreatePosSaleAction
                 }
 
                 $confirmed = $this->confirmOrder->execute($actor, $order);
+                $this->recordOrigin($actor, $confirmed, isset($data['fulfillment_origin']));
                 $requiresReplenishment = $this->requiresReplenishment($confirmed, (int) $data['warehouse_id']);
                 $awaitingProcurement = $confirmed->awaitingSupplierProcurement();
                 $remaining = $this->paymentCalculator->remainingAmount($confirmed);
@@ -387,6 +398,9 @@ class CreatePosSaleAction
             'order_id' => $order->getKey(),
             'customer_id' => $order->customer_id,
             'fulfillment_mode' => $order->pos_fulfillment_mode ?? 'pickup',
+            // Absent for orders checked out before the field existed (NULL), so
+            // a late retry of such a checkout still matches its stored hash.
+            ...($order->pos_fulfillment_origin !== null ? ['fulfillment_origin' => $order->pos_fulfillment_origin->value] : []),
             'shipping_fee' => $summary['shipping_fee'],
             'global_discount_type' => $summary['global_discount_type'],
             'global_discount_value' => $summary['global_discount_value'],
@@ -417,6 +431,8 @@ class CreatePosSaleAction
             'warehouse_id' => (int) $data['warehouse_id'],
             'customer_id' => isset($data['customer_id']) ? (int) $data['customer_id'] : null,
             'fulfillment_mode' => $data['fulfillment_mode'] ?? 'pickup',
+            // Only when sent explicitly, so older clients' retries keep their hash.
+            ...(isset($data['fulfillment_origin']) ? ['fulfillment_origin' => $data['fulfillment_origin']] : []),
             'lines' => $canonicalLines,
             'payments' => $payments,
         ], JSON_THROW_ON_ERROR));
@@ -432,6 +448,26 @@ class CreatePosSaleAction
         }
 
         return $total;
+    }
+
+    private function resolveOrigin(?string $mode, ?string $requested, ?PosFulfillmentOrigin $stored): PosFulfillmentOrigin
+    {
+        $origin = $requested !== null ? PosFulfillmentOrigin::from($requested) : ($stored ?? PosFulfillmentOrigin::defaultFor($mode));
+        PosFulfillmentOrigin::assertSupported($mode, $origin);
+
+        return $origin;
+    }
+
+    /** The origin decided at checkout, in the order's audit trail. */
+    private function recordOrigin(User $actor, SalesOrder $order, bool $explicit): void
+    {
+        $this->audit->record('sales_order.pos_fulfillment_origin_selected', $actor, $order->organization, $order->store, $order, newValues: [
+            'order_number' => $order->order_number,
+            'fulfillment_mode' => $order->pos_fulfillment_mode ?? 'pickup',
+            'fulfillment_origin' => $order->pos_fulfillment_origin?->value,
+            'explicit' => $explicit,
+            'pos_warehouse_id' => $order->pos_warehouse_id,
+        ]);
     }
 
     private function requiresReplenishment(SalesOrder $order, int $posWarehouseId): bool

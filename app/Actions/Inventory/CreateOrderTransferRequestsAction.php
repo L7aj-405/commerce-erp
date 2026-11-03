@@ -2,6 +2,7 @@
 
 namespace App\Actions\Inventory;
 
+use App\Enums\PosFulfillmentOrigin;
 use App\Enums\SalesOrderLineType;
 use App\Enums\SalesOrderSource;
 use App\Enums\TransferRequestReason;
@@ -19,9 +20,11 @@ use App\Support\InventoryQuantity;
  * After a Showroom POS Order is confirmed, two INDEPENDENT things happen:
  *
  *  A. ORDER_FULFILLMENT — every allocation that sits in another warehouse
- *     becomes a Depot → Showroom transfer request (pickup orders only; a
- *     delivery order ships from the source directly, so no routing through the
- *     Showroom is required).
+ *     becomes a Depot → Showroom transfer request, for orders whose
+ *     fulfillment origin is the Showroom ({@see SalesOrder::fulfillmentOrigin()},
+ *     chosen per order at checkout — pickup or delivery alike). A DIRECT
+ *     dispatch order ships each unit from the warehouse holding its
+ *     reservation, so no customer transfer is created for it.
  *
  *  B. MINIMUM_REPLENISHMENT — for EVERY catalogue variant on the Order, the
  *     Showroom minimum-stock policy is re-evaluated against current projected
@@ -57,7 +60,9 @@ class CreateOrderTransferRequestsAction
         $this->planner->lockPlanning((int) $order->organization_id);
 
         $order->loadMissing('lines.allocations');
-        $isPickup = $order->pos_fulfillment_mode !== 'delivery';
+        // The order's stored fulfillment origin is authoritative (legacy NULL
+        // rows keep pickup → Showroom, delivery → direct).
+        $throughShowroom = $order->fulfillmentOrigin() === PosFulfillmentOrigin::Showroom;
 
         // remote source warehouse id => [ variant id => ['qty' => string, 'line_id' => int] ]
         $remote = [];
@@ -101,9 +106,12 @@ class CreateOrderTransferRequestsAction
             $this->yieldReplenishmentToOrder($actor, $order, (int) $sourceId, array_keys($variants));
         }
 
-        // --- A. ORDER_FULFILLMENT (pickup only) --------------------------------
+        // --- A. ORDER_FULFILLMENT (Showroom origin only) ------------------------
+        // Direct dispatch: no customer transfer, and no general replenishment is
+        // pulled onto this order (step B below only reallocates onto requests
+        // that carry customer stock) — the top-up stays a plain replenishment.
         $orderRequests = [];
-        if ($isPickup) {
+        if ($throughShowroom) {
             foreach ($remote as $sourceId => $variants) {
                 $request = $this->requestFor($actor, $order, (int) $sourceId, $showroomId);
                 $orderRequests[(int) $sourceId] = $request;

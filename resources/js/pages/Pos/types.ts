@@ -108,6 +108,7 @@ export type ActiveSale = {
         global_discount_value: string;
         global_discount_amount: string;
         fulfillment_mode: 'pickup' | 'delivery';
+        fulfillment_origin: 'showroom' | 'direct';
         shipping_fee: string;
         delivery_address: string | null;
         delivery_phone: string | null;

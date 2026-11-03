@@ -250,6 +250,7 @@ class SalesOrderController extends Controller
             'salespersons' => $canReassignSalesperson ? $salespersons->choices($order->organization_id) : [],
             'completionEligibility' => $completion,
             'awaitingReplenishment' => $order->awaitingReplenishment(),
+            'fulfillmentRouting' => $this->fulfillmentRouting($order),
             'procurement' => $this->procurementPayload($order, $stock),
             // Expédition & Livraison (F1.1): shipments of a confirmed order, for fulfillment viewers only.
             'fulfillment' => request()->user()->hasPermission($order->organization_id, 'fulfillment.view')
@@ -529,6 +530,48 @@ class SalesOrderController extends Controller
      *
      * @return array<string, mixed>
      */
+    /**
+     * POS orders only: how the customer receives the order (pickup / delivery),
+     * where the goods leave from (Showroom / direct) and where each customer
+     * unit is allocated and still reserved, per warehouse.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function fulfillmentRouting(SalesOrder $order): ?array
+    {
+        $origin = $order->fulfillmentOrigin();
+        if ($origin === null) {
+            return null;
+        }
+
+        $warehouses = \App\Models\SalesOrderInventoryAllocation::query()
+            ->join('sales_order_lines as l', 'l.id', '=', 'sales_order_inventory_allocations.sales_order_line_id')
+            ->join('warehouses as w', 'w.id', '=', 'sales_order_inventory_allocations.warehouse_id')
+            ->leftJoin('inventory_reservations as r', 'r.id', '=', 'sales_order_inventory_allocations.inventory_reservation_id')
+            ->where('sales_order_inventory_allocations.organization_id', $order->organization_id)
+            ->where('l.sales_order_id', $order->getKey())
+            ->orderBy('w.id')
+            ->get(['w.id', 'w.name', 'sales_order_inventory_allocations.quantity', 'r.status as reservation_status'])
+            ->groupBy('id')
+            ->map(fn ($rows) => [
+                'id' => (int) $rows->first()->id,
+                'name' => $rows->first()->name,
+                'is_showroom' => (int) $rows->first()->id === (int) $order->pos_warehouse_id,
+                'allocated' => $rows->reduce(fn (string $c, $r) => Decimal::add($c, (string) $r->quantity), '0.0000'),
+                'reserved' => $rows->where('reservation_status', 'active')->reduce(fn (string $c, $r) => Decimal::add($c, (string) $r->quantity), '0.0000'),
+            ])->values()->all();
+
+        return [
+            'mode' => $order->pos_fulfillment_mode ?? 'pickup',
+            'origin' => $origin->value,
+            // false = legacy order: origin derived from the delivery method.
+            'explicit' => $order->pos_fulfillment_origin !== null,
+            'showroom' => $order->posWarehouse?->only(['id', 'name']),
+            'warehouses' => $warehouses,
+            'reserved_outside_showroom' => $order->reservedOutsideShowroom(),
+        ];
+    }
+
     private function procurementPayload(SalesOrder $order, PosStockAllocator $stock): array
     {
         $user = request()->user();

@@ -173,6 +173,63 @@ type CustomerExchange = {
     return_number: string | null;
     addendum_sequence: number | null;
 };
+type FulfillmentRouting = {
+    mode: 'pickup' | 'delivery';
+    origin: 'showroom' | 'direct';
+    explicit: boolean;
+    showroom: { id: number; name: string } | null;
+    warehouses: { id: number; name: string; is_showroom: boolean; allocated: string; reserved: string }[];
+    reserved_outside_showroom: boolean;
+};
+
+/** Delivery method × fulfillment origin, and where each customer unit is reserved. */
+function FulfillmentRoutingCard({ routing }: { routing: FulfillmentRouting }) {
+    const { t } = useI18n();
+    const showroom = routing.showroom?.name ?? t('pos.originShowroomFallback');
+    return (
+        <section className="mb-6 rounded-card border border-line bg-surface p-5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+                <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">{t('orders.routing.title')}</h2>
+                <div className="flex flex-wrap gap-1.5">
+                    <span className="rounded-full bg-raised px-2.5 py-1 text-xs font-medium text-ink">
+                        {routing.mode === 'delivery' ? t('inventory.trq.modeDelivery') : t('inventory.trq.modePickup')}
+                    </span>
+                    <span className="rounded-full bg-sage px-2.5 py-1 text-xs font-medium text-ink">
+                        {routing.origin === 'direct' ? t('inventory.trq.originDirect') : t('inventory.trq.originShowroom').replace('{warehouse}', showroom)}
+                    </span>
+                </div>
+            </div>
+            <p className="mt-2 text-sm text-ink-muted">
+                {routing.origin === 'direct' ? t('orders.routing.directHelp') : t('orders.routing.showroomHelp').replace('{warehouse}', showroom)}
+                {!routing.explicit && <span className="ms-1 text-ink-faint">{t('orders.routing.legacy')}</span>}
+            </p>
+            {routing.warehouses.length > 0 && (
+                <dl className="mt-3 divide-y divide-line rounded-field border border-line text-sm">
+                    {routing.warehouses.map((w) => (
+                        <div key={w.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
+                            <dt className="text-ink">
+                                {w.name}
+                                {!w.is_showroom && routing.origin === 'showroom' && Number(w.reserved) > 0 && (
+                                    <span className="ms-2 text-xs text-warning">{t('orders.routing.toTransfer').replace('{warehouse}', showroom)}</span>
+                                )}
+                                {!w.is_showroom && routing.origin === 'direct' && Number(w.reserved) > 0 && (
+                                    <span className="ms-2 text-xs text-ink-muted">{t('orders.routing.shipsFromHere')}</span>
+                                )}
+                            </dt>
+                            <dd className="tabular-nums text-ink-muted" dir="ltr">
+                                {t('orders.routing.reservedOf').replace('{reserved}', formatQuantity(w.reserved)).replace('{allocated}', formatQuantity(w.allocated))}
+                            </dd>
+                        </div>
+                    ))}
+                </dl>
+            )}
+            {routing.reserved_outside_showroom && (
+                <p className="mt-2 rounded-field bg-warning-soft px-3 py-2 text-xs text-warning">{t('orders.routing.blocked').replace('{warehouse}', showroom)}</p>
+            )}
+        </section>
+    );
+}
+
 type Props = {
     order: Order;
     paymentSummary: { paid: string; collected: string; refunded: string; net: string; remaining: string; status: string };
@@ -181,6 +238,8 @@ type Props = {
     financialAccounts: Account[];
     documents: { invoices: InvoiceDoc[]; deliveryNotes: { id: number; delivery_note_number: string | null; delivery_date: string; status: string }[] };
     awaitingReplenishment: boolean;
+    /** POS orders only: delivery method, fulfillment origin and customer reservations per warehouse. */
+    fulfillmentRouting: FulfillmentRouting | null;
     procurement: ProcurementData;
     procurementPlan: ProcurementPlan;
     fulfillment: FulfillmentPayload | null;
@@ -239,7 +298,7 @@ function Card({ label: l, children }: { label: string; children: ReactNode }) {
     );
 }
 
-export default function ShowOrder({ order, paymentSummary, payments, refunds, financialAccounts, documents, awaitingReplenishment, procurement, procurementPlan, fulfillment, transferRequests, revisions, activeCorrection, pendingReplacementInvoice, invoiceStaleAfterCompletion, addenda, customerReturns, customerExchanges, returnPolicy, commercialSummary, marginSummary, salespersons, completionEligibility, can }: Props) {
+export default function ShowOrder({ order, paymentSummary, payments, refunds, financialAccounts, documents, awaitingReplenishment, fulfillmentRouting, procurement, procurementPlan, fulfillment, transferRequests, revisions, activeCorrection, pendingReplacementInvoice, invoiceStaleAfterCompletion, addenda, customerReturns, customerExchanges, returnPolicy, commercialSummary, marginSummary, salespersons, completionEligibility, can }: Props) {
     const { t } = useI18n();
     const [confirmCancel, setConfirmCancel] = useState(false);
     const cancellation = useForm({ reason: '' });
@@ -673,6 +732,8 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
                     </tbody>
                 </table>
             </div>
+
+            {fulfillmentRouting && <FulfillmentRoutingCard routing={fulfillmentRouting} />}
 
             {/* Internal replenishment / transfer requests */}
             {transferRequests.length > 0 && (

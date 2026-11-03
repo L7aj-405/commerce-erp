@@ -15,6 +15,7 @@ use App\Actions\Sales\UpdateSalesOrderAction;
 use App\Enums\CatalogStatus;
 use App\Enums\CustomerStatus;
 use App\Enums\CustomerType;
+use App\Enums\PosFulfillmentOrigin;
 use App\Enums\SalesOrderDiscountType;
 use App\Enums\SalesOrderSource;
 use App\Enums\SalesOrderStatus;
@@ -449,6 +450,7 @@ class PosController extends Controller
             'global_discount_type' => ['nullable', 'in:none,fixed,percentage'],
             'global_discount_value' => ['nullable', 'decimal:0,4', 'gte:0'],
             'fulfillment_mode' => ['nullable', 'in:pickup,delivery'],
+            'fulfillment_origin' => ['nullable', Rule::enum(PosFulfillmentOrigin::class)],
             'shipping_fee' => ['nullable', 'decimal:0,4', 'gte:0'],
             'delivery_address' => ['nullable', 'string', 'max:5000'],
             'delivery_phone' => ['nullable', 'string', 'max:64'],
@@ -478,6 +480,22 @@ class PosController extends Controller
 
         if (array_key_exists('fulfillment_mode', $data)) {
             $order->pos_fulfillment_mode = $data['fulfillment_mode'] ?? 'pickup';
+            // A new delivery method resets the origin to its default unless the
+            // same request chooses one explicitly.
+            if (! array_key_exists('fulfillment_origin', $data)) {
+                $order->pos_fulfillment_origin = PosFulfillmentOrigin::defaultFor($order->pos_fulfillment_mode);
+            }
+        }
+
+        if (array_key_exists('fulfillment_origin', $data)) {
+            $order->pos_fulfillment_origin = $data['fulfillment_origin'] !== null
+                ? PosFulfillmentOrigin::from($data['fulfillment_origin'])
+                : PosFulfillmentOrigin::defaultFor($order->pos_fulfillment_mode);
+        }
+
+        if (array_key_exists('fulfillment_mode', $data) || array_key_exists('fulfillment_origin', $data)) {
+            // Unsupported combination: refused, never silently switched.
+            PosFulfillmentOrigin::assertSupported($order->pos_fulfillment_mode, $order->pos_fulfillment_origin);
         }
 
         if (array_key_exists('shipping_fee', $data)) {
@@ -1197,6 +1215,7 @@ class PosController extends Controller
                 'global_discount_value' => $summary['global_discount_value'],
                 'global_discount_amount' => $summary['global_discount_amount'],
                 'fulfillment_mode' => $order->pos_fulfillment_mode ?? 'pickup',
+                'fulfillment_origin' => ($order->pos_fulfillment_origin ?? PosFulfillmentOrigin::defaultFor($order->pos_fulfillment_mode))->value,
                 'shipping_fee' => $summary['shipping_fee'],
                 'delivery_address' => $order->pos_delivery_address,
                 'delivery_phone' => $order->pos_delivery_phone,

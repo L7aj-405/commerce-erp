@@ -28,6 +28,8 @@ type Row = {
     destination: WarehouseRef;
     sales_order: { id: number; order_number: string } | null;
     reasons: string[];
+    /** Carries protected customer stock; false on an order-linked replenishment-only request. */
+    customer_transfer: boolean;
     product_count: number;
     unit_count: number;
     restored: boolean;
@@ -235,6 +237,7 @@ export default function TransferRequestIndex({ requests, filters, summary, wareh
                                                     <div className="mt-1 flex flex-wrap items-center gap-1.5">
                                                         <TransferTypeBadge type={r.type} />
                                                         {r.priority === 'high' && <PriorityBadge priority="high" />}
+                                                        {r.sales_order && !r.customer_transfer && <span className="rounded-full bg-raised px-1.5 py-0.5 text-[11px] font-medium text-ink-muted">{t('inventory.trq.replenishmentOnlyTag')}</span>}
                                                         {r.restored && <span className="text-[11px] text-ink-faint">{t('inventory.trq.restoredTag')}</span>}
                                                     </div>
                                                 </td>
@@ -277,6 +280,7 @@ export default function TransferRequestIndex({ requests, filters, summary, wareh
                                             <div className="mt-1 flex flex-wrap items-center gap-1.5">
                                                 <TransferTypeBadge type={r.type} />
                                                 {r.priority === 'high' && <PriorityBadge priority="high" />}
+                                                {r.sales_order && !r.customer_transfer && <span className="rounded-full bg-raised px-1.5 py-0.5 text-[11px] font-medium text-ink-muted">{t('inventory.trq.replenishmentOnlyTag')}</span>}
                                             </div>
                                         </div>
                                         <TransferStatusBadge status={r.status} className="shrink-0" />

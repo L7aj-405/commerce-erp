@@ -23,6 +23,12 @@
  *   orders_compete     two POS orders of 3 confirmed at once; 5 units exist
  *                      → exactly one confirms, the other is rejected cleanly.
  *   sweep_vs_sweep     three minimum sweeps at once → exactly one 1-unit line.
+ *   origin_vs_sweep    DELIVERY order of 3 confirmed while the sweep runs, with
+ *                      the general 1-unit request already open. Odd rounds:
+ *                      origin "showroom" → 2 customer + 2 replenishment on the
+ *                      customer request, general reconciled (4 in total).
+ *                      Even rounds: origin "direct" → no customer transfer,
+ *                      general 1 kept + 1 order-linked top-up (2 in total).
  *
  * Every round also checks: reserved ≤ on_hand, balances = active
  * reservations, no depot over-promise, and no deadlock / lock-wait timeout
@@ -169,13 +175,14 @@ $world = function (int $round, string $scenario): array {
     return compact('owner', 'org', 'store', 'show', 'depot', 'variant');
 };
 
-$posOrder = function (array $w, string $qty): SalesOrder {
+$posOrder = function (array $w, string $qty, string $mode = 'pickup', ?string $origin = null): SalesOrder {
     $order = app(CreateSalesOrderAction::class)->execute($w['owner'], $w['org'], $w['store'],
         ['customer_id' => null, 'sale_date' => now()->toDateString(), 'currency_code' => 'MAD', 'notes' => null], SalesOrderSource::Pos);
     $order->pos_warehouse_id = $w['show']->id;
     $order->pos_global_discount_type = 'none';
     $order->pos_global_discount_value = '0.0000';
-    $order->pos_fulfillment_mode = 'pickup';
+    $order->pos_fulfillment_mode = $mode;
+    $order->pos_fulfillment_origin = $origin;
     $order->pos_shipping_fee = '0.0000';
     $order->save();
     app(SaveSalesOrderLineAction::class)->execute($w['owner'], $order->fresh(), ['line_type' => 'catalog',
@@ -297,6 +304,32 @@ $scenarios = [
         }
 
         return [$w, $children, $errors, "confirmed={$confirmed} ".json_encode($lines)];
+    },
+    'origin_vs_sweep' => function (int $round) use ($world, $posOrder, $race, $activeLines): array {
+        $w = $world($round, 'origin_vs_sweep');
+        app(PlanShowroomReplenishmentAction::class)->execute($w['owner'], $w['org'], $w['show']);
+        $origin = $round % 2 === 1 ? 'showroom' : 'direct';
+        $order = $posOrder($w, '3.0000', 'delivery', $origin);
+        $ids = ['owner' => $w['owner']->id, 'org' => $w['org']->id, 'show' => $w['show']->id, 'order' => $order->id];
+        $children = $race([['confirm', $ids], ['sweep', $ids]]);
+        $errors = [];
+        foreach ($children as $c) {
+            if (! $c['ok']) {
+                $errors[] = "child failed: {$c['class']}: {$c['message']}";
+            }
+        }
+        $lines = $activeLines($w);
+        $expected = $origin === 'showroom'
+            ? ['order:minimum_replenishment' => 2.0, 'order:order_fulfillment' => 2.0]
+            : ['general:minimum_replenishment' => 1.0, 'order:minimum_replenishment' => 1.0];
+        if ($lines !== $expected) {
+            $errors[] = 'depot demand '.json_encode($lines).' ≠ '.json_encode($expected);
+        }
+        if ($order->fresh()->status->value !== 'confirmed') {
+            $errors[] = 'order not confirmed';
+        }
+
+        return [$w, $children, $errors, str_pad($origin, 9).json_encode($lines)];
     },
     'sweep_vs_sweep' => function (int $round) use ($world, $race, $activeLines): array {
         $w = $world($round, 'sweep_vs_sweep');

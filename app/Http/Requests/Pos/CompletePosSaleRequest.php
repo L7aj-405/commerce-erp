@@ -45,6 +45,7 @@ class CompletePosSaleRequest extends FormRequest
             'lines.*.discount_type' => ['required', Rule::enum(SalesOrderDiscountType::class)],
             'lines.*.discount_value' => ['nullable', 'decimal:0,4', 'gte:0'],
             'fulfillment_mode' => ['nullable', 'in:pickup,delivery'],
+            'fulfillment_origin' => ['nullable', Rule::enum(\App\Enums\PosFulfillmentOrigin::class)],
         ];
     }
 }

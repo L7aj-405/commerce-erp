@@ -476,6 +476,7 @@ export default function PosIndex({
         await perform('checkout:save', () =>
             updateDraftFields({
                 fulfillment_mode: state.fulfillment_mode,
+                fulfillment_origin: state.fulfillment_origin,
                 shipping_fee: state.shipping_fee || '0',
                 delivery_address: state.delivery_address || null,
                 delivery_phone: state.delivery_phone || null,
@@ -505,6 +506,7 @@ export default function PosIndex({
                 client_operation_id: operationIdRef.current,
                 order_id: activeSaleRef.current.id,
                 fulfillment_mode: reviewData.fulfillment_mode,
+                fulfillment_origin: reviewData.fulfillment_origin,
                 payments: reviewData.payments.map((payment) => ({
                     method: payment.method,
                     financial_account_id: payment.financial_account_id,

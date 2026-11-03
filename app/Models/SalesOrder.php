@@ -4,6 +4,8 @@ namespace App\Models;
 
 use App\Enums\DeliveryNoteStatus;
 use App\Enums\FulfillmentStatus;
+use App\Enums\InventoryReservationStatus;
+use App\Enums\PosFulfillmentOrigin;
 use App\Enums\SalesOrderFulfillmentStatus;
 use App\Enums\SalesOrderPaymentStatus;
 use App\Enums\SalesOrderSource;
@@ -43,6 +45,7 @@ class SalesOrder extends Model
             'pos_shipping_fee' => 'decimal:4',
             'pos_held_at' => 'datetime',
             'pos_converted_at' => 'datetime',
+            'pos_fulfillment_origin' => PosFulfillmentOrigin::class,
         ];
     }
 
@@ -188,11 +191,49 @@ class SalesOrder extends Model
         return $this->fulfillments()->whereIn('status', [FulfillmentStatus::Preparing->value, FulfillmentStatus::Ready->value])->exists();
     }
 
+    /**
+     * Where this POS order's goods physically leave inventory. The stored
+     * choice is authoritative; legacy orders (NULL) keep their historical
+     * behaviour: pickup → Showroom, delivery → direct from the allocated
+     * warehouse. Non-POS orders have no Showroom routing (null).
+     */
+    public function fulfillmentOrigin(): ?PosFulfillmentOrigin
+    {
+        if ($this->source !== SalesOrderSource::Pos || (int) $this->pos_warehouse_id === 0) {
+            return null;
+        }
+
+        return $this->pos_fulfillment_origin ?? PosFulfillmentOrigin::defaultFor($this->pos_fulfillment_mode);
+    }
+
+    /**
+     * Goods may not leave yet: a customer transfer is still on its way, or —
+     * for a Showroom-origin order — customer stock is still reserved outside
+     * the Showroom (it must be transferred and received first).
+     */
     public function awaitingReplenishment(): bool
     {
         return $this->transferRequests()
             ->whereIn('status', ['requested', 'preparing', 'shipped'])
             ->whereHas('lines', fn ($query) => $query->where('reason', 'order_fulfillment'))
+            ->exists()
+            || $this->reservedOutsideShowroom();
+    }
+
+    /** Showroom origin only: an active customer reservation still sits in another warehouse. */
+    public function reservedOutsideShowroom(): bool
+    {
+        if ($this->fulfillmentOrigin() !== PosFulfillmentOrigin::Showroom) {
+            return false;
+        }
+
+        return SalesOrderInventoryAllocation::query()
+            ->join('sales_order_lines as l', 'l.id', '=', 'sales_order_inventory_allocations.sales_order_line_id')
+            ->join('inventory_reservations as r', 'r.id', '=', 'sales_order_inventory_allocations.inventory_reservation_id')
+            ->where('sales_order_inventory_allocations.organization_id', $this->organization_id)
+            ->where('l.sales_order_id', $this->getKey())
+            ->where('sales_order_inventory_allocations.warehouse_id', '!=', (int) $this->pos_warehouse_id)
+            ->where('r.status', InventoryReservationStatus::Active->value)
             ->exists();
     }
 

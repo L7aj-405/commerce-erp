@@ -40,8 +40,17 @@ export type PaymentDraft = {
     cashReceivedTouched: boolean;
 };
 
+/** Where the goods physically leave inventory — independent of pickup / delivery. */
+export type FulfillmentOrigin = 'showroom' | 'direct';
+
+/** Pickup → Showroom; delivery keeps its historical direct dispatch by default. */
+export function defaultOriginFor(mode: 'pickup' | 'delivery'): FulfillmentOrigin {
+    return mode === 'delivery' ? 'direct' : 'showroom';
+}
+
 export type CheckoutState = {
     fulfillment_mode: 'pickup' | 'delivery';
+    fulfillment_origin: FulfillmentOrigin;
     shipping_fee: string;
     delivery_address: string;
     delivery_phone: string;
@@ -60,6 +69,7 @@ export type CustomerForm = {
 
 export type CompletePayload = {
     fulfillment_mode: 'pickup' | 'delivery';
+    fulfillment_origin: FulfillmentOrigin;
     payments: Array<{ method: string; financial_account_id: number; amount: string; cash_received?: string | null; reference?: string | null }>;
 };
 
@@ -75,6 +85,7 @@ export type ReviewPayment = {
 
 export type ReviewData = {
     fulfillment_mode: 'pickup' | 'delivery';
+    fulfillment_origin: FulfillmentOrigin;
     totals: {
         subtotal_excl_tax: string;
         discount: string;
