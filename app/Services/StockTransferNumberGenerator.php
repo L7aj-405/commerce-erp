@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Organization;
+use App\Support\LockedRow;
 use Illuminate\Support\Facades\DB;
 use LogicException;
 
@@ -14,12 +15,7 @@ class StockTransferNumberGenerator
             throw new LogicException('Stock transfer numbers may only be allocated inside a database transaction.');
         }
 
-        DB::table('stock_transfer_sequences')->insertOrIgnore([
-            'organization_id' => $organization->getKey(),
-            'next_number' => 1,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
+        LockedRow::claim('stock_transfer_sequences', ['organization_id' => $organization->getKey()], ['next_number' => 1, 'created_at' => now(), 'updated_at' => now()]);
 
         $sequence = DB::table('stock_transfer_sequences')
             ->where('organization_id', $organization->getKey())

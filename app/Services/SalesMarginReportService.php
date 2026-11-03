@@ -100,7 +100,9 @@ final class SalesMarginReportService
             ->when(! $unattributedOnly && $salespersonId !== null, fn ($query) => $query->where('source_orders.salesperson_id', $salespersonId))
             ->selectRaw("COALESCE(SUM(return_lines.taxable_amount), 0) as revenue")
             ->selectRaw("COALESCE(SUM(CASE WHEN source_lines.cost_status = 'available' THEN return_lines.taxable_amount ELSE 0 END), 0) as covered_revenue")
-            ->selectRaw("COALESCE(SUM(CASE WHEN source_lines.cost_status = 'available' THEN return_lines.quantity * source_lines.purchase_price_snapshot ELSE 0 END), 0) as cost_total")
+            // DECIMAL(19,4) × DECIMAL(19,4) has scale 8 on MySQL; round each line
+            // half-away-from-zero to 4 dp, matching Decimal::multiply().
+            ->selectRaw("COALESCE(SUM(CASE WHEN source_lines.cost_status = 'available' THEN ROUND(return_lines.quantity * source_lines.purchase_price_snapshot, 4) ELSE 0 END), 0) as cost_total")
             ->selectRaw("SUM(CASE WHEN source_lines.cost_status = 'available' THEN 0 ELSE 1 END) as missing_count")
             ->first();
 
@@ -184,7 +186,7 @@ final class SalesMarginReportService
             ->select(['source_orders.salesperson_id', 'source_orders.salesperson_name_snapshot'])
             ->selectRaw("COALESCE(SUM(return_lines.taxable_amount), 0) as revenue")
             ->selectRaw("COALESCE(SUM(CASE WHEN source_lines.cost_status = 'available' THEN return_lines.taxable_amount ELSE 0 END), 0) as covered_revenue")
-            ->selectRaw("COALESCE(SUM(CASE WHEN source_lines.cost_status = 'available' THEN return_lines.quantity * source_lines.purchase_price_snapshot ELSE 0 END), 0) as cost_total")
+            ->selectRaw("COALESCE(SUM(CASE WHEN source_lines.cost_status = 'available' THEN ROUND(return_lines.quantity * source_lines.purchase_price_snapshot, 4) ELSE 0 END), 0) as cost_total")
             ->selectRaw("SUM(CASE WHEN source_lines.cost_status = 'available' THEN 0 ELSE 1 END) as missing_count")
             ->get();
 

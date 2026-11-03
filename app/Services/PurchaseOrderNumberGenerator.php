@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Organization;
+use App\Support\LockedRow;
 use Illuminate\Support\Facades\DB;
 use LogicException;
 
@@ -19,12 +20,7 @@ class PurchaseOrderNumberGenerator
             throw new LogicException('Purchase order numbers may only be allocated inside a database transaction.');
         }
 
-        DB::table('purchase_order_sequences')->insertOrIgnore([
-            'organization_id' => $organization->getKey(),
-            'next_number' => 1,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
+        LockedRow::claim('purchase_order_sequences', ['organization_id' => $organization->getKey()], ['next_number' => 1, 'created_at' => now(), 'updated_at' => now()]);
 
         $number = (int) DB::table('purchase_order_sequences')
             ->where('organization_id', $organization->getKey())

@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Organization;
 use App\Models\PaymentSequence;
+use App\Support\LockedRow;
 use Illuminate\Support\Facades\DB;
 use LogicException;
 
@@ -15,12 +16,7 @@ class PaymentNumberGenerator
             throw new LogicException('Payment numbers may only be allocated inside a transaction.');
         }
 
-        DB::table('payment_sequences')->insertOrIgnore([
-            'organization_id' => $organization->getKey(),
-            'next_number' => 1,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
+        LockedRow::claim('payment_sequences', ['organization_id' => $organization->getKey()], ['next_number' => 1, 'created_at' => now(), 'updated_at' => now()]);
         $sequence = PaymentSequence::query()->whereKey($organization->getKey())->lockForUpdate()->firstOrFail();
         $number = $sequence->next_number;
         $sequence->next_number = $number + 1;

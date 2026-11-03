@@ -8,6 +8,7 @@ use App\Actions\Documents\UpdateInvoiceDraftAction;
 use App\Actions\Sales\CancelSalesOrderAction;
 use App\Actions\Sales\ConfirmSalesOrderAction;
 use App\Models\User;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Tests\Support\DocumentTestCase;
@@ -75,7 +76,7 @@ class InvoiceLifecycleTest extends DocumentTestCase
         $draft = $draft->fresh();
         $this->assertSame('draft', $draft->status->value);
         $this->assertNull($draft->invoice_number);
-        $this->assertSame($snapshot, $draft->seller_snapshot);
+        $this->assertSame(Arr::sortRecursive($snapshot), Arr::sortRecursive($draft->seller_snapshot)); // MySQL JSON normalizes key order
         $this->assertDatabaseMissing('invoice_sequences', ['organization_id' => $organization->id]);
         $this->assertDatabaseMissing('audit_logs', ['event' => 'invoice.issued', 'auditable_id' => $draft->id]);
     }

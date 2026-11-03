@@ -15,6 +15,7 @@ use App\Services\Mcp\McpExecutionContext;
 use App\Services\Mcp\Procurement\SupplierCatalogTools;
 use Carbon\CarbonImmutable;
 use Tests\Support\CatalogTestCase;
+use Illuminate\Support\Arr;
 
 /** Phase B1: supplier catalog relations over MCP. */
 class McpSupplierCatalogToolsTest extends CatalogTestCase
@@ -138,7 +139,7 @@ class McpSupplierCatalogToolsTest extends CatalogTestCase
         $retry = $this->saveRelation($this->mifa, $this->shure, ['purchase_price' => '50.0000'], $preview['preview_fingerprint'], 'retry-key');
         $this->assertTrue($retry['ok'], json_encode($retry));
         $this->assertTrue($retry['data']['idempotent_replay']);
-        $this->assertSame($first['data']['target'], $retry['data']['target']);
+        $this->assertSame(Arr::sortRecursive($first['data']['target']), Arr::sortRecursive($retry['data']['target'])); // MySQL JSON normalizes key order
         $this->assertSame('MCP_IDEMPOTENCY_CONFLICT', $this->saveRelation($this->mifa, $this->shure, ['purchase_price' => '51.0000'], $preview['preview_fingerprint'], 'retry-key')['error']['code']);
         $this->assertSame(1, McpIdempotencyRecord::query()->where('tool', 'save_supplier_product_relation')->where('idempotency_key', 'retry-key')->count());
     }

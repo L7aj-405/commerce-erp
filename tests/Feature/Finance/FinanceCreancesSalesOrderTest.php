@@ -60,6 +60,9 @@ class FinanceCreancesSalesOrderTest extends DocumentTestCase
 
     public function test_returns_refunds_and_tenant_isolation_follow_the_authoritative_order_calculator(): void
     {
+        // RefundPaymentAction dates the refund "today"; pin the clock inside
+        // the 2026-10-31 reporting window so the scenario does not expire.
+        $this->travelTo(Carbon::parse('2026-10-20 10:00:00'));
         $owner = User::factory()->create();
         $organization = $this->createOrganization($owner);
         $store = $this->createStore($organization, $owner);

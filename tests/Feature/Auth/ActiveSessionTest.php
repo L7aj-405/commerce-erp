@@ -5,6 +5,7 @@ namespace Tests\Feature\Auth;
 use App\Http\Controllers\Settings\ActiveSessionController;
 use App\Models\User;
 use App\Services\AuditLogger;
+use App\Services\Mcp\McpExecutionContext;
 use App\Services\Notifications\OperationalNotificationProducer;
 use Illuminate\Http\Request;
 use Illuminate\Session\ArraySessionHandler;
@@ -84,7 +85,7 @@ class ActiveSessionTest extends PlatformTestCase
         (new ActiveSessionController)->destroy(
             $request,
             $token,
-            new AuditLogger($request),
+            new AuditLogger($request, app(McpExecutionContext::class)),
             app(OperationalNotificationProducer::class),
         );
 

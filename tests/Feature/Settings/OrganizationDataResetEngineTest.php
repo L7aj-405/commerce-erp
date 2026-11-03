@@ -499,7 +499,7 @@ class OrganizationDataResetEngineTest extends DocumentTestCase
         $this->assertDatabaseHas('units_of_measure', ['id' => $unit->id]);
         $this->assertDatabaseHas('tax_rates', ['id' => $tax->id]);
         $this->assertDatabaseHas('woocommerce_integrations', ['id' => $integrationId]);
-        $this->assertSame([], DB::select('PRAGMA foreign_key_check'));
+        $this->assertNoForeignKeyViolations();
     }
     public function test_preview_counts_are_exact_and_tenant_scoped(): void
     {
@@ -721,7 +721,7 @@ class OrganizationDataResetEngineTest extends DocumentTestCase
         $this->assertDatabaseHas('invoice_sequences', ['organization_id' => $organization->id, 'year' => 2026, 'next_number' => 932]);
         $this->assertSame($auditCount + 1, DB::table('audit_logs')->where('organization_id', $organization->id)->count());
         $this->assertDatabaseHas('audit_logs', ['id' => $result->auditLogId, 'event' => 'organization.data_reset.completed']);
-        $this->assertSame([], DB::select('PRAGMA foreign_key_check'));
+        $this->assertNoForeignKeyViolations();
         $this->assertDatabaseHas('store_memberships', ['organization_id' => $organization->id, 'store_id' => $store->id, 'user_id' => $owner->id]);
         $this->activate($owner, $organization, $store);
         $this->actingAs($owner)->get('/platform')->assertOk();
@@ -799,5 +799,13 @@ class OrganizationDataResetEngineTest extends DocumentTestCase
         $order->save();
 
         return $order;
+    }
+
+    /** SQLite defers FK checks to an explicit PRAGMA; MySQL/InnoDB enforces every FK on write, so a completed reset cannot leave one. */
+    private function assertNoForeignKeyViolations(): void
+    {
+        if (DB::connection()->getDriverName() === 'sqlite') {
+            $this->assertSame([], DB::select('PRAGMA foreign_key_check'));
+        }
     }
 }

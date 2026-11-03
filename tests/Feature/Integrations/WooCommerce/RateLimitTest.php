@@ -17,6 +17,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Http;
 use Tests\Support\WooCommerceTestCase;
+use Illuminate\Support\Arr;
 
 /**
  * F3 — WooCommerce synchronization against realistic rate limits. A scripted
@@ -228,7 +229,7 @@ class RateLimitTest extends WooCommerceTestCase
         $this->assertTrue(collect($this->requests)->every(fn ($r) => ! isset($r['query']['per_page']) || $r['query']['per_page'] === '100'));
         // Pacing: every request after the first waited the minimum interval.
         $this->assertContains(0.25, $this->wooClock->sleeps);
-        $this->assertSame(['total_pages' => 2, 'pages_read' => 2], $second->progress);
+        $this->assertSame(['pages_read' => 2, 'total_pages' => 2], Arr::sortRecursive($second->progress)); // MySQL JSON normalizes key order
         // Second run: 1 categories + 3 product requests (page 1, page 2 throttled
         // once, page 2). The TTC/HT setting was stored by run 1 and not re-read.
         $this->assertSame(4, $second->api_requests);

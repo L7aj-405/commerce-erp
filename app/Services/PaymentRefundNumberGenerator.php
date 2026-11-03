@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Organization;
 use App\Models\PaymentRefundSequence;
+use App\Support\LockedRow;
 use Illuminate\Support\Facades\DB;
 use LogicException;
 
@@ -15,12 +16,7 @@ class PaymentRefundNumberGenerator
             throw new LogicException('Payment refund numbers may only be allocated inside a transaction.');
         }
 
-        DB::table('payment_refund_sequences')->insertOrIgnore([
-            'organization_id' => $organization->getKey(),
-            'next_number' => 1,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
+        LockedRow::claim('payment_refund_sequences', ['organization_id' => $organization->getKey()], ['next_number' => 1, 'created_at' => now(), 'updated_at' => now()]);
 
         $sequence = PaymentRefundSequence::query()->whereKey($organization->getKey())->lockForUpdate()->firstOrFail();
         $number = $sequence->next_number;

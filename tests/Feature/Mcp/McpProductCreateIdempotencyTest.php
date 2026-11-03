@@ -13,6 +13,7 @@ use App\Services\Mcp\McpExecutionContext;
 use App\Services\Mcp\Products\ProductWriteTools;
 use App\Services\ProductPriceResolver;
 use Tests\Support\CatalogTestCase;
+use Illuminate\Support\Arr;
 
 /** MCP-W6.2: create_product / create_variant replay before uniqueness; canonical "at least one sale price" rule. */
 class McpProductCreateIdempotencyTest extends CatalogTestCase
@@ -68,7 +69,7 @@ class McpProductCreateIdempotencyTest extends CatalogTestCase
         $this->assertTrue($replay['ok'], 'A retry must not surface "variant.sku has already been taken": '.json_encode($replay));
         $this->assertFalse($created['data']['idempotent_replay']);
         $this->assertTrue($replay['data']['idempotent_replay']);
-        $this->assertSame($created['data']['target'], $replay['data']['target']);
+        $this->assertSame(Arr::sortRecursive($created['data']['target']), Arr::sortRecursive($replay['data']['target'])); // MySQL JSON normalizes key order
         $this->assertSame($created['data']['variant_ids'], $replay['data']['variant_ids']);
         $this->assertSame(1, Product::query()->where('organization_id', $organization->getKey())->count());
         $this->assertSame(1, ProductVariant::query()->where('organization_id', $organization->getKey())->where('sku', 'ZZ-MCP-001')->count());
@@ -120,7 +121,7 @@ class McpProductCreateIdempotencyTest extends CatalogTestCase
         $replay = $this->mcpCreateVariant($productId, $variant, 'v-1');
         $this->assertTrue($replay['ok'], json_encode($replay));
         $this->assertTrue($replay['data']['idempotent_replay']);
-        $this->assertSame($created['data']['target'], $replay['data']['target']);
+        $this->assertSame(Arr::sortRecursive($created['data']['target']), Arr::sortRecursive($replay['data']['target'])); // MySQL JSON normalizes key order
         $this->assertSame(1, ProductVariant::query()->where('sku', 'ZZ-MCP-001-XL')->count());
 
         $this->assertSame('MCP_IDEMPOTENCY_CONFLICT', $this->mcpCreateVariant($productId, [...$variant, 'label' => 'XXL'], 'v-1')['error']['code']);

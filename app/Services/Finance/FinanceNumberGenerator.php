@@ -3,6 +3,7 @@
 namespace App\Services\Finance;
 
 use App\Models\Organization;
+use App\Support\LockedRow;
 use LogicException;
 use Illuminate\Support\Facades\DB;
 
@@ -40,13 +41,7 @@ class FinanceNumberGenerator
             throw new LogicException('Finance numbers may only be allocated inside the owning transaction.');
         }
 
-        $connection->table($table)->insertOrIgnore([
-            'organization_id' => $organization->getKey(),
-            'year' => $year,
-            'next_number' => 1,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
+        LockedRow::claim($table, ['organization_id' => $organization->getKey(), 'year' => $year], ['next_number' => 1, 'created_at' => now(), 'updated_at' => now()]);
 
         $sequence = $connection->table($table)
             ->where('organization_id', $organization->getKey())

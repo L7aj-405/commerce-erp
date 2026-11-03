@@ -49,6 +49,7 @@ use App\Services\Fulfillment\ShipmentFollowUpService;
 use App\Services\Timeline\BusinessTimeline;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
@@ -139,7 +140,8 @@ class ShipmentLifecycleTest extends DocumentTestCase
         $this->assertSame([FulfillmentStatus::HandedToCarrier, $other->id, 'CTM-778', 'https://track.example.test/CTM-778', 3],
             [$updated->status, $updated->carrier_contact_id, $updated->tracking_number, $updated->tracking_url, $updated->package_count]);
         $event = AuditLog::query()->where('event', 'fulfillment.tracking_updated')->sole();
-        $this->assertSame(['carrier_contact_id' => $this->carrier->id, 'tracking_number' => 'AMX-1', 'tracking_url' => null, 'package_count' => 2], $event->old_values);
+        // Key order is not significant: MySQL's JSON type normalizes object key order.
+        $this->assertSame(Arr::sortRecursive(['carrier_contact_id' => $this->carrier->id, 'tracking_number' => 'AMX-1', 'tracking_url' => null, 'package_count' => 2]), Arr::sortRecursive($event->old_values));
         $this->assertSame('CTM Messagerie', $event->new_values['carrier_name']);
         $this->assertSame($frozen, $this->frozenState($invoice, $note), 'Tracking is logistics only.');
 

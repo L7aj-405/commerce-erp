@@ -36,6 +36,7 @@ use App\Models\User;
 use App\Models\Warehouse;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpKernel\Exception\HttpException;
@@ -331,7 +332,8 @@ class FulfillmentTest extends SalesTestCase
         $fulfillment = $this->hand(['items' => [$this->line->id => '3']]);
         app(UpdateFulfillmentShipmentDetailsAction::class)->execute($this->owner, $this->order, $fulfillment, ['tracking_number' => 'TRK-NEW', 'package_count' => 3]);
         $event = AuditLog::query()->where('event', 'fulfillment.tracking_updated')->sole();
-        $this->assertSame(['tracking_number' => 'TRK-NEW', 'package_count' => 3], array_intersect_key($event->new_values, ['tracking_number' => 1, 'package_count' => 1]));
+        // Key order is not significant: MySQL's JSON type normalizes object key order.
+        $this->assertSame(['package_count' => 3, 'tracking_number' => 'TRK-NEW'], Arr::sortRecursive(Arr::only($event->new_values, ['tracking_number', 'package_count'])));
 
         $this->actingAs($this->owner)->get("/sales/orders/{$this->order->id}")->assertOk()->assertInertia(fn ($page) => $page
             ->where('fulfillment.mode', 'simple')

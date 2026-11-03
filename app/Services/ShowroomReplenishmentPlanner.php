@@ -44,6 +44,8 @@ use LogicException;
  */
 class ShowroomReplenishmentPlanner
 {
+    public function __construct(private readonly TransferRequestNumberGenerator $numbers) {}
+
     /** Statuses whose lines still represent stock on its way (not yet in the destination's on_hand). */
     public const ACTIVE_STATUSES = ['requested', 'preparing', 'shipped'];
 
@@ -63,27 +65,10 @@ class ShowroomReplenishmentPlanner
             throw new LogicException('Transfer request planning must run inside a database transaction.');
         }
 
-        // Lock the existing row directly. INSERT IGNORE on an existing key
-        // takes a SHARED lock first; two sessions both upgrading that to
-        // exclusive deadlocked (seen on MySQL with parallel sweeps). Insert
-        // only when the row is genuinely missing (first planning ever).
-        $locked = DB::table('transfer_request_sequences')
-            ->where('organization_id', $organizationId)
-            ->lockForUpdate()
-            ->value('next_number');
-
-        if ($locked === null) {
-            DB::table('transfer_request_sequences')->insertOrIgnore([
-                'organization_id' => $organizationId,
-                'next_number' => 1,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
-            DB::table('transfer_request_sequences')
-                ->where('organization_id', $organizationId)
-                ->lockForUpdate()
-                ->value('next_number');
-        }
+        // One exclusive lock, also on an organization's first planning ever
+        // (see TransferRequestNumberGenerator::lockSequence for the deadlocks
+        // the previous SELECT FOR UPDATE + INSERT IGNORE shape produced).
+        $this->numbers->lockSequence($organizationId);
     }
 
     /**

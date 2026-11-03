@@ -6,6 +6,7 @@ use App\Models\InventoryBalance;
 use App\Models\Organization;
 use App\Models\ProductVariant;
 use App\Models\Warehouse;
+use App\Support\LockedRow;
 use Illuminate\Support\Facades\DB;
 use LogicException;
 
@@ -29,13 +30,17 @@ class InventoryBalanceLocker
             'product_variant_id' => $variant->getKey(),
         ];
 
-        DB::table('inventory_balances')->insertOrIgnore([
-            ...$identity,
-            'on_hand' => '0.0000',
-            'reserved' => '0.0000',
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
+        // Existing row (the usual case): lock it directly — an exclusive record
+        // lock, no gap lock. Missing row: create-and-lock exclusively in one
+        // step. INSERT IGNORE + FOR UPDATE deadlocked on MySQL (see LockedRow).
+        if (! InventoryBalance::query()->where($identity)->exists()) {
+            LockedRow::claim('inventory_balances', $identity, [
+                'on_hand' => '0.0000',
+                'reserved' => '0.0000',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
 
         return InventoryBalance::query()->where($identity)->lockForUpdate()->firstOrFail();
     }

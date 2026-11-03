@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Organization;
+use App\Support\LockedRow;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use LogicException;
@@ -23,13 +24,7 @@ class QuotationNumberGenerator
             throw new LogicException('Quotation numbers may only be allocated inside an existing issuance transaction.');
         }
 
-        DB::table('quotation_sequences')->insertOrIgnore([
-            'organization_id' => $organization->getKey(),
-            'year' => $year,
-            'next_number' => 1,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
+        LockedRow::claim('quotation_sequences', ['organization_id' => $organization->getKey(), 'year' => $year], ['next_number' => 1, 'created_at' => now(), 'updated_at' => now()]);
 
         $storedNextNumber = (int) DB::table('quotation_sequences')
             ->where('organization_id', $organization->getKey())
@@ -65,13 +60,7 @@ class QuotationNumberGenerator
     public function configureNextNumber(Organization $organization, int $year, int $nextNumber): void
     {
         DB::transaction(function () use ($organization, $year, $nextNumber) {
-            DB::table('quotation_sequences')->insertOrIgnore([
-                'organization_id' => $organization->getKey(),
-                'year' => $year,
-                'next_number' => 1,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
+            LockedRow::claim('quotation_sequences', ['organization_id' => $organization->getKey(), 'year' => $year], ['next_number' => 1, 'created_at' => now(), 'updated_at' => now()]);
 
             DB::table('quotation_sequences')
                 ->where('organization_id', $organization->getKey())

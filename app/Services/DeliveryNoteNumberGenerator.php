@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\DeliveryNoteSequence;
 use App\Models\Organization;
+use App\Support\LockedRow;
 use Illuminate\Support\Facades\DB;
 use LogicException;
 
@@ -14,10 +15,7 @@ class DeliveryNoteNumberGenerator
         if (DB::connection()->transactionLevel() < 1) {
             throw new LogicException('Delivery Note numbers may only be allocated inside an existing issuance transaction.');
         }
-        DB::table('delivery_note_sequences')->insertOrIgnore([
-            'organization_id' => $organization->getKey(), 'next_number' => 1,
-            'created_at' => now(), 'updated_at' => now(),
-        ]);
+        LockedRow::claim('delivery_note_sequences', ['organization_id' => $organization->getKey()], ['next_number' => 1, 'created_at' => now(), 'updated_at' => now()]);
         $sequence = DeliveryNoteSequence::query()->whereKey($organization->getKey())->lockForUpdate()->firstOrFail();
         $number = $sequence->next_number;
         $sequence->next_number = $number + 1;

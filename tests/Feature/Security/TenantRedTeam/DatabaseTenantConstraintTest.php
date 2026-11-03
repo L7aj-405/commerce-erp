@@ -110,11 +110,14 @@ class DatabaseTenantConstraintTest extends TenantRedTeamTestCase
             ->assertUnprocessable()
             ->assertJsonValidationErrors('variant.barcode');
 
-        $this->createProduct($this->organizationA, 'Repeated Reference A', 'REFERENCE-OK', [
+        // Since 2026_10_23_000001 `reference` is unique per organization
+        // (VariantReferenceUniqueness + DB index): shared across tenants
+        // (above), rejected by the database inside one tenant.
+        $this->assertDatabaseConstraintViolation(fn () => $this->createProduct($this->organizationA, 'Repeated Reference A', 'REFERENCE-OK', [
             'reference' => 'NON-UNIQUE-REFERENCE',
-        ]);
+        ]));
 
-        $this->assertSame(3, ProductVariant::query()->where('reference', 'NON-UNIQUE-REFERENCE')->count());
+        $this->assertSame(2, ProductVariant::query()->where('reference', 'NON-UNIQUE-REFERENCE')->count());
         $this->assertDatabaseMissing('products', ['name' => 'Duplicate SKU A']);
         $this->assertDatabaseMissing('products', ['name' => 'Duplicate Barcode A']);
     }
