@@ -16,7 +16,7 @@ final readonly class SelectiveResetSelection
 {
     /**
      * @param list<string> $categories
-     * @param array<string, list<int>> $records root table => ids
+     * @param array<string, list<int|string>> $records root table => ids (schema-typed)
      * @param array<string, array{search?:?string,status?:?string,warehouse_id?:?int}> $filters root table => filters
      */
     public function __construct(
@@ -51,12 +51,16 @@ final readonly class SelectiveResetSelection
             if (! isset($allowedRoots[$table])) {
                 throw ValidationException::withMessages(['records' => "Les enregistrements « {$table} » n’appartiennent à aucune catégorie choisie."]);
             }
-            $ids = array_values(array_unique(array_filter(array_map('intval', (array) $ids), fn (int $id) => $id > 0)));
+            // Schema-typed: integer keys as positive ints, any other key type
+            // (ULID / char) as the exact string — never coerced.
+            $ids = app(\App\Services\OrganizationDataReset\OrganizationDataResetForeignKeyMap::class)->integerKey($table)
+                ? array_values(array_unique(array_filter(array_map('intval', (array) $ids), fn (int $id) => $id > 0)))
+                : array_values(array_unique(array_filter(array_map('strval', (array) $ids), fn (string $id) => preg_match('/\A[0-9A-Za-z_-]{1,64}\z/', $id) === 1)));
             if (count($ids) > 5000) {
                 throw ValidationException::withMessages(['records' => 'Sélection trop large : utilisez « tout sélectionner (filtré) ».']);
             }
             if ($ids !== []) {
-                sort($ids);
+                sort($ids, is_int($ids[0]) ? SORT_NUMERIC : SORT_STRING);
                 $records[$table] = $ids;
             }
         }

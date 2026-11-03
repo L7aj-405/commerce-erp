@@ -27,6 +27,9 @@ class OrganizationDataResetForeignKeyMap
     /** @var array<string, list<array{table:string,column:string,parent:string,parent_column:string,on_delete:string,nullable:bool}>>|null */
     private ?array $outgoing = null;
 
+    /** @var array<string, bool>|null table => its `id` column is an integer */
+    private ?array $integerIds = null;
+
     /** @var array<string, list<array{table:string,column:string,parent:string,parent_column:string,on_delete:string,nullable:bool}>>|null */
     private ?array $incoming = null;
 
@@ -51,6 +54,41 @@ class OrganizationDataResetForeignKeyMap
         return $this->incoming[$parent] ?? [];
     }
 
+    /**
+     * Whether `$table.id` is an integer column. Identifiers keep their schema
+     * type end to end: integer keys are bound as integers, every other key
+     * (ULID `char(26)`, UUID…) as the exact string — never cast to int
+     * (`intval('01m64…')` is 1, which collapsed fulfillment ULIDs and made
+     * MySQL strict mode reject `char_column IN (1)` with error 1292).
+     */
+    public function integerKey(string $table): bool
+    {
+        $this->load();
+
+        return $this->integerIds[$table] ?? true;
+    }
+
+    /**
+     * Normalize ids read from `$table.id` (or values of a column referencing
+     * it) to their schema type, preserving the exact value.
+     *
+     * @param  iterable<mixed>  $ids
+     * @return list<int|string>
+     */
+    public function typedIds(string $table, iterable $ids): array
+    {
+        $integer = $this->integerKey($table);
+        $out = [];
+        foreach ($ids as $id) {
+            if ($id === null) {
+                continue;
+            }
+            $out[] = $integer ? (int) $id : (string) $id;
+        }
+
+        return $out;
+    }
+
     /** True when the edge lets the database itself drop / clear the child. */
     public static function databaseHandles(array $edge): bool
     {
@@ -67,11 +105,40 @@ class OrganizationDataResetForeignKeyMap
         $version = Schema::hasTable('migrations')
             ? DB::table('migrations')->count().':'.DB::table('migrations')->max('migration')
             : 'none';
-        $key = 'data-reset:fk-map:v1:'.$connection->getName().':'.$connection->getDatabaseName().':'.md5($version);
+        $key = 'data-reset:fk-map:v2:'.$connection->getName().':'.$connection->getDatabaseName().':'.md5($version);
 
-        return $this->outgoing = Cache::rememberForever($key, fn () => $connection->getDriverName() === 'mysql'
-            ? $this->fromInformationSchema()
-            : $this->fromSchemaBuilder());
+        $map = Cache::rememberForever($key, fn () => $connection->getDriverName() === 'mysql'
+            ? ['edges' => $this->fromInformationSchema(), 'integer_ids' => $this->integerIdsFromInformationSchema()]
+            : ['edges' => $this->fromSchemaBuilder(), 'integer_ids' => $this->integerIdsFromSchemaBuilder()]);
+        $this->integerIds = $map['integer_ids'];
+
+        return $this->outgoing = $map['edges'];
+    }
+
+    /** @return array<string,bool> */
+    private function integerIdsFromInformationSchema(): array
+    {
+        $out = [];
+        foreach (DB::select("SELECT TABLE_NAME AS t, DATA_TYPE AS type FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND COLUMN_NAME = 'id'") as $row) {
+            $out[$row->t] = in_array(strtolower($row->type), ['tinyint', 'smallint', 'mediumint', 'int', 'integer', 'bigint'], true);
+        }
+
+        return $out;
+    }
+
+    /** @return array<string,bool> */
+    private function integerIdsFromSchemaBuilder(): array
+    {
+        $out = [];
+        foreach (Schema::getTables() as $table) {
+            foreach (Schema::getColumns($table['name']) as $column) {
+                if ($column['name'] === 'id') {
+                    $out[$table['name']] = (bool) preg_match('/int/i', (string) ($column['type_name'] ?? $column['type'] ?? ''));
+                }
+            }
+        }
+
+        return $out;
     }
 
     /** One query for the whole MySQL schema. */

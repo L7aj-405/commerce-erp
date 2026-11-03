@@ -326,4 +326,94 @@ class SelectiveDataResetTest extends PlatformTestCase
         $this->actingAs($member)->getJson(route('settings.data-reset.records', ['table' => 'sales_orders']))->assertForbidden();
         $this->actingAs($member)->postJson(route('settings.data-reset.selective.preview'), ['selection' => ['categories' => ['sales_orders']]])->assertForbidden();
     }
+
+    // === 7. Mixed identifier types (ULID fulfillments ↔ bigint follow-ups) ===
+
+    /** A ULID fulfillment of `$orderId`; every current ULID starts with "01" (intval() === 1). */
+    private function fulfillment(int $organizationId, int $orderId, int $storeId): string
+    {
+        $id = strtolower((string) \Illuminate\Support\Str::ulid());
+        $this->assertSame(1, intval($id), 'precondition: the ULID collapses to 1 under intval()');
+        DB::table('fulfillments')->insert([
+            'id' => $id, 'organization_id' => $organizationId, 'sales_order_id' => $orderId, 'store_id' => $storeId,
+            'status' => 'preparing', 'workflow_mode' => 'simple', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        return $id;
+    }
+
+    private function followUp(int $organizationId, ?string $fulfillmentId, string $title): int
+    {
+        return (int) DB::table('follow_ups')->insertGetId([
+            'organization_id' => $organizationId, 'title' => $title, 'fulfillment_id' => $fulfillmentId,
+            'status' => 'open', 'created_at' => now(), 'updated_at' => now(),
+        ]);
+    }
+
+    public function test_ulid_fulfillments_keep_their_exact_ids_and_only_their_follow_up_links_are_cleared(): void
+    {
+        // Live failure RST-261103-ABL6QK: `UPDATE follow_ups SET fulfillment_id = NULL
+        // WHERE … AND fulfillment_id IN (1)` — the ULID had been cast to int.
+        $orders = SalesOrder::query()->where('organization_id', $this->org->id)->where('source', 'manual')
+            ->whereDoesntHave('transferRequests')->whereDoesntHave('procurements')->orderBy('id')->get();
+        $this->assertGreaterThanOrEqual(1, $orders->count());
+        $doomed = $orders->first();
+        $kept = SalesOrder::query()->where('organization_id', $this->org->id)->whereKeyNot($doomed->id)->orderBy('id')->firstOrFail();
+
+        $a = $this->fulfillment($this->org->id, $doomed->id, $doomed->store_id);
+        $b = $this->fulfillment($this->org->id, $doomed->id, $doomed->store_id);
+        $keptFulfillment = $this->fulfillment($this->org->id, $kept->id, $kept->store_id);
+        $linked = [
+            $this->followUp($this->org->id, $a, 'Relance A1'), $this->followUp($this->org->id, $a, 'Relance A2'),
+            $this->followUp($this->org->id, $a, 'Relance A3'), $this->followUp($this->org->id, $b, 'Relance B1'),
+        ];
+        $untouched = [
+            $this->followUp($this->org->id, $keptFulfillment, 'Relance commande conservée'),
+            $this->followUp($this->org->id, null, 'Relance libre'),
+        ];
+        // Another organization with its own ULID fulfillment + linked follow-up.
+        $otherOwner = User::factory()->create();
+        $other = $this->createOrganization($otherOwner, 'Autre organisation');
+        $otherStore = $this->createStore($other, $otherOwner);
+        $otherOrder = DB::table('sales_orders')->insertGetId(DB::table('sales_orders')->where('id', $kept->id)->get()->map(fn ($r) => array_merge((array) $r, [
+            'id' => null, 'organization_id' => $other->id, 'store_id' => $otherStore->id, 'customer_id' => null, 'order_number' => 'OTHER-1',
+            'client_operation_id' => null, 'current_revision_id' => null, 'salesperson_id' => null, 'confirmed_by_user_id' => null,
+            'created_by_user_id' => null, 'pos_warehouse_id' => null,
+        ]))->first());
+        $foreignFulfillment = $this->fulfillment($other->id, (int) $otherOrder, $otherStore->id);
+        $foreignFollowUp = $this->followUp($other->id, $foreignFulfillment, 'Relance autre organisation');
+        $before = DB::table('follow_ups')->whereIn('id', $untouched)->orderBy('id')->get()->map(fn ($r) => (array) $r)->all();
+
+        $selection = ['categories' => ['sales_orders'], 'records' => ['sales_orders' => [$doomed->id]]];
+        $plan = $this->plan($selection);
+
+        // Exact ULID strings, never 1; exactly the four linked follow-ups.
+        $expected = [$a, $b];
+        sort($expected, SORT_STRING);
+        $this->assertSame($expected, $plan->delete['fulfillments']);
+        $this->assertSame($linked, $plan->unlink['follow_ups.fulfillment_id']);
+        $this->assertTrue($plan->isExecutable(), json_encode($plan->blockers));
+
+        $result = $this->runReset($selection);
+
+        $this->assertSame(2, $result['deleted']['fulfillments']);
+        $this->assertSame(4, $result['unlinked']['follow_ups.fulfillment_id']);
+        $this->assertSame(0, DB::table('fulfillments')->whereIn('id', [$a, $b])->count());
+        $this->assertSame(4, DB::table('follow_ups')->whereIn('id', $linked)->whereNull('fulfillment_id')->count(), 'Follow-ups kept, link cleared.');
+        $this->assertSame($before, DB::table('follow_ups')->whereIn('id', $untouched)->orderBy('id')->get()->map(fn ($r) => (array) $r)->all());
+        $this->assertDatabaseHas('fulfillments', ['id' => $keptFulfillment]);
+        $this->assertDatabaseHas('fulfillments', ['id' => $foreignFulfillment, 'organization_id' => $other->id]);
+        $this->assertDatabaseHas('follow_ups', ['id' => $foreignFollowUp, 'fulfillment_id' => $foreignFulfillment]);
+    }
+
+    public function test_identifier_types_follow_the_schema(): void
+    {
+        $map = app(\App\Services\OrganizationDataReset\OrganizationDataResetForeignKeyMap::class);
+        $this->assertFalse($map->integerKey('fulfillments'));
+        $this->assertTrue($map->integerKey('follow_ups'));
+        $this->assertSame(['01m64ngpq2mc9yzap1hyt3jbzc'], $map->typedIds('fulfillments', ['01m64ngpq2mc9yzap1hyt3jbzc']));
+        $this->assertSame([7], $map->typedIds('follow_ups', ['7']));
+        $edge = collect($map->referencesTo('fulfillments'))->firstWhere('table', 'follow_ups');
+        $this->assertSame(['fulfillment_id', 'set null', true], [$edge['column'], $edge['on_delete'], $edge['nullable']]);
+    }
 }

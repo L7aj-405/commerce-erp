@@ -9,8 +9,8 @@ final readonly class SelectiveResetPlan
 {
     /**
      * @param array<string,mixed> $selection
-     * @param array<string, list<int>> $delete table => ids to delete
-     * @param array<string, list<int>> $unlink "table.column" => ids of retained rows whose link is cleared
+     * @param array<string, list<int|string>> $delete table => ids to delete
+     * @param array<string, list<int|string>> $unlink "table.column" => ids of retained rows whose link is cleared
      * @param list<int> $release active reservation ids released (balance.reserved decremented) then deleted
      * @param array<string, int> $selected root table => explicitly selected rows
      * @param list<array<string,mixed>> $blockers

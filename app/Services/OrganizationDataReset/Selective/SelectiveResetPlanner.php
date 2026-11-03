@@ -86,16 +86,19 @@ class SelectiveResetPlanner
             return false;
         };
 
-        $doomed = [];    // table => [id => true]
-        $unlink = [];    // "table.column" => [id => true]
-        $blocked = [];   // "child.column>parent" => [id => true]
+        // Identifier sets: keyed by the id's string form, VALUE = the id with
+        // its schema type (int for integer keys, exact string for ULID /
+        // char keys). Ids are always read back with array_values(), never
+        // array_keys() nor (int) casts — see ForeignKeyMap::typedIds().
+        $doomed = [];    // table => [key => id]
+        $unlink = [];    // "table.column" => [key => id]
+        $blocked = [];   // "child.column>parent" => [key => id]
         $queue = [];
         $add = function (string $table, array $ids) use (&$doomed, &$queue): void {
             $new = [];
-            foreach ($ids as $id) {
-                $id = (int) $id;
-                if (! isset($doomed[$table][$id])) {
-                    $doomed[$table][$id] = true;
+            foreach ($this->foreignKeys->typedIds($table, $ids) as $id) {
+                if (! isset($doomed[$table][(string) $id])) {
+                    $doomed[$table][(string) $id] = $id;
                     $new[] = $id;
                 }
             }
@@ -115,7 +118,7 @@ class SelectiveResetPlanner
                 if ($lockRoots) {
                     $query->lockForUpdate();
                 }
-                $ids = $query->pluck($root['table'].'.id')->map(fn ($id) => (int) $id)->all();
+                $ids = $this->foreignKeys->typedIds($root['table'], $query->pluck($root['table'].'.id'));
                 $selected[$root['table']] = count($ids);
                 $add($root['table'], $ids);
             }
@@ -144,9 +147,11 @@ class SelectiveResetPlanner
                     if ($scoped) {
                         $query->where('organization_id', $organizationId);
                     }
-                    foreach ($query->pluck('id') as $id) {
-                        if (! isset($doomed[$child][(int) $id])) {
-                            $rows[] = (int) $id;
+                    // `$chunk` holds the PARENT's typed ids: bound with the type of
+                    // the referenced key (a char(26) ULID stays a string).
+                    foreach ($this->foreignKeys->typedIds($child, $query->pluck('id')) as $id) {
+                        if (! isset($doomed[$child][(string) $id])) {
+                            $rows[] = $id;
                         }
                     }
                 }
@@ -160,11 +165,11 @@ class SelectiveResetPlanner
                     $add($child, $rows);
                 } elseif ($edge['nullable'] && ($edge['on_delete'] === 'set null' || isset(self::UNLINKABLE[$child.'.'.$edge['column']]))) {
                     foreach ($rows as $id) {
-                        $unlink[$child.'.'.$edge['column']][$id] = true;
+                        $unlink[$child.'.'.$edge['column']][(string) $id] = $id;
                     }
                 } else {
                     foreach ($rows as $id) {
-                        $blocked[$child.'.'.$edge['column'].'>'.$table][$id] = true;
+                        $blocked[$child.'.'.$edge['column'].'>'.$table][(string) $id] = $id;
                     }
                 }
             }
@@ -188,33 +193,29 @@ class SelectiveResetPlanner
         }
 
         $blockers = $this->blockers($organizationId, $blocked, $selectedCategories);
-        $release = array_map('intval', array_keys($doomed['inventory_reservations'] ?? []));
+        $release = array_values($doomed['inventory_reservations'] ?? []);
         $total = array_sum(array_map('count', $doomed));
         if ($total > self::MAX_ROWS) {
             $blockers[] = ['code' => 'too_large', 'count' => $total, 'limit' => self::MAX_ROWS];
         }
         $receiptConflicts = $release === [] ? 0 : DB::table('procurement_receipts')->where('organization_id', $organizationId)
             ->whereIn('inventory_reservation_id', $release)
-            ->whereNotIn('id', array_keys($doomed['procurement_receipts'] ?? []) ?: [0])->count();
+            ->whereNotIn('id', array_values($doomed['procurement_receipts'] ?? []) ?: [0])->count();
         if ($receiptConflicts > 0) {
             $blockers[] = ['code' => 'receipt_reservation', 'count' => $receiptConflicts, 'table' => 'procurement_receipts'];
         }
 
         $delete = [];
         foreach ($doomed as $table => $ids) {
-            $list = array_map('intval', array_keys($ids));
-            sort($list);
-            $delete[$table] = $list;
+            $delete[$table] = $this->sortedIds($table, $ids);
         }
         ksort($delete);
         $unlinkLists = [];
         foreach ($unlink as $key => $ids) {
-            $list = array_map('intval', array_keys($ids));
-            sort($list);
-            $unlinkLists[$key] = $list;
+            $unlinkLists[$key] = $this->sortedIds(explode('.', $key)[0], $ids);
         }
         ksort($unlinkLists);
-        sort($release);
+        sort($release, SORT_NUMERIC);
 
         $breakdown = $this->breakdown($selection, $delete, $unlinkLists);
         $samples = $this->samples($delete);
@@ -314,7 +315,7 @@ class SelectiveResetPlanner
      *
      * @param array<string, array<int,bool>> $doomed
      * @param array<string, bool> $done
-     * @return array<string, list<int>>
+     * @return array<string, list<int|string>>
      */
     private function logicalChildren(int $organizationId, array $doomed, array &$done): array
     {
@@ -326,7 +327,7 @@ class SelectiveResetPlanner
         if (! isset($done[$key]) && Schema::hasTable('document_stamp_appositions')) {
             $done[$key] = true;
             foreach (self::STAMPABLE as $table => $class) {
-                if (($ids = array_keys($doomed[$table] ?? [])) !== []) {
+                if (($ids = array_values($doomed[$table] ?? [])) !== []) {
                     foreach (array_chunk($ids, 500) as $chunk) {
                         $found = DB::table('document_stamp_appositions')->where('organization_id', $organizationId)
                             ->where('stampable_type', $class)->whereIn('stampable_id', $chunk)->pluck('id')->all();
@@ -340,7 +341,7 @@ class SelectiveResetPlanner
         if (! isset($done[$key]) && Schema::hasTable('attention_items')) {
             $done[$key] = true;
             foreach (self::ATTENTION_SUBJECTS as $table => $subject) {
-                if (($ids = array_keys($doomed[$table] ?? [])) !== []) {
+                if (($ids = array_values($doomed[$table] ?? [])) !== []) {
                     foreach (array_chunk($ids, 500) as $chunk) {
                         $found = DB::table('attention_items')->where('organization_id', $organizationId)
                             ->where('subject_type', $subject)->whereIn('subject_id', $chunk)->pluck('id')->all();
@@ -353,8 +354,8 @@ class SelectiveResetPlanner
         $key = 'reservations:'.$signature(['sales_order_inventory_allocations', 'sales_order_procurements']);
         if (! isset($done[$key])) {
             $done[$key] = true;
-            $allocations = array_keys($doomed['sales_order_inventory_allocations'] ?? []);
-            $procurements = array_keys($doomed['sales_order_procurements'] ?? []);
+            $allocations = array_values($doomed['sales_order_inventory_allocations'] ?? []);
+            $procurements = array_values($doomed['sales_order_procurements'] ?? []);
             $ids = [];
             foreach (array_chunk($allocations, 500) as $chunk) {
                 $ids = array_merge($ids, DB::table('sales_order_inventory_allocations')->where('organization_id', $organizationId)
@@ -376,7 +377,7 @@ class SelectiveResetPlanner
 
         $result = [];
         foreach ($out as $table => $ids) {
-            $new = array_values(array_filter(array_map('intval', $ids), fn ($id) => ! isset($doomed[$table][$id])));
+            $new = array_values(array_filter($this->foreignKeys->typedIds($table, $ids), fn ($id) => ! isset($doomed[$table][(string) $id])));
             if ($new !== []) {
                 $result[$table] = $new;
             }
@@ -401,7 +402,7 @@ class SelectiveResetPlanner
             $samples = [];
             if (isset($roots[$child])) {
                 $samples = DB::table($child)->where('organization_id', $organizationId)
-                    ->whereIn('id', array_slice(array_keys($ids), 0, 5))->orderBy('id')
+                    ->whereIn('id', array_slice(array_values($ids), 0, 5))->orderBy('id')
                     ->pluck($roots[$child]['number'])->map(fn ($v) => (string) $v)->all();
             }
             $inSelection = array_filter($categories, fn ($c) => isset($selectedCategories[$c])) !== [];
@@ -423,8 +424,8 @@ class SelectiveResetPlanner
     }
 
     /**
-     * @param array<string, list<int>> $delete
-     * @param array<string, list<int>> $unlink
+     * @param array<string, list<int|string>> $delete
+     * @param array<string, list<int|string>> $unlink
      * @return array<string, array{delete: array<string,int>, unlink: array<string,int>}>
      */
     private function breakdown(SelectiveResetSelection $selection, array $delete, array $unlink): array
@@ -450,7 +451,22 @@ class SelectiveResetPlanner
         return $out;
     }
 
-    /** @param array<string, list<int>> $delete @return array<string, list<string>> */
+    /**
+     * Deterministic, type-preserving list of a set's ids (numeric order for
+     * integer keys, byte order for string keys).
+     *
+     * @param array<string, int|string> $set
+     * @return list<int|string>
+     */
+    private function sortedIds(string $table, array $set): array
+    {
+        $list = array_values($set);
+        sort($list, $this->foreignKeys->integerKey($table) ? SORT_NUMERIC : SORT_STRING);
+
+        return $list;
+    }
+
+    /** @param array<string, list<int|string>> $delete @return array<string, list<string>> */
     private function samples(array $delete): array
     {
         $roots = $this->registry->roots();
@@ -489,8 +505,8 @@ class SelectiveResetPlanner
      * and the stock balances of released reservations): any concurrent change
      * makes the preview stale.
      *
-     * @param array<string, list<int>> $delete
-     * @param array<string, list<int>> $unlink
+     * @param array<string, list<int|string>> $delete
+     * @param array<string, list<int|string>> $unlink
      */
     private function stateHash(int $organizationId, array $delete, array $unlink): string
     {
