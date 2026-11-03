@@ -641,6 +641,9 @@ class OrganizationDataResetEngineTest extends DocumentTestCase
         $mock->shouldReceive('stateFingerprint')->andReturnUsing(
             fn (Organization $org, OrganizationDataResetOperation $operation) => $realQueries->stateFingerprint($org, $operation),
         );
+        $mock->shouldReceive('deletedIds')->andReturnUsing(
+            fn (Organization $org, OrganizationDataResetOperation $operation, string $table) => $realQueries->deletedIds($org, $operation, $table),
+        );
         $mock->shouldReceive('execute')->andReturnUsing(
             function (Organization $org, OrganizationDataResetOperation $operation) use ($realQueries, &$calls): int {
                 $calls++;
@@ -657,7 +660,10 @@ class OrganizationDataResetEngineTest extends DocumentTestCase
             $this->app->make(OrganizationDataResetExecutor::class)->execute($organization, $owner, $plan);
             $this->fail('The injected reset failure was not thrown.');
         } catch (OrganizationDataResetException $exception) {
-            $this->assertSame('Injected reset failure.', $exception->getMessage());
+            // Rolled back with a diagnostic reference; the real cause is chained (and logged).
+            $this->assertInstanceOf(\App\Services\OrganizationDataReset\OrganizationDataResetFailedException::class, $exception);
+            $this->assertMatchesRegularExpression('/^RST-\d{6}-[A-Z0-9]{6}$/', $exception->reference);
+            $this->assertSame('Injected reset failure.', $exception->getPrevious()?->getMessage());
         }
 
         $this->assertDatabaseHas('customers', ['id' => $customer->id, 'organization_id' => $organization->id]);

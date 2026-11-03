@@ -7,6 +7,8 @@ use App\Models\AuditLog;
 use App\Models\User;
 use App\Services\AuditLogger;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class OrganizationDataResetExecutor
 {
@@ -39,7 +41,8 @@ class OrganizationDataResetExecutor
         }
 
         $scope = OrganizationDataResetScope::from($approvedPlan->requestedScope);
-        $result = DB::transaction(function () use ($organization, $actor, $approvedPlan, $scope): OrganizationDataResetResult {
+
+        return self::diagnosed($organization, $scope->value, fn () => DB::transaction(function () use ($organization, $actor, $approvedPlan, $scope): OrganizationDataResetResult {
             $lockedOrganization = Organization::query()->whereKey($organization->getKey())->lockForUpdate()->firstOrFail();
             $currentPlan = $this->planner->plan($lockedOrganization, $scope);
             if ($currentPlan->fingerprint !== $approvedPlan->fingerprint) {
@@ -99,8 +102,40 @@ class OrganizationDataResetExecutor
                 $affected,
                 (int) $audit->getKey(),
             );
-        });
+        }));
+    }
 
-        return $result;
+    /**
+     * Runs a reset; any failure rolls the transaction back (DB::transaction)
+     * and is reported. Expected outcomes (stale, blocked, already executed,
+     * invariant refusals) keep their own exception; anything else — e.g. a
+     * database constraint — becomes a FailedException carrying a reference
+     * logged with the real cause.
+     *
+     * @template T
+     * @param  callable(): T  $run
+     * @return T
+     */
+    public static function diagnosed(Organization $organization, string $scope, callable $run): mixed
+    {
+        try {
+            return $run();
+        } catch (OrganizationDataResetException $exception) {
+            if ($exception::class === OrganizationDataResetException::class) {
+                $reference = self::reference();
+                Log::warning('organization.data_reset.refused', ['reference' => $reference, 'organization_id' => $organization->getKey(), 'scope' => $scope, 'reason' => $exception->getMessage()]);
+                throw new OrganizationDataResetFailedException($reference, $exception);
+            }
+            throw $exception;
+        } catch (\Throwable $exception) {
+            $reference = self::reference();
+            Log::error('organization.data_reset.failed', ['reference' => $reference, 'organization_id' => $organization->getKey(), 'scope' => $scope, 'exception' => $exception::class, 'reason' => $exception->getMessage()]);
+            throw new OrganizationDataResetFailedException($reference, $exception);
+        }
+    }
+
+    private static function reference(): string
+    {
+        return 'RST-'.now()->format('ymd').'-'.strtoupper(Str::random(6));
     }
 }

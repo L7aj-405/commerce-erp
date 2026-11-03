@@ -308,6 +308,16 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
     Route::post('/settings/data-reset/execute', [OrganizationDataResetController::class, 'execute'])
         ->middleware('throttle:data-reset-execute')
         ->name('settings.data-reset.execute');
+    // Selective cleanup (categories × records × date range); master data is never deletable here.
+    Route::get('/settings/data-reset/records', [OrganizationDataResetController::class, 'records'])
+        ->middleware('throttle:60,1')
+        ->name('settings.data-reset.records');
+    Route::post('/settings/data-reset/selective/preview', [OrganizationDataResetController::class, 'selectivePreview'])
+        ->middleware('throttle:20,1')
+        ->name('settings.data-reset.selective.preview');
+    Route::post('/settings/data-reset/selective/execute', [OrganizationDataResetController::class, 'selectiveExecute'])
+        ->middleware('throttle:data-reset-execute')
+        ->name('settings.data-reset.selective.execute');
     Route::get('/settings/ai-mcp', [McpConnectionController::class, 'index'])->name('settings.ai-mcp.index');
     Route::put('/settings/ai-mcp/policy', [McpConnectionController::class, 'policy'])->middleware('fresh-auth:2')->name('settings.ai-mcp.policy');
     Route::post('/settings/ai-mcp/connections', [McpConnectionController::class, 'store'])->middleware('fresh-auth:2')->name('settings.ai-mcp.store');

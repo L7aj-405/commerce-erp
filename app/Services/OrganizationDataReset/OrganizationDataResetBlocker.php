@@ -10,6 +10,8 @@ final readonly class OrganizationDataResetBlocker
         public string $message,
         public int $count,
         public array $requiredScopes = [],
+        /** Retained table whose rows cause the blocker (FK safety net only). */
+        public ?string $table = null,
     ) {}
 
     /** @return array{code:string,message:string,count:int,required_scopes:list<string>} */
@@ -20,6 +22,7 @@ final readonly class OrganizationDataResetBlocker
             'message' => $this->message,
             'count' => $this->count,
             'required_scopes' => $this->requiredScopes,
+            ...($this->table !== null ? ['table' => $this->table] : []),
         ];
     }
 }

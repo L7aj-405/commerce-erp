@@ -1,4 +1,5 @@
 import { useFreshAuth } from '@/components/auth/FreshAuthProvider';
+import SelectiveReset, { type ResetCategory } from '@/components/data-reset/SelectiveReset';
 import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
 import PageHeader from '@/components/ui/PageHeader';
@@ -48,7 +49,12 @@ type ResetPreview = {
     confirmation_phrase: string;
 };
 
-type Props = { organization: { id: number; name: string } };
+type Props = {
+    organization: { id: number; name: string };
+    categories: ResetCategory[];
+    warehouses: { id: number; name: string }[];
+    selectiveConfirmationPhrase: string;
+};
 
 const scopes: ResetScope[] = [
     'sales_and_documents',
@@ -102,8 +108,9 @@ const preservedKeys: Record<string, TranslationKey> = {
     audit_history: 'dataReset.preserved.audit_history',
 };
 
-export default function DataReset({ organization }: Props) {
+export default function DataReset({ organization, categories, warehouses, selectiveConfirmationPhrase }: Props) {
     const { t } = useI18n();
+    const [tab, setTab] = useState<'selective' | 'modules'>('selective');
     const { request } = useFreshAuth();
     const toast = useToast();
     const [selectedScope, setSelectedScope] = useState<ResetScope | null>(null);
@@ -219,6 +226,11 @@ export default function DataReset({ organization }: Props) {
                     toast.warning(t('dataReset.stale'));
                     return;
                 }
+                const reference = (payload as { reference?: string | null } | undefined)?.reference;
+                if (reference) {
+                    toast.error(t('dataReset.executeErrorRef').replace('{reference}', reference));
+                    return;
+                }
             }
             toast.error(t('dataReset.executeError'));
         } finally {
@@ -237,7 +249,30 @@ export default function DataReset({ organization }: Props) {
                 <p>{t('dataReset.warning')}</p>
             </div>
 
-            <div className="grid gap-4 lg:grid-cols-2">
+            <div className="mb-6 inline-flex rounded-field border border-line bg-raised p-1" role="tablist" aria-label={t('dataReset.title')}>
+                {(['selective', 'modules'] as const).map((key) => (
+                    <button
+                        key={key}
+                        type="button"
+                        role="tab"
+                        aria-selected={tab === key}
+                        onClick={() => setTab(key)}
+                        className={`rounded-field px-4 py-2 text-sm font-medium transition-soft ${tab === key ? 'bg-surface text-ink shadow-soft' : 'text-ink-muted hover:text-ink'}`}
+                    >
+                        {key === 'selective' ? t('dataReset.tab.selective') : t('dataReset.tab.modules')}
+                    </button>
+                ))}
+            </div>
+
+            {tab === 'selective' && (
+                <SelectiveReset organization={organization} categories={categories} warehouses={warehouses} confirmationPhrase={selectiveConfirmationPhrase} />
+            )}
+
+            {tab === 'modules' && (
+                <p className="mb-4 rounded-card border border-danger/25 bg-danger-soft px-4 py-3 text-sm leading-6 text-danger">{t('dataReset.modulesWarning')}</p>
+            )}
+
+            <div className={`grid gap-4 lg:grid-cols-2 ${tab === 'modules' ? '' : 'hidden'}`}>
                 {scopes.map((scope) => {
                     const full = scope === 'full_organization';
                     const keys = contentKeys[scope];

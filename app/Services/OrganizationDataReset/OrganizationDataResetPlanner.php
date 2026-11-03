@@ -15,6 +15,7 @@ class OrganizationDataResetPlanner
         private readonly OrganizationDataResetOperationQuery $queries,
         private readonly OrganizationDataResetSequenceGuard $sequenceGuard,
         private readonly OrganizationDataResetLogicalReferenceRegistry $logicalReferences,
+        private readonly OrganizationDataResetForeignKeyMap $foreignKeys,
     ) {}
 
     public function plan(Organization $organization, OrganizationDataResetScope $scope): OrganizationDataResetPlan
@@ -29,10 +30,15 @@ class OrganizationDataResetPlanner
             $states[$operation->key] = $this->queries->stateFingerprint($organization, $operation);
         }
 
-        $blockers = array_map(
-            fn (OrganizationDataResetBlocker $blocker) => $blocker->toArray(),
-            $this->blockers($organization, $scope),
-        );
+        $explicit = $this->blockers($organization, $scope);
+        // Safety net derived from the real foreign keys: whatever the business
+        // rules above did not anticipate, a retained row that still points at
+        // a row this plan deletes is reported here — never discovered by the
+        // database half-way through the execution.
+        if ($explicit === []) {
+            $explicit = $this->retainedReferenceBlockers($organization, $operations);
+        }
+        $blockers = array_map(fn (OrganizationDataResetBlocker $blocker) => $blocker->toArray(), $explicit);
         $serializedOperations = array_map(fn (OrganizationDataResetOperation $operation) => [
             'key' => $operation->key,
             'scope' => $operation->scope->value,
@@ -167,6 +173,63 @@ class OrganizationDataResetPlanner
                 ->count();
             if ($count > 0) {
                 $blockers[] = new OrganizationDataResetBlocker('access.owner_custom_role', 'The primary Owner is assigned to a custom role that the reset would remove.', $count);
+            }
+        }
+
+        return $blockers;
+    }
+
+    /**
+     * @param list<OrganizationDataResetOperation> $operations
+     * @return list<OrganizationDataResetBlocker>
+     */
+    private function retainedReferenceBlockers(Organization $organization, array $operations): array
+    {
+        $organizationId = (int) $organization->getKey();
+        $cleared = [];
+        $deletedBy = []; // table => list<operation>
+        foreach ($operations as $operation) {
+            if ($operation->action === OrganizationDataResetOperation::SET_NULL) {
+                $cleared[$operation->table.'.'.$operation->column] = true;
+            }
+            foreach (OrganizationDataResetDependencyGraph::tablesDeletedBy($operation) as $table) {
+                $deletedBy[$table][] = $operation;
+            }
+        }
+
+        $blockers = [];
+        foreach ($deletedBy as $table => $parentOperations) {
+            foreach ($this->foreignKeys->referencesTo($table) as $edge) {
+                $child = $edge['table'];
+                if (OrganizationDataResetForeignKeyMap::databaseHandles($edge) || isset($cleared[$child.'.'.$edge['column']])
+                    || ! Schema::hasColumn($child, 'organization_id')) {
+                    continue;
+                }
+                foreach ($parentOperations as $parentOperation) {
+                    $parentIds = $this->queries->deletedIds($organization, $parentOperation, $table);
+                    if ($parentIds === null) {
+                        continue;
+                    }
+                    $retained = DB::table($child)->where('organization_id', $organizationId)
+                        ->whereNotNull($edge['column'])
+                        ->whereIn($edge['column'], $parentIds);
+                    foreach ($deletedBy[$child] ?? [] as $childOperation) {
+                        $childIds = $this->queries->deletedIds($organization, $childOperation, $child);
+                        if ($childIds !== null) {
+                            $retained->whereNotIn($child.'.id', $childIds);
+                        }
+                    }
+                    $count = $retained->count();
+                    if ($count > 0) {
+                        $blockers[] = new OrganizationDataResetBlocker(
+                            'retained_reference',
+                            "{$count} retained {$child} row(s) still reference {$table} rows this reset deletes ({$child}.{$edge['column']}).",
+                            $count,
+                            [],
+                            $child,
+                        );
+                    }
+                }
             }
         }
 

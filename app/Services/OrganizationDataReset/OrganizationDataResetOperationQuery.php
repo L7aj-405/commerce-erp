@@ -107,6 +107,29 @@ class OrganizationDataResetOperationQuery
         return hash('sha256', implode('|', $rowHashes));
     }
 
+    /**
+     * `select id` of the rows of `$table` this operation removes — the same
+     * selection {@see execute()} deletes. Null when the table has no `id`.
+     */
+    public function deletedIds(Organization $organization, OrganizationDataResetOperation $operation, string $table): ?Builder
+    {
+        if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'id')) {
+            return null;
+        }
+        $organizationId = (int) $organization->getKey();
+
+        return match ($operation->action) {
+            OrganizationDataResetOperation::DELETE_SALES_TRANSFER_GRAPH => $table === 'transfer_requests'
+                ? $this->salesTransferRequests($organizationId)->select('id')
+                : DB::table('stock_transfers')->select('id')->where('organization_id', $organizationId)
+                    ->whereIn('id', $this->salesStockTransferIds($organizationId)),
+            OrganizationDataResetOperation::DELETE_SALES_RESERVATION_GRAPH => $table === 'sales_order_inventory_allocations'
+                ? DB::table('sales_order_inventory_allocations')->select('id')->where('organization_id', $organizationId)
+                : $this->salesReservations($organizationId)->select('id'),
+            default => $this->query($organization, $operation)->select($operation->table.'.id'),
+        };
+    }
+
     private function query(Organization $organization, OrganizationDataResetOperation $operation): Builder
     {
         $organizationId = (int) $organization->getKey();

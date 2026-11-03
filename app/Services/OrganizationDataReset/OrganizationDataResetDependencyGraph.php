@@ -4,9 +4,14 @@ namespace App\Services\OrganizationDataReset;
 
 class OrganizationDataResetDependencyGraph
 {
+    public function __construct(private readonly OrganizationDataResetForeignKeyMap $foreignKeys) {}
+
     /**
-     * A deterministic child-before-parent order. It is intentionally explicit:
-     * database cascades are not the reset algorithm.
+     * Preferred (tie-break) order. The binding order is derived from the REAL
+     * foreign keys ({@see order()}): this list alone once deleted
+     * quotation_supplier_availability_requests before the procurements that
+     * reference it (proc_src_qsar_fk) and the reset failed at execution while
+     * the preview reported no blocker.
      *
      * @var list<string>
      */
@@ -38,22 +43,102 @@ class OrganizationDataResetDependencyGraph
         'users', 'store_memberships', 'user_invitations', 'organization_memberships', 'role_permission', 'roles',
     ];
 
-    /** @param list<OrganizationDataResetOperation> $operations @return list<OrganizationDataResetOperation> */
+    /**
+     * Unlinking updates first, then every other operation in an order where a
+     * table is always emptied before any table it references (child before
+     * parent), from the database's own foreign keys. Ties keep the preferred
+     * order above, so the result is deterministic.
+     *
+     * @param list<OrganizationDataResetOperation> $operations
+     * @return list<OrganizationDataResetOperation>
+     */
     public function order(array $operations): array
     {
         $rank = array_flip(self::ORDER);
-        usort($operations, function (OrganizationDataResetOperation $left, OrganizationDataResetOperation $right) use ($rank): int {
-            $leftIsPreUpdate = $left->action === OrganizationDataResetOperation::SET_NULL;
-            $rightIsPreUpdate = $right->action === OrganizationDataResetOperation::SET_NULL;
-            if ($leftIsPreUpdate !== $rightIsPreUpdate) {
-                return $leftIsPreUpdate ? -1 : 1;
-            }
-
+        $preferred = function (OrganizationDataResetOperation $left, OrganizationDataResetOperation $right) use ($rank): int {
             $tableOrder = ($rank[$left->table] ?? PHP_INT_MAX) <=> ($rank[$right->table] ?? PHP_INT_MAX);
 
             return $tableOrder !== 0 ? $tableOrder : $left->key <=> $right->key;
-        });
+        };
 
-        return $operations;
+        $updates = array_values(array_filter($operations, fn ($op) => $op->action === OrganizationDataResetOperation::SET_NULL));
+        $others = array_values(array_filter($operations, fn ($op) => $op->action !== OrganizationDataResetOperation::SET_NULL));
+        usort($updates, $preferred);
+        usort($others, $preferred);
+        // Links the plan clears before deleting anything never constrain the order.
+        $cleared = array_fill_keys(array_map(fn ($op) => $op->table.'.'.$op->column, $updates), true);
+
+        // must[i] = indexes of operations that have to run before operation i.
+        $must = array_fill(0, count($others), []);
+        foreach ($others as $i => $parentOp) {
+            foreach ($others as $j => $childOp) {
+                if ($i === $j) {
+                    continue;
+                }
+                if ($this->references(self::tablesDeletedBy($childOp), self::tablesDeletedBy($parentOp), $cleared)) {
+                    $must[$i][$j] = true;
+                }
+            }
+        }
+
+        $ordered = [];
+        $done = [];
+        while (count($ordered) < count($others)) {
+            $progress = false;
+            foreach ($others as $i => $op) {
+                if (isset($done[$i]) || array_diff_key($must[$i], $done) !== []) {
+                    continue;
+                }
+                $ordered[] = $op;
+                $done[$i] = true;
+                $progress = true;
+                break; // restart from the preferred order each time
+            }
+            if (! $progress) {
+                throw new OrganizationDataResetException('The reset operations form a foreign-key cycle and cannot be ordered safely.');
+            }
+        }
+
+        return array_merge($updates, $ordered);
+    }
+
+    /** Tables whose rows an operation removes (graph operations touch two). @return list<string> */
+    public static function tablesDeletedBy(OrganizationDataResetOperation $operation): array
+    {
+        return match ($operation->action) {
+            OrganizationDataResetOperation::SET_NULL,
+            OrganizationDataResetOperation::CLEAR_NON_OWNER_ACTIVE_CONTEXT,
+            OrganizationDataResetOperation::UNASSIGN_NON_OWNER_FOLLOW_UPS,
+            OrganizationDataResetOperation::UNASSIGN_NON_OWNER_RECURRING_RULES,
+            OrganizationDataResetOperation::UNASSIGN_NON_OWNER_ATTENTION => [],
+            OrganizationDataResetOperation::DELETE_SALES_TRANSFER_GRAPH => ['transfer_requests', 'stock_transfers'],
+            OrganizationDataResetOperation::DELETE_SALES_RESERVATION_GRAPH => ['sales_order_inventory_allocations', 'inventory_reservations'],
+            default => [$operation->table],
+        };
+    }
+
+    /**
+     * Does any of `$children` hold a non-self foreign key to any of `$parents`
+     * that would refuse (RESTRICT / NO ACTION) or cascade if the parent went
+     * first? ON DELETE SET NULL edges and links cleared beforehand do not.
+     *
+     * @param list<string> $children
+     * @param list<string> $parents
+     * @param array<string,bool> $cleared
+     */
+    private function references(array $children, array $parents, array $cleared = []): bool
+    {
+        foreach ($children as $child) {
+            foreach ($this->foreignKeys->referencesFrom($child) as $edge) {
+                if ($edge['on_delete'] === 'set null' || isset($cleared[$child.'.'.$edge['column']])) {
+                    continue;
+                }
+                if ($edge['parent'] !== $child && in_array($edge['parent'], $parents, true)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 }
