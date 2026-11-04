@@ -28,17 +28,49 @@ class StockTransferController extends Controller
 
         $transfers = StockTransfer::query()
             ->where('organization_id', $organization->getKey())
-            ->with(['sourceWarehouse:id,name,code', 'destinationWarehouse:id,name,code', 'performedBy:id,name'])
-            ->when($filters['search'] ?? null, function ($query, string $search) {
-                $query->where(function ($query) use ($search) {
+            ->with([
+                'sourceWarehouse:id,name,code', 'destinationWarehouse:id,name,code', 'performedBy:id,name',
+                'lines:id,stock_transfer_id,product_variant_id,quantity', 'lines.productVariant:id,product_id,label', 'lines.productVariant.product:id,name',
+                // Origin: the request(s) this transfer completed, and their customer order.
+                'transferRequests' => fn ($query) => $query->where('organization_id', $organization->getKey())
+                    ->select(['id', 'stock_transfer_id', 'request_number', 'sales_order_id']),
+                'transferRequests.salesOrder:id,order_number',
+            ])
+            ->when($filters['search'] ?? null, function ($query, string $search) use ($organization) {
+                // Grouped: the OR alternatives never escape the organization filter.
+                $query->where(function ($query) use ($search, $organization) {
                     $query->where('transfer_number', 'like', "%{$search}%")
                         ->orWhereHas('sourceWarehouse', fn ($warehouse) => $warehouse->where('name', 'like', "%{$search}%"))
-                        ->orWhereHas('destinationWarehouse', fn ($warehouse) => $warehouse->where('name', 'like', "%{$search}%"));
+                        ->orWhereHas('destinationWarehouse', fn ($warehouse) => $warehouse->where('name', 'like', "%{$search}%"))
+                        ->orWhereHas('transferRequests', fn ($request) => $request->where('organization_id', $organization->getKey())
+                            ->where(fn ($r) => $r->where('request_number', 'like', "%{$search}%")
+                                ->orWhereHas('salesOrder', fn ($order) => $order->where('order_number', 'like', "%{$search}%"))));
                 });
             })
             ->latest('transferred_at')
+            ->latest('id')
             ->paginate(15)
-            ->withQueryString();
+            ->withQueryString()
+            // Every completed transfer, whatever its origin (direct, transfer
+            // request, customer order, replenishment).
+            ->through(fn (StockTransfer $transfer) => [
+                ...$transfer->only(['id', 'transfer_number', 'status', 'reason', 'product_count', 'unit_count']),
+                'transferred_at' => $transfer->transferred_at?->toIso8601String(),
+                'source_warehouse' => $transfer->sourceWarehouse?->only(['id', 'name', 'code']),
+                'destination_warehouse' => $transfer->destinationWarehouse?->only(['id', 'name', 'code']),
+                'performed_by' => $transfer->performedBy?->only(['id', 'name']),
+                'lines' => $transfer->lines->map(fn ($line) => [
+                    'product_name' => $line->productVariant?->product?->name,
+                    'variant_label' => $line->productVariant?->label,
+                    'quantity' => $line->quantity,
+                ])->values()->all(),
+                'transfer_requests' => $transfer->transferRequests->map(fn ($request) => [
+                    'id' => $request->id,
+                    'request_number' => $request->request_number,
+                    'sales_order_id' => $request->sales_order_id,
+                    'sales_order_number' => $request->salesOrder?->order_number,
+                ])->values()->all(),
+            ]);
 
         return Inertia::render('Inventory/Transfers/Index', [
             'transfers' => $transfers,

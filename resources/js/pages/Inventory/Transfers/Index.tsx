@@ -20,7 +20,37 @@ type Transfer = {
     source_warehouse: { name: string; code: string };
     destination_warehouse: { name: string; code: string };
     performed_by: { name: string } | null;
+    lines: { product_name: string | null; variant_label: string | null; quantity: string }[];
+    /** Requests this transfer completed (empty for a direct transfer). */
+    transfer_requests: { id: number; request_number: string; sales_order_id: number | null; sales_order_number: string | null }[];
 };
+
+function Origin({ transfer }: { transfer: Transfer }) {
+    const { t } = useI18n();
+    if (transfer.transfer_requests.length === 0) {
+        return <span className="text-xs text-ink-muted">{t('inventory.transfers.direct')}</span>;
+    }
+    return (
+        <span className="flex flex-col gap-0.5">
+            {transfer.transfer_requests.map((request) => (
+                <span key={request.id} className="flex flex-wrap items-center gap-x-1.5 text-xs">
+                    <Link href={`/inventory/transfer-requests/${request.id}`} className="font-medium text-ink hover:underline"><bdi>{request.request_number}</bdi></Link>
+                    {request.sales_order_id && request.sales_order_number && (
+                        <Link href={`/sales/orders/${request.sales_order_id}`} className="text-ink-muted hover:underline">· <bdi>{request.sales_order_number}</bdi></Link>
+                    )}
+                </span>
+            ))}
+        </span>
+    );
+}
+
+function ProductsSummary({ transfer }: { transfer: Transfer }) {
+    return (
+        <span className="block max-w-[18rem] truncate text-xs text-ink-faint">
+            {transfer.lines.map((line) => `${line.product_name ?? line.variant_label ?? '—'} × ${formatQuantity(line.quantity)}`).join(' · ')}
+        </span>
+    );
+}
 type LinkData = { url: string | null; label: string; active: boolean };
 type Props = {
     transfers: { data: Transfer[]; links: LinkData[] };
@@ -79,11 +109,12 @@ export default function TransferIndex({ transfers, filters, can }: Props) {
                             <span className="rounded-full bg-raised px-2.5 py-1 text-xs font-medium text-ink-muted">{formatInteger(transfers.data.length)} {t('inventory.transfers.shown')}</span>
                         </div>
                         <div className="overflow-x-auto">
-                        <table className="erp-table w-full min-w-[820px] text-start text-sm">
+                        <table className="erp-table w-full min-w-[960px] text-start text-sm">
                             <thead className="bg-raised text-[11px] uppercase tracking-wide text-ink-faint">
                                 <tr>
                                     <th className="px-4 py-3">{t('common.reference')}</th><th className="px-4 py-3">{t('common.date')}</th>
                                     <th className="px-4 py-3">{t('inventory.transfers.route')}</th>
+                                    <th className="px-4 py-3">{t('inventory.transfers.origin')}</th>
                                     <th className="px-4 py-3 text-end">{t('inventory.transfers.products')}</th>
                                     <th className="px-4 py-3 text-end">{t('inventory.transfers.units')}</th>
                                     <th className="px-4 py-3">{t('inventory.transfers.performedBy')}</th><th className="px-4 py-3">{t('common.status')}</th>
@@ -98,8 +129,9 @@ export default function TransferIndex({ transfers, filters, can }: Props) {
                                             <div className="flex items-center gap-2 font-medium text-ink">
                                                 <span>{transfer.source_warehouse.name}</span><IconArrow rtl={direction === 'rtl'} /><span>{transfer.destination_warehouse.name}</span>
                                             </div>
-                                            <p className="mt-0.5 text-xs text-ink-faint">{transfer.source_warehouse.code} → {transfer.destination_warehouse.code}</p>
+                                            <ProductsSummary transfer={transfer} />
                                         </td>
+                                        <td className="px-4 py-3"><Origin transfer={transfer} /></td>
                                         <td className="px-4 py-3 text-end tabular-nums text-ink-muted">{formatInteger(transfer.product_count)}</td>
                                         <td className="px-4 py-3 text-end font-semibold tabular-nums text-ink">{formatQuantity(transfer.unit_count)}</td>
                                         <td className="px-4 py-3 text-ink-muted">{transfer.performed_by?.name ?? t('inventory.system')}</td>
@@ -123,6 +155,7 @@ export default function TransferIndex({ transfers, filters, can }: Props) {
                                         <p className="truncate text-[13px] text-ink-muted">
                                             {transfer.source_warehouse.name} → {transfer.destination_warehouse.name}
                                         </p>
+                                        <ProductsSummary transfer={transfer} />
                                     </div>
                                     <StatusBadge status="completed">{t('inventory.transfers.completed')}</StatusBadge>
                                 </div>
@@ -142,6 +175,10 @@ export default function TransferIndex({ transfers, filters, can }: Props) {
                                     <div className="min-w-0">
                                         <dt className="text-ink-faint">{t('inventory.transfers.units')}</dt>
                                         <dd className="tabular-nums">{formatQuantity(transfer.unit_count)}</dd>
+                                    </div>
+                                    <div className="col-span-2 min-w-0">
+                                        <dt className="text-ink-faint">{t('inventory.transfers.origin')}</dt>
+                                        <dd><Origin transfer={transfer} /></dd>
                                     </div>
                                 </dl>
                                 <Link

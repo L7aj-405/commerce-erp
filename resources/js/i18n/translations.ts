@@ -965,7 +965,7 @@ export const fr = {
     "dataReset.category.supplier_procurements": "Approvisionnements & réceptions",
     "dataReset.categoryHelp.supplier_procurements": "Approvisionnements fournisseur et réceptions. Le stock reçu reste en stock.",
     "dataReset.category.transfers": "Transferts internes",
-    "dataReset.categoryHelp.transfers": "Demandes de transfert et transferts de stock. Les quantités en stock ne changent pas.",
+    "dataReset.categoryHelp.transfers": "Demandes de transfert uniquement. Les transferts effectués (TRF) restent dans l’historique de stock.",
     "dataReset.category.product_imports": "Historique des imports",
     "dataReset.categoryHelp.product_imports": "Imports de produits et de coûts (le catalogue reste).",
     "dataReset.category.integration_sync": "Historique de synchronisation",
@@ -1455,6 +1455,8 @@ export const fr = {
     "inventory.transfers.search": "Rechercher un transfert",
     "inventory.transfers.searchPlaceholder":
         "Référence, emplacement source ou destination",
+    "inventory.transfers.origin": "Origine",
+    "inventory.transfers.direct": "Transfert direct",
     "inventory.transfers.empty": "Aucun transfert enregistré",
     "inventory.transfers.emptyHelp":
         "Les transferts apparaîtront ici dès que vous déplacerez du stock entre vos emplacements.",
@@ -5835,7 +5837,7 @@ export const ar: Record<TranslationKey, string> = {
     "dataReset.category.supplier_procurements": "التوريدات والاستلامات",
     "dataReset.categoryHelp.supplier_procurements": "توريدات الموردين واستلاماتها. يبقى المخزون المستلم.",
     "dataReset.category.transfers": "التحويلات الداخلية",
-    "dataReset.categoryHelp.transfers": "طلبات التحويل وتحويلات المخزون. لا تتغير كميات المخزون.",
+    "dataReset.categoryHelp.transfers": "طلبات التحويل فقط. تبقى التحويلات المنجزة (TRF) في سجل المخزون.",
     "dataReset.category.product_imports": "سجل الاستيرادات",
     "dataReset.categoryHelp.product_imports": "استيرادات المنتجات والتكاليف (يبقى الكتالوج).",
     "dataReset.category.integration_sync": "سجل المزامنة",
@@ -6300,6 +6302,8 @@ export const ar: Record<TranslationKey, string> = {
     "inventory.transfers.new": "تحويل جديد",
     "inventory.transfers.search": "البحث عن تحويل",
     "inventory.transfers.searchPlaceholder": "المرجع أو موقع المصدر أو الوجهة",
+    "inventory.transfers.origin": "المصدر",
+    "inventory.transfers.direct": "تحويل مباشر",
     "inventory.transfers.empty": "لا توجد تحويلات مسجلة",
     "inventory.transfers.emptyHelp":
         "ستظهر التحويلات هنا عند نقل المخزون بين المواقع.",

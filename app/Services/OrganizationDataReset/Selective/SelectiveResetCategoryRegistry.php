@@ -79,13 +79,16 @@ class SelectiveResetCategoryRegistry
                 'roots' => [$this->root('sales_order_procurements', 'procurement_number', 'COALESCE(ordered_at, created_at)', 'status', ['suppliers', 'supplier_id', 'name'], ['receiving_warehouse_id'])],
                 'owns' => ['procurement_receipts'],
             ],
+            // Transfer REQUESTS only. A completed physical transfer (TRF) is stock
+            // history together with its movements: deleting the record while the
+            // ledger movements stay (they are never reset here) made completed
+            // transfers vanish from "Transferts effectués" (TRF-000004).
             'transfers' => [
                 'module' => 'logistics',
                 'roots' => [
                     $this->root('transfer_requests', 'request_number', 'requested_at', 'status', null, ['source_warehouse_id', 'destination_warehouse_id']),
-                    $this->root('stock_transfers', 'transfer_number', 'transferred_at', 'status', null, ['source_warehouse_id', 'destination_warehouse_id']),
                 ],
-                'owns' => ['transfer_request_lines', 'stock_transfer_lines'],
+                'owns' => ['transfer_request_lines'],
             ],
             'product_imports' => [
                 'module' => 'history',
@@ -127,7 +130,7 @@ class SelectiveResetCategoryRegistry
             'stores', 'warehouses', 'customers', 'suppliers', 'organization_contacts',
             'products', 'product_variants', 'product_suppliers', 'product_variant_suppliers', 'categories', 'brands', 'non_stock_items',
             'financial_accounts', 'tax_rates', 'woocommerce_integrations', 'follow_up_recurring_rules', 'follow_up_templates',
-            'inventory_balances', 'inventory_movements', 'invoice_families',
+            'inventory_balances', 'inventory_movements', 'stock_transfers', 'stock_transfer_lines', 'invoice_families',
         ];
     }
 

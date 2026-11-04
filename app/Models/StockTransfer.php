@@ -36,6 +36,12 @@ class StockTransfer extends Model
         return $this->belongsTo(Warehouse::class, 'destination_warehouse_id');
     }
 
+    /** Requests completed by this transfer (none for a direct transfer). */
+    public function transferRequests(): HasMany
+    {
+        return $this->hasMany(TransferRequest::class);
+    }
+
     public function performedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'performed_by_user_id');
