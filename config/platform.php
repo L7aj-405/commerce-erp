@@ -4,6 +4,9 @@ return [
     'currency_code' => 'MAD',
 
     'permissions' => [
+        'sandbox.access' => 'Access Test Mode',
+        'sandbox.switch' => 'Switch Test Mode',
+        'sandbox.manage' => 'Manage sandbox configuration',
         'organizations.view' => 'View organizations',
         'organizations.update' => 'Update organizations',
         'organizations.delete' => 'Delete organizations',
@@ -165,6 +168,9 @@ return [
         'admin' => [
             'name' => 'Admin',
             'permissions' => [
+                'sandbox.access',
+                'sandbox.switch',
+                'sandbox.manage',
                 'organizations.view',
                 'organizations.update',
                 'settings.update',

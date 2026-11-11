@@ -36,6 +36,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->trustProxies(at: TrustedProxyRanges::resolve());
         $middleware->web(append: [
             ResolveTenantContext::class,
+            App\Http\Middleware\ResolveSandboxContext::class,
             HandleFreshAuthTransport::class,
             HandleInertiaRequests::class,
             SecurityHeaders::class,
