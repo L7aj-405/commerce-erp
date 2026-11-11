@@ -492,6 +492,7 @@ export default function ApplicationShell({ children, wide = false, flush = false
 
             <div className={`${collapsed ? 'lg:ps-16' : 'lg:ps-72'} ${flush ? 'flex h-dvh flex-col' : ''}`}>
                 <header className={`z-10 border-b border-line bg-canvas/85 px-3 py-2.5 backdrop-blur sm:px-6 ${flush ? 'shrink-0' : 'sticky top-0'}`}>
+                    {hasPermission('sandbox.access') && <Link href="/test-mode" className="text-sm underline">Mode test</Link>}
                     <div className={`mx-auto flex items-center justify-between gap-2 sm:gap-4 ${wide ? 'max-w-[1700px]' : 'max-w-7xl'}`}>
                         {/* Mobile menu trigger */}
                         <button
