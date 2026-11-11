@@ -191,7 +191,7 @@ class FinanceCaEncaisseService
             return [];
         }
 
-        return DB::table('invoices')
+        return DB::table('invoices')->whereNull('invoices.sandbox_id')
             ->where('organization_id', $organization->getKey())
             ->where('status', InvoiceStatus::Issued->value)
             ->whereIn('sales_order_id', $salesOrderIds)

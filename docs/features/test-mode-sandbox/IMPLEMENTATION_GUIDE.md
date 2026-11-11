@@ -1,5 +1,73 @@
 # Test Mode / Sandbox — Implementation Guide
 
+## Phase 3 — Sandbox documents & Test numbering
+
+### Status
+
+**Complete** (document-only scope). Test invoices and Test Delivery Notes can be created from a Phase 2 Test draft order, edited as drafts, cancelled, issued with a non-official `TEST-` reference and rendered/printed/downloaded with an unmistakable Test marking. Credit Notes are environment-isolated and render-marked, but **no Test Credit Note can be created yet** (see blocked workflows). Production numbering, documents and PDFs are unchanged.
+
+### Architecture
+
+- **Explicit ownership.** `invoice_families`, `invoices`, `delivery_notes` and `credit_notes` carry `sandbox_id` (NULL = Production) and use `ScopesToSandbox`. Line tables (`invoice_lines`, `delivery_note_lines`, `credit_note_lines`) are scoped through their parent (`whereHas`). Invoice families are owned explicitly — isolation never relies on the `TEST-` string alone.
+- **`ScopesToSandbox` (extended).** Per-model `sandboxStatuses()` (statuses a Test row may be persisted in; `null` = no status) and `sandboxLinks()` (column → root table). On every save, each linked root (`sales_order_id`, `invoice_family_id`, `corrected_invoice_id`, `invoice_id`) must exist in the same organization **and** the same environment, otherwise 404. The guard now uses the request environment for new rows (`saving` fires before `creating`), which also closes a Phase 2 gap where a brand-new Test row skipped the status check.
+- **Authorization (defense in depth).** Route allowlist (`SandboxDocumentRules::ROUTES`) → policies (`InvoicePolicy`, `DeliveryNotePolicy`, `CreditNotePolicy` via `SandboxDocumentRules::allows`) → document action trait (`AuthorizesDocumentAction::authorizeDocumentEnvironment`: wrong environment = 404, Test permission outside `SandboxDocumentRules::PERMISSIONS` = 403) → model guards.
+- **Raw queries.** Every Production `DB::table()` / subquery rooted on `invoices`, `invoice_families` or `credit_notes` carries an explicit `<table>.sandbox_id IS NULL` (finance journal, CA encaissé, receivables, monthly report/accounting exports, invoice read model, attention detector, numbering). Joined document tables hang off an already-filtered root.
+- **Backups.** Production backup export excludes Test invoice families, invoices, delivery notes, credit notes and their lines (generic root/child map in `OrganizationBackupExporter`). `sandbox_document_sequences` is not part of the backup schema.
+
+### Migration
+
+`database/migrations/2026_11_21_000003_isolate_sandbox_documents.php`
+
+- Nullable `sandbox_id` (FK → `sandboxes`, `ON DELETE RESTRICT`) + `{table}_environment_idx (organization_id, sandbox_id)` on `invoice_families`, `invoices`, `delivery_notes`, `credit_notes`.
+- New `sandbox_document_sequences (organization_id, document_type, next_number)` with unique `(organization_id, document_type)`.
+- Existing rows stay Production. **Rollback guard:** `down()` throws and drops nothing while any Test document exists (covered by `SandboxDocumentsTest::test_rollback_refuses_to_drop_document_isolation_while_test_documents_exist`).
+
+### Test numbering strategy
+
+- `App\Services\Sandbox\SandboxDocumentNumberGenerator` allocates `TEST-FAC-000001`, `TEST-BL-000001`, `TEST-AV-000001` from locked rows in `sandbox_document_sequences` (same `LockedRow` + `lockForUpdate` pattern as Production; transaction required; refuses outside Test Mode).
+- Counters are per **organization + document type**, not per sandbox: a future recreated sandbox can never reissue a reference that collides with the per-organization unique indexes on document numbers.
+- Production generators are untouched in behavior and now **refuse to run in Test Mode** (`InvoiceNumberGenerator::next`, `DeliveryNoteNumberGenerator::next`, `CreditNoteNumberGenerator::next` throw `LogicException`). `InvoiceNumberGenerator::maxAllocatedNumber()` filters `invoice_families.sandbox_id IS NULL`, so Test families can never influence the next official number or the "next number" settings.
+- Test invoices create a Test-owned invoice family; its canonical reference is the `TEST-FAC-` number. A later Test version of the same family (order lines changed after issue) reuses that Test reference and supersedes the previous Test version — never a Production family.
+
+### Supported Test document workflows
+
+From a **Test draft** Sales Order (Phase 2 orders cannot be confirmed):
+
+- **Invoice:** create draft (`POST /sales/orders/{order}/invoices`), edit draft, cancel draft, issue (`TEST-FAC-…`), view, list, print (HTML), PDF, download. Issuance has no payment gate and touches no payment row (payments are not sandboxed).
+- **Delivery Note:** create draft, edit draft, cancel draft, issue (`TEST-BL-…`), view, list, print, PDF, download. Issuance is document-only: no fulfillment, hand-over, reservation consumption or inventory movement; the order stays `draft` / `unfulfilled`.
+- **Credit Note:** view / print / PDF of an existing Test credit note only (none can be created yet).
+
+### Blocked workflows
+
+E-mail (invoice and BL), stamp (cachet), signed share links (`invoices.shared-pdf`, and no share link is generated for Test invoices), invoice corrections and correction lines, cross-store document opener, finance exports, every credit-note creation (Test credit notes are refused at the model level because they require a received customer return — stock, refund and commission effects), confirmation, payments, fulfillment, returns, procurement. Routes outside the allowlist return `403 SANDBOX_DOMAIN_UNAVAILABLE` (JSON) or redirect to `/test-mode` (GET).
+
+### PDF / document rendering
+
+- Same templates and renderers; no duplicated rendering system. Renderers call `SandboxDocumentMarking::apply()` only for sandbox-owned documents; it adds a `sandbox` payload key, suffixes the title with `(TEST)`, removes the official stamp and the status watermark.
+- `documents/partials/sandbox-banner.blade.php` (included by the invoice, delivery-note and credit-note templates only when `sandbox` is set) draws a diagonal **DOCUMENT DE TEST** mark repeated on every page and a banner **DOCUMENT DE TEST — NON COMPTABLE — SANS VALEUR LÉGALE NI FISCALE** with the Test reference and status.
+- Production payloads never contain `sandbox`, so the include is skipped and Production output is unchanged. Asserted: no Test markers on Production prints, identical Production HTML before/after Test documents exist, and the existing document rendering/PDF regression tests pass unchanged.
+
+### UI
+
+`SandboxDocumentBadge` ("TEST · NON COMPTABLE") on invoice, delivery-note and credit-note detail pages and the invoice / BL lists; the order page offers invoice / BL creation for a Test draft order; sharing, e-mail and stamp actions are hidden by policy for Test documents. The global Test banner (Phase 2) stays visible.
+
+### Validation results
+
+- `SandboxDocumentsTest` (5 tests) proves: Test invoices/BL never advance `invoice_sequences`, `delivery_note_sequences` or `credit_note_sequences`; Production `invoice_families` and `InvoiceNumberGenerator::settings()` unchanged after three Test invoices; Production continues at `2/YYYY` and `DN-000002`; official generators throw in Test Mode; Test families are sandbox-owned; mutual invisibility of invoices, BL and credit notes (show, PDF, index, Eloquent, lines) in both directions; cross-environment links rejected at action, route-binding and model level; store and tenant isolation; Test print/PDF marked with DOCUMENT DE TEST / NON COMPTABLE / TEST reference; Production render without markers and unchanged; e-mail, stamp, corrections, shared link, finance export, confirm, payments, fulfillment, returns blocked; Test credit note persistence refused; zero inventory movements / reservations / payments; rollback guard.
+- Sandbox suite: 11 tests passed (Phase 1–3), within the final Documents + Sandbox run: **154 tests / 1,219 assertions passed**.
+- Quotations, Sales, POS, Returns, Security, Tenancy, Policies, Exchanges: **581 tests / 4,140 assertions passed**.
+- Finance, Dashboards, Settings (backup/reset), MCP, Payments, Attention, Fulfillment, Timeline: **609 tests / 5,085 assertions passed** (run before the final link-check refinement, which only removed an abort path and was re-validated by the two runs above).
+- `tsc --noEmit` passed; `vite build` passed; Pint passes on every file Phase 3 created or made fail (files already failing before Phase 3 left unformatted).
+
+### Known limitations before Phase 4
+
+- Credit Notes cannot be produced in Test Mode until customer returns (and their stock/refund/commission effects) are sandboxed.
+- Test invoices are issued from draft orders without payment settlement; no Test payment, receivable or finance view exists.
+- Test documents cannot be e-mailed, stamped or shared; Test invoice corrections from commercial revisions are unavailable (revisions are not sandboxed).
+- Audit-log entries for Test documents are written to the normal audit trail (traceability), referencing Test entity ids.
+- No Sandbox reset/purge yet; `RESTRICT` FKs make deleting a sandbox with documents fail. The organization data reset/restore still needs an explicit design for Test rows.
+- Raw queries rooted on line tables must join and filter the parent document.
+
 ## Phase 2 — Sales & POS sandbox isolation
 
 ### Status

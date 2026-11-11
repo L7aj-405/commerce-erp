@@ -28,6 +28,9 @@
 </style>
 </head>
 <body>
+@if (! empty($sandbox))
+    @include('documents.partials.sandbox-banner')
+@endif
 @if (($seller['show_invoice_watermark'] ?? false) && ($seller['logo'] ?? null))
     <div class="watermark-logo"><img src="{{ $seller['logo'] }}" alt=""></div>
 @endif

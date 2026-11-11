@@ -401,7 +401,7 @@ class FinanceMonthlyReportService
     public function creditNotesCursor(Organization $organization, FinancePeriod $period, ?Store $store): LazyCollection
     {
         return DB::table('credit_note_lines')
-            ->join('credit_notes', 'credit_notes.id', '=', 'credit_note_lines.credit_note_id')
+            ->join('credit_notes', 'credit_notes.id', '=', 'credit_note_lines.credit_note_id')->whereNull('credit_notes.sandbox_id')
             ->join('invoices', 'invoices.id', '=', 'credit_notes.invoice_id')
             ->whereNull('sales_orders.sandbox_id')->join('sales_orders', 'sales_orders.id', '=', 'credit_notes.sales_order_id')
             ->leftJoin('customer_return_lines', 'customer_return_lines.id', '=', 'credit_note_lines.customer_return_line_id')
@@ -461,7 +461,7 @@ class FinanceMonthlyReportService
     /** Signed Invoice/Avoir rows for direct accountant reconciliation. */
     public function accountingDocumentsCursor(Organization $organization, FinancePeriod $period, ?Store $store): LazyCollection
     {
-        $invoices = DB::table('invoices')
+        $invoices = DB::table('invoices')->whereNull('invoices.sandbox_id')
             ->whereNull('sales_orders.sandbox_id')->join('sales_orders', 'sales_orders.id', '=', 'invoices.sales_order_id')
             ->where('invoices.organization_id', $organization->getKey())
             ->when($store, fn($query) => $query->where('invoices.store_id', $store->getKey()))
@@ -481,7 +481,7 @@ class FinanceMonthlyReportService
                 DB::raw("'+' as effect"),
             ]);
 
-        $creditNotes = DB::table('credit_notes')
+        $creditNotes = DB::table('credit_notes')->whereNull('credit_notes.sandbox_id')
             ->join('invoices', 'invoices.id', '=', 'credit_notes.invoice_id')
             ->whereNull('sales_orders.sandbox_id')->join('sales_orders', 'sales_orders.id', '=', 'credit_notes.sales_order_id')
             ->where('credit_notes.organization_id', $organization->getKey())

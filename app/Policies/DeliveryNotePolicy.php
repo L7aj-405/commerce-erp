@@ -9,6 +9,7 @@ use App\Models\SalesOrder;
 use App\Models\Store;
 use App\Models\User;
 use App\Services\ActiveTenantContext;
+use App\Services\Sandbox\SandboxDocumentRules;
 
 class DeliveryNotePolicy
 {
@@ -21,32 +22,36 @@ class DeliveryNotePolicy
 
     public function view(User $user, DeliveryNote $note): bool
     {
-        return $this->allowed($user, $note->organization_id, $note->store_id, 'delivery_notes.view');
+        return $this->allowed($user, $note->organization_id, $note->store_id, 'delivery_notes.view', $note->sandbox_id);
     }
 
     public function create(User $user, SalesOrder $order): bool
     {
-        return $this->allowed($user, $order->organization_id, $order->store_id, 'delivery_notes.create');
+        return $this->allowed($user, $order->organization_id, $order->store_id, 'delivery_notes.create', $order->sandbox_id);
     }
 
     public function updateDraft(User $user, DeliveryNote $note): bool
     {
-        return $note->status === DeliveryNoteStatus::Draft && $this->allowed($user, $note->organization_id, $note->store_id, 'delivery_notes.update_draft');
+        return $note->status === DeliveryNoteStatus::Draft && $this->allowed($user, $note->organization_id, $note->store_id, 'delivery_notes.update_draft', $note->sandbox_id);
     }
 
     public function issue(User $user, DeliveryNote $note): bool
     {
-        return $this->allowed($user, $note->organization_id, $note->store_id, 'delivery_notes.issue');
+        return $this->allowed($user, $note->organization_id, $note->store_id, 'delivery_notes.issue', $note->sandbox_id);
     }
 
     public function email(User $user, DeliveryNote $note): bool
     {
         return $note->status === DeliveryNoteStatus::Issued
-            && $this->allowed($user, $note->organization_id, $note->store_id, 'delivery_notes.email');
+            && $this->allowed($user, $note->organization_id, $note->store_id, 'delivery_notes.email', $note->sandbox_id);
     }
 
-    private function allowed(User $user, int $organizationId, int $storeId, string $permission): bool
+    private function allowed(User $user, int $organizationId, int $storeId, string $permission, ?int $sandboxId): bool
     {
+        if (! SandboxDocumentRules::allows($sandboxId, $permission)) {
+            return false;
+        }
+
         return $this->scope($organizationId, $storeId) && $user->hasPermission($organizationId, $permission);
     }
 

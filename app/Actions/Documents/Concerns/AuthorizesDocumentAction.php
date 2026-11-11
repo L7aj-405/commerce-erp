@@ -9,6 +9,8 @@ use App\Models\Organization;
 use App\Models\SalesOrder;
 use App\Models\Store;
 use App\Models\User;
+use App\Services\Sandbox\SandboxContext;
+use App\Services\Sandbox\SandboxDocumentRules;
 
 trait AuthorizesDocumentAction
 {
@@ -31,17 +33,33 @@ trait AuthorizesDocumentAction
 
     private function authorizeOrderDocument(User $actor, SalesOrder $order, string $permission): void
     {
+        $this->authorizeDocumentEnvironment($order->sandbox_id, $permission);
         $this->authorizeDocumentScope($actor, $order->organization, $order->store, $permission);
     }
 
     private function authorizeInvoice(User $actor, Invoice $invoice, string $permission): void
     {
+        $this->authorizeDocumentEnvironment($invoice->sandbox_id, $permission);
         $this->authorizeDocumentScope($actor, $invoice->organization, $invoice->store, $permission);
     }
 
     private function authorizeDeliveryNote(User $actor, DeliveryNote $note, string $permission): void
     {
+        $this->authorizeDocumentEnvironment($note->sandbox_id, $permission);
         $this->authorizeDocumentScope($actor, $note->organization, $note->store, $permission);
+    }
+
+    /**
+     * The record must belong to the request's environment (NULL = Production);
+     * Test records only allow the document-only operations of Phase 3.
+     * E-mail, stamping and every finance/stock transition stay refused.
+     */
+    private function authorizeDocumentEnvironment(?int $sandboxId, string $permission): void
+    {
+        abort_unless((string) $sandboxId === (string) app(SandboxContext::class)->id(), 404);
+        if ($sandboxId !== null) {
+            abort_unless(SandboxDocumentRules::allows($sandboxId, $permission), 403, 'TEST: transition indisponible.');
+        }
     }
 
     private function authorizeBusinessDate(User $actor, Organization $organization, string $date, string $permission): void

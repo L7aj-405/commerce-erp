@@ -1,4 +1,5 @@
 import { Button } from '@/components/ui/Button';
+import SandboxDocumentBadge from '@/components/SandboxDocumentBadge';
 import SendDocumentEmailModal from '@/components/documents/SendDocumentEmailModal';
 import DocBadge from '@/components/ui/DocBadge';
 import { formatDate, formatDateTime } from '@/utils/format';
@@ -11,6 +12,7 @@ import { useState } from 'react';
 
 type Line = { id: number; description: string; product_name: string | null; variant_name: string | null; sku: string | null; reference: string | null; unit_label: string | null; quantity: string };
 type Note = {
+    sandbox_id?: number | null;
     id: number;
     delivery_note_number: string | null;
     status: string;
@@ -70,6 +72,7 @@ export default function DeliveryNoteShow({ deliveryNote: note, can, mailConfigur
                     <div className="mt-1 flex flex-wrap items-center gap-2">
                         <h1 className="text-2xl font-semibold tracking-tight text-ink">{title}</h1>
                         <DocBadge tone={deliveryNoteStatusTone(note.status)}>{statusLabel[note.status] ?? note.status}</DocBadge>
+                        <SandboxDocumentBadge sandboxId={note.sandbox_id} />
                     </div>
                     <p className="text-sm text-ink-muted">
                         {t('deliveryNotes.order')} <Link href={`/sales/orders/${note.sales_order.id}`}><bdi>{note.sales_order.order_number}</bdi></Link> · <bdi>{note.store.code}</bdi> · {note.store.name}

@@ -64,6 +64,7 @@ type Customer = {
 } | null;
 type Order = {
     id: number;
+    sandbox_id?: number | null;
     order_number: string;
     source: string;
     customer_name: string | null;
@@ -316,7 +317,9 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
     const currentRevision = revisions.at(-1) ?? null;
     const correctionOrderError = (correctionForm.errors as Record<string, string>).order;
     const activeDeliveryNote = documents.deliveryNotes.find((n) => n.status !== 'cancelled') ?? null;
-    const canCreateDeliveryNoteForOrder = order.status === 'confirmed' && order.fulfillment_status === 'unfulfilled' && !activeDeliveryNote && can.createDeliveryNote;
+    // Test Mode (Phase 3): a Test draft order produces non-official Test documents.
+    const documentableStatus = order.status === 'confirmed' || (order.sandbox_id != null && order.status === 'draft');
+    const canCreateDeliveryNoteForOrder = documentableStatus && order.fulfillment_status === 'unfulfilled' && !activeDeliveryNote && can.createDeliveryNote;
     const isCompany = (order.customer?.type ?? 'individual') === 'company' || !!order.customer_company;
     const net = (Number(order.subtotal_excl_tax) - Number(order.discount_total)).toFixed(4);
     const hasDiscount = Number(order.discount_total) > 0;
@@ -425,7 +428,7 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
                         </Link>
                     )}
 
-                    {order.status === 'confirmed' && (!activeInvoice || pendingReplacementInvoice) && can.createInvoice && (
+                    {documentableStatus && (!activeInvoice || pendingReplacementInvoice) && can.createInvoice && (
                         <Button
                             loading={createInvoice.processing}
                             loadingText={t('common.creating')}
@@ -852,7 +855,7 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
                             <p className="font-semibold text-ink">{invoiceStaleAfterCompletion ? t('orders.show.completedAfterInvoice') : t('orders.show.correctedNeedsInvoice')}</p>
                             <p className="mt-1 text-sm text-ink-muted">{t('orders.show.historicalInvoiceHelp')}</p>
                         </div>
-                        {order.status === 'confirmed' && can.createInvoice && (
+                        {documentableStatus && can.createInvoice && (
                             <Button
                                 loading={createInvoice.processing}
                                 loadingText={t('common.creating')}
@@ -866,7 +869,7 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
                 {documents.invoices.length === 0 && !pendingReplacementInvoice && (
                     <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
                         <p className="text-sm text-ink-muted">{t('orders.show.noInvoice')}</p>
-                        {order.status === 'confirmed' && can.createInvoice && (
+                        {documentableStatus && can.createInvoice && (
                             <Button loading={createInvoice.processing} loadingText={t('common.creating')} onClick={() => createInvoice.post(`/sales/orders/${order.id}/invoices`)}>
                                 {t('orders.show.createAnInvoice')}
                             </Button>

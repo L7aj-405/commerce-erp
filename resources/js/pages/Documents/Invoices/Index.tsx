@@ -1,4 +1,5 @@
 import DocBadge from '@/components/ui/DocBadge';
+import SandboxDocumentBadge from '@/components/SandboxDocumentBadge';
 import FilterSelect from '@/components/ui/FilterSelect';
 import PageHeader from '@/components/ui/PageHeader';
 import Pagination from '@/components/ui/Pagination';
@@ -13,6 +14,7 @@ import { Head, Link, router } from '@inertiajs/react';
 import { useEffect, useRef, useState } from 'react';
 
 type Invoice = {
+    sandbox_id?: number | null;
     id: number;
     invoice_number: string | null;
     version: number;
@@ -94,7 +96,7 @@ export default function InvoiceIndex({ invoices, filters }: Props) {
                                         className="cursor-pointer transition-soft hover:bg-sage/50"
                                     >
                                         <td className="px-4 py-3 font-medium text-ink">
-                                            <bdi>{invoice.invoice_number ?? t('invoices.draft')}</bdi> · V{invoice.version}
+                                            <bdi>{invoice.invoice_number ?? t('invoices.draft')}</bdi> · V{invoice.version} <SandboxDocumentBadge sandboxId={invoice.sandbox_id} />
                                         </td>
                                         <td className="px-4 py-3 text-ink-muted">{formatDate(invoice.invoice_date)}</td>
                                         <td className="px-4 py-3 text-ink-muted">{invoice.sales_order.order_number}</td>
@@ -125,7 +127,7 @@ export default function InvoiceIndex({ invoices, filters }: Props) {
                                 <Link href={`/invoices/${invoice.id}`} className="block rounded-card border border-line bg-surface p-4">
                                     <div className="flex items-start justify-between gap-3">
                                         <div className="min-w-0">
-                                            <p className="truncate text-sm font-semibold text-ink"><bdi>{invoice.invoice_number ?? t('invoices.draft')}</bdi> · V{invoice.version}</p>
+                                            <p className="truncate text-sm font-semibold text-ink"><bdi>{invoice.invoice_number ?? t('invoices.draft')}</bdi> · V{invoice.version} <SandboxDocumentBadge sandboxId={invoice.sandbox_id} /></p>
                                             <p className="text-[13px] text-ink-muted">{formatDate(invoice.invoice_date)}</p>
                                         </div>
                                             <div className="flex flex-wrap gap-1">

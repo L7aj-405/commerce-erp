@@ -18,6 +18,11 @@ class Quotation extends Model
 
     protected $guarded = ['*'];
 
+    public function sandboxStatuses(): ?array
+    {
+        return ['draft', 'converted'];
+    }
+
     protected function casts(): array
     {
         return [

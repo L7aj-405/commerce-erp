@@ -42,7 +42,10 @@ class CreateFullInvoiceFromSalesOrderAction
             $order = SalesOrder::query()
                 ->where('organization_id', $order->organization_id)->where('store_id', $order->store_id)
                 ->whereKey($order->getKey())->lockForUpdate()->with(['lines', 'customer', 'organization', 'store', 'createdBy:id,name', 'currentRevision', 'addenda'])->firstOrFail();
-            if ($order->status !== SalesOrderStatus::Confirmed) {
+            // Test orders cannot be confirmed (stock/finance are not sandboxed):
+            // a Test draft order is the source of its non-official Test invoice.
+            $eligibleStatus = $order->sandbox_id !== null ? SalesOrderStatus::Draft : SalesOrderStatus::Confirmed;
+            if ($order->status !== $eligibleStatus) {
                 throw ValidationException::withMessages(['order' => 'Only a confirmed Sales Order can be invoiced.']);
             }
             if ($order->lines->isEmpty()) {

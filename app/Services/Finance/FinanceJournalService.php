@@ -38,13 +38,13 @@ class FinanceJournalService
             ->where("{$table}.organization_id", $organization->getKey())
             ->when($store, fn ($query) => $query->where("{$table}.store_id", $store->getKey()));
 
-        $invoices = $scope(DB::table('invoices'), 'invoices')
+        $invoices = $scope(DB::table('invoices')->whereNull('invoices.sandbox_id'), 'invoices')
             ->where('status', InvoiceStatus::Issued->value)
             ->whereDate('invoice_date', '>=', $period->start->toDateString())->whereDate('invoice_date', '<=', $period->end->toDateString())
             ->get(['id', 'invoice_date as date', 'invoice_number as number', 'customer_name', 'customer_company', 'total_incl_tax as amount'])
             ->map(fn ($row) => $this->event('invoice', $row, 'Facture', "/invoices/{$row->id}", null, false));
 
-        $credits = $scope(DB::table('credit_notes')->join('invoices', 'invoices.id', '=', 'credit_notes.invoice_id'), 'credit_notes')
+        $credits = $scope(DB::table('credit_notes')->whereNull('credit_notes.sandbox_id')->join('invoices', 'invoices.id', '=', 'credit_notes.invoice_id'), 'credit_notes')
             ->where('credit_notes.status', 'issued')
             ->whereDate('credit_notes.credit_note_date', '>=', $period->start->toDateString())->whereDate('credit_notes.credit_note_date', '<=', $period->end->toDateString())
             ->get(['credit_notes.id', 'credit_notes.credit_note_date as date', 'credit_notes.credit_note_number as number', 'invoices.customer_name', 'invoices.customer_company', 'credit_notes.total_incl_tax as amount', 'invoices.invoice_number as reference'])

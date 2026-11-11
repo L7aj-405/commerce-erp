@@ -59,7 +59,7 @@ class SandboxSalesTest extends QuotationTestCase
         } catch (HttpException $e) {
             $this->assertSame(403, $e->getStatusCode());
         }
-        foreach (['/sales/orders/'.$order->id.'/cancel', '/sales/orders/'.$order->id.'/payments', '/sales/orders/'.$order->id.'/invoices',
+        foreach (['/sales/orders/'.$order->id.'/cancel', '/sales/orders/'.$order->id.'/payments', '/sales/orders/'.$order->id.'/purchase-orders',
             '/sales/orders/'.$order->id.'/fulfill', '/sales/orders/'.$order->id.'/returns', '/sales/orders/'.$order->id.'/procurements',
             '/quotations/'.$quote->id.'/accept', '/quotations/'.$quote->id.'/email', '/quotations/'.$quote->id.'/stamp',
             '/pos/drafts/'.$test.'/convert', '/pos/sales'] as $blocked) {

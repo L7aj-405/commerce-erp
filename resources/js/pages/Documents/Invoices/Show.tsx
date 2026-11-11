@@ -1,4 +1,5 @@
 import DocBadge from '@/components/ui/DocBadge';
+import SandboxDocumentBadge from '@/components/SandboxDocumentBadge';
 import { Button } from '@/components/ui/Button';
 import SendDocumentEmailModal from '@/components/documents/SendDocumentEmailModal';
 import StampDocumentAction from '@/components/documents/StampDocumentAction';
@@ -54,6 +55,7 @@ type Seller = {
     tax_identifier?: string;
 };
 type Invoice = {
+    sandbox_id?: number | null;
     id: number;
     invoice_number: string | null;
     version: number;
@@ -200,6 +202,7 @@ export default function InvoiceShow({
                         {t('invoices.invoice')} <bdi>{invoice.invoice_number ?? t('invoices.draft')}</bdi>
                     </h1>
                     <DocBadge tone={invoiceStatusTone(invoice.status)}>{label(invoiceStatusLabel, invoice.status)}</DocBadge>
+                    <SandboxDocumentBadge sandboxId={invoice.sandbox_id} />
                 </div>
                 <p className="mt-1 text-sm font-medium text-ink">
                     {t('invoices.version')} {invoice.version} · {isCurrentVersion ? t('invoices.current') : isSuperseded ? t('invoices.replaced') : t('invoices.draft')}

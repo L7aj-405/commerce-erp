@@ -9,6 +9,7 @@ use App\Models\SalesOrder;
 use App\Models\Store;
 use App\Models\User;
 use App\Services\ActiveTenantContext;
+use App\Services\Sandbox\SandboxDocumentRules;
 
 class InvoicePolicy
 {
@@ -21,22 +22,22 @@ class InvoicePolicy
 
     public function view(User $user, Invoice $invoice): bool
     {
-        return $this->allowed($user, $invoice->organization_id, $invoice->store_id, 'invoices.view');
+        return $this->allowed($user, $invoice->organization_id, $invoice->store_id, 'invoices.view', $invoice->sandbox_id);
     }
 
     public function create(User $user, SalesOrder $order): bool
     {
-        return $this->allowed($user, $order->organization_id, $order->store_id, 'invoices.create');
+        return $this->allowed($user, $order->organization_id, $order->store_id, 'invoices.create', $order->sandbox_id);
     }
 
     public function updateDraft(User $user, Invoice $invoice): bool
     {
-        return $invoice->status === InvoiceStatus::Draft && $this->allowed($user, $invoice->organization_id, $invoice->store_id, 'invoices.update_draft');
+        return $invoice->status === InvoiceStatus::Draft && $this->allowed($user, $invoice->organization_id, $invoice->store_id, 'invoices.update_draft', $invoice->sandbox_id);
     }
 
     public function issue(User $user, Invoice $invoice): bool
     {
-        return $this->allowed($user, $invoice->organization_id, $invoice->store_id, 'invoices.issue');
+        return $this->allowed($user, $invoice->organization_id, $invoice->store_id, 'invoices.issue', $invoice->sandbox_id);
     }
 
     public function correct(User $user, Invoice $invoice): bool
@@ -53,17 +54,21 @@ class InvoicePolicy
     public function email(User $user, Invoice $invoice): bool
     {
         return $invoice->status === InvoiceStatus::Issued
-            && $this->allowed($user, $invoice->organization_id, $invoice->store_id, 'invoices.email');
+            && $this->allowed($user, $invoice->organization_id, $invoice->store_id, 'invoices.email', $invoice->sandbox_id);
     }
 
     public function stamp(User $user, Invoice $invoice): bool
     {
         return $invoice->status === InvoiceStatus::Issued
-            && $this->allowed($user, $invoice->organization_id, $invoice->store_id, 'documents.stamp');
+            && $this->allowed($user, $invoice->organization_id, $invoice->store_id, 'documents.stamp', $invoice->sandbox_id);
     }
 
-    private function allowed(User $user, int $organizationId, int $storeId, string $permission): bool
+    private function allowed(User $user, int $organizationId, int $storeId, string $permission, ?int $sandboxId): bool
     {
+        if (! SandboxDocumentRules::allows($sandboxId, $permission)) {
+            return false;
+        }
+
         return $this->scope($organizationId, $storeId) && $user->hasPermission($organizationId, $permission);
     }
 

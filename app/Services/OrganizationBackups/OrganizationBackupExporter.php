@@ -10,6 +10,18 @@ use ZipArchive;
 
 class OrganizationBackupExporter
 {
+    /** Tables with their own sandbox_id (NULL = Production). */
+    private const SANDBOX_ROOTS = ['sales_orders', 'quotations', 'invoice_families', 'invoices', 'delivery_notes', 'credit_notes'];
+
+    /** Child tables isolated through their parent root: table => [parent, foreign key]. */
+    private const SANDBOX_CHILDREN = [
+        'sales_order_lines' => ['sales_orders', 'sales_order_id'],
+        'quotation_lines' => ['quotations', 'quotation_id'],
+        'invoice_lines' => ['invoices', 'invoice_id'],
+        'delivery_note_lines' => ['delivery_notes', 'delivery_note_id'],
+        'credit_note_lines' => ['credit_notes', 'credit_note_id'],
+    ];
+
     public function __construct(
         private readonly OrganizationBackupSchema $schema,
         private readonly OrganizationBackupCryptography $cryptography,
@@ -133,11 +145,11 @@ class OrganizationBackupExporter
     private function rows(string $table, int $organizationId): iterable
     {
         $query = DB::table($table)->orderBy($this->schema->columns($table)[0] ?? 'id');
-        if (in_array($table, ['sales_orders', 'quotations'], true)) {
+        // Production backups never carry Test (sandbox-owned) rows.
+        if (in_array($table, self::SANDBOX_ROOTS, true)) {
             $query->whereNull('sandbox_id');
-        } elseif (in_array($table, ['sales_order_lines', 'quotation_lines'], true)) {
-            $parent = $table === 'sales_order_lines' ? 'sales_orders' : 'quotations';
-            $key = $table === 'sales_order_lines' ? 'sales_order_id' : 'quotation_id';
+        } elseif (isset(self::SANDBOX_CHILDREN[$table])) {
+            [$parent, $key] = self::SANDBOX_CHILDREN[$table];
             $query->whereIn($key, DB::table($parent)->select('id')->where('organization_id', $organizationId)->whereNull('sandbox_id'));
         }
         if ($table === 'organizations') {

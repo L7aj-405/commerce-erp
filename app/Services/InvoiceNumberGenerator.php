@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Organization;
+use App\Services\Sandbox\SandboxContext;
 use App\Support\LockedRow;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -21,6 +22,9 @@ class InvoiceNumberGenerator
      */
     public function next(Organization $organization, int $year): string
     {
+        if (app(SandboxContext::class)->isSandbox()) {
+            throw new LogicException('Official invoice numbers are never allocated in Test Mode.');
+        }
         if (DB::connection()->transactionLevel() < 1) {
             throw new LogicException('Invoice numbers may only be allocated inside an existing issuance transaction.');
         }
@@ -85,7 +89,10 @@ class InvoiceNumberGenerator
 
     private function maxAllocatedNumber(Organization $organization, int $year): int
     {
+        // Explicit Production ownership: Test families never count, whatever
+        // their canonical reference looks like.
         return DB::table('invoice_families')
+            ->whereNull('sandbox_id')
             ->where('organization_id', $organization->getKey())
             ->whereNotNull('canonical_invoice_number')
             ->pluck('canonical_invoice_number')

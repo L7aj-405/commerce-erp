@@ -161,7 +161,9 @@ class InvoiceController extends Controller
         // meaningful for the currently-live official Invoice — never for a draft
         // and never for a superseded original (sharing must follow the
         // correction).
-        $sharePdfUrl = $isIssued
+        // Never for a Test invoice: a signed link would leave the session's
+        // environment (and the shared route is Production-only).
+        $sharePdfUrl = $isIssued && ! $invoice->isTest()
             ? URL::temporarySignedRoute(
                 'invoices.shared-pdf',
                 now()->addDays((int) config('documents.share_link_ttl_days', 14)),
@@ -202,7 +204,8 @@ class InvoiceController extends Controller
             'previewUrl' => route('invoices.print', $invoice),
             'accentColor' => $seller['accent_color'] ?? DocumentSellerProfile::DEFAULT_ACCENT_COLOR,
             'relatedOrderPaymentSummary' => $paymentSummary,
-            'sharing' => $isIssued ? [
+            'isTest' => $invoice->isTest(),
+            'sharing' => $isIssued && ! $invoice->isTest() ? [
                 'pdfUrl' => $sharePdfUrl,
                 'email' => $invoice->customer_email,
                 'phone' => $invoice->customer_phone,

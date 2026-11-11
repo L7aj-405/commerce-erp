@@ -188,7 +188,7 @@ class FinanceReceivablesService
                     ->whereColumn('payment_allocations.payment_id', 'payments.id')
                     ->whereNotExists(function ($query) use ($organization) {
                         $query->select(DB::raw(1))
-                            ->from('invoices')
+                            ->from('invoices')->whereNull('invoices.sandbox_id')
                             ->whereColumn('invoices.sales_order_id', 'payment_allocations.sales_order_id')
                             ->where('invoices.organization_id', $organization->getKey())
                             ->where('invoices.status', InvoiceStatus::Issued->value);
@@ -204,7 +204,7 @@ class FinanceReceivablesService
             ->when($store, fn ($query) => $query->where('payment_refunds.store_id', $store->getKey()))
             ->whereNotExists(function ($query) use ($organization) {
                 $query->select(DB::raw(1))
-                    ->from('invoices')
+                    ->from('invoices')->whereNull('invoices.sandbox_id')
                     ->whereColumn('invoices.sales_order_id', 'payment_refunds.sales_order_id')
                     ->where('invoices.organization_id', $organization->getKey())
                     ->where('invoices.status', InvoiceStatus::Issued->value);
@@ -337,14 +337,14 @@ class FinanceReceivablesService
                 DB::raw('collections.collected_amount - COALESCE(refunds.refunded_amount, 0) as paid_amount'),
             );
 
-        $creditsSubquery = DB::table('credit_notes')
+        $creditsSubquery = DB::table('credit_notes')->whereNull('credit_notes.sandbox_id')
             ->where('credit_notes.organization_id', $organization->getKey())
             ->where('credit_notes.status', 'issued')
             ->whereDate('credit_notes.credit_note_date', '<=', $asOf->toDateString())
             ->groupBy('credit_notes.sales_order_id')
             ->select('credit_notes.sales_order_id', DB::raw('SUM(credit_notes.total_incl_tax) as credited_amount'));
 
-        return DB::table('invoices')
+        return DB::table('invoices')->whereNull('invoices.sandbox_id')
             ->leftJoinSub($paidSubquery, 'paid', 'paid.sales_order_id', '=', 'invoices.sales_order_id')
             // Credit Notes remain linked to the exact historical Invoice they
             // credited, while the current effective Invoice may be a later

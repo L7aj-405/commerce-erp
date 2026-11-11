@@ -368,7 +368,7 @@ final class SalesOrderAttentionDetector
     /** Confirmed orders with no issued invoice (one correlated NOT EXISTS, no per-order query). */
     private function notInvoiced(Builder $query): Builder
     {
-        return $query->whereNotExists(fn (QueryBuilder $invoices) => $invoices->selectRaw('1')->from('invoices')
+        return $query->whereNotExists(fn (QueryBuilder $invoices) => $invoices->selectRaw('1')->from('invoices')->whereNull('invoices.sandbox_id')
             ->whereColumn('invoices.organization_id', 'sales_orders.organization_id')
             ->whereColumn('invoices.sales_order_id', 'sales_orders.id')
             ->where('invoices.status', InvoiceStatus::Issued->value));
