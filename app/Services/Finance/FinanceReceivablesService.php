@@ -46,6 +46,7 @@ class FinanceReceivablesService
 
         SalesOrder::query()
             ->withoutGlobalScopes()
+            ->whereNull('sales_orders.sandbox_id')
             ->where('organization_id', $organization->getKey())
             ->where('status', SalesOrderStatus::Confirmed->value)
             ->whereDate('sale_date', '<=', $asOf->toDateString())

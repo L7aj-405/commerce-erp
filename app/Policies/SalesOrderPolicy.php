@@ -9,6 +9,7 @@ use App\Models\SalesOrder;
 use App\Models\Store;
 use App\Models\User;
 use App\Services\ActiveTenantContext;
+use App\Services\Sandbox\SandboxContext;
 
 class SalesOrderPolicy
 {
@@ -93,6 +94,13 @@ class SalesOrderPolicy
 
     private function allowed(User $user, SalesOrder $order, string $permission): bool
     {
+        if ((string) $order->sandbox_id !== (string) app(SandboxContext::class)->id()) {
+            return false;
+        }
+        if ($order->sandbox_id !== null && ! in_array($permission, ['sales_orders.view', 'sales_orders.update'], true)) {
+            return false;
+        }
+
         return $this->scope($order->organization_id, $order->store_id) && $user->hasPermission($order->organization_id, $permission);
     }
 

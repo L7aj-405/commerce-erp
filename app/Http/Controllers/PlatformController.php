@@ -63,7 +63,7 @@ class PlatformController extends Controller
                 ->count('product_variant_id')
             : null;
         $salesToday = $canViewSales
-            ? DB::table('sales_orders')
+            ? DB::table('sales_orders')->whereNull('sales_orders.sandbox_id')
                 ->where('organization_id', $organizationId)
                 ->where('store_id', $storeId)
                 ->whereDate('sale_date', today())
@@ -71,7 +71,7 @@ class PlatformController extends Controller
                 ->count()
             : null;
         $paymentsToReceive = $canViewPayments
-            ? DB::table('sales_orders')
+            ? DB::table('sales_orders')->whereNull('sales_orders.sandbox_id')
                 ->where('organization_id', $organizationId)
                 ->where('store_id', $storeId)
                 ->where('status', 'confirmed')
@@ -79,7 +79,7 @@ class PlatformController extends Controller
                 ->count()
             : null;
         $hasSale = $canViewSales
-            ? DB::table('sales_orders')
+            ? DB::table('sales_orders')->whereNull('sales_orders.sandbox_id')
                 ->where('organization_id', $organizationId)
                 ->where('store_id', $storeId)
                 ->where('status', '!=', 'cancelled')

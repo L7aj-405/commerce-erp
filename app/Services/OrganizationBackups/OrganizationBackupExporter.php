@@ -133,6 +133,13 @@ class OrganizationBackupExporter
     private function rows(string $table, int $organizationId): iterable
     {
         $query = DB::table($table)->orderBy($this->schema->columns($table)[0] ?? 'id');
+        if (in_array($table, ['sales_orders', 'quotations'], true)) {
+            $query->whereNull('sandbox_id');
+        } elseif (in_array($table, ['sales_order_lines', 'quotation_lines'], true)) {
+            $parent = $table === 'sales_order_lines' ? 'sales_orders' : 'quotations';
+            $key = $table === 'sales_order_lines' ? 'sales_order_id' : 'quotation_id';
+            $query->whereIn($key, DB::table($parent)->select('id')->where('organization_id', $organizationId)->whereNull('sandbox_id'));
+        }
         if ($table === 'organizations') {
             $query->where('id', $organizationId);
         } else {

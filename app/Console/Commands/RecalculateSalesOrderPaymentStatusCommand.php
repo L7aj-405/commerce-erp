@@ -28,7 +28,7 @@ class RecalculateSalesOrderPaymentStatusCommand extends Command
         $changed = 0;
         $failed = 0;
 
-        SalesOrder::query()->withoutGlobalScopes()
+        SalesOrder::query()->withoutGlobalScopes()->whereNull('sales_orders.sandbox_id')
             ->where('payment_status', SalesOrderPaymentStatus::PartiallyPaid->value)
             ->when($this->option('organization'), fn ($query, $id) => $query->where('organization_id', (int) $id))
             ->select(['id', 'organization_id', 'order_number'])
@@ -36,7 +36,7 @@ class RecalculateSalesOrderPaymentStatusCommand extends Command
                 foreach ($orders as $candidate) {
                     try {
                         DB::transaction(function () use ($candidate, $payments, $dryRun, &$changed) {
-                            $order = SalesOrder::query()->withoutGlobalScopes()
+                            $order = SalesOrder::query()->withoutGlobalScopes()->whereNull('sales_orders.sandbox_id')
                                 ->where('organization_id', $candidate->organization_id)
                                 ->whereKey($candidate->getKey())
                                 ->lockForUpdate()

@@ -62,7 +62,7 @@ final class SalesMarginReportService
         }
 
         $sales = DB::table('sales_order_lines as lines')
-            ->join('sales_orders as orders', function ($join) {
+            ->whereNull('orders.sandbox_id')->join('sales_orders as orders', function ($join) {
                 $join->on('orders.id', '=', 'lines.sales_order_id')
                     ->on('orders.organization_id', '=', 'lines.organization_id');
             })
@@ -88,7 +88,7 @@ final class SalesMarginReportService
                 $join->on('source_lines.id', '=', 'return_lines.sales_order_line_id')
                     ->on('source_lines.organization_id', '=', 'return_lines.organization_id');
             })
-            ->join('sales_orders as source_orders', function ($join) {
+            ->whereNull('source_orders.sandbox_id')->join('sales_orders as source_orders', function ($join) {
                 $join->on('source_orders.id', '=', 'source_lines.sales_order_id')
                     ->on('source_orders.organization_id', '=', 'source_lines.organization_id');
             })
@@ -148,7 +148,7 @@ final class SalesMarginReportService
         }
 
         $sales = DB::table('sales_order_lines as lines')
-            ->join('sales_orders as orders', function ($join) {
+            ->whereNull('orders.sandbox_id')->join('sales_orders as orders', function ($join) {
                 $join->on('orders.id', '=', 'lines.sales_order_id')
                     ->on('orders.organization_id', '=', 'lines.organization_id');
             })
@@ -174,7 +174,7 @@ final class SalesMarginReportService
                 $join->on('source_lines.id', '=', 'return_lines.sales_order_line_id')
                     ->on('source_lines.organization_id', '=', 'return_lines.organization_id');
             })
-            ->join('sales_orders as source_orders', function ($join) {
+            ->whereNull('source_orders.sandbox_id')->join('sales_orders as source_orders', function ($join) {
                 $join->on('source_orders.id', '=', 'source_lines.sales_order_id')
                     ->on('source_orders.organization_id', '=', 'source_lines.organization_id');
             })

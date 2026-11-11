@@ -403,7 +403,7 @@ class FinanceMonthlyReportService
         return DB::table('credit_note_lines')
             ->join('credit_notes', 'credit_notes.id', '=', 'credit_note_lines.credit_note_id')
             ->join('invoices', 'invoices.id', '=', 'credit_notes.invoice_id')
-            ->join('sales_orders', 'sales_orders.id', '=', 'credit_notes.sales_order_id')
+            ->whereNull('sales_orders.sandbox_id')->join('sales_orders', 'sales_orders.id', '=', 'credit_notes.sales_order_id')
             ->leftJoin('customer_return_lines', 'customer_return_lines.id', '=', 'credit_note_lines.customer_return_line_id')
             ->where('credit_notes.organization_id', $organization->getKey())
             ->when($store, fn($query) => $query->where('credit_notes.store_id', $store->getKey()))
@@ -462,7 +462,7 @@ class FinanceMonthlyReportService
     public function accountingDocumentsCursor(Organization $organization, FinancePeriod $period, ?Store $store): LazyCollection
     {
         $invoices = DB::table('invoices')
-            ->join('sales_orders', 'sales_orders.id', '=', 'invoices.sales_order_id')
+            ->whereNull('sales_orders.sandbox_id')->join('sales_orders', 'sales_orders.id', '=', 'invoices.sales_order_id')
             ->where('invoices.organization_id', $organization->getKey())
             ->when($store, fn($query) => $query->where('invoices.store_id', $store->getKey()))
             ->where('invoices.status', InvoiceStatus::Issued->value)
@@ -483,7 +483,7 @@ class FinanceMonthlyReportService
 
         $creditNotes = DB::table('credit_notes')
             ->join('invoices', 'invoices.id', '=', 'credit_notes.invoice_id')
-            ->join('sales_orders', 'sales_orders.id', '=', 'credit_notes.sales_order_id')
+            ->whereNull('sales_orders.sandbox_id')->join('sales_orders', 'sales_orders.id', '=', 'credit_notes.sales_order_id')
             ->where('credit_notes.organization_id', $organization->getKey())
             ->when($store, fn($query) => $query->where('credit_notes.store_id', $store->getKey()))
             ->where('credit_notes.status', 'issued')
@@ -531,7 +531,7 @@ class FinanceMonthlyReportService
         return DB::table('payment_refunds')
             ->join('payments', 'payments.id', '=', 'payment_refunds.payment_id')
             ->join('financial_accounts', 'financial_accounts.id', '=', 'payment_refunds.financial_account_id')
-            ->join('sales_orders', 'sales_orders.id', '=', 'payment_refunds.sales_order_id')
+            ->whereNull('sales_orders.sandbox_id')->join('sales_orders', 'sales_orders.id', '=', 'payment_refunds.sales_order_id')
             ->leftJoin('customer_returns', 'customer_returns.id', '=', 'payment_refunds.customer_return_id')
             ->where('payment_refunds.organization_id', $organization->getKey())
             ->when($store, fn($query) => $query->where('payment_refunds.store_id', $store->getKey()))

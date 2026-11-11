@@ -13,8 +13,10 @@ use App\Models\User;
 use App\Services\AuditLogger;
 use App\Services\DocumentTemplateRegistry;
 use App\Services\QuotationDocumentSettings;
+use App\Services\Sandbox\SandboxContext;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 class CreateQuotationAction
@@ -44,7 +46,8 @@ class CreateQuotationAction
             $quotation->organization_id = $organization->getKey();
             $quotation->store_id = $store->getKey();
             $quotation->customer_id = $customer?->getKey();
-            $quotation->quotation_number = null;
+            $quotation->quotation_number = app(SandboxContext::class)->isSandbox()
+                ? 'TEST-'.(string) Str::ulid() : null;
             $quotation->status = QuotationStatus::Draft;
             $quotation->currency_code = strtoupper($data['currency_code'] ?? config('platform.currency_code', 'MAD'));
             $quotation->quotation_date = $quotationDate;

@@ -96,7 +96,7 @@ class FinanceCaEncaisseService
     {
         return DB::table('payment_allocations')
             ->join('payments', 'payments.id', '=', 'payment_allocations.payment_id')
-            ->join('sales_orders', 'sales_orders.id', '=', 'payment_allocations.sales_order_id')
+            ->whereNull('sales_orders.sandbox_id')->join('sales_orders', 'sales_orders.id', '=', 'payment_allocations.sales_order_id')
             ->where('payments.organization_id', $organization->getKey())
             ->where('payments.status', PaymentStatus::Posted->value)
             ->whereDate('payments.payment_date', '>=', $period->start->toDateString())

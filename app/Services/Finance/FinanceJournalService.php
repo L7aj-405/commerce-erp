@@ -67,7 +67,7 @@ class FinanceJournalService
                 ];
             });
 
-        $refunds = $scope(DB::table('payment_refunds')->join('payments', 'payments.id', '=', 'payment_refunds.payment_id')->join('sales_orders', 'sales_orders.id', '=', 'payment_refunds.sales_order_id'), 'payment_refunds')
+        $refunds = $scope(DB::table('payment_refunds')->join('payments', 'payments.id', '=', 'payment_refunds.payment_id')->whereNull('sales_orders.sandbox_id')->join('sales_orders', 'sales_orders.id', '=', 'payment_refunds.sales_order_id'), 'payment_refunds')
             ->where('payment_refunds.status', 'posted')
             ->whereDate('payment_refunds.refund_date', '>=', $period->start->toDateString())->whereDate('payment_refunds.refund_date', '<=', $period->end->toDateString())
             ->get(['payment_refunds.id', 'payment_refunds.refund_date as date', 'payment_refunds.refund_number as number', 'sales_orders.customer_name', 'sales_orders.customer_company', 'payment_refunds.amount', 'payments.id as payment_id', 'payments.payment_number as reference'])

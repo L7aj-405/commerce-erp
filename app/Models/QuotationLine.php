@@ -11,6 +11,11 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class QuotationLine extends Model
 {
+    protected static function booted(): void
+    {
+        static::addGlobalScope('sandbox', fn ($query) => $query->whereHas('quotation'));
+    }
+
     protected $guarded = ['*'];
 
     protected function casts(): array

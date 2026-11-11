@@ -163,7 +163,7 @@ final class ExecutiveDashboardService
     /** @return array{paid:int,partially_paid:int,unpaid:int} */
     private function orderStates(Organization $organization, FinancePeriod $period, ?Store $store): array
     {
-        $rows = DB::table('sales_orders')->where('organization_id', $organization->getKey())
+        $rows = DB::table('sales_orders')->whereNull('sales_orders.sandbox_id')->where('organization_id', $organization->getKey())
             ->when($store, fn (Builder $query) => $query->where('store_id', $store->getKey()))
             ->where('status', SalesOrderStatus::Confirmed->value)
             ->whereBetween('sale_date', [$period->start->toDateString(), $period->end->toDateString()])
@@ -181,7 +181,7 @@ final class ExecutiveDashboardService
     private function topProducts(Organization $organization, FinancePeriod $period, ?Store $store): array
     {
         return DB::table('sales_order_lines as line')
-            ->join('sales_orders as orders', function ($join) {
+            ->whereNull('orders.sandbox_id')->join('sales_orders as orders', function ($join) {
                 $join->on('orders.id', '=', 'line.sales_order_id')->on('orders.organization_id', '=', 'line.organization_id');
             })
             ->where('orders.organization_id', $organization->getKey())
@@ -214,7 +214,7 @@ final class ExecutiveDashboardService
 
     private function confirmedOrderCount(Organization $organization, FinancePeriod $period, ?Store $store): int
     {
-        return DB::table('sales_orders')->where('organization_id', $organization->getKey())
+        return DB::table('sales_orders')->whereNull('sales_orders.sandbox_id')->where('organization_id', $organization->getKey())
             ->when($store, fn (Builder $query) => $query->where('store_id', $store->getKey()))
             ->where('status', SalesOrderStatus::Confirmed->value)
             ->whereBetween('sale_date', [$period->start->toDateString(), $period->end->toDateString()])->count();

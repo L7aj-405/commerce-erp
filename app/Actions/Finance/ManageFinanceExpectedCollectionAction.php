@@ -102,7 +102,7 @@ class ManageFinanceExpectedCollectionAction
 
     private function order(Organization $organization, int $id): SalesOrder
     {
-        $order = SalesOrder::query()->withoutGlobalScopes()->where('organization_id', $organization->id)->lockForUpdate()->find($id);
+        $order = SalesOrder::query()->withoutGlobalScopes()->whereNull('sales_orders.sandbox_id')->where('organization_id', $organization->id)->lockForUpdate()->find($id);
         if (! $order) throw ValidationException::withMessages(['sales_order_id' => 'Commande introuvable pour cette organisation.']);
         return $order;
     }

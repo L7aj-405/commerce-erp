@@ -7,6 +7,7 @@ use App\Models\Organization;
 use App\Models\Quotation;
 use App\Models\Store;
 use App\Models\User;
+use App\Services\Sandbox\SandboxContext;
 
 trait AuthorizesQuotationAction
 {
@@ -27,6 +28,10 @@ trait AuthorizesQuotationAction
 
     private function authorizeQuotation(User $actor, Quotation $quotation, string $permission): void
     {
+        abort_unless((string) $quotation->sandbox_id === (string) app(SandboxContext::class)->id(), 404);
+        if ($quotation->sandbox_id !== null) {
+            abort_unless(in_array($permission, ['quotations.view', 'quotations.update', 'quotations.convert'], true), 403, 'TEST: transition indisponible.');
+        }
         $this->authorizeQuotationScope($actor, $quotation->organization, $quotation->store, $permission);
     }
 }

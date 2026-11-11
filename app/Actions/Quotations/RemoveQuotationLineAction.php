@@ -33,7 +33,7 @@ class RemoveQuotationLineAction
             }
             $line->delete();
 
-            if ($nonStockId) {
+            if ($nonStockId && $quotation->sandbox_id === null) {
                 NonStockItem::query()->whereKey($nonStockId)->where('usage_count', '>', 0)->decrement('usage_count');
             }
 
