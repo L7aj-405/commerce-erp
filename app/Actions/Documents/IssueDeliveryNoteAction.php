@@ -45,7 +45,7 @@ class IssueDeliveryNoteAction
             // is explicitly handed over (App\Actions\Fulfillment / direct hand-over).
             $order = SalesOrder::query()->where('organization_id', $note->organization_id)->whereKey($note->sales_order_id)->lockForUpdate()->firstOrFail();
             $test = $note->sandbox_id !== null;
-            if ($order->status !== ($test ? SalesOrderStatus::Draft : SalesOrderStatus::Confirmed)) {
+            if (! in_array($order->status, $test ? [SalesOrderStatus::Draft, SalesOrderStatus::Confirmed] : [SalesOrderStatus::Confirmed], true)) {
                 throw ValidationException::withMessages(['order' => 'Only a confirmed Sales Order can have an issued Delivery Note.']);
             }
             if (DeliveryNote::query()->where('organization_id', $note->organization_id)->where('sales_order_id', $note->sales_order_id)

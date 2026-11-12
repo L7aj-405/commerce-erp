@@ -49,7 +49,7 @@ class IssueInvoiceAction
             }
             $test = $invoice->sandbox_id !== null;
             $order = SalesOrder::query()->where('organization_id', $invoice->organization_id)->whereKey($invoice->sales_order_id)->lockForUpdate()->firstOrFail();
-            if ($order->status !== ($test ? SalesOrderStatus::Draft : SalesOrderStatus::Confirmed)) {
+            if (! in_array($order->status, $test ? [SalesOrderStatus::Draft, SalesOrderStatus::Confirmed] : [SalesOrderStatus::Confirmed], true)) {
                 throw ValidationException::withMessages(['order' => 'The source Sales Order is no longer eligible for invoicing.']);
             }
             if ($invoice->sales_order_addendum_id !== null) {

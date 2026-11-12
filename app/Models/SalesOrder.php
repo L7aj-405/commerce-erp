@@ -21,6 +21,12 @@ class SalesOrder extends Model
     use ScopesToActiveStore;
     use ScopesToSandbox;
 
+    /** Phase 4: Test orders may be confirmed against Test stock. */
+    public function sandboxStatuses(): ?array
+    {
+        return ['draft', 'confirmed'];
+    }
+
     protected $guarded = ['*'];
 
     protected $hidden = ['client_operation_id', 'pos_checkout_hash'];
@@ -229,12 +235,15 @@ class SalesOrder extends Model
             return false;
         }
 
+        // Phase 4: routed tables (Test inventory ledger in Test Mode).
+        $a = SalesOrderInventoryAllocation::environmentTable();
+
         return SalesOrderInventoryAllocation::query()
-            ->join('sales_order_lines as l', 'l.id', '=', 'sales_order_inventory_allocations.sales_order_line_id')
-            ->join('inventory_reservations as r', 'r.id', '=', 'sales_order_inventory_allocations.inventory_reservation_id')
-            ->where('sales_order_inventory_allocations.organization_id', $this->organization_id)
+            ->join('sales_order_lines as l', 'l.id', '=', $a.'.sales_order_line_id')
+            ->join(InventoryReservation::environmentTable().' as r', 'r.id', '=', $a.'.inventory_reservation_id')
+            ->where($a.'.organization_id', $this->organization_id)
             ->where('l.sales_order_id', $this->getKey())
-            ->where('sales_order_inventory_allocations.warehouse_id', '!=', (int) $this->pos_warehouse_id)
+            ->where($a.'.warehouse_id', '!=', (int) $this->pos_warehouse_id)
             ->where('r.status', InventoryReservationStatus::Active->value)
             ->exists();
     }

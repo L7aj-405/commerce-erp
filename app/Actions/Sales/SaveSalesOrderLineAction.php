@@ -111,7 +111,9 @@ class SaveSalesOrderLineAction
             }
             $line->save();
             $line->allocations()->delete();
-            if ($warehouse && $order->sandbox_id === null) {
+            // Phase 4: Test drafts allocate against the Test inventory ledger
+            // (routed models), never against Production stock.
+            if ($warehouse) {
                 // Draft sourcing is always provisional: any company-stock
                 // shortfall is parked on the operational warehouse and covers
                 // the full line quantity. The authoritative, locked rebuild —

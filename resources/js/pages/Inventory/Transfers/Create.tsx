@@ -1,6 +1,7 @@
 import TransferLinePicker, { type PickerItem, type PickerLine } from '@/components/inventory/TransferLinePicker';
 import { Button, ButtonLink } from '@/components/ui/Button';
 import EmptyState from '@/components/ui/EmptyState';
+import SandboxStockBadge from '@/components/SandboxStockBadge';
 import PageHeader from '@/components/ui/PageHeader';
 import { useI18n } from '@/i18n';
 import InventoryLayout from '@/layouts/InventoryLayout';
@@ -119,6 +120,7 @@ export default function TransferCreate({ filters, warehouses, searchResults, pre
                     description={t('inventory.transfers.description')}
                     actions={<ButtonLink href="/inventory/transfers" variant="secondary">{t('inventory.transferCreate.back')}</ButtonLink>}
                 />
+                <SandboxStockBadge />
                 <EmptyState
                     title={t('inventory.transferCreate.twoRequired')}
                     description={t('inventory.transferCreate.twoRequiredHelp')}

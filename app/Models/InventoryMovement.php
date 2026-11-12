@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\InventoryMovementType;
+use App\Models\Concerns\RoutesToSandboxInventory;
 use App\Models\Concerns\ScopesToActiveOrganization;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -10,6 +11,7 @@ use LogicException;
 
 class InventoryMovement extends Model
 {
+    use RoutesToSandboxInventory;
     use ScopesToActiveOrganization;
 
     public const UPDATED_AT = null;

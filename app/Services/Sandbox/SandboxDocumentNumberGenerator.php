@@ -21,10 +21,13 @@ final class SandboxDocumentNumberGenerator
 
     public const CREDIT_NOTE = 'credit_note';
 
+    public const STOCK_TRANSFER = 'stock_transfer';
+
     private const PREFIXES = [
         self::INVOICE => 'TEST-FAC-',
         self::DELIVERY_NOTE => 'TEST-BL-',
         self::CREDIT_NOTE => 'TEST-AV-',
+        self::STOCK_TRANSFER => 'TEST-TRF-',
     ];
 
     public function next(Organization $organization, string $type): string

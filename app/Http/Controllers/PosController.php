@@ -200,16 +200,18 @@ class PosController extends Controller
         ]);
         $warehouse = $this->warehouse($organization, (int) $filters['warehouse_id']);
 
+        // Phase 4: Test Mode reads the Test stock ledger (routed table).
+        $balances = InventoryBalance::environmentTable();
         $organizationAvailability = InventoryBalance::query()
-            ->select('inventory_balances.product_variant_id')
-            ->selectRaw('SUM(inventory_balances.on_hand - inventory_balances.reserved) as total_available')
-            ->join('warehouses', function ($join) use ($organization) {
-                $join->on('warehouses.id', '=', 'inventory_balances.warehouse_id')
+            ->select($balances.'.product_variant_id')
+            ->selectRaw("SUM({$balances}.on_hand - {$balances}.reserved) as total_available")
+            ->join('warehouses', function ($join) use ($organization, $balances) {
+                $join->on('warehouses.id', '=', $balances.'.warehouse_id')
                     ->where('warehouses.organization_id', '=', $organization->getKey())
                     ->where('warehouses.status', '=', WarehouseStatus::Active->value);
             })
-            ->where('inventory_balances.organization_id', $organization->getKey())
-            ->groupBy('inventory_balances.product_variant_id');
+            ->where($balances.'.organization_id', $organization->getKey())
+            ->groupBy($balances.'.product_variant_id');
 
         $variants = ProductVariant::query()
             ->leftJoinSub($organizationAvailability, 'organization_stock', function ($join) {

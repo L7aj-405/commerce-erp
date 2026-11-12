@@ -3,6 +3,8 @@
 namespace App\Services;
 
 use App\Models\Organization;
+use App\Services\Sandbox\SandboxContext;
+use App\Services\Sandbox\SandboxDocumentNumberGenerator;
 use App\Support\LockedRow;
 use Illuminate\Support\Facades\DB;
 use LogicException;
@@ -11,6 +13,11 @@ class StockTransferNumberGenerator
 {
     public function next(Organization $organization): string
     {
+        // Phase 4: Test transfers take a non-official TEST-TRF- reference and
+        // never touch stock_transfer_sequences.
+        if (app(SandboxContext::class)->isSandbox()) {
+            return app(SandboxDocumentNumberGenerator::class)->next($organization, SandboxDocumentNumberGenerator::STOCK_TRANSFER);
+        }
         if (DB::transactionLevel() < 1) {
             throw new LogicException('Stock transfer numbers may only be allocated inside a database transaction.');
         }

@@ -1,5 +1,6 @@
 import EmptyState from '@/components/ui/EmptyState';
 import FilterSelect from '@/components/ui/FilterSelect';
+import SandboxStockBadge from '@/components/SandboxStockBadge';
 import PageHeader from '@/components/ui/PageHeader';
 import Pagination from '@/components/ui/Pagination';
 import InventoryLayout from '@/layouts/InventoryLayout';
@@ -35,6 +36,7 @@ export default function MovementIndex({ movements, filters, warehouses }: Props)
                 title={t('inventory.movements.title')}
                 description={t('inventory.movements.description')}
             />
+            <SandboxStockBadge />
 
             <section className="mb-6 rounded-card border border-line bg-surface p-4 shadow-soft">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">

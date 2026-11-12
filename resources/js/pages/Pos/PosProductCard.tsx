@@ -1,4 +1,5 @@
 import ProductImage from '@/components/catalog/ProductImage';
+import SandboxStockBadge from '@/components/SandboxStockBadge';
 import { Money, Quantity } from '@/components/pos/primitives';
 import type { PosCardSize } from '@/components/pos/usePosPreferences';
 import { Spinner } from '@/components/ui/Spinner';
@@ -90,7 +91,7 @@ export default function PosProductCard({ product, onAdd, pending = false, added 
                             t('pos.companyBackorder')
                         ) : (
                             <>
-                                {showLocalStock && <><Quantity value={product.stock.available} /> {t('pos.here')}</>}
+                                {showLocalStock && <><Quantity value={product.stock.available} /> {t('pos.here')}<SandboxStockBadge inline /></>}
                                 {showLocalStock && showCompanyStock && ' · '}
                                 {showCompanyStock && <><Quantity value={product.stock.total_available} /> {t('pos.companyShort')}</>}
                             </>

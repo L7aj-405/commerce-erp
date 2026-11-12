@@ -6,6 +6,7 @@ use App\Models\InventoryBalance;
 use App\Models\Organization;
 use App\Models\ProductVariant;
 use App\Models\Warehouse;
+use App\Services\Sandbox\SandboxContext;
 use App\Support\LockedRow;
 use Illuminate\Support\Facades\DB;
 use LogicException;
@@ -29,12 +30,18 @@ class InventoryBalanceLocker
             'warehouse_id' => $warehouse->getKey(),
             'product_variant_id' => $variant->getKey(),
         ];
+        // Phase 4: in Test Mode the same lock protocol runs on the sandbox
+        // ledger (routed model table, sandbox-qualified unique identity).
+        $table = InventoryBalance::environmentTable();
+        $claimIdentity = $table === 'inventory_balances'
+            ? $identity
+            : ['sandbox_id' => app(SandboxContext::class)->id(), ...$identity];
 
         // Existing row (the usual case): lock it directly — an exclusive record
         // lock, no gap lock. Missing row: create-and-lock exclusively in one
         // step. INSERT IGNORE + FOR UPDATE deadlocked on MySQL (see LockedRow).
         if (! InventoryBalance::query()->where($identity)->exists()) {
-            LockedRow::claim('inventory_balances', $identity, [
+            LockedRow::claim($table, $claimIdentity, [
                 'on_hand' => '0.0000',
                 'reserved' => '0.0000',
                 'created_at' => now(),

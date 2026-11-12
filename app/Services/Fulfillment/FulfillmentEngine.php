@@ -132,8 +132,8 @@ final class FulfillmentEngine
             ->where('fi.organization_id', $order->organization_id)->where('f.sales_order_id', $order->getKey())
             ->where('f.status', '!=', FulfillmentStatus::Cancelled->value)
             ->get(['fi.sales_order_line_id', 'fi.quantity', 'f.status', 'f.id as fulfillment_id']);
-        $reserved = SalesOrderInventoryAllocation::query()->from('sales_order_inventory_allocations as a')
-            ->join('inventory_reservations as r', fn ($join) => $join->on('r.id', '=', 'a.inventory_reservation_id')->on('r.organization_id', '=', 'a.organization_id'))
+        $reserved = SalesOrderInventoryAllocation::query()->from(SalesOrderInventoryAllocation::environmentTable().' as a')
+            ->join(\App\Models\InventoryReservation::environmentTable().' as r', fn ($join) => $join->on('r.id', '=', 'a.inventory_reservation_id')->on('r.organization_id', '=', 'a.organization_id'))
             ->where('a.organization_id', $order->organization_id)->whereIn('a.sales_order_line_id', $lines->pluck('id'))
             ->where('r.status', InventoryReservationStatus::Active->value)
             ->get(['a.sales_order_line_id', 'r.quantity'])

@@ -1,5 +1,6 @@
 import { ButtonLink } from '@/components/ui/Button';
 import EmptyState from '@/components/ui/EmptyState';
+import SandboxStockBadge from '@/components/SandboxStockBadge';
 import PageHeader from '@/components/ui/PageHeader';
 import Pagination from '@/components/ui/Pagination';
 import SearchInput from '@/components/ui/SearchInput';
@@ -85,6 +86,7 @@ export default function TransferIndex({ transfers, filters, can }: Props) {
                 description={t('inventory.transfers.description')}
                 actions={can.create ? <ButtonLink href="/inventory/transfers/create"><IconPlus /> {t('inventory.transfers.new')}</ButtonLink> : undefined}
             />
+            <SandboxStockBadge />
 
             <section className="mb-5 rounded-card border border-line bg-surface p-4 shadow-soft">
                 <label className="mb-2 block text-[11px] font-semibold uppercase tracking-wide text-ink-faint">{t('inventory.transfers.search')}</label>

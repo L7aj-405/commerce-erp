@@ -42,6 +42,8 @@ class SandboxController extends Controller
             $audit->record('sandbox.entered', $user, $org, auditable: $sandbox);
             return $sandbox;
         });
+        // Phase 4: explicit Test stock snapshot when Test Mode starts (idempotent).
+        app(\App\Services\Sandbox\SandboxInventoryInitializer::class)->ensure($sandbox);
         $request->session()->put(SandboxContext::SESSION_KEY, ['id' => $sandbox->id, 'organization_id' => $org->id, 'user_id' => $user->id, 'generation' => $sandbox->generation]);
         return redirect('/test-mode');
     }

@@ -4,5 +4,5 @@ use Illuminate\Database\Eloquent\Model;
 class Sandbox extends Model
 {
     protected $guarded = ['*'];
-    protected function casts(): array { return ['generation' => 'integer', 'reset_at' => 'datetime']; }
+    protected function casts(): array { return ['generation' => 'integer', 'reset_at' => 'datetime', 'inventory_initialized_at' => 'datetime']; }
 }

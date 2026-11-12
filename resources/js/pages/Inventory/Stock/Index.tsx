@@ -2,6 +2,7 @@ import ProductImage from '@/components/catalog/ProductImage';
 import { Button, ButtonLink } from '@/components/ui/Button';
 import EmptyState from '@/components/ui/EmptyState';
 import FilterSelect from '@/components/ui/FilterSelect';
+import SandboxStockBadge from '@/components/SandboxStockBadge';
 import PageHeader from '@/components/ui/PageHeader';
 import Pagination from '@/components/ui/Pagination';
 import SearchInput from '@/components/ui/SearchInput';
@@ -97,6 +98,7 @@ export default function StockIndex({ balances, filters, warehouses, brands, cate
                 description={t('inventory.stock.description')}
                 actions={can.transfer ? <ButtonLink href="/inventory/transfers/create">{t('inventory.stock.newTransfer')}</ButtonLink> : undefined}
             />
+            <SandboxStockBadge />
 
             {warehouses.length === 0 ? (
                 <EmptyState

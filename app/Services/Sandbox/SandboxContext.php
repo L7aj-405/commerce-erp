@@ -23,6 +23,7 @@ class SandboxContext
             ->where('generation', $selection['generation'] ?? null)->where('status', 'active')->first();
     }
     public function id(): ?int { return $this->sandbox?->id; }
+    public function sandbox(): ?Sandbox { return $this->sandbox; }
     public function isSandbox(): bool { return $this->sandbox !== null; }
     // Invalidated selections remain blocked until an explicit exit; never fall through to production writes.
     public function isRestricted(): bool { return $this->selected; }

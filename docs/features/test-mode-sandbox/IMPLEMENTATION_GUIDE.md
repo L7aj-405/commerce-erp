@@ -1,5 +1,82 @@
 # Test Mode / Sandbox — Implementation Guide
 
+## Phase 4 — Sandbox inventory isolation
+
+### Status
+
+**Complete** (inventory scope). Test Mode has its own stock: balances, immutable movements, reservations, sales allocations and warehouse-to-warehouse transfers live in physically separate `sandbox_*` tables. POS availability, cart allocations, shortage checks, stock IN/OUT, reservations (create / release / consume), transfers and **Test order confirmation** all run on Test stock. A Test operation never reads or changes Production stock.
+
+### Chosen inventory architecture — environment-routed ledger
+
+- **Separate tables, same models.** `InventoryBalance`, `InventoryMovement`, `InventoryReservation`, `SalesOrderInventoryAllocation`, `StockTransfer` and `StockTransferLine` use the `RoutesToSandboxInventory` trait: in Production they use their normal table; while a Test context is active they use `sandbox_inventory_balances`, `sandbox_inventory_movements`, `sandbox_inventory_reservations`, `sandbox_sales_order_inventory_allocations`, `sandbox_stock_transfers`, `sandbox_stock_transfer_lines`, scoped to the active sandbox (`sandbox_id`).
+  - All existing logic — `InventoryBalanceLocker` (LockedRow + `FOR UPDATE`), `InventoryReservationManager`, `PosStockAllocator`, `TransferInventoryAction` / `CreateStockTransferAction`, `AdjustInventoryAction`, `ConfirmSalesOrderAction` — runs unchanged on the Test ledger. No inventory rule is duplicated or weakened.
+  - A hydrated row keeps the table it was loaded from. Every insert/update/delete is checked: a sandbox-table row is only writable from its own Test context; a Production row is never writable from a Test (or invalidated) context.
+- **Immutability.** Test movements use the same `InventoryMovement` model, so the same "movements are immutable" guards apply. The Production ledger and its rules are untouched.
+- **Master data is shared, never duplicated.** Warehouses and product variants are referenced through composite `(organization_id, id)` FKs.
+- **Cross-environment references are impossible.** Internal references on the Test ledger are composite `(sandbox_id, id)` FKs (allocation → reservation, transfer line → transfer / movements). A Test allocation therefore cannot reference a Production reservation, and a Production allocation (FK to `inventory_reservations`) cannot reference a Test reservation. `SalesOrderInventoryAllocation` additionally refuses an allocation whose order line belongs to the other environment (404).
+- **Fail-closed SQL guard.** `SandboxInventoryGuard` hooks every database connection (`beforeExecuting`, registered for existing and newly established connections). During a Test request, any SQL statement naming a Production inventory table (`inventory_balances`, `inventory_movements`, `inventory_reservations`, `sales_order_inventory_allocations`, `stock_transfers`, `stock_transfer_lines`, `stock_transfer_sequences`) is refused before execution — raw query builder included. Only the initialization snapshot reads Production balances, inside an explicit `bypass()`. Production requests are never affected; Production stock calculators never include `sandbox_*` tables.
+- **Raw qualifiers routed.** Code that qualifies inventory columns by table name now uses `Model::environmentTable()`: POS product availability (`PosController`), stock page (`InventoryStockController`), order origin allocations (`SalesOrderController`, `SalesOrder::reservedOutsideShowroom`), `FulfillmentEngine` reserved quantities.
+
+### Initialization strategy — explicit snapshot, once per sandbox
+
+- Taken when Test Mode starts (`POST /test-mode/enter`) and, for sandboxes created before Phase 4, on their first Test request (`ResolveSandboxContext`). Implemented by `SandboxInventoryInitializer::ensure()`.
+- Copies Production `on_hand` per (warehouse, variant) with a single `INSERT … SELECT`; Test `reserved` starts at **0** (Production reservations belong to Production orders that do not exist in the sandbox). One `opening` movement per copied balance (`reference_type = sandbox_initialization`) keeps the Test ledger reconcilable.
+- Race-safe and idempotent: the sandbox row is locked `FOR UPDATE`, `sandboxes.inventory_initialized_at` is re-checked under the lock, and the unique `(sandbox_id, organization_id, warehouse_id, product_variant_id)` key backs it up.
+- **After the snapshot the sandbox evolves independently**: later Production movements never rewrite Test balances. Stock for a warehouse/variant created after the snapshot starts at 0 in Test (add it with a Test stock-in). Reasoning: one deterministic point in time, no read path ever falls back to Production, and no silent drift between environments.
+
+### Tables / migration
+
+`database/migrations/2026_11_21_000004_create_sandbox_inventory.php`
+
+- `sandboxes.inventory_initialized_at`.
+- `sandbox_inventory_balances`, `sandbox_inventory_movements`, `sandbox_inventory_reservations`, `sandbox_sales_order_inventory_allocations`, `sandbox_stock_transfers`, `sandbox_stock_transfer_lines` — Production columns + `sandbox_id` (FK → `sandboxes`, RESTRICT), sandbox-qualified unique keys and `(sandbox_id, id)` keys for composite FKs.
+- **Rollback guard:** `down()` refuses while any Test reservation, allocation, transfer, non-initialization movement or confirmed Test order exists (the initialization snapshot alone is derived data and may be dropped). Verified on SQLite (test) and MySQL (rollback + re-apply with no activity).
+
+### Supported Test inventory operations
+
+| Operation | Route | Notes |
+|---|---|---|
+| Stock view / movements | `inventory.stock.index`, `inventory.movements.index` | Shows Test stock with a **Stock test** banner |
+| Stock IN / OUT | `inventory.adjustments.store` | `adjustment_in` / `adjustment_out` on the Test ledger |
+| Reservation create / release / consume | `inventory.reservations.store` / `.release` / `.consume` | Consume = Test stock OUT with movement |
+| Warehouse transfer | `inventory.transfers.index` / `.create` / `.store` / `.show` | `TEST-TRF-000001` (Test document sequence); never touches `stock_transfer_sequences`; same warehouse/store rules |
+| POS availability & cart | POS routes (Phase 2) | Availability, cart allocations and shortage use Test stock |
+| Sales order confirmation | `sales.orders.confirm` | Allocations + reservations on Test stock; commissions and transfer requests are **not** generated |
+| Documents (Phase 3) | unchanged | Test invoice / BL from a draft **or confirmed** Test order; BL issue stays document-only (no stock change) |
+
+### Still blocked
+
+Payments / finance, POS checkout (needs payments), order cancellation, fulfillment / hand-over / shipping (stock leaving through fulfillment), returns / refunds, procurement and supplier receipts, transfer requests (prepare / ship / receive), opening stock, warehouse management, integrations (WooCommerce stock sync), sandbox reset. All remain outside the route allowlist (`403 SANDBOX_DOMAIN_UNAVAILABLE`).
+
+### UI
+
+`SandboxStockBadge`: a **Stock test** banner on the stock, movements and transfer pages and a "Stock test" tag on POS product stock, rendered only in Test Mode (Production displays unchanged).
+
+### Validation results
+
+- `SandboxInventoryTest` (5 tests / 144 assertions): snapshot once + independence after Production changes; same product/warehouse with different Production and Test quantities; Test reservation / release / stock OUT / stock IN / transfer / consume change only `sandbox_*` rows; Production ledger (balances, movements, reservations, allocations, transfers, transfer sequence) byte-identical afterwards; Test movements immutable; raw SQL on Production inventory refused in Test; POS availability Test vs Production (5 vs 4); Test cart allocations and confirmation reservations on the Test ledger; shortage computed on Test stock; no commissions / transfer requests; Phase 3 invoice/BL still work and BL issue moves no stock; cross-environment allocation rejected both ways (composite FKs + model guard); Production code cannot write the sandbox ledger; tenant isolation (another organization's sandbox only sees its own Test stock, cannot use foreign warehouses); rollback guard.
+- Full Sandbox suite (Phases 1–4), SQLite: **16 tests / 537 assertions passed**.
+- **MySQL** (`commerce_erp_testing`): Sandbox + Inventory suites **169 tests / 1,601 assertions passed**.
+- Inventory, POS, Sales, Quotations, Returns, Exchanges, Fulfillment, Procurement (SQLite): **700 / 701 passed (5,412 assertions)**. The single failure, `CompletedTransfersVisibilityTest::test_historical_transfer_whose_record_was_removed_is_rebuilt_from_its_movements`, is **pre-existing**: it fails identically at the previous commit without any Phase 4 code (SQLite returns raw decimals as `4` instead of `4.0000`) and passes on MySQL.
+- Documents, Security, Tenancy, Policies, Finance, Dashboards, Settings, MCP, Payments, Catalog, Integrations, Attention, Platform: **1,054 tests / 7,589 assertions passed**.
+- `tsc --noEmit` and `vite build` passed; Pint passes on every file Phase 4 created or made fail.
+
+### Concurrency / MySQL notes
+
+- `tests/Concurrency/sandbox_inventory_race.php` (new, 8 separate MySQL sessions, `commerce_erp_dev_test`): **reserve** (exactly 5 of 8 Test reservations succeed on a Test balance of 5 — no oversell), **first-use** (concurrent create-and-lock of a missing Test balance row — no lost update), **mixed** (Production and Test sessions reserving the same warehouse/variant simultaneously — each ledger only sees its own reservations) — all PASS, **InnoDB deadlocks +0**.
+- Existing Production races still pass on the same server: `number_sequence_race.php` (SalesOrder, Invoice, DeliveryNote, StockTransfer, InventoryBalance; first-use + existing) PASS, deadlocks +0; `transfer_priority_race.php` 24 rounds PASS, deadlocks +0, lock-wait timeouts +0.
+- The Test ledger uses the same lock order and the same `LockedRow` create-and-lock protocol as Production (`INSERT … ON DUPLICATE KEY UPDATE` on MySQL), with the sandbox-qualified unique key as the claim identity.
+- The race harness forces the request-scoped Test context in CLI child processes from the script itself; no test-only hook exists in application code.
+
+### Known limitations before Phase 5
+
+- Payments are not sandboxed: POS checkout, settlement-dependent invoice rules and refunds stay blocked.
+- No Test fulfillment: reservations of confirmed Test orders are only consumed/released manually; hand-over/shipping is blocked. Cancelling a confirmed Test order is blocked (it would need reservation release + finance effects).
+- Transfer requests, procurement receipts and replenishment are Production-only; Test transfers skip the open-transfer-request "promise" check.
+- Test stock for warehouses/variants created after the snapshot starts at 0.
+- No sandbox reset/purge; `RESTRICT` FKs keep sandbox rows until a reset design exists.
+- Audit-log entries of Test inventory operations go to the normal audit trail, referencing Test ledger ids.
+
 ## Phase 3 — Sandbox documents & Test numbering
 
 ### Status
