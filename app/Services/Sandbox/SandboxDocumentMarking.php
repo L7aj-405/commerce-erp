@@ -16,21 +16,29 @@ final class SandboxDocumentMarking
         'issued' => 'Émis en mode test',
         'cancelled' => 'Annulé',
         'superseded' => 'Remplacé',
+        'accepted' => 'Accepté (test)',
+        'rejected' => 'Refusé',
+        'converted' => 'Transformé en commande (test)',
     ];
 
     /**
      * @param  array<string, mixed>  $payload
      * @return array<string, mixed>
      */
-    public static function apply(array $payload, ?string $reference, string $status): array
+    public static function apply(array $payload, ?string $reference, string $status, ?string $notice = null, bool $keepStamp = false): array
     {
         $payload['sandbox'] = [
             'reference' => $reference,
             'status' => self::STATUS_LABELS[$status] ?? $status,
+            'notice' => $notice,
         ];
         // The shared partial draws its own diagonal "DOCUMENT DE TEST" mark.
         $payload['watermark'] = null;
-        $payload['stamp'] = null;
+        // The company stamp may stay on a Test document (the Test mark is drawn
+        // over it and stays dominant); the other Test documents drop it.
+        if (! $keepStamp) {
+            $payload['stamp'] = null;
+        }
         if (isset($payload['title'])) {
             $payload['title'] .= ' (TEST)';
         }

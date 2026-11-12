@@ -191,12 +191,16 @@ class QuotationController extends Controller
         // the currently-live official version — never a draft, never a
         // superseded revision.
         $canShare = $isOfficial && $isCurrentVersion && $quotation->status !== QuotationStatus::Superseded;
+        // Test Mode: no signed PUBLIC link to sandbox data - the link is the
+        // authenticated in-session PDF (a Test document that opens in Test Mode only).
         $sharePdfUrl = $canShare
-            ? \Illuminate\Support\Facades\URL::temporarySignedRoute(
-                'quotations.shared-pdf',
-                now()->addDays((int) config('documents.share_link_ttl_days', 14)),
-                $quotation,
-            ) : null;
+            ? ($quotation->isTest()
+                ? route('quotations.pdf', $quotation)
+                : \Illuminate\Support\Facades\URL::temporarySignedRoute(
+                    'quotations.shared-pdf',
+                    now()->addDays((int) config('documents.share_link_ttl_days', 14)),
+                    $quotation,
+                )) : null;
         $whatsappMessage = $this->whatsappMessage($quotation);
         $whatsappDestination = $whatsapp->resolve(
             $quotation->customer_whatsapp_username,
@@ -230,10 +234,12 @@ class QuotationController extends Controller
                 'phone' => $quotation->customer_phone,
                 'whatsappMessage' => $whatsappMessage,
                 'whatsappDestination' => $whatsappDestination,
-                'defaultSubject' => "Devis {$quotation->quotation_number} — ".($seller['trade_name'] ?: $seller['legal_name'] ?? $quotation->organization->name),
+                'defaultSubject' => ($quotation->isTest() ? '[TEST] ' : '')."Devis {$quotation->quotation_number} — ".($seller['trade_name'] ?: $seller['legal_name'] ?? $quotation->organization->name),
                 'attachmentName' => "Devis-{$quotation->quotation_number}.pdf",
             ] : null,
-            'mailConfigured' => $mail->isConfigured($quotation->organization),
+            // Test sends are simulated: the organization's real mail setup is not needed.
+            'isTest' => $quotation->isTest(),
+            'mailConfigured' => $quotation->isTest() ? true : $mail->isConfigured($quotation->organization),
             'stamp' => [
                 'applied' => $stampRenderable,
                 'appliedAt' => $quotation->stampApposition?->applied_at?->toIso8601String(),
@@ -453,6 +459,7 @@ class QuotationController extends Controller
         $formatter = app(\App\Services\DocumentValueFormatter::class);
 
         return implode("\n", array_filter([
+            $quotation->isTest() ? '[DOCUMENT DE TEST — SANS VALEUR COMMERCIALE / LÉGALE]' : null,
             $greeting,
             "Veuillez trouver notre devis {$quotation->quotation_number}.",
             'Montant : '.$formatter->money($quotation->total_incl_tax).' '.$currency.'.',

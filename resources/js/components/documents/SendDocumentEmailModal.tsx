@@ -19,6 +19,8 @@ type Props = {
     canSend: boolean;
     mailConfigured: boolean;
     canConfigureMail: boolean;
+    /** Test Mode: the send is simulated and no real e-mail leaves the application. */
+    simulated?: boolean;
 };
 
 const emptyBuckets = (defaultTo: string) => ({
@@ -41,6 +43,7 @@ export default function SendDocumentEmailModal({
     canSend,
     mailConfigured,
     canConfigureMail,
+    simulated = false,
 }: Props) {
     const { t } = useI18n();
     const form = useForm({ ...emptyBuckets(defaultTo), subject: defaultSubject, message: defaultMessage });
@@ -119,6 +122,12 @@ export default function SendDocumentEmailModal({
                     </div>
                     <button type="button" onClick={onClose} aria-label={t('common.close')} className="flex size-9 shrink-0 items-center justify-center rounded-field text-ink-muted transition-soft hover:bg-sage hover:text-ink">✕</button>
                 </div>
+
+                {simulated && (
+                    <div role="note" className="mt-3 rounded-field border border-amber-400 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-950">
+                        EMAIL TEST — NON ENVOYÉ : envoi simulé, aucun e-mail réel ne sera expédié.
+                    </div>
+                )}
 
                 {!mailConfigured && (
                     <div className="mt-3 rounded-field border border-warning/30 bg-warning-soft px-3 py-2 text-xs text-warning">

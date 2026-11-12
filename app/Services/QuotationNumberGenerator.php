@@ -3,6 +3,8 @@
 namespace App\Services;
 
 use App\Models\Organization;
+use App\Services\Sandbox\SandboxContext;
+use App\Services\Sandbox\SandboxDocumentNumberGenerator;
 use App\Support\LockedRow;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -20,6 +22,12 @@ class QuotationNumberGenerator
 {
     public function next(Organization $organization, int $year): string
     {
+        // Test quotations take a non-official TEST-DEV- reference and never touch
+        // quotation_sequences (Production numbering is untouched by Test Mode).
+        if (app(SandboxContext::class)->isSandbox()) {
+            return app(SandboxDocumentNumberGenerator::class)->next($organization, SandboxDocumentNumberGenerator::QUOTATION);
+        }
+
         if (DB::connection()->transactionLevel() < 1) {
             throw new LogicException('Quotation numbers may only be allocated inside an existing issuance transaction.');
         }
