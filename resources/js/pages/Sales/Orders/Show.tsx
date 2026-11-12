@@ -1,4 +1,5 @@
 import DocBadge from '@/components/ui/DocBadge';
+import SandboxPaymentBadge from '@/components/SandboxPaymentBadge';
 import { Button } from '@/components/ui/Button';
 import { Popover } from '@/components/pos/primitives';
 import ActivityTimeline from '@/components/timeline/ActivityTimeline';
@@ -918,7 +919,7 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
 
             {/* Payment history */}
             <section className="mb-6">
-                <h2 className="mb-2 text-sm font-semibold text-ink">{t('orders.show.paymentHistory')}</h2>
+                <h2 className="mb-2 text-sm font-semibold text-ink">{t('orders.show.paymentHistory')}<SandboxPaymentBadge inline /></h2>
                 <div className="overflow-x-auto rounded-card border border-line bg-surface">
                     <table className="w-full min-w-[720px] text-left text-sm">
                         <thead className="border-b border-line bg-raised text-xs uppercase tracking-wide text-ink-muted">

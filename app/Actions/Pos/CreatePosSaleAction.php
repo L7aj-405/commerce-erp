@@ -155,6 +155,12 @@ class CreatePosSaleAction
                         'order_number' => $draft->order_number,
                         'pos_warehouse_id' => $draft->pos_warehouse_id,
                     ]);
+                } elseif ($confirmed->sandbox_id !== null) {
+                    // Phase 5: a Test checkout stops at confirmed + paid with Test stock
+                    // reserved — fulfillment (hand-over) is not sandboxed yet.
+                    $this->audit->record('sales_order.pos_test_fulfillment_deferred', $actor, $confirmed->organization, $confirmed->store, $confirmed, newValues: [
+                        'order_number' => $confirmed->order_number,
+                    ]);
                 } elseif ($fulfillmentMode !== 'delivery' && ! $requiresReplenishment) {
                     $completed = $this->fulfillOrder->execute($actor, $confirmed->fresh())
                         ->load(['store:id,name,code', 'customer:id,display_name', 'paymentAllocations.payment.financialAccount']);
@@ -261,6 +267,12 @@ class CreatePosSaleAction
                     $this->audit->record('sales_order.pos_awaiting_supplier_procurement', $actor, $order->organization, $order->store, $order, newValues: [
                         'order_number' => $order->order_number,
                         'pos_warehouse_id' => $order->pos_warehouse_id,
+                    ]);
+                } elseif ($confirmed->sandbox_id !== null) {
+                    // Phase 5: a Test checkout stops at confirmed + paid with Test stock
+                    // reserved — fulfillment (hand-over) is not sandboxed yet.
+                    $this->audit->record('sales_order.pos_test_fulfillment_deferred', $actor, $confirmed->organization, $confirmed->store, $confirmed, newValues: [
+                        'order_number' => $confirmed->order_number,
                     ]);
                 } elseif ($fulfillmentMode !== 'delivery' && ! $requiresReplenishment) {
                     $completed = $this->fulfillOrder->execute($actor, $confirmed->fresh())

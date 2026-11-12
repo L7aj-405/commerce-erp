@@ -6,6 +6,7 @@ use App\Enums\PaymentStatus;
 use App\Enums\SalesOrderPaymentStatus;
 use App\Enums\SalesOrderStatus;
 use App\Models\CustomerReturn;
+use App\Models\Payment;
 use App\Models\PaymentAllocation;
 use App\Models\PaymentRefund;
 use App\Models\SalesOrder;
@@ -93,19 +94,22 @@ class SalesOrderPaymentCalculator
 
         foreach ($orders->groupBy('organization_id') as $organizationId => $tenantOrders) {
             $orderIds = $tenantOrders->pluck('id')->all();
+            // Phase 5: routed tables (simulated Test ledger in Test Mode).
+            $p = Payment::environmentTable();
+            $a = PaymentAllocation::environmentTable();
             $collectedRows = PaymentAllocation::query()
-                ->join('payments', function ($join) {
-                    $join->on('payments.id', '=', 'payment_allocations.payment_id')
-                        ->on('payments.organization_id', '=', 'payment_allocations.organization_id');
+                ->join($p, function ($join) use ($p, $a) {
+                    $join->on($p.'.id', '=', $a.'.payment_id')
+                        ->on($p.'.organization_id', '=', $a.'.organization_id');
                 })
-                ->where('payment_allocations.organization_id', $organizationId)
-                ->whereIn('payment_allocations.sales_order_id', $orderIds)
-                ->where('payments.status', PaymentStatus::Posted->value)
-                ->when($asOf, fn ($query) => $query->whereDate('payments.payment_date', '<=', $asOf->toDateString()))
-                ->select('payment_allocations.sales_order_id')
-                ->selectRaw('SUM(payment_allocations.amount) as aggregate')
-                ->selectRaw('MAX(payments.payment_date) as last_payment_date')
-                ->groupBy('payment_allocations.sales_order_id')
+                ->where($a.'.organization_id', $organizationId)
+                ->whereIn($a.'.sales_order_id', $orderIds)
+                ->where($p.'.status', PaymentStatus::Posted->value)
+                ->when($asOf, fn ($query) => $query->whereDate($p.'.payment_date', '<=', $asOf->toDateString()))
+                ->select($a.'.sales_order_id')
+                ->selectRaw("SUM({$a}.amount) as aggregate")
+                ->selectRaw("MAX({$p}.payment_date) as last_payment_date")
+                ->groupBy($a.'.sales_order_id')
                 ->get()
                 ->keyBy('sales_order_id');
             $refunded = PaymentRefund::query()

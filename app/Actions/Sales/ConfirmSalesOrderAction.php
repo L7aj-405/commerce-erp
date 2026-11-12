@@ -303,12 +303,11 @@ class ConfirmSalesOrderAction
             // Commission snapshots belong to the same atomic boundary as the
             // confirmed sale and its immutable C2/C3 snapshots. The action is
             // source-key idempotent, including controlled correction cycles.
-            // Phase 4: a Test order confirms against the Test inventory ledger
-            // only; commissions (finance) are not sandboxed and are never generated.
+            // Phase 4/5: a Test order confirms against the Test inventory ledger;
+            // its commission snapshots go to the Test finance ledger (routed
+            // model) and never reach Production commission reports.
             $test = $order->sandbox_id !== null;
-            if (! $test) {
-                $this->commissions->execute($actor, $order->load(['organization', 'store', 'lines']));
-            }
+            $this->commissions->execute($actor, $order->load(['organization', 'store', 'lines']));
 
             if ($revision && $revision->status === 'in_progress') {
                 $this->payments->recalculate($order);

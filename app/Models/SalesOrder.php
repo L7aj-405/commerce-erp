@@ -21,10 +21,10 @@ class SalesOrder extends Model
     use ScopesToActiveStore;
     use ScopesToSandbox;
 
-    /** Phase 4: Test orders may be confirmed against Test stock. */
+    /** Phase 4/5: Test orders may be confirmed (Test stock) and cancelled (Test refunds). */
     public function sandboxStatuses(): ?array
     {
-        return ['draft', 'confirmed'];
+        return ['draft', 'confirmed', 'cancelled'];
     }
 
     protected $guarded = ['*'];

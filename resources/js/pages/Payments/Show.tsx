@@ -1,4 +1,5 @@
 import PaymentsLayout from "@/layouts/PaymentsLayout";
+import SandboxPaymentBadge from '@/components/SandboxPaymentBadge';
 import { useI18n } from "@/i18n";
 import { formatDate, formatDateTime, formatMoney } from "@/utils/format";
 import { Head, Link, useForm } from "@inertiajs/react";
@@ -62,6 +63,7 @@ export default function PaymentShow({ payment, can }: Props) {
                 </Link>
                 <h2 className="mt-2 text-xl font-semibold">
                     <bdi>{payment.payment_number}</bdi>
+                    <SandboxPaymentBadge inline />
                 </h2>
             </div>
             <section className="mb-6 grid gap-4 rounded-lg bg-slate-50 p-5 md:grid-cols-4">

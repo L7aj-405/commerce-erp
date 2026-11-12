@@ -23,11 +23,17 @@ final class SandboxDocumentNumberGenerator
 
     public const STOCK_TRANSFER = 'stock_transfer';
 
+    public const PAYMENT = 'payment';
+
+    public const PAYMENT_REFUND = 'payment_refund';
+
     private const PREFIXES = [
         self::INVOICE => 'TEST-FAC-',
         self::DELIVERY_NOTE => 'TEST-BL-',
         self::CREDIT_NOTE => 'TEST-AV-',
         self::STOCK_TRANSFER => 'TEST-TRF-',
+        self::PAYMENT => 'TEST-PAY-',
+        self::PAYMENT_REFUND => 'TEST-REF-',
     ];
 
     public function next(Organization $organization, string $type): string

@@ -7,7 +7,7 @@ use Illuminate\Database\Connection;
 use LogicException;
 
 /**
- * Fail-closed safety net under the routed inventory models: while a Test
+ * Fail-closed safety net under the routed inventory and finance models: while a Test
  * context is active, ANY SQL statement (read or write, Eloquent or raw query
  * builder) that names a Production inventory ledger table is refused before it
  * reaches the database. Raw queries that forgot to route to the `sandbox_`
@@ -21,18 +21,27 @@ final class SandboxInventoryGuard
     public const PRODUCTION_TABLES = [
         'inventory_balances', 'inventory_movements', 'inventory_reservations',
         'sales_order_inventory_allocations', 'stock_transfers', 'stock_transfer_lines', 'stock_transfer_sequences',
+        // Phase 5 — finance transaction ledger.
+        'payments', 'payment_allocations', 'payment_refunds', 'payment_sequences', 'payment_refund_sequences',
+        'commission_entries', 'finance_expected_collections', 'finance_expected_collection_matches',
     ];
 
     /**
-     * Phase 4 Test Mode route allowlist. Deliberately absent: transfer
+     * Phase 4/5 Test Mode route allowlist. Deliberately absent: transfer
      * requests (shipping/receiving workflow), opening stock, warehouse
-     * management, cancellation, fulfillment, returns, payments, procurement.
+     * management, fulfillment, returns / exchanges, procurement, financial
+     * account management and every finance report page (Production-only).
      */
     public const ROUTES = [
         'inventory.stock.index', 'inventory.movements.index', 'inventory.adjustments.store',
         'inventory.reservations.store', 'inventory.reservations.release', 'inventory.reservations.consume',
         'inventory.transfers.index', 'inventory.transfers.create', 'inventory.transfers.store', 'inventory.transfers.show',
         'sales.orders.confirm',
+        // Phase 5 — Test payments and finance (simulated, Test ledger only).
+        'pos.sales.store', 'sales.orders.payments.store', 'sales.orders.cancel',
+        'payments.index', 'payments.show', 'payments.reverse',
+        'finance.monthly-situation.expected-collections.store', 'finance.monthly-situation.expected-collections.update',
+        'finance.monthly-situation.expected-collections.cancel', 'finance.monthly-situation.expected-collections.match',
     ];
 
     private static int $bypass = 0;

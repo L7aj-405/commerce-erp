@@ -26,6 +26,9 @@ class FulfillSalesOrderAction
 
     public function execute(User $actor, SalesOrder $order): SalesOrder
     {
+        // Fulfillment (hand-over / stock leaving through fulfillment) is not
+        // sandboxed yet: a Test order is never fulfilled, whatever the caller.
+        abort_if($order->sandbox_id !== null, 403, 'TEST: exécution de commande indisponible.');
         $this->engine->authorize($actor, $order, 'sales_orders.fulfill');
 
         return $this->engine->transaction($order, function (SalesOrder $order) use ($actor) {

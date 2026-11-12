@@ -1,5 +1,64 @@
 # Test Mode / Sandbox — Implementation Guide
 
+## Phase 5 — Sandbox payments & finance isolation
+
+### Status
+
+**Complete** (finance scope). Test Mode records simulated payments (cash, TPE/card, bank transfer), payment allocations, refunds, expected collections and commission entries on a physically separate Test finance ledger. POS checkout works in Test Mode with Test stock and Test payments. Production cash / bank / TPE balances, receivables, revenue, commission reports and every Production finance report are unaffected.
+
+### Finance isolation strategy — routed Test finance ledger (same as Phase 4)
+
+- **Separate tables, same models.** `Payment`, `PaymentAllocation`, `PaymentRefund`, `CommissionEntry`, `FinanceExpectedCollection`, `FinanceExpectedCollectionMatch` use `RoutesToSandboxInventory` (now the shared inventory + finance ledger router): Production tables in Production; `sandbox_payments`, `sandbox_payment_allocations`, `sandbox_payment_refunds`, `sandbox_commission_entries`, `sandbox_finance_expected_collections`, `sandbox_finance_expected_collection_matches` in Test Mode. `RecordPaymentAction`, `RefundPaymentAction`, `ReversePaymentAction`, `CreatePosSaleAction`, `CancelSalesOrderAction`, the commission generator / reversal and `SalesOrderPaymentCalculator` run unchanged on the Test ledger.
+- **Why routing instead of a `sandbox_id` column on Production finance tables:** Production finance reporting is built on many raw / query-builder queries (journal, CA encaissé, créances, monthly report, treasury forecast, account balances, commission dashboards, exports). With separate tables those queries **structurally cannot** see a Test transaction — no predicate can be forgotten — and none of them had to change.
+- **Ownership hardened (applies to Phase 4 tables too).** Sandbox ownership moved from a removable global scope into `newModelQuery()`: every read, relation, update and delete on a routed model is constrained to the active sandbox, and `withoutGlobalScopes()` can no longer widen a Test query (several finance actions use it).
+- **Order links.** `PaymentAllocation`, `PaymentRefund`, `CommissionEntry`, `FinanceExpectedCollection` declare `sandboxSalesOrderColumn()`: the referenced sales order must belong to the row's environment (404 otherwise). Internal Test references are composite `(sandbox_id, id)` FKs (allocation → payment, refund → payment, match → collection / allocation, commission → source entry).
+- **Authorization.** `AuthorizesPaymentAction`: the order must belong to the request's environment (404); Test orders allow `payments.view`, `payments.create`, `payments.reverse` only. `PaymentPolicy` checks the order / payment environment. Test orders may now be **cancelled** (refund path) — `SalesOrder::sandboxStatuses()` = draft, confirmed, cancelled.
+- **SQL guard.** `SandboxInventoryGuard` now also refuses, during Test requests, any SQL naming `payments`, `payment_allocations`, `payment_refunds`, `payment_sequences`, `payment_refund_sequences`, `commission_entries`, `finance_expected_collections`, `finance_expected_collection_matches`. Raw table names on Test-reachable paths were routed (`SalesOrderPaymentCalculator::summaries`, `ManageFinanceExpectedCollectionAction` capacity subquery).
+- **Shared master data.** Financial accounts, stores, users and commission rule sets are shared and referenced, never copied. Account balances (`FinancialAccountBalanceService`) only read Production tables, so Test payments never change real account totals.
+- **Numbering.** Test payments `TEST-PAY-000001`, Test refunds `TEST-REF-000001` (organization-wide Test document sequence); `payment_sequences` / `payment_refund_sequences` are never touched in Test Mode.
+
+### Tables / migration
+
+`database/migrations/2026_11_21_000005_create_sandbox_finance.php` — the six `sandbox_*` finance tables above: Production columns + `sandbox_id` (FK → `sandboxes`, RESTRICT), sandbox-qualified unique keys (`client_operation_id` idempotency, commission `source_key`), `(sandbox_id, id)` keys for composite FKs, master-data FKs to `financial_accounts`, `stores`, `sales_orders`, `users`, commission rule sets. **Rollback guard:** `down()` refuses while any Test finance row exists (dropping them would leave paid Test orders without payments).
+
+### Supported Test payment flow
+
+| Flow | Route | Behaviour |
+|---|---|---|
+| POS checkout | `pos.sales.store` | Confirm on Test stock → Test reservations; Test payments; Test commission entries. **Fulfillment is deferred** (audit `sales_order.pos_test_fulfillment_deferred`): the order ends confirmed + paid + unfulfilled. |
+| Order payments | `sales.orders.payments.store` | Cash, card (TPE), bank transfer, cheque on shared accounts → Test ledger only |
+| Payment list / detail / reversal | `payments.index`, `payments.show`, `payments.reverse` | Test payments only in Test Mode |
+| Refund | `sales.orders.cancel` | Cancelling a paid Test order refunds every Test payment (`TEST-REF-…`), reverses Test commissions, releases Test stock reservations |
+| Expected collections | `finance.monthly-situation.expected-collections.store / update / cancel / match` | Test collections against Test orders, capacity computed from Test payments |
+| Commissions | (confirmation / cancellation) | Generated and reversed on `sandbox_commission_entries` |
+
+UI: `SandboxPaymentBadge` shows **PAIEMENT TEST / SIMULÉ** on the POS payment step, the payments list and detail, and the order payment history; the global Test banner states that payments are simulated.
+
+### Reports exclusions
+
+Production finance pages and reports — journal, CA encaissé, créances, monthly situation / report, treasury forecast, executive dashboards, commission dashboard / ledger, financial account balances, exports — read only Production tables. They remain **outside the Test allowlist** (Production-only views) and are proven not to show Test numbers or Test orders after Test activity.
+
+### Remaining blocked domains
+
+Fulfillment / hand-over / shipping (`FulfillSalesOrderAction` refuses Test orders outright), returns and exchanges (and their refunds / credit notes), procurement and supplier receipts, transfer requests, financial account management and opening balances, finance report pages, outgoing (supplier) payments, integrations, sandbox reset.
+
+### Validation results
+
+- `SandboxFinanceTest` (4 tests / 153 assertions): Test POS checkout on Test stock + Test payment (order confirmed + paid, fulfillment deferred, `TEST-PAY-`, Test reservation held) with the Production finance ledger and the cash / bank / TPE account positions identical afterwards, while a Production checkout right after keeps its exact behaviour (`PAY-000001`, fulfilled, stock and positions change); Test bank + TPE payments, Test expected collections (capacity on Test payments), Test commission generation and reversal, Test refunds via cancellation — Production ledger unchanged, Production journal service and pages (journal, CA encaissé, créances, commission ledger / dashboard, payments) free of Test data; raw SQL on Production finance tables refused in Test; Test payment reversal stays on the Test ledger; Test session cannot pay / see a Production order or payment and vice versa (HTTP + direct action + model guard); store scope; another tenant's sandbox sees nothing; rollback guard.
+- Full Sandbox suite (Phases 1–5): **20 tests / 691 assertions passed**.
+- Finance (incl. commission dashboard / ledger / rule engine), Payments, Dashboards, MCP, Settings, Attention, Documents: **721 / 721 passed (5,538 assertions)**. A first run executed concurrently with the second batch showed one document-rendering image assertion failing; it did not reproduce in the full sequential re-run (likely shared render/storage interference between the parallel runs).
+- POS, Sales, Quotations, Inventory, Returns, Exchanges, Fulfillment, Procurement, Security, Tenancy, Policies: **878 / 879 passed (6,564 assertions)** — the single failure is the pre-existing SQLite-only `CompletedTransfersVisibilityTest` (see Phase 4).
+- **Exact commit content** (HEAD + staged diff applied in a clean worktree, i.e. without unrelated local work): Sandbox + POS + Payments + Sales **336 / 336 passed (2,873 assertions)**.
+- `tsc --noEmit` / `vite build`: passed. Pint passes on every file Phase 5 created or made fail.
+
+### Known limitations before Phase 6
+
+- Test POS pickup sales stop before fulfillment (hand-over not sandboxed): Test reservations stay active until a Test cancellation.
+- Returns / exchanges (and return refunds, credit notes, return commission reversals) are not sandboxed.
+- Finance report pages are Production-only; Test finance is visible on Test orders, the Test payments list and Test expected collections only.
+- Audit-log entries of Test finance operations are written to the normal audit trail, referencing Test ledger ids.
+- No sandbox reset / purge; `RESTRICT` FKs keep Test rows.
+
 ## Phase 4 — Sandbox inventory isolation
 
 ### Status

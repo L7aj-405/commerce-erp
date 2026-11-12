@@ -142,7 +142,7 @@ class SandboxInventoryTest extends QuotationTestCase
         $this->assertSame('2.0000', $reservation->quantity);
         $this->assertSame(SalesOrderInventoryAllocation::class, $reservation->reference_type);
         $this->assertSame('2.0000', InventoryBalance::query()->where('warehouse_id', $main->id)->value('reserved'));
-        $this->assertSame(0, DB::table('commission_entries')->count());
+        $this->assertSame(0, SandboxInventoryGuard::bypass(fn () => DB::table('commission_entries')->count()));
         $this->assertSame(0, DB::table('transfer_requests')->count());
 
         // Shortage is computed on Test stock: 3 on hand - 2 reserved = 1 < 3.
@@ -218,7 +218,9 @@ class SandboxInventoryTest extends QuotationTestCase
             $this->assertNull(DB::table('sales_order_inventory_allocations')->where('id', $productionAllocation->id)->value('inventory_reservation_id'));
         }
         // Production code can never write the sandbox ledger directly either.
-        $sandboxRow = (new InventoryBalance)->setTable('sandbox_inventory_balances')->newQuery()->withoutGlobalScopes()->firstOrFail();
+        // Sandbox ownership is part of the base query: even withoutGlobalScopes() cannot reach a Test row from Production.
+        $this->assertNull((new InventoryBalance)->setTable('sandbox_inventory_balances')->newQuery()->withoutGlobalScopes()->first());
+        $sandboxRow = (new InventoryBalance)->setTable('sandbox_inventory_balances')->newFromBuilder((array) DB::table('sandbox_inventory_balances')->first());
         $this->assertHttpStatus(404, fn () => $sandboxRow->forceFill(['on_hand' => '99'])->save());
         $this->assertSame('5.0000', Decimal::normalize((string) DB::table('sandbox_inventory_balances')->where('id', $sandboxRow->id)->value('on_hand')));
 

@@ -42,7 +42,6 @@ final class PosCartStockGuard
 
     public function assertCovered(SalesOrder $cart): void
     {
-        abort_if($cart->sandbox_id !== null, 403, 'TEST: stock et validation POS indisponibles.');
         if (DB::transactionLevel() < 1) {
             throw new LogicException('The POS cart stock guard runs inside the checkout transaction.');
         }

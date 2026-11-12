@@ -1,4 +1,5 @@
 import EmptyState from '@/components/ui/EmptyState';
+import SandboxPaymentBadge from '@/components/SandboxPaymentBadge';
 import PageHeader from '@/components/ui/PageHeader';
 import Pagination from '@/components/ui/Pagination';
 import StatusBadge from '@/components/ui/StatusBadge';
@@ -40,6 +41,7 @@ export default function PaymentIndex({ payments, accounts, filters }: Props) {
                 title={t('payments.title')}
                 description={t('payments.description')}
             />
+            <SandboxPaymentBadge />
 
             <form onSubmit={submit} className="mb-6 rounded-card border border-line bg-surface p-4 shadow-soft">
                 <div className="grid gap-3 md:grid-cols-6">

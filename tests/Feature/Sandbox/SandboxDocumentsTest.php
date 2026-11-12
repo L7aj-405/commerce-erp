@@ -37,7 +37,7 @@ class SandboxDocumentsTest extends QuotationTestCase
         $this->assertSame('DN-000001', $this->issueDeliveryNote($owner, $this->createDeliveryNote($owner, $production))->delivery_note_number);
         $productionState = $this->productionNumberingState($org->id);
         $settings = app(InvoiceNumberGenerator::class)->settings($org, $year);
-        $stockState = [SandboxInventoryGuard::bypass(fn () => DB::table('inventory_movements')->count()), SandboxInventoryGuard::bypass(fn () => DB::table('inventory_reservations')->count()), DB::table('payments')->count()];
+        $stockState = [SandboxInventoryGuard::bypass(fn () => DB::table('inventory_movements')->count()), SandboxInventoryGuard::bypass(fn () => DB::table('inventory_reservations')->count()), SandboxInventoryGuard::bypass(fn () => DB::table('payments')->count())];
 
         $this->enterTest($owner);
         $testOrders = [];
@@ -75,7 +75,7 @@ class SandboxDocumentsTest extends QuotationTestCase
 
         $this->assertEquals($productionState, $this->productionNumberingState($org->id));
         $this->assertSame($settings, app(InvoiceNumberGenerator::class)->settings($org, $year));
-        $this->assertSame($stockState, [SandboxInventoryGuard::bypass(fn () => DB::table('inventory_movements')->count()), SandboxInventoryGuard::bypass(fn () => DB::table('inventory_reservations')->count()), DB::table('payments')->count()]);
+        $this->assertSame($stockState, [SandboxInventoryGuard::bypass(fn () => DB::table('inventory_movements')->count()), SandboxInventoryGuard::bypass(fn () => DB::table('inventory_reservations')->count()), SandboxInventoryGuard::bypass(fn () => DB::table('payments')->count())]);
         $this->assertSame(['credit_note' => null, 'delivery_note' => 2, 'invoice' => 4], [
             'credit_note' => DB::table('sandbox_document_sequences')->where('document_type', 'credit_note')->value('next_number'),
             'delivery_note' => (int) DB::table('sandbox_document_sequences')->where('document_type', 'delivery_note')->value('next_number'),
@@ -220,10 +220,10 @@ class SandboxDocumentsTest extends QuotationTestCase
         $note = DeliveryNote::query()->where('sales_order_id', $order->id)->firstOrFail();
         $this->post("/delivery-notes/{$note->id}/issue")->assertRedirect();
         $invoice->refresh();
-        $state = [SandboxInventoryGuard::bypass(fn () => DB::table('inventory_movements')->count()), DB::table('payments')->count(), DB::table('document_email_deliveries')->count()];
+        $state = [SandboxInventoryGuard::bypass(fn () => DB::table('inventory_movements')->count()), SandboxInventoryGuard::bypass(fn () => DB::table('payments')->count()), DB::table('document_email_deliveries')->count()];
 
         foreach (["/invoices/{$invoice->id}/email", "/invoices/{$invoice->id}/stamp", "/invoices/{$invoice->id}/corrections",
-            "/delivery-notes/{$note->id}/email", "/sales/orders/{$order->id}/cancel", "/sales/orders/{$order->id}/payments",
+            "/delivery-notes/{$note->id}/email", "/sales/orders/{$order->id}/exchanges", "/sales/orders/{$order->id}/out-of-stock-articles",
             "/sales/orders/{$order->id}/fulfill", "/sales/orders/{$order->id}/returns", "/sales/orders/{$order->id}/fulfillments/preparation"] as $blocked) {
             $this->postJson($blocked, [])->assertForbidden()->assertJsonPath('code', 'SANDBOX_DOMAIN_UNAVAILABLE');
         }
@@ -245,7 +245,7 @@ class SandboxDocumentsTest extends QuotationTestCase
             }
             $note->save();
         });
-        $this->assertSame($state, [SandboxInventoryGuard::bypass(fn () => DB::table('inventory_movements')->count()), DB::table('payments')->count(), DB::table('document_email_deliveries')->count()]);
+        $this->assertSame($state, [SandboxInventoryGuard::bypass(fn () => DB::table('inventory_movements')->count()), SandboxInventoryGuard::bypass(fn () => DB::table('payments')->count()), DB::table('document_email_deliveries')->count()]);
         $this->assertSame('draft', $order->fresh()->status->value);
         $this->assertSame(0, DB::table('credit_notes')->count());
     }
