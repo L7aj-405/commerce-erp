@@ -4,7 +4,10 @@ namespace App\Services\Procurement;
 
 use App\Enums\PurchaseOrderStatus;
 use App\Models\ProductVariantSupplier;
+use App\Models\PurchaseOrder;
+use App\Models\PurchaseOrderLine;
 use App\Models\User;
+use App\Services\Sandbox\SandboxContext;
 use App\Support\Decimal;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
@@ -176,9 +179,18 @@ final class SupplierCatalogQuery
     {
         if ($variantIds === []) return [];
         $statuses = array_map(fn (PurchaseOrderStatus $status) => $status->value, self::PURCHASED_STATUSES);
-        $base = fn () => DB::table('purchase_order_lines as pol')
-            ->join('purchase_orders as po', fn ($join) => $join->on('po.id', '=', 'pol.purchase_order_id')->on('po.organization_id', '=', 'pol.organization_id'))
+        // Environment-routed ledger: Production tables normally, the sandbox_ procurement
+        // tables (restricted to the active sandbox) while a Test context is active.
+        $sandboxId = app(SandboxContext::class)->isSandbox() ? app(SandboxContext::class)->id() : null;
+        $lineTable = (new PurchaseOrderLine)->getTable();
+        $orderTable = (new PurchaseOrder)->getTable();
+        $base = fn () => DB::table("{$lineTable} as pol")
+            ->join("{$orderTable} as po", function ($join) use ($sandboxId) {
+                $join->on('po.id', '=', 'pol.purchase_order_id')->on('po.organization_id', '=', 'pol.organization_id');
+                if ($sandboxId !== null) $join->on('po.sandbox_id', '=', 'pol.sandbox_id');
+            })
             ->where('pol.organization_id', $organizationId)
+            ->when($sandboxId !== null, fn ($query) => $query->where('pol.sandbox_id', $sandboxId))
             ->whereIn('po.status', $statuses)
             ->whereIn('pol.product_variant_id', $variantIds)
             ->when($supplierId !== null, fn ($query) => $query->where('po.supplier_id', $supplierId));
