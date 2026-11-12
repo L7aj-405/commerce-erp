@@ -34,7 +34,7 @@ class ConvertOrderToShowroomOriginCommand extends Command
             return self::INVALID;
         }
 
-        $order = SalesOrder::query()->withoutGlobalScopes()
+        $order = SalesOrder::query()->withoutGlobalScopes()->whereNull('sales_orders.sandbox_id')
             ->where('organization_id', $organizationId)
             ->where('order_number', (string) $this->argument('order_number'))
             ->first();

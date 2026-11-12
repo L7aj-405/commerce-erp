@@ -8,6 +8,7 @@ use App\Models\Quotation;
 use App\Models\Store;
 use App\Models\User;
 use App\Services\ActiveTenantContext;
+use App\Services\Sandbox\SandboxContext;
 
 class QuotationPolicy
 {
@@ -57,6 +58,11 @@ class QuotationPolicy
 
     public function convert(User $user, Quotation $quotation): bool
     {
+        if ($quotation->sandbox_id !== null) {
+            return in_array($quotation->status, [QuotationStatus::Draft, QuotationStatus::Converted], true)
+                && $this->allowed($user, $quotation, 'quotations.convert');
+        }
+
         // Converted stays allowed so a repeated submit reaches the action's
         // idempotent "existing order" answer instead of a 403.
         return in_array($quotation->status, [QuotationStatus::Accepted, QuotationStatus::Converted], true)
@@ -88,6 +94,13 @@ class QuotationPolicy
 
     private function allowed(User $user, Quotation $quotation, string $permission): bool
     {
+        if ((string) $quotation->sandbox_id !== (string) app(SandboxContext::class)->id()) {
+            return false;
+        }
+        if ($quotation->sandbox_id !== null && ! in_array($permission, ['quotations.view', 'quotations.update', 'quotations.convert'], true)) {
+            return false;
+        }
+
         return $this->scope($quotation->organization_id, $quotation->store_id)
             && $user->hasPermission($quotation->organization_id, $permission);
     }

@@ -130,7 +130,7 @@ final class CommissionReconciliationService
 
     private function orders(Organization $organization, string $from, string $to, ?Store $store, ?int $salespersonId)
     {
-        return SalesOrder::query()->withoutGlobalScopes()
+        return SalesOrder::query()->withoutGlobalScopes()->whereNull('sales_orders.sandbox_id')
             ->where('organization_id', $organization->getKey())
             ->where('status', SalesOrderStatus::Confirmed->value)
             ->whereBetween('sale_date', [$from, $to])

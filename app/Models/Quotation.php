@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\QuotationStatus;
 use App\Models\Concerns\ScopesToActiveStore;
+use App\Models\Concerns\ScopesToSandbox;
 use App\Support\BusinessTime;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -13,8 +14,14 @@ use Illuminate\Database\Eloquent\Relations\MorphOne;
 class Quotation extends Model
 {
     use ScopesToActiveStore;
+    use ScopesToSandbox;
 
     protected $guarded = ['*'];
+
+    public function sandboxStatuses(): ?array
+    {
+        return ['draft', 'converted'];
+    }
 
     protected function casts(): array
     {

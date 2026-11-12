@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Enums\InvoiceStatus;
 use App\Models\Invoice;
+use App\Services\Sandbox\SandboxDocumentMarking;
 use App\Support\Decimal;
 use App\Support\FrenchNumberToWords;
 
@@ -25,7 +26,7 @@ class InvoiceDocumentRenderer
         $hasDiscount = Decimal::compare($invoice->discount_total, '0') !== 0
             || $invoice->lines->contains(fn ($line) => Decimal::compare($line->discount_amount, '0') !== 0);
 
-        return [
+        $payload = [
             'kind' => 'invoice',
             'title' => __('documents.invoice', locale: config('documents.locale')),
             'watermark' => match ($invoice->status) {
@@ -85,6 +86,8 @@ class InvoiceDocumentRenderer
             ],
             'stamp' => $this->stamps->forInvoice($invoice),
         ];
+
+        return $invoice->isTest() ? SandboxDocumentMarking::apply($payload, $invoice->invoice_number, $invoice->status->value) : $payload;
     }
 
     public function html(Invoice $invoice): string

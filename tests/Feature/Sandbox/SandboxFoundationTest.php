@@ -33,8 +33,8 @@ class SandboxFoundationTest extends PlatformTestCase
         $this->post('/test-mode/policy', ['enabled' => true])->assertRedirect();
         $this->post('/test-mode/enter')->assertRedirect('/test-mode');
         $this->get('/test-mode')->assertOk()->assertInertia(fn (Assert $p) => $p->where('sandbox.active', true));
-        $this->get('/sales/orders')->assertRedirect('/test-mode');
-        $this->post('/sales/orders', [])->assertForbidden()->assertJsonPath('code', 'SANDBOX_DOMAIN_UNAVAILABLE');
+        $this->get('/payments')->assertRedirect('/test-mode');
+        $this->post('/pos/sales', [])->assertForbidden()->assertJsonPath('code', 'SANDBOX_DOMAIN_UNAVAILABLE');
         $this->post('/test-mode/leave')->assertRedirect('/platform');
         $this->get('/test-mode')->assertOk()->assertInertia(fn (Assert $p) => $p->where('sandbox.active', false));
         $this->assertSame(1, Sandbox::query()->count());

@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\DeliveryNoteStatus;
 use App\Models\Concerns\ScopesToActiveStore;
+use App\Models\Concerns\ScopesToSandbox;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -11,8 +12,24 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class DeliveryNote extends Model
 {
     use ScopesToActiveStore;
+    use ScopesToSandbox;
 
     protected $guarded = ['*'];
+
+    public function sandboxLinks(): array
+    {
+        return ['sales_order_id' => 'sales_orders'];
+    }
+
+    public function sandboxStatuses(): ?array
+    {
+        return ['draft', 'issued', 'cancelled'];
+    }
+
+    public function isTest(): bool
+    {
+        return $this->sandbox_id !== null;
+    }
 
     protected function casts(): array
     {

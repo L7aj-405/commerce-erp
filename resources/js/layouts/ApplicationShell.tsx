@@ -1,5 +1,6 @@
 import { BrandLockup, BrandMark } from '@/components/ui/brand';
 import NotificationBell from '@/components/notifications/NotificationBell';
+import SandboxBanner from '@/components/SandboxBanner';
 import { useToast } from '@/components/ui/toast';
 import { LocaleSwitcher, useI18n } from '@/i18n';
 import type { SharedPageProps } from '@/types/app';
@@ -17,7 +18,7 @@ const isNavSection = (entry: NavEntry): entry is NavSection => 'items' in entry;
 const SIDEBAR_KEY = 'shell.sidebar.collapsed';
 
 export default function ApplicationShell({ children, wide = false, flush = false }: PropsWithChildren<{ wide?: boolean; flush?: boolean }>) {
-    const page = usePage<SharedPageProps>();
+    const page = usePage<SharedPageProps & { sandbox?: { active: boolean } }>();
     const { auth, tenant, flash, notifications } = page.props;
     const { direction, t } = useI18n();
     const currentPath = page.url.split('?')[0];
@@ -491,7 +492,8 @@ export default function ApplicationShell({ children, wide = false, flush = false
             </aside>
 
             <div className={`${collapsed ? 'lg:ps-16' : 'lg:ps-72'} ${flush ? 'flex h-dvh flex-col' : ''}`}>
-                <header className={`z-10 border-b border-line bg-canvas/85 px-3 py-2.5 backdrop-blur sm:px-6 ${flush ? 'shrink-0' : 'sticky top-0'}`}>
+                <SandboxBanner />
+                <header className={`z-10 border-b border-line bg-canvas/85 px-3 py-2.5 backdrop-blur sm:px-6 ${flush ? 'shrink-0' : page.props.sandbox?.active ? '' : 'sticky top-0'}`}>
                     {hasPermission('sandbox.access') && <Link href="/test-mode" className="text-sm underline">Mode test</Link>}
                     <div className={`mx-auto flex items-center justify-between gap-2 sm:gap-4 ${wide ? 'max-w-[1700px]' : 'max-w-7xl'}`}>
                         {/* Mobile menu trigger */}

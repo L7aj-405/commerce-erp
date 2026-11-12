@@ -8,6 +8,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class DeliveryNoteLine extends Model
 {
+    protected static function booted(): void
+    {
+        static::addGlobalScope('sandbox', fn ($query) => $query->whereHas('deliveryNote'));
+    }
+
     protected $guarded = ['*'];
 
     protected function casts(): array

@@ -111,7 +111,7 @@ class SaveSalesOrderLineAction
             }
             $line->save();
             $line->allocations()->delete();
-            if ($warehouse) {
+            if ($warehouse && $order->sandbox_id === null) {
                 // Draft sourcing is always provisional: any company-stock
                 // shortfall is parked on the operational warehouse and covers
                 // the full line quantity. The authoritative, locked rebuild —

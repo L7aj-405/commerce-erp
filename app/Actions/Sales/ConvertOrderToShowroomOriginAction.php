@@ -57,7 +57,7 @@ class ConvertOrderToShowroomOriginAction
 
         DB::beginTransaction();
         try {
-            $order = SalesOrder::query()->withoutGlobalScopes()
+            $order = SalesOrder::query()->withoutGlobalScopes()->whereNull('sales_orders.sandbox_id')
                 ->where('organization_id', $order->organization_id)
                 ->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
             $this->assertConvertible($order);

@@ -291,7 +291,7 @@ final class CommissionDashboardService
     public function health(Organization $organization, CommissionReportFilters $filters): array
     {
         $row = DB::table('sales_order_lines as lines')
-            ->join('sales_orders as orders', function ($join) {
+            ->whereNull('orders.sandbox_id')->join('sales_orders as orders', function ($join) {
                 $join->on('orders.id', '=', 'lines.sales_order_id')->on('orders.organization_id', '=', 'lines.organization_id');
             })
             ->where('orders.organization_id', $organization->getKey())

@@ -1,4 +1,5 @@
 import SalesLayout from '@/layouts/SalesLayout';
+import SandboxDocumentBadge from '@/components/SandboxDocumentBadge';
 import { useI18n } from '@/i18n';
 import { formatDate, formatMoney, formatQuantity } from '@/utils/format';
 import { Head, Link } from '@inertiajs/react';
@@ -22,6 +23,7 @@ type Props = {
     summary: { net_excl_tax: string };
     creditNote: {
         id: number;
+        sandbox_id?: number | null;
         status: string;
         credit_note_number: string | null;
         credit_note_date: string;
@@ -49,7 +51,7 @@ export default function CreditNoteShow({ creditNote: note, summary }: Props) {
                         <Link href={`/invoices/${note.invoice.id}`} className="text-sm text-ink-muted">
                             {direction === 'rtl' ? '→' : '←'} {t('invoices.invoice')} <bdi>{note.invoice.invoice_number}</bdi>{note.invoice.version > 1 ? ` · V${note.invoice.version}` : ''}
                         </Link>
-                        <h1 className="mt-1 text-2xl font-semibold">{t('creditNotes.title')} <bdi>{note.credit_note_number || t('creditNotes.draft')}</bdi></h1>
+                        <h1 className="mt-1 text-2xl font-semibold">{t('creditNotes.title')} <bdi>{note.credit_note_number || t('creditNotes.draft')}</bdi> <SandboxDocumentBadge sandboxId={note.sandbox_id} /></h1>
                         <p className="text-sm text-ink-muted">
                             <Link href={`/sales/orders/${note.sales_order.id}`} className="hover:underline">{t('invoices.order')} <bdi>{note.sales_order.order_number}</bdi></Link>
                             {' · '}

@@ -18,6 +18,7 @@ use App\Services\DocumentSnapshotVerifier;
 use App\Services\DocumentTemplateRegistry;
 use App\Services\InvoiceNumberGenerator;
 use App\Services\SalesOrderPaymentCalculator;
+use App\Services\Sandbox\SandboxDocumentNumberGenerator;
 use App\Support\Decimal;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -33,6 +34,7 @@ class IssueInvoiceAction
         private readonly DocumentTemplateRegistry $templates,
         private readonly AuditLogger $audit,
         private readonly SalesOrderPaymentCalculator $payments,
+        private readonly SandboxDocumentNumberGenerator $testNumbers,
     ) {}
 
     public function execute(User $actor, Invoice $invoice): Invoice
@@ -45,8 +47,9 @@ class IssueInvoiceAction
             if ($invoice->status !== InvoiceStatus::Draft) {
                 throw ValidationException::withMessages(['invoice' => 'Only a draft Invoice can be issued.']);
             }
+            $test = $invoice->sandbox_id !== null;
             $order = SalesOrder::query()->where('organization_id', $invoice->organization_id)->whereKey($invoice->sales_order_id)->lockForUpdate()->firstOrFail();
-            if ($order->status !== SalesOrderStatus::Confirmed) {
+            if ($order->status !== ($test ? SalesOrderStatus::Draft : SalesOrderStatus::Confirmed)) {
                 throw ValidationException::withMessages(['order' => 'The source Sales Order is no longer eligible for invoicing.']);
             }
             if ($invoice->sales_order_addendum_id !== null) {
@@ -66,8 +69,12 @@ class IssueInvoiceAction
                 ->exists()) {
                 throw ValidationException::withMessages(['order' => 'This Sales Order already has an issued full Invoice.']);
             }
-            $this->lockPaymentState($order);
-            if (Decimal::compare($this->payments->remainingAmount($order), '0.0000') > 0) {
+            // Payments are not sandboxed: a Test invoice has no settlement gate
+            // and touches no payment row.
+            if (! $test) {
+                $this->lockPaymentState($order);
+            }
+            if (! $test && Decimal::compare($this->payments->remainingAmount($order), '0.0000') > 0) {
                 throw ValidationException::withMessages([
                     'invoice' => "La facture ne peut être émise qu'après le règlement intégral de la commande.",
                 ]);
@@ -86,7 +93,9 @@ class IssueInvoiceAction
                 ->firstOrFail();
             if ($invoice->version === 1) {
                 if ($family->canonical_invoice_number === null) {
-                    $family->canonical_invoice_number = $this->numbers->next($invoice->organization, (int) $invoice->invoice_date->format('Y'));
+                    $family->canonical_invoice_number = $test
+                        ? $this->testNumbers->next($invoice->organization, SandboxDocumentNumberGenerator::INVOICE)
+                        : $this->numbers->next($invoice->organization, (int) $invoice->invoice_date->format('Y'));
                     $family->save();
                 }
             } elseif ($family->canonical_invoice_number === null) {

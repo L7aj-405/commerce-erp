@@ -13,6 +13,7 @@ use App\Services\DeliveryNoteNumberGenerator;
 use App\Services\DocumentSellerProfile;
 use App\Services\DocumentSnapshotVerifier;
 use App\Services\DocumentTemplateRegistry;
+use App\Services\Sandbox\SandboxDocumentNumberGenerator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -26,6 +27,7 @@ class IssueDeliveryNoteAction
         private readonly DocumentSellerProfile $sellerProfile,
         private readonly DocumentTemplateRegistry $templates,
         private readonly AuditLogger $audit,
+        private readonly SandboxDocumentNumberGenerator $testNumbers,
     ) {}
 
     public function execute(User $actor, DeliveryNote $note): DeliveryNote
@@ -42,7 +44,8 @@ class IssueDeliveryNoteAction
             // with us and their stock stays reserved. Stock leaves only when a shipment
             // is explicitly handed over (App\Actions\Fulfillment / direct hand-over).
             $order = SalesOrder::query()->where('organization_id', $note->organization_id)->whereKey($note->sales_order_id)->lockForUpdate()->firstOrFail();
-            if ($order->status !== SalesOrderStatus::Confirmed) {
+            $test = $note->sandbox_id !== null;
+            if ($order->status !== ($test ? SalesOrderStatus::Draft : SalesOrderStatus::Confirmed)) {
                 throw ValidationException::withMessages(['order' => 'Only a confirmed Sales Order can have an issued Delivery Note.']);
             }
             if (DeliveryNote::query()->where('organization_id', $note->organization_id)->where('sales_order_id', $note->sales_order_id)
@@ -56,7 +59,9 @@ class IssueDeliveryNoteAction
             );
             $this->sellerProfile->validate($note->seller_snapshot);
             $this->templates->deliveryNoteView($note->template_version);
-            $note->delivery_note_number = $this->numbers->next($note->organization);
+            $note->delivery_note_number = $test
+                ? $this->testNumbers->next($note->organization, SandboxDocumentNumberGenerator::DELIVERY_NOTE)
+                : $this->numbers->next($note->organization);
             $note->status = DeliveryNoteStatus::Issued;
             $note->issued_at = now();
             $note->issued_by_user_id = $actor->getKey();

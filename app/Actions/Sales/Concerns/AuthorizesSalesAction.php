@@ -7,6 +7,7 @@ use App\Models\Organization;
 use App\Models\SalesOrder;
 use App\Models\Store;
 use App\Models\User;
+use App\Services\Sandbox\SandboxContext;
 
 trait AuthorizesSalesAction
 {
@@ -27,6 +28,10 @@ trait AuthorizesSalesAction
 
     private function authorizeOrder(User $actor, SalesOrder $order, string $permission): void
     {
+        abort_unless((string) $order->sandbox_id === (string) app(SandboxContext::class)->id(), 404);
+        if ($order->sandbox_id !== null) {
+            abort_unless(in_array($permission, ['sales_orders.view', 'sales_orders.update'], true), 403, 'TEST: transition indisponible.');
+        }
         $this->authorizeSales($actor, $order->organization, $order->store, $permission);
     }
 }

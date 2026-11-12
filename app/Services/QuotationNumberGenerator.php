@@ -84,7 +84,7 @@ class QuotationNumberGenerator
 
     private function maxAllocatedNumber(Organization $organization, int $year): int
     {
-        return DB::table('quotations')
+        return DB::table('quotations')->whereNull('quotations.sandbox_id')
             ->where('organization_id', $organization->getKey())
             ->whereNotNull('quotation_number')
             ->pluck('quotation_number')

@@ -12,6 +12,7 @@ class CreditNoteLine extends Model
 
     protected static function booted(): void
     {
+        static::addGlobalScope('sandbox', fn ($query) => $query->whereHas('creditNote'));
         $rejectIssuedMutation = function (CreditNoteLine $line) {
             if ($line->creditNote()->withoutGlobalScopes()->where('status', 'issued')->exists()) {
                 throw new LogicException('Lines of an issued Credit Note are immutable.');

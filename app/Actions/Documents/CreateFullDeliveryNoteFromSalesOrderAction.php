@@ -39,7 +39,9 @@ class CreateFullDeliveryNoteFromSalesOrderAction
             $order = SalesOrder::query()
                 ->where('organization_id', $order->organization_id)->where('store_id', $order->store_id)
                 ->whereKey($order->getKey())->lockForUpdate()->with(['lines', 'customer', 'organization', 'store'])->firstOrFail();
-            if ($order->status !== SalesOrderStatus::Confirmed
+            // A Test Delivery Note is document-only and comes from a Test draft order.
+            $eligibleStatus = $order->sandbox_id !== null ? SalesOrderStatus::Draft : SalesOrderStatus::Confirmed;
+            if ($order->status !== $eligibleStatus
                 || ! in_array($order->fulfillment_status, [SalesOrderFulfillmentStatus::Unfulfilled, SalesOrderFulfillmentStatus::Fulfilled], true)) {
                 throw ValidationException::withMessages(['order' => 'Only a confirmed Sales Order can receive a full Delivery Note.']);
             }

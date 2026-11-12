@@ -34,6 +34,8 @@ return Application::configure(basePath: dirname(__DIR__))
         // Coolify's Traefik) forge X-Forwarded-For and influence
         // $request->ip() — which LoginThrottle keys throttling on.
         $middleware->trustProxies(at: TrustedProxyRanges::resolve());
+        $middleware->prependToPriorityList(\Illuminate\Routing\Middleware\SubstituteBindings::class, ResolveTenantContext::class);
+        $middleware->prependToPriorityList(\Illuminate\Routing\Middleware\SubstituteBindings::class, App\Http\Middleware\ResolveSandboxContext::class);
         $middleware->web(append: [
             ResolveTenantContext::class,
             App\Http\Middleware\ResolveSandboxContext::class,

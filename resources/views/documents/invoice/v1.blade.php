@@ -208,6 +208,9 @@
     </style>
 </head>
 <body>
+@if (! empty($sandbox))
+    @include('documents.partials.sandbox-banner')
+@endif
 
 @if ($watermark)
     <div class="watermark-text">{{ $watermark }}</div>

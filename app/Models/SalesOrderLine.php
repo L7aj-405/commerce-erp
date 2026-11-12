@@ -12,6 +12,11 @@ use Illuminate\Support\Facades\Auth;
 
 class SalesOrderLine extends Model
 {
+    protected static function booted(): void
+    {
+        static::addGlobalScope('sandbox', fn ($query) => $query->whereHas('salesOrder'));
+    }
+
     protected $guarded = ['*'];
 
     protected function casts(): array

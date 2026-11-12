@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\CreditNote;
+use App\Services\Sandbox\SandboxDocumentMarking;
 use App\Support\Decimal;
 use App\Support\FrenchNumberToWords;
 
@@ -24,7 +25,7 @@ class CreditNoteDocumentRenderer
             'issuedBy:id,name',
         ]);
 
-        return [
+        $payload = [
             'note' => $note,
             'seller' => $note->seller_snapshot ?? [],
             'customer' => $note->customer_snapshot ?? [],
@@ -68,6 +69,8 @@ class CreditNoteDocumentRenderer
                 'issued_by' => $note->issuedBy?->name,
             ],
         ];
+
+        return $note->isTest() ? SandboxDocumentMarking::apply($payload, $note->credit_note_number, (string) $note->status) : $payload;
     }
 
     public function html(CreditNote $note): string

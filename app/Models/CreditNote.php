@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\ScopesToActiveStore;
+use App\Models\Concerns\ScopesToSandbox;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -11,8 +12,29 @@ use LogicException;
 class CreditNote extends Model
 {
     use ScopesToActiveStore;
+    use ScopesToSandbox;
 
     protected $guarded = ['*'];
+
+    public function sandboxLinks(): array
+    {
+        return ['sales_order_id' => 'sales_orders', 'invoice_id' => 'invoices'];
+    }
+
+    /**
+     * Credit Notes only arise from a received customer return (stock, refund
+     * and commission effects). Returns are not sandboxed yet, so no Test
+     * Credit Note may be persisted in any status — fail closed.
+     */
+    public function sandboxStatuses(): ?array
+    {
+        return [];
+    }
+
+    public function isTest(): bool
+    {
+        return $this->sandbox_id !== null;
+    }
 
     protected static function booted(): void
     {

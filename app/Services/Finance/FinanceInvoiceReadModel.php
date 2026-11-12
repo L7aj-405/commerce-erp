@@ -59,7 +59,7 @@ class FinanceInvoiceReadModel
         $salesOrderIds = $invoices->pluck('sales_order_id')->unique()->values()->all();
         $paidTotals = $this->receivables->paidAmountsBySalesOrder($salesOrderIds, $asOf);
         $orderedAllocations = $this->receivables->orderedAllocationsBySalesOrder($salesOrderIds, $asOf);
-        $credits = DB::table('credit_notes')->whereIn('sales_order_id', $salesOrderIds)->where('status', 'issued')->whereDate('credit_note_date', '<=', $asOf->toDateString())
+        $credits = DB::table('credit_notes')->whereNull('credit_notes.sandbox_id')->whereIn('sales_order_id', $salesOrderIds)->where('status', 'issued')->whereDate('credit_note_date', '<=', $asOf->toDateString())
             ->groupBy('sales_order_id')->select('sales_order_id', DB::raw('SUM(total_incl_tax) as amount'))->pluck('amount', 'sales_order_id');
 
         return $invoices->map(fn (Invoice $invoice) => $this->summaryRow(

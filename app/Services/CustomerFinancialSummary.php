@@ -53,7 +53,7 @@ final class CustomerFinancialSummary
         $stores = $this->visibility->storeIds($viewer, $organization) ?: [0];
         $paidTotal = ! $this->visibility->canView($viewer, $organization, Payment::class) ? null : Decimal::normalize((string) DB::table('payment_allocations')
             ->join('payments', 'payments.id', '=', 'payment_allocations.payment_id')
-            ->join('sales_orders', 'sales_orders.id', '=', 'payment_allocations.sales_order_id')
+            ->whereNull('sales_orders.sandbox_id')->join('sales_orders', 'sales_orders.id', '=', 'payment_allocations.sales_order_id')
             ->where('sales_orders.organization_id', $organization->getKey())
             ->where('sales_orders.customer_id', $customerId)
             ->whereIn('sales_orders.store_id', $stores)

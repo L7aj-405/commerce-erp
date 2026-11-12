@@ -67,7 +67,9 @@ class SaveQuotationLineAction
             }
             $line->save();
 
-            $this->syncUsageCounts($previousNonStockId, $usedNonStock);
+            if ($quotation->sandbox_id === null) {
+                $this->syncUsageCounts($previousNonStockId, $usedNonStock);
+            }
             $this->reconcileTotals($quotation);
 
             $this->audit->record('quotation.updated', $actor, $quotation->organization, $quotation->store, $quotation, newValues: [
@@ -86,6 +88,7 @@ class SaveQuotationLineAction
     /** @param array<string, mixed> $data */
     private function resolveNonStockItem(User $actor, Quotation $quotation, array $data): NonStockItem
     {
+        abort_if($quotation->sandbox_id !== null && empty($data['non_stock_item_id']), 403, 'TEST: création du catalogue indisponible.');
         if (! empty($data['non_stock_item_id'])) {
             return $this->sources->nonStockItem((int) $quotation->organization_id, $data['non_stock_item_id']);
         }

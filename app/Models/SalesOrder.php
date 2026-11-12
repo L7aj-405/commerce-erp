@@ -11,6 +11,7 @@ use App\Enums\SalesOrderPaymentStatus;
 use App\Enums\SalesOrderSource;
 use App\Enums\SalesOrderStatus;
 use App\Models\Concerns\ScopesToActiveStore;
+use App\Models\Concerns\ScopesToSandbox;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -18,6 +19,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class SalesOrder extends Model
 {
     use ScopesToActiveStore;
+    use ScopesToSandbox;
 
     protected $guarded = ['*'];
 

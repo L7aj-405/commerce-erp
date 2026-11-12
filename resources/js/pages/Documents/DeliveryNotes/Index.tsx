@@ -1,4 +1,5 @@
 import DocBadge from '@/components/ui/DocBadge';
+import SandboxDocumentBadge from '@/components/SandboxDocumentBadge';
 import EmptyState from '@/components/ui/EmptyState';
 import PageHeader from '@/components/ui/PageHeader';
 import Pagination from '@/components/ui/Pagination';
@@ -9,7 +10,7 @@ import { deliveryNoteStatusTone } from '@/utils/labels';
 import { Head, Link, router } from '@inertiajs/react';
 import type { FormEvent } from 'react';
 
-type Note = { id: number; delivery_note_number: string | null; delivery_date: string; recipient_name: string | null; recipient_company: string | null; status: string; store: { name: string }; sales_order: { id: number; order_number: string } };
+type Note = { id: number; sandbox_id?: number | null; delivery_note_number: string | null; delivery_date: string; recipient_name: string | null; recipient_company: string | null; status: string; store: { name: string }; sales_order: { id: number; order_number: string } };
 type PageLink = { url: string | null; label: string; active: boolean };
 type Props = { deliveryNotes: { data: Note[]; links: PageLink[] }; filters: Record<string, string | undefined> };
 
@@ -55,7 +56,7 @@ export default function DeliveryNoteIndex({ deliveryNotes, filters }: Props) {
                                 {deliveryNotes.data.map((note) => (
                                     <tr key={note.id} className="border-t border-line">
                                         <td className="px-4 py-2.5 font-medium text-ink">
-                                            <Link href={`/delivery-notes/${note.id}`}><bdi>{note.delivery_note_number ?? t('deliveryNotes.draftNumber').replace('{id}', String(note.id))}</bdi></Link>
+                                            <Link href={`/delivery-notes/${note.id}`}><bdi>{note.delivery_note_number ?? t('deliveryNotes.draftNumber').replace('{id}', String(note.id))}</bdi></Link> <SandboxDocumentBadge sandboxId={note.sandbox_id} />
                                         </td>
                                         <td className="px-4 py-2.5 text-ink-muted">{formatDate(note.delivery_date)}</td>
                                         <td className="px-4 py-2.5"><Link href={`/sales/orders/${note.sales_order.id}`}><bdi>{note.sales_order.order_number}</bdi></Link></td><td className="px-4 py-2.5 text-ink-muted">{note.recipient_company ?? note.recipient_name ?? t('common.counterCustomer')}</td>
@@ -75,6 +76,7 @@ export default function DeliveryNoteIndex({ deliveryNotes, filters }: Props) {
                                     <div className="flex items-start justify-between gap-3">
                                         <div className="min-w-0">
                                             <bdi className="block truncate text-sm font-semibold text-ink">{note.delivery_note_number ?? t('deliveryNotes.draftNumber').replace('{id}', String(note.id))}</bdi>
+                                            <SandboxDocumentBadge sandboxId={note.sandbox_id} />
                                             <p className="text-[13px] text-ink-muted">{formatDate(note.delivery_date)}</p>
                                         </div>
                                         <DocBadge tone={deliveryNoteStatusTone(note.status)}>{statusLabel[note.status] ?? note.status}</DocBadge>

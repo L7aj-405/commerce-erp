@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Enums\DeliveryNoteStatus;
 use App\Models\DeliveryNote;
+use App\Services\Sandbox\SandboxDocumentMarking;
 
 class DeliveryNoteDocumentRenderer
 {
@@ -18,7 +19,7 @@ class DeliveryNoteDocumentRenderer
     {
         $note->loadMissing(['lines', 'salesOrder:id,order_number', 'issuedBy:id,name']);
 
-        return [
+        $payload = [
             'kind' => 'delivery_note',
             'title' => __('documents.delivery_note', locale: config('documents.locale')),
             'watermark' => match ($note->status) {
@@ -55,6 +56,8 @@ class DeliveryNoteDocumentRenderer
                 'issued_by' => $note->issuedBy?->name,
             ],
         ];
+
+        return $note->isTest() ? SandboxDocumentMarking::apply($payload, $note->delivery_note_number, $note->status->value) : $payload;
     }
 
     public function html(DeliveryNote $note): string
