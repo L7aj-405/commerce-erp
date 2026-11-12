@@ -32,6 +32,8 @@ class AttachFulfillmentProofAction
     /** @param list<UploadedFile> $files @return list<FulfillmentAttachment> */
     public function execute(User $actor, SalesOrder $order, Fulfillment $fulfillment, array $files, string $category = 'shipping_proof'): array
     {
+        // Test Mode: shipping proofs (stored files) and customer sharing (e-mail / WhatsApp) are not simulated yet.
+        abort_if($order->sandbox_id !== null, 403, 'TEST: justificatifs et partage client indisponibles (NOTIFICATION TEST — NON ENVOYÉE).');
         $this->engine->authorizeAny($actor, $order, ['fulfillment.manage', 'fulfillment.dispatch']);
         Validator::make(['files' => $files, 'category' => $category], [
             'files' => ['required', 'array', 'min:1', 'max:'.(int) config('fulfillment.attachments.max_files', 5)],

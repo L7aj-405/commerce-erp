@@ -224,7 +224,7 @@ class SandboxDocumentsTest extends QuotationTestCase
 
         foreach (["/invoices/{$invoice->id}/email", "/invoices/{$invoice->id}/stamp", "/invoices/{$invoice->id}/corrections",
             "/delivery-notes/{$note->id}/email", "/sales/orders/{$order->id}/exchanges", "/sales/orders/{$order->id}/out-of-stock-articles",
-            "/sales/orders/{$order->id}/fulfill", "/sales/orders/{$order->id}/returns", "/sales/orders/{$order->id}/fulfillments/preparation"] as $blocked) {
+            "/sales/orders/{$order->id}/returns", "/sales/orders/{$order->id}/fulfillments/{$order->id}/share", "/sales/orders/{$order->id}/fulfillments/{$order->id}/attachments"] as $blocked) {
             $this->postJson($blocked, [])->assertForbidden()->assertJsonPath('code', 'SANDBOX_DOMAIN_UNAVAILABLE');
         }
         $this->getJson("/invoices/{$invoice->id}/shared-pdf")->assertForbidden();

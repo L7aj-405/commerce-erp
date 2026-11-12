@@ -10,6 +10,7 @@ use App\Models\Store;
 use App\Models\User;
 use App\Services\ActiveTenantContext;
 use App\Services\Sandbox\SandboxContext;
+use App\Services\Sandbox\SandboxFulfillmentRules;
 
 class SalesOrderPolicy
 {
@@ -97,7 +98,7 @@ class SalesOrderPolicy
         if ((string) $order->sandbox_id !== (string) app(SandboxContext::class)->id()) {
             return false;
         }
-        if ($order->sandbox_id !== null && ! in_array($permission, ['sales_orders.view', 'sales_orders.update', 'sales_orders.confirm', 'sales_orders.cancel'], true)) {
+        if ($order->sandbox_id !== null && ! in_array($permission, ['sales_orders.view', 'sales_orders.update', 'sales_orders.confirm', 'sales_orders.cancel', ...SandboxFulfillmentRules::PERMISSIONS], true)) {
             return false;
         }
 

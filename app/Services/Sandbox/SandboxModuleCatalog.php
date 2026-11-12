@@ -17,7 +17,7 @@ final class SandboxModuleCatalog
     private const AVAILABLE = [
         ['label' => 'POS', 'href' => '/pos', 'permission' => 'pos.access', 'hint' => 'Paniers, encaissement simulé'],
         ['label' => 'Devis', 'href' => '/quotations', 'permission' => 'quotations.view', 'hint' => 'Brouillons et conversion en commande'],
-        ['label' => 'Commandes', 'href' => '/sales/orders', 'permission' => 'sales_orders.view', 'hint' => 'Création, confirmation, annulation'],
+        ['label' => 'Commandes', 'href' => '/sales/orders', 'permission' => 'sales_orders.view', 'hint' => 'Création, confirmation, expédition et remise au client (stock test)'],
         ['label' => 'Factures', 'href' => '/invoices', 'permission' => 'invoices.view', 'hint' => 'Factures de test (TEST-FAC)'],
         ['label' => 'Bons de livraison', 'href' => '/delivery-notes', 'permission' => 'delivery_notes.view', 'hint' => 'Documents de test (TEST-BL), sans mouvement de stock'],
         ['label' => 'Stock test', 'href' => '/inventory/stock', 'permission' => 'inventory.view', 'hint' => 'Stock indépendant de la Production'],
@@ -30,7 +30,7 @@ final class SandboxModuleCatalog
 
     /** @var list<string> */
     private const UNAVAILABLE = [
-        'Expédition et remise au client',
+        'Justificatifs d’expédition et partage au client (e-mail / WhatsApp)',
         'Retours et échanges (avoirs, remboursements de retour)',
         'Fournisseurs, catalogue fournisseurs et articles hors stock (données partagées, lecture seule)',
         'Demandes de transfert entre entrepôts (aucun transfert interne généré par une réception test)',

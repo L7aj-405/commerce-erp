@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\RoutesToSandboxInventory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -13,6 +14,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class FulfillmentCustomerNotification extends Model
 {
+    use RoutesToSandboxInventory;
+
     public const EVENT_HANDED_TO_CARRIER = 'handed_to_carrier';
     public const EVENT_DELIVERED = 'delivered';
     public const EVENTS = [self::EVENT_HANDED_TO_CARRIER, self::EVENT_DELIVERED];
@@ -33,6 +36,11 @@ class FulfillmentCustomerNotification extends Model
     public const STATUS_OPENED = 'opened';
 
     protected $guarded = ['*'];
+
+    public function sandboxSalesOrderColumn(): ?string
+    {
+        return 'sales_order_id';
+    }
 
     protected function casts(): array
     {

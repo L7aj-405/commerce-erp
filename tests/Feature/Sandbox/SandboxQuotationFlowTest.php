@@ -80,7 +80,7 @@ class SandboxQuotationFlowTest extends QuotationTestCase
 
         // Still blocked in Test Mode.
         foreach (["/quotations/{$quote->id}/revise", "/quotations/{$quote->id}/duplicate", '/procurement/out-of-stock-articles/1/resolve',
-            '/sales/orders/1/fulfill', '/sales/orders/1/returns'] as $blocked) {
+            '/sales/orders/1/returns'] as $blocked) {
             $this->postJson($blocked, [])->assertForbidden()->assertJsonPath('code', 'SANDBOX_DOMAIN_UNAVAILABLE');
         }
 

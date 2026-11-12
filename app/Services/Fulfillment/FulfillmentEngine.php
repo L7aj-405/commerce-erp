@@ -19,6 +19,7 @@ use App\Models\SalesOrderLine;
 use App\Models\User;
 use App\Services\AuditLogger;
 use App\Services\InventoryReservationManager;
+use App\Services\Sandbox\SandboxContext;
 use App\Support\InventoryQuantity;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -127,8 +128,13 @@ final class FulfillmentEngine
     {
         $lines = SalesOrderLine::query()->where('organization_id', $order->organization_id)->where('sales_order_id', $order->getKey())
             ->orderBy('id')->get();
-        $items = FulfillmentItem::query()->from('fulfillment_items as fi')
-            ->join('fulfillments as f', fn ($join) => $join->on('f.id', '=', 'fi.fulfillment_id')->on('f.organization_id', '=', 'fi.organization_id'))
+        // Environment-routed ledger: Production tables, or the sandbox_ ones (same sandbox on both sides) in Test Mode.
+        $sandbox = app(SandboxContext::class)->isSandbox();
+        $items = FulfillmentItem::query()->from(FulfillmentItem::environmentTable().' as fi')
+            ->join(Fulfillment::environmentTable().' as f', function ($join) use ($sandbox) {
+                $join->on('f.id', '=', 'fi.fulfillment_id')->on('f.organization_id', '=', 'fi.organization_id');
+                if ($sandbox) $join->on('f.sandbox_id', '=', 'fi.sandbox_id');
+            })
             ->where('fi.organization_id', $order->organization_id)->where('f.sales_order_id', $order->getKey())
             ->where('f.status', '!=', FulfillmentStatus::Cancelled->value)
             ->get(['fi.sales_order_line_id', 'fi.quantity', 'f.status', 'f.id as fulfillment_id']);
@@ -291,8 +297,11 @@ final class FulfillmentEngine
                     $allocation->quantity = InventoryQuantity::subtract((string) $allocation->quantity, $take);
                     $allocation->save();
                 }
-                // Manual WooCommerce bridge: a no-op unless the variant is Woo-linked.
-                $this->wooStockTasks->recordForConsumedSale($order->organization, $order, $result);
+                // Manual WooCommerce bridge: a no-op unless the variant is Woo-linked. Never for a
+                // Test sale: integrations are not part of Test Mode.
+                if ($order->sandbox_id === null) {
+                    $this->wooStockTasks->recordForConsumedSale($order->organization, $order, $result);
+                }
                 $consumed[] = (int) $result->getKey();
                 $remaining = InventoryQuantity::subtract($remaining, $take);
             }

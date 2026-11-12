@@ -52,13 +52,14 @@ class SandboxFinanceTest extends QuotationTestCase
         $order = SalesOrder::query()->findOrFail($cart);
         $this->assertSame('confirmed', $order->status->value);
         $this->assertSame('paid', $order->payment_status->value);
-        $this->assertSame('unfulfilled', $order->fulfillment_status->value); // fulfillment deferred in Test Mode
+        $this->assertSame('fulfilled', $order->fulfillment_status->value); // Phase 7: Test checkout hands over on the spot, like Production
         $payment = Payment::query()->sole();
         $this->assertSame('sandbox_payments', $payment->getTable());
         $this->assertStringStartsWith('TEST-PAY-', $payment->payment_number);
         $this->assertSame($order->id, PaymentAllocation::query()->sole()->sales_order_id);
-        // Test stock is reserved for the paid Test order (Test ledger only).
-        $this->assertSame('2.0000', Decimal::normalize((string) DB::table('sandbox_inventory_reservations')->where('status', 'active')->value('quantity')));
+        // The hand-over consumed the Test reservation (Test ledger only).
+        $this->assertSame(0, DB::table('sandbox_inventory_reservations')->where('status', 'active')->count());
+        $this->assertSame('3.0000', Decimal::normalize((string) DB::table('sandbox_inventory_balances')->value('on_hand')));
         $this->assertSame('0.0000', app(SalesOrderPaymentCalculator::class)->remainingAmount($order));
         $this->get("/payments/{$payment->id}")->assertOk();
         $this->get('/payments')->assertOk();

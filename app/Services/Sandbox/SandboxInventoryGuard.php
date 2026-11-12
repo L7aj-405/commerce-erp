@@ -27,6 +27,8 @@ final class SandboxInventoryGuard
         // Phase 6 - procurement & supplier purchasing ledger.
         'sales_order_procurements', 'purchase_orders', 'purchase_order_lines', 'procurement_receipts',
         'quotation_supplier_availability_requests', 'procurement_sequences', 'purchase_order_sequences',
+        // Phase 7 - fulfillment / shipment ledger.
+        'fulfillments', 'fulfillment_items', 'fulfillment_attachments', 'fulfillment_customer_notifications',
     ];
 
     /**
