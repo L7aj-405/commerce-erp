@@ -2,7 +2,10 @@
 
 namespace App\Models\Concerns;
 
+use App\Models\Builders\SandboxLedgerBuilder;
 use App\Services\Sandbox\SandboxContext;
+use App\Services\Sandbox\SandboxScopeColumn;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -24,6 +27,15 @@ trait RoutesToSandboxInventory
 {
     public static function bootRoutesToSandboxInventory(): void
     {
+        // Sandbox ownership as a NON-REMOVABLE global scope (see SandboxLedgerBuilder):
+        // grouped correctly with caller OR clauses and resolved against the query's
+        // current FROM at compile time, so aliased queries keep working.
+        static::addGlobalScope(SandboxLedgerBuilder::SCOPE, function (Builder $query) {
+            if (static::isSandboxTable($query->getModel()->getTable())) {
+                $query->where(SandboxScopeColumn::for($query), app(SandboxContext::class)->id());
+            }
+        });
+
         static::creating(function ($model) {
             $context = app(SandboxContext::class);
             if (static::isSandboxTable($model->getTable())) {
@@ -60,19 +72,9 @@ trait RoutesToSandboxInventory
         static::deleting($sameEnvironment);
     }
 
-    /**
-     * Sandbox ownership is part of the BASE query (not a global scope), so
-     * `withoutGlobalScopes()` can never widen a Test query beyond the active
-     * sandbox. Reads, relations, updates and deletes all start here.
-     */
-    public function newModelQuery()
+    public function newEloquentBuilder($query)
     {
-        $query = parent::newModelQuery();
-        if (static::isSandboxTable($this->getTable())) {
-            $query->where($this->qualifyColumn('sandbox_id'), app(SandboxContext::class)->id());
-        }
-
-        return $query;
+        return new SandboxLedgerBuilder($query);
     }
 
     /** Column holding a sales order id that must share this row's environment (null = none). */

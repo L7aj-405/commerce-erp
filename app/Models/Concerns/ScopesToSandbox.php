@@ -6,6 +6,7 @@ use App\Models\Quotation;
 use App\Models\SalesOrder;
 use App\Models\Sandbox;
 use App\Services\Sandbox\SandboxContext;
+use App\Services\Sandbox\SandboxScopeColumn;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 
@@ -15,7 +16,8 @@ trait ScopesToSandbox
     {
         static::addGlobalScope('sandbox', function (Builder $query) {
             $id = app(SandboxContext::class)->id();
-            $query->where($query->getModel()->qualifyColumn('sandbox_id'), $id);
+            // Alias-aware (see SandboxScopeColumn): resolved against the query's current FROM.
+            $query->where(SandboxScopeColumn::for($query), $id);
         });
         static::creating(function ($model) {
             $context = app(SandboxContext::class);
