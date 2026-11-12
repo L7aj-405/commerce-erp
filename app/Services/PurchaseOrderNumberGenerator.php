@@ -3,6 +3,8 @@
 namespace App\Services;
 
 use App\Models\Organization;
+use App\Services\Sandbox\SandboxContext;
+use App\Services\Sandbox\SandboxDocumentNumberGenerator;
 use App\Support\LockedRow;
 use Illuminate\Support\Facades\DB;
 use LogicException;
@@ -16,6 +18,11 @@ class PurchaseOrderNumberGenerator
 {
     public function next(Organization $organization): string
     {
+        // Test Mode: non-official TEST- reference; purchase_order_sequences is never read or written.
+        if (app(SandboxContext::class)->isSandbox()) {
+            return app(SandboxDocumentNumberGenerator::class)->next($organization, SandboxDocumentNumberGenerator::PURCHASE_ORDER);
+        }
+
         if (DB::transactionLevel() < 1) {
             throw new LogicException('Purchase order numbers may only be allocated inside a database transaction.');
         }

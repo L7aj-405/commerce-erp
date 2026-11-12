@@ -82,6 +82,7 @@ class ReceiveProcurementAction
     public function execute(User $actor, SalesOrderProcurement $procurement, Warehouse $receivingWarehouse, array $data = []): SalesOrderProcurement
     {
         $this->authorizeProcurement($actor, $procurement->organization, 'procurement.receive');
+        $this->assertSameEnvironment($procurement);
         $procurement->loadMissing('store');
         abort_unless($this->actorTenantMatches($actor, $procurement->organization, $procurement->store)
             && $actor->storeMemberships()->where('store_id', $procurement->store_id)->exists(), 403);
@@ -241,7 +242,8 @@ class ReceiveProcurementAction
                     ->whereNotNull('inventory_reservation_id')
                     ->orderBy('id')
                     ->value('warehouse_id'));
-            if ($operationalWarehouseId !== 0 && $operationalWarehouseId !== $receivingWarehouse->getKey()) {
+            // Transfer requests are not sandboxed: a Test receipt never raises one.
+            if ($operationalWarehouseId !== 0 && $operationalWarehouseId !== $receivingWarehouse->getKey() && ! $procurement->isSandboxInventory()) {
                 $request = $this->internalTransferFor($actor, $order, $receivingWarehouse->getKey(), $operationalWarehouseId);
                 $this->upsertTransferLine($request, (int) $variant->getKey(), $quantity, (int) $line->getKey());
                 $procurement->transfer_request_id = $request->getKey();

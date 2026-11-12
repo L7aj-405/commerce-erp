@@ -1,3 +1,4 @@
+import SandboxProcurementBadge from '@/components/SandboxProcurementBadge';
 import PageHeader from '@/components/ui/PageHeader';
 import Pagination from '@/components/ui/Pagination';
 import SearchInput from '@/components/ui/SearchInput';
@@ -80,6 +81,7 @@ export default function ProcurementIndex({ procurements, filters, can }: Props) 
                     ) : undefined
                 }
             />
+            <SandboxProcurementBadge />
 
             <div className="mb-6 flex flex-wrap items-center gap-2">
                 <SearchInput value={search} onChange={setSearch} searching={searching} placeholder={t('procurement.searchPlaceholder')} />

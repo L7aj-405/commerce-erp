@@ -29,6 +29,10 @@ final class SandboxDocumentNumberGenerator
 
     public const QUOTATION = 'quotation';
 
+    public const PROCUREMENT = 'procurement';
+
+    public const PURCHASE_ORDER = 'purchase_order';
+
     private const PREFIXES = [
         self::INVOICE => 'TEST-FAC-',
         self::DELIVERY_NOTE => 'TEST-BL-',
@@ -37,6 +41,8 @@ final class SandboxDocumentNumberGenerator
         self::PAYMENT => 'TEST-PAY-',
         self::PAYMENT_REFUND => 'TEST-REF-',
         self::QUOTATION => 'TEST-DEV-',
+        self::PROCUREMENT => 'TEST-PR-',
+        self::PURCHASE_ORDER => 'TEST-PO-',
     ];
 
     public function next(Organization $organization, string $type): string

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\RoutesToSandboxInventory;
 use App\Enums\PurchaseOrderStatus;
 use App\Enums\SupplierAvailabilityStatus;
 use App\Enums\SupplierProcurementStatus;
@@ -19,6 +20,21 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  */
 class SalesOrderProcurement extends Model
 {
+    use RoutesToSandboxInventory;
+
+    public function sandboxRootLinks(): array
+    {
+        return ['sales_order_id' => 'sales_orders', 'source_quotation_id' => 'quotations'];
+    }
+
+    protected static function booted(): void
+    {
+        // Transfer requests are not sandboxed: a Test requirement is never linked to one.
+        static::saving(function (SalesOrderProcurement $procurement) {
+            abort_if($procurement->isSandboxInventory() && $procurement->transfer_request_id !== null, 403, 'TEST: demande de transfert indisponible.');
+        });
+    }
+
     use ScopesToActiveOrganization;
 
     protected $guarded = ['*'];

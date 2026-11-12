@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\QuotationSupplierAvailabilityStatus;
+use App\Models\Concerns\RoutesToSandboxInventory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
@@ -16,6 +17,13 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
  */
 class QuotationSupplierAvailabilityRequest extends Model
 {
+    use RoutesToSandboxInventory;
+
+    public function sandboxRootLinks(): array
+    {
+        return ['quotation_id' => 'quotations', 'sales_order_id' => 'sales_orders'];
+    }
+
     protected $guarded = ['*'];
 
     protected function casts(): array

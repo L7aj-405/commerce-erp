@@ -1,5 +1,48 @@
 # Test Mode / Sandbox — Implementation Guide
 
+## Phase 6 — Sandbox procurement & supplier purchasing
+
+A Test order that lacks stock can now go through the complete procurement flow without touching Production procurement, purchase orders, receipts, stock, finance or numbering:
+
+`Test quotation / order → insufficient Test stock → supplier sourcing → procurement requirement → Test purchase order → receive goods → Test stock only → Test order confirmable`.
+
+### Architecture (same as inventory and finance)
+
+- **Physically separate Test ledger.** The procurement models use `RoutesToSandboxInventory`: Production tables in Production; `sandbox_quotation_supplier_availability_requests`, `sandbox_sales_order_procurements`, `sandbox_purchase_orders`, `sandbox_purchase_order_lines`, `sandbox_procurement_receipts` in Test Mode, scoped to the active sandbox by the non-removable, alias-aware scope. The existing actions (`CreateProcurementAction`, `DeriveSalesOrderProcurementRequirementsAction`, `CreatePurchaseOrderFromProcurementRequirementsAction`, `OrderProcurementAction`, `ReceiveProcurementAction`, the quotation / POS sourcing actions, `SalesOrderProcurementPlanner`) run unchanged on it. No procurement rule is duplicated or weakened.
+- **Shared master data, never copied:** suppliers, supplier catalogue / mappings, products, variants, stores, warehouses, users, non-stock items.
+- **No cross-environment links.** Test rows reference each other (and the Test inventory ledger — movement, reservation, allocation of a receipt) through composite `(sandbox_id, id)` foreign keys; links to sales orders / quotations (single tables with `sandbox_id`) are checked by the model guard (`sandboxRootLinks()`), 404 otherwise. A Test requirement can never carry a transfer request (refused 403). A record keeps the table of the environment that created it. Procurement actions additionally refuse (404) a record of the other environment instead of relying on route binding alone.
+- **SQL guard.** During Test requests any SQL naming a Production procurement table (`sales_order_procurements`, `purchase_orders`, `purchase_order_lines`, `procurement_receipts`, `quotation_supplier_availability_requests`, `procurement_sequences`, `purchase_order_sequences`) is refused.
+
+### Tables / migration
+
+`2026_11_21_000006_create_sandbox_procurement.php` — the five `sandbox_*` tables above (Production columns + `sandbox_id`), sandbox-qualified unique keys (numbers, client operation ids), explicit short constraint names (MySQL 64-character limit). Rollback refuses while any Test procurement record exists. Verified on SQLite and MySQL (apply, rollback, re-apply).
+
+### Numbering
+
+`SandboxDocumentNumberGenerator`: requirements `TEST-PR-000001`, purchase orders `TEST-PO-000001`. `ProcurementNumberGenerator` / `PurchaseOrderNumberGenerator` delegate in Test Mode and never read or write `procurement_sequences` / `purchase_order_sequences`. Receipts have no number in Production (they are identified by their purchase order line, requirement and movement), so Test receipts are identified by the Test PO / requirement references; no separate receipt sequence was invented.
+
+### Receiving
+
+`ReceiveProcurementAction` is unchanged apart from one rule: a Test receipt never raises an internal transfer request (not sandboxed). Everything else — quantity validation, retry idempotency, PO line / requirement / PO status progression — is the Production code, writing a Test `supplier_receipt` movement, increasing `sandbox_inventory_balances` and reserving the goods for the Test order on the Test ledger. The Test order then confirms through the normal `ConfirmSalesOrderAction` (procurement blockers cleared by the received goods).
+
+### Enabled in Test Mode
+
+Routes (`SandboxProcurementRules`): `procurement.index`, `procurement.availability / cancel / order / receive / supplier`, `procurement.purchase-orders.index / show / cancel / lines.receive`, `sales.orders.procurements.store`, `sales.orders.purchase-orders.store`, `procurement.supplier-requests.index / record / cancel`, `quotations.sourcing.*` and `pos.drafts.sourcing.*` (options, recommendations, store, record, cancel). Test permission lists gained `procurement.manage / receive / view`, `suppliers.view`, `pos.access`. Test quotation conversion now derives Test requirements exactly like Production, and the supplier-availability attestation on issue works (its records are Test-ledger only).
+
+UI: `SandboxProcurementBadge` ("MODE TEST — APPROVISIONNEMENT TEST") on the procurement, purchase-order and supplier-request pages; the Test home lists the three procurement modules; the same Production screens are used.
+
+### External actions
+
+None exist: the procurement domain sends no e-mail, notification, HTTP call or event to suppliers in Production, so there was nothing to simulate. (If a supplier-facing send is ever added it must be simulated in Test Mode like the quotation e-mail.)
+
+### Still blocked
+
+Out-of-stock articles, supplier directory / supplier & catalogue maintenance (shared master data), purchase-price import, MCP purchasing tools, fulfillment / carrier / handover, returns / exchanges, transfer requests, integrations, Test finance reporting, sandbox reset.
+
+### Validation
+
+`SandboxProcurementTest` (2 tests): full Test flow (sourcing request → availability → issue/accept/convert → `TEST-PR-000001` → `TEST-PO-000001` → receive → Test stock 3, Production stock / ledger / sequences byte-identical → Test order confirmed), Production flow unchanged afterwards (`APV-000001`, `BCF-000001`, Production stock only, Test stock untouched), raw Production SQL refused, cross-environment links refused both ways, composite FK refuses a non-Test movement, rollback guard. Sandbox suite 25 / 25; the existing Production `SalesOrderProcurementReceiptTest` 13 / 13; procurement tests also pass on MySQL.
+
 ## Phase 5.6 — Test quotation document flow (parity)
 
 Test quotations now run the **same Production actions** on the sandbox-scoped row; only outbound effects are simulated.

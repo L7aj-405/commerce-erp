@@ -32,6 +32,7 @@ class OrderProcurementAction
     public function execute(User $actor, SalesOrderProcurement $procurement, array $data = []): SalesOrderProcurement
     {
         $this->authorizeProcurement($actor, $procurement->organization, 'procurement.manage');
+        $this->assertSameEnvironment($procurement);
 
         return DB::transaction(function () use ($actor, $procurement, $data) {
             $procurement = SalesOrderProcurement::query()

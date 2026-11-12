@@ -24,6 +24,9 @@ final class SandboxInventoryGuard
         // Phase 5 — finance transaction ledger.
         'payments', 'payment_allocations', 'payment_refunds', 'payment_sequences', 'payment_refund_sequences',
         'commission_entries', 'finance_expected_collections', 'finance_expected_collection_matches',
+        // Phase 6 - procurement & supplier purchasing ledger.
+        'sales_order_procurements', 'purchase_orders', 'purchase_order_lines', 'procurement_receipts',
+        'quotation_supplier_availability_requests', 'procurement_sequences', 'purchase_order_sequences',
     ];
 
     /**

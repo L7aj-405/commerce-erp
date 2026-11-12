@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\RoutesToSandboxInventory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -9,6 +10,13 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 /** One ordered quantity of one procurement requirement (and so of one Sales Order line). */
 class PurchaseOrderLine extends Model
 {
+    use RoutesToSandboxInventory;
+
+    public function sandboxRootLinks(): array
+    {
+        return ['sales_order_id' => 'sales_orders'];
+    }
+
     protected $guarded = ['*'];
 
     protected function casts(): array

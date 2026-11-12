@@ -61,10 +61,10 @@ class SandboxQuotationFlowTest extends QuotationTestCase
         // Stamp: the action is reachable (no company stamp configured here, so Production's own validation answers).
         $this->post("/quotations/{$quote->id}/stamp")->assertSessionHasErrors('stamp');
 
-        // Supplier attestation shortcut (procurement records) stays refused in Test Mode.
+        // Phase 6: the supplier-availability attestation works like Production (its records are Test-ledger only).
         $draft = $this->createQuotation($owner, $org, $store);
         $this->addCatalogQuotationLine($owner, $draft, $variant);
-        $this->postJson("/quotations/{$draft->id}/issue", ['confirm_supplier_availability' => true])->assertForbidden();
+        $this->postJson("/quotations/{$draft->id}/issue", ['confirm_supplier_availability' => true])->assertRedirect();
         // Like Production, a draft cannot be converted: it must be issued and accepted first.
         $this->post("/quotations/{$draft->id}/conversion", ['warehouse_id' => $warehouse->id])->assertForbidden();
 
@@ -79,7 +79,7 @@ class SandboxQuotationFlowTest extends QuotationTestCase
         $this->assertStringStartsWith('TEST-', $order->order_number);
 
         // Still blocked in Test Mode.
-        foreach (["/quotations/{$quote->id}/revise", "/quotations/{$quote->id}/duplicate", "/quotations/{$quote->id}/lines/1/supplier-requests",
+        foreach (["/quotations/{$quote->id}/revise", "/quotations/{$quote->id}/duplicate", '/procurement/out-of-stock-articles/1/resolve',
             '/sales/orders/1/fulfill', '/sales/orders/1/returns'] as $blocked) {
             $this->postJson($blocked, [])->assertForbidden()->assertJsonPath('code', 'SANDBOX_DOMAIN_UNAVAILABLE');
         }

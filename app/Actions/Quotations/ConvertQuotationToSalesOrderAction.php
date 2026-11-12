@@ -84,7 +84,6 @@ class ConvertQuotationToSalesOrderAction
             // Draft → Issued → Accepted → Sales Order: acceptance is its own
             // explicit step (DecideQuotationAction); conversion never implies it.
             // Checked under the row lock, before anything is written.
-            $test = $quotation->sandbox_id !== null;
             if ($quotation->status !== QuotationStatus::Accepted) {
                 throw ValidationException::withMessages(['quotation' => 'Seul un devis accepté peut être transformé en commande. Acceptez d’abord le devis.']);
             }
@@ -149,8 +148,9 @@ class ConvertQuotationToSalesOrderAction
             // Supplier availability confirmed on this (final, accepted) quotation
             // becomes an explicit procurement requirement for every line internal
             // stock no longer covers. Nothing is ordered from the supplier here.
-            $derived = $test ? [] : $this->deriveRequirements->execute($actor, $order);
-            $procurement = $test ? ['required' => false, 'unresolved_count' => 0] : $this->procurementPlanner->plan($order)['summary'];
+            // Phase 6: identical in Test Mode — the requirements land on the Test procurement ledger.
+            $derived = $this->deriveRequirements->execute($actor, $order);
+            $procurement = $this->procurementPlanner->plan($order)['summary'];
 
             $this->audit->record('quotation.converted', $actor, $quotation->organization, $quotation->store, $quotation, newValues: [
                 'quotation_number' => $quotation->quotation_number,

@@ -41,6 +41,7 @@ class CreateProcurementAction
     public function execute(User $actor, SalesOrder $order, SalesOrderLine $line, Supplier $supplier, array $data): SalesOrderProcurement
     {
         $this->authorizeProcurement($actor, $order->organization, 'procurement.manage');
+        $this->assertSameEnvironment($order);
 
         return DB::transaction(function () use ($actor, $order, $line, $supplier, $data) {
             $order = SalesOrder::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();

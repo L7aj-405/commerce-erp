@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\RoutesToSandboxInventory;
 use App\Enums\PurchaseOrderStatus;
 use App\Models\Concerns\ScopesToActiveOrganization;
 use Illuminate\Database\Eloquent\Model;
@@ -15,6 +16,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  */
 class PurchaseOrder extends Model
 {
+    use RoutesToSandboxInventory;
+
     use ScopesToActiveOrganization;
 
     protected $guarded = ['*'];

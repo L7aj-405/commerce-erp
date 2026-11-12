@@ -37,6 +37,9 @@ trait RoutesToSandboxInventory
         });
 
         static::creating(function ($model) {
+            // A record keeps the table of the environment that created it (like a
+            // hydrated one), so it can never silently change environment later.
+            $model->setTable($model->getTable());
             $context = app(SandboxContext::class);
             if (static::isSandboxTable($model->getTable())) {
                 abort_unless($context->isSandbox(), 403, 'Les données test ne sont accessibles qu’en mode test.');
@@ -46,17 +49,25 @@ trait RoutesToSandboxInventory
             }
         });
 
-        // Phase 5: a row pointing at a sales order must live in that order's
-        // environment (a Test payment / refund / commission / collection only
-        // ever references a Test order of the same sandbox, and vice versa).
+        // Phases 5-6: a row pointing at a sales order / quotation (single tables
+        // that carry sandbox_id) must live in that record's environment — a Test
+        // payment, commission, collection, procurement requirement, purchase order
+        // line or sourcing request only ever references records of the same
+        // sandbox, and a Production row only Production records.
         static::saving(function ($model) {
-            $column = $model->sandboxSalesOrderColumn();
-            if ($column === null || $model->getAttribute($column) === null || ($model->exists && ! $model->isDirty($column))) {
-                return;
+            $links = $model->sandboxRootLinks();
+            if (($column = $model->sandboxSalesOrderColumn()) !== null) {
+                $links[$column] = 'sales_orders';
             }
-            $orderSandbox = DB::table('sales_orders')->where('id', $model->getAttribute($column))->value('sandbox_id');
             $expected = static::isSandboxTable($model->getTable()) ? app(SandboxContext::class)->id() : null;
-            abort_unless((string) $orderSandbox === (string) $expected, 404);
+            foreach ($links as $column => $table) {
+                $value = $model->getAttribute($column);
+                if ($value === null || ($model->exists && ! $model->isDirty($column))) {
+                    continue;
+                }
+                $sandbox = DB::table($table)->where('id', $value)->value('sandbox_id');
+                abort_unless((string) $sandbox === (string) $expected, 404);
+            }
         });
 
         $sameEnvironment = function ($model) {
@@ -75,6 +86,17 @@ trait RoutesToSandboxInventory
     public function newEloquentBuilder($query)
     {
         return new SandboxLedgerBuilder($query);
+    }
+
+    /**
+     * Other single-table roots this row references, as column => table (each
+     * has a sandbox_id column and must share this row's environment).
+     *
+     * @return array<string, string>
+     */
+    public function sandboxRootLinks(): array
+    {
+        return [];
     }
 
     /** Column holding a sales order id that must share this row's environment (null = none). */
