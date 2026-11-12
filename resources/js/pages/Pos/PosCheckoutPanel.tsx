@@ -1,4 +1,5 @@
 import { Money, NumericInput, SegmentedControl } from '@/components/pos/primitives';
+import SandboxPaymentBadge from '@/components/SandboxPaymentBadge';
 import { useDebouncedValue } from '@/components/pos/useDebouncedValue';
 import { Button } from '@/components/ui/Button';
 import { Spinner } from '@/components/ui/Spinner';
@@ -416,7 +417,7 @@ export default function PosCheckoutPanel({
                     <svg className={direction === 'rtl' ? 'rotate-180' : undefined} width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 6 8 12l6 6" /></svg>
                     {t('pos.back')}
                 </button>
-                <h2 className="text-sm font-semibold text-ink">{t('pos.payment')}</h2>
+                <h2 className="text-sm font-semibold text-ink">{t('pos.payment')}<SandboxPaymentBadge inline /></h2>
             </div>
 
             {/* Body (scroll) */}

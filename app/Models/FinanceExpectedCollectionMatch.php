@@ -2,12 +2,14 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\RoutesToSandboxInventory;
 use App\Models\Concerns\ScopesToActiveOrganization;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class FinanceExpectedCollectionMatch extends Model
 {
+    use RoutesToSandboxInventory;
     use ScopesToActiveOrganization;
 
     protected $guarded = ['*'];

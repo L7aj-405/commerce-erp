@@ -13,7 +13,13 @@ class SandboxController extends Controller
     {
         $org = $tenant->organizationOrFail();
         abort_unless($context->isRestricted() || $request->user()->hasPermission($org, 'sandbox.access'), 403);
+        $catalog = app(\App\Services\Sandbox\SandboxModuleCatalog::class);
+        $sandbox = $context->sandbox();
+
         return Inertia::render('Sandbox/Index', [
+            'current' => $sandbox ? ['name' => $sandbox->name, 'status' => $sandbox->status, 'generation' => $sandbox->generation] : null,
+            'modules' => $sandbox ? $catalog->available($request->user(), $org) : [],
+            'unavailable' => $catalog->unavailable(),
             'enabled' => (bool) (($org->settings ?? [])['sandbox_enabled'] ?? false),
             'canManage' => $request->user()->hasPermission($org, 'sandbox.manage'),
             'canSwitch' => $request->user()->hasPermission($org, 'sandbox.switch'),

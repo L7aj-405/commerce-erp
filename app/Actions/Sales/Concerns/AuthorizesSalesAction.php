@@ -30,7 +30,7 @@ trait AuthorizesSalesAction
     {
         abort_unless((string) $order->sandbox_id === (string) app(SandboxContext::class)->id(), 404);
         if ($order->sandbox_id !== null) {
-            abort_unless(in_array($permission, ['sales_orders.view', 'sales_orders.update', 'sales_orders.confirm'], true), 403, 'TEST: transition indisponible.');
+            abort_unless(in_array($permission, ['sales_orders.view', 'sales_orders.update', 'sales_orders.confirm', 'sales_orders.cancel'], true), 403, 'TEST: transition indisponible.');
         }
         $this->authorizeSales($actor, $order->organization, $order->store, $permission);
     }

@@ -102,7 +102,9 @@ class ManageFinanceExpectedCollectionAction
 
     private function order(Organization $organization, int $id): SalesOrder
     {
-        $order = SalesOrder::query()->withoutGlobalScopes()->whereNull('sales_orders.sandbox_id')->where('organization_id', $organization->id)->lockForUpdate()->find($id);
+        // Phase 5: the order must belong to the request's environment (NULL =
+        // Production); a Test expected collection only targets a Test order.
+        $order = SalesOrder::query()->withoutGlobalScopes()->where('sales_orders.sandbox_id', app(\App\Services\Sandbox\SandboxContext::class)->id())->where('organization_id', $organization->id)->lockForUpdate()->find($id);
         if (! $order) throw ValidationException::withMessages(['sales_order_id' => 'Commande introuvable pour cette organisation.']);
         return $order;
     }
@@ -113,7 +115,10 @@ class ManageFinanceExpectedCollectionAction
         $query = FinanceExpectedCollection::query()->withoutGlobalScopes()->where('organization_id', $order->organization_id)
             ->where('sales_order_id', $order->id)->where('state', 'planned');
         if ($except) $query->whereKeyNot($except);
-        $scheduled = $query->selectRaw("COALESCE(SUM(expected_amount - COALESCE((SELECT SUM(m.amount) FROM finance_expected_collection_matches m WHERE m.organization_id=finance_expected_collections.organization_id AND m.expected_collection_id=finance_expected_collections.id),0)),0) as amount")->value('amount');
+        // Phase 5: routed tables (Test finance ledger in Test Mode).
+        $collections = FinanceExpectedCollection::environmentTable();
+        $matches = FinanceExpectedCollectionMatch::environmentTable();
+        $scheduled = $query->selectRaw("COALESCE(SUM(expected_amount - COALESCE((SELECT SUM(m.amount) FROM {$matches} m WHERE m.organization_id={$collections}.organization_id AND m.expected_collection_id={$collections}.id),0)),0) as amount")->value('amount');
         if (Decimal::compare(Decimal::add((string) $scheduled, $requestedUnmatched), $outstanding) > 0) {
             throw ValidationException::withMessages(['expected_amount' => 'Les encaissements planifiés dépassent le solde client restant.']);
         }

@@ -3,12 +3,21 @@
 namespace App\Models;
 
 use App\Enums\PaymentMethod;
+use App\Models\Concerns\RoutesToSandboxInventory;
 use App\Models\Concerns\ScopesToActiveStore;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class PaymentRefund extends Model
 {
+    use RoutesToSandboxInventory;
+
+    /** Phase 5: only ever linked to an order of the same environment. */
+    public function sandboxSalesOrderColumn(): ?string
+    {
+        return 'sales_order_id';
+    }
+
     use ScopesToActiveStore;
 
     protected $guarded = ['*'];

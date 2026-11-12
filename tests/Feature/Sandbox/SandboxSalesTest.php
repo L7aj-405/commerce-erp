@@ -63,14 +63,14 @@ class SandboxSalesTest extends QuotationTestCase
         } catch (ValidationException $e) {
             $this->assertArrayHasKey('quantity', $e->errors());
         }
-        foreach (['/sales/orders/'.$order->id.'/cancel', '/sales/orders/'.$order->id.'/payments', '/sales/orders/'.$order->id.'/purchase-orders',
+        foreach (['/sales/orders/'.$order->id.'/exchanges', '/sales/orders/'.$order->id.'/out-of-stock-articles', '/sales/orders/'.$order->id.'/purchase-orders',
             '/sales/orders/'.$order->id.'/fulfill', '/sales/orders/'.$order->id.'/returns', '/sales/orders/'.$order->id.'/procurements',
             '/quotations/'.$quote->id.'/accept', '/quotations/'.$quote->id.'/email', '/quotations/'.$quote->id.'/stamp',
-            '/pos/drafts/'.$test.'/convert', '/pos/sales'] as $blocked) {
+            '/pos/drafts/'.$test.'/convert', '/inventory/opening-stock'] as $blocked) {
             $this->postJson($blocked, [])->assertForbidden()->assertJsonPath('code', 'SANDBOX_DOMAIN_UNAVAILABLE');
         }
         $this->assertSame('draft', DB::table('sales_orders')->where('id', $order->id)->value('status'));
-        $this->assertSame(0, DB::table('payments')->count() + DB::table('invoices')->count());
+        $this->assertSame(0, SandboxInventoryGuard::bypass(fn () => DB::table('payments')->count()) + DB::table('invoices')->count());
         $this->post('/test-mode/leave')->assertRedirect();
         $this->get('/test-mode')->assertOk();
         $this->assertNull(Quotation::find($quote->id));

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\RoutesToSandboxInventory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -10,6 +11,13 @@ use LogicException;
 
 class CommissionEntry extends Model
 {
+    use RoutesToSandboxInventory;
+
+    /** Phase 5: only ever linked to an order of the same environment. */
+    public function sandboxSalesOrderColumn(): ?string
+    {
+        return 'sales_order_id';
+    }
     public const TYPE_SALE = 'sale';
     public const TYPE_RETURN_REVERSAL = 'return_reversal';
     public const TYPE_CORRECTION = 'correction';

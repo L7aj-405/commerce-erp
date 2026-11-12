@@ -4,6 +4,8 @@ namespace App\Services;
 
 use App\Models\Organization;
 use App\Models\PaymentRefundSequence;
+use App\Services\Sandbox\SandboxContext;
+use App\Services\Sandbox\SandboxDocumentNumberGenerator;
 use App\Support\LockedRow;
 use Illuminate\Support\Facades\DB;
 use LogicException;
@@ -12,6 +14,11 @@ class PaymentRefundNumberGenerator
 {
     public function next(Organization $organization): string
     {
+        // Phase 5: simulated Test payments take a non-official TEST- reference
+        // and never touch payment_refund_sequences.
+        if (app(SandboxContext::class)->isSandbox()) {
+            return app(SandboxDocumentNumberGenerator::class)->next($organization, SandboxDocumentNumberGenerator::PAYMENT_REFUND);
+        }
         if (DB::connection()->transactionLevel() < 1) {
             throw new LogicException('Payment refund numbers may only be allocated inside a transaction.');
         }
