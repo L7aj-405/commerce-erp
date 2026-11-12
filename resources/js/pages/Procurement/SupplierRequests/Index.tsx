@@ -2,6 +2,7 @@ import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
 import EmptyState from '@/components/ui/EmptyState';
 import FilterSelect from '@/components/ui/FilterSelect';
+import SandboxProcurementBadge from '@/components/SandboxProcurementBadge';
 import PageHeader from '@/components/ui/PageHeader';
 import Pagination from '@/components/ui/Pagination';
 import SearchInput from '@/components/ui/SearchInput';
@@ -375,6 +376,7 @@ export default function SupplierRequestsIndex({ requests, filters, suppliers, ca
         <ProcurementLayout>
             <Head title={t('supplierRequests.title')} />
             <PageHeader title={t('supplierRequests.title')} description={t('supplierRequests.description')} />
+            <SandboxProcurementBadge />
 
             <div className="mb-6 flex flex-wrap items-center gap-2">
                 <SearchInput value={search} onChange={setSearch} searching={searching} placeholder={t('supplierRequests.searchPlaceholder')} />

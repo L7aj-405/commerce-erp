@@ -1,3 +1,4 @@
+import SandboxProcurementBadge from '@/components/SandboxProcurementBadge';
 import PageHeader from '@/components/ui/PageHeader';
 import StatusBadge from '@/components/ui/StatusBadge';
 import { useI18n } from '@/i18n';
@@ -79,6 +80,7 @@ export default function PurchaseOrderShow({ purchaseOrder: po, warehouses, today
                 description={po.supplier?.name ?? undefined}
                 actions={<StatusBadge status={po.status}>{t(`purchaseOrders.status.${po.status}` as TranslationKey)}</StatusBadge>}
             />
+            <SandboxProcurementBadge />
 
             <section className="mb-6 rounded-card border border-line bg-surface p-5">
                 <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">

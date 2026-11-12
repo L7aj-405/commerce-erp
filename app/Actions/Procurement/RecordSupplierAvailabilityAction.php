@@ -26,6 +26,7 @@ class RecordSupplierAvailabilityAction
     public function execute(User $actor, SalesOrderProcurement $procurement, array $data): SalesOrderProcurement
     {
         $this->authorizeProcurement($actor, $procurement->organization, 'procurement.manage');
+        $this->assertSameEnvironment($procurement);
 
         throw ValidationException::withMessages([
             'supplier_availability_status' => 'La disponibilité fournisseur se vérifie avant l’engagement du client (devis ou panier). Ce besoin d’approvisionnement se commande via une commande fournisseur, ou s’annule.',

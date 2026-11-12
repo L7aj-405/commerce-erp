@@ -9,6 +9,7 @@ use App\Models\PurchaseOrder;
 use App\Models\SalesOrderProcurement;
 use App\Models\User;
 use App\Services\AuditLogger;
+use App\Services\Sandbox\SandboxContext;
 use App\Support\Decimal;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -27,6 +28,8 @@ class CancelPurchaseOrderAction
 
     public function execute(User $actor, PurchaseOrder $purchaseOrder, string $reason): PurchaseOrder
     {
+        // Phase 6: a purchase order of the other environment is never acted upon.
+        abort_unless($purchaseOrder->isSandboxInventory() === app(SandboxContext::class)->isSandbox(), 404);
         $purchaseOrder->loadMissing(['organization', 'store']);
         abort_unless(
             $this->actorTenantMatches($actor, $purchaseOrder->organization, $purchaseOrder->store)

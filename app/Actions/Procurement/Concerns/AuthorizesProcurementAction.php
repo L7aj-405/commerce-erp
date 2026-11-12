@@ -5,6 +5,7 @@ namespace App\Actions\Procurement\Concerns;
 use App\Actions\Concerns\MatchesActorTenant;
 use App\Models\Organization;
 use App\Models\User;
+use App\Services\Sandbox\SandboxContext;
 
 trait AuthorizesProcurementAction
 {
@@ -20,5 +21,22 @@ trait AuthorizesProcurementAction
             && $actor->hasPermission($organization, $permission),
             403
         );
+    }
+
+    /**
+     * Phase 6: a procurement record (or its sales order) must belong to the
+     * request's environment. Routed procurement models answer isSandboxInventory();
+     * sales orders / quotations carry sandbox_id. A record of the other
+     * environment is refused (404), never acted upon.
+     */
+    private function assertSameEnvironment(object ...$records): void
+    {
+        $context = app(SandboxContext::class);
+        foreach ($records as $record) {
+            $same = method_exists($record, 'isSandboxInventory')
+                ? $record->isSandboxInventory() === $context->isSandbox()
+                : (string) ($record->sandbox_id ?? '') === (string) $context->id();
+            abort_unless($same, 404);
+        }
     }
 }

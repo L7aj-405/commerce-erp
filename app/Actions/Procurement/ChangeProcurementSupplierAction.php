@@ -28,6 +28,7 @@ class ChangeProcurementSupplierAction
     public function execute(User $actor, SalesOrderProcurement $procurement, Supplier $supplier): SalesOrderProcurement
     {
         $this->authorizeProcurement($actor, $procurement->organization, 'procurement.manage');
+        $this->assertSameEnvironment($procurement);
 
         return DB::transaction(function () use ($actor, $procurement, $supplier) {
             $procurement = SalesOrderProcurement::query()

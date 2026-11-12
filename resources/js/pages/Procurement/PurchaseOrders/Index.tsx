@@ -1,4 +1,5 @@
 import EmptyState from '@/components/ui/EmptyState';
+import SandboxProcurementBadge from '@/components/SandboxProcurementBadge';
 import PageHeader from '@/components/ui/PageHeader';
 import Pagination from '@/components/ui/Pagination';
 import SearchInput from '@/components/ui/SearchInput';
@@ -54,6 +55,7 @@ export default function PurchaseOrdersIndex({ purchaseOrders, filters }: Props) 
         <ProcurementLayout>
             <Head title={t('purchaseOrders.title')} />
             <PageHeader title={t('purchaseOrders.title')} description={t('purchaseOrders.description')} />
+            <SandboxProcurementBadge />
 
             <div className="mb-6 flex flex-wrap items-center gap-2">
                 <SearchInput value={search} onChange={setSearch} searching={searching} placeholder={t('purchaseOrders.searchPlaceholder')} />

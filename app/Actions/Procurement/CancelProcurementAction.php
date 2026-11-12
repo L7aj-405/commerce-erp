@@ -32,6 +32,7 @@ class CancelProcurementAction
     public function execute(User $actor, SalesOrderProcurement $procurement, ?string $reason = null, bool $acknowledgeOrdered = false): SalesOrderProcurement
     {
         $this->authorizeProcurement($actor, $procurement->organization, 'procurement.manage');
+        $this->assertSameEnvironment($procurement);
 
         return DB::transaction(function () use ($actor, $procurement, $reason, $acknowledgeOrdered) {
             $procurement = SalesOrderProcurement::query()

@@ -34,10 +34,6 @@ class IssueQuotationAction
     public function execute(User $actor, Quotation $quotation, bool $confirmSupplierAvailability = false): Quotation
     {
         $this->authorizeQuotation($actor, $quotation, 'quotations.issue');
-        // Supplier availability attestation writes supplier-sourcing records
-        // (procurement domain, not sandboxed): a Test quotation must be covered
-        // by Test stock instead.
-        abort_if($quotation->sandbox_id !== null && $confirmSupplierAvailability, 403, 'TEST: confirmation de disponibilité fournisseur indisponible.');
         if ($confirmSupplierAvailability) {
             abort_unless($actor->hasPermission($quotation->organization, 'quotations.override_supplier_availability'), 403);
         }

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\RoutesToSandboxInventory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -12,6 +13,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class ProcurementReceipt extends Model
 {
+    use RoutesToSandboxInventory;
+
     protected $guarded = ['*'];
 
     protected function casts(): array

@@ -23,14 +23,17 @@ final class SandboxModuleCatalog
         ['label' => 'Stock test', 'href' => '/inventory/stock', 'permission' => 'inventory.view', 'hint' => 'Stock indépendant de la Production'],
         ['label' => 'Transferts de stock', 'href' => '/inventory/transfers', 'permission' => 'inventory.view', 'hint' => 'Entre entrepôts, stock test uniquement'],
         ['label' => 'Paiements test', 'href' => '/payments', 'permission' => 'payments.view', 'hint' => 'Paiements simulés, sans effet sur la caisse réelle'],
+        ['label' => 'Approvisionnement test', 'href' => '/procurement', 'permission' => 'procurement.view', 'hint' => 'Besoins fournisseurs (TEST-PR) sur commandes et devis test'],
+        ['label' => 'Commandes fournisseurs test', 'href' => '/procurement/purchase-orders', 'permission' => 'procurement.view', 'hint' => 'TEST-PO et réception : seul le stock test augmente'],
+        ['label' => 'Demandes de disponibilité', 'href' => '/procurement/supplier-requests', 'permission' => 'procurement.view', 'hint' => 'Sourcing fournisseur des devis et paniers test'],
     ];
 
     /** @var list<string> */
     private const UNAVAILABLE = [
         'Expédition et remise au client',
         'Retours et échanges (avoirs, remboursements de retour)',
-        'Achats et approvisionnement fournisseurs',
-        'Demandes de transfert entre entrepôts',
+        'Fournisseurs, catalogue fournisseurs et articles hors stock (données partagées, lecture seule)',
+        'Demandes de transfert entre entrepôts (aucun transfert interne généré par une réception test)',
         'Rapports finance, créances et commissions',
         'Catalogue, clients et paramètres (données partagées, lecture seule)',
         'Intégrations (WooCommerce…)',

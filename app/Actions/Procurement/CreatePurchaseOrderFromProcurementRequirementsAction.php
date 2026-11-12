@@ -16,6 +16,7 @@ use App\Models\Supplier;
 use App\Models\User;
 use App\Services\AuditLogger;
 use App\Services\PurchaseOrderNumberGenerator;
+use App\Services\Sandbox\SandboxContext;
 use App\Support\BusinessTime;
 use App\Support\Decimal;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -214,6 +215,8 @@ class CreatePurchaseOrderFromProcurementRequirementsAction
     {
         $organization = $order->organization;
         $this->authorize($actor, $organization);
+        // Phase 6: the sales order must belong to the request's environment.
+        abort_unless((string) $order->sandbox_id === (string) app(SandboxContext::class)->id(), 404);
 
         return DB::transaction(function () use ($actor, $order, $organization, $supplier, $data, $clientOperationId) {
             if ($clientOperationId !== null && ($existing = PurchaseOrder::query()->where('organization_id', $organization->getKey())

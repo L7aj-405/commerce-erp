@@ -71,8 +71,8 @@ class SandboxSalesTest extends QuotationTestCase
         } catch (ValidationException $e) {
             $this->assertArrayHasKey('quantity', $e->errors());
         }
-        foreach (['/sales/orders/'.$order->id.'/exchanges', '/sales/orders/'.$order->id.'/out-of-stock-articles', '/sales/orders/'.$order->id.'/purchase-orders',
-            '/sales/orders/'.$order->id.'/fulfill', '/sales/orders/'.$order->id.'/returns', '/sales/orders/'.$order->id.'/procurements',
+        foreach (['/sales/orders/'.$order->id.'/exchanges', '/sales/orders/'.$order->id.'/out-of-stock-articles', '/procurement/suppliers',
+            '/sales/orders/'.$order->id.'/fulfill', '/sales/orders/'.$order->id.'/returns', '/procurement/out-of-stock-articles/1/resolve',
             '/quotations/'.$quote->id.'/revise', '/quotations/'.$quote->id.'/duplicate',
             '/pos/drafts/'.$test.'/convert', '/inventory/opening-stock'] as $blocked) {
             $this->postJson($blocked, [])->assertForbidden()->assertJsonPath('code', 'SANDBOX_DOMAIN_UNAVAILABLE');

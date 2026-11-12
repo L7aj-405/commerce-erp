@@ -14,6 +14,8 @@ final class SandboxQuotationRules
     public const PERMISSIONS = [
         'quotations.view', 'quotations.update', 'quotations.convert',
         'quotations.issue', 'quotations.accept', 'quotations.email', 'documents.stamp',
+        // Phase 6: supplier sourcing on Test quotations (Test ledger only).
+        'procurement.manage', 'suppliers.view',
     ];
 
     /**
