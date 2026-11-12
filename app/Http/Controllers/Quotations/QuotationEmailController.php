@@ -38,6 +38,10 @@ class QuotationEmailController extends Controller
             return back()->withErrors(['email' => 'Le devis n\'a pas pu être envoyé. Réessayez.']);
         }
 
+        if ($quotation->sandbox_id !== null) {
+            return back()->with('success', 'EMAIL TEST — NON ENVOYÉ : envoi simulé, aucun e-mail réel n’a été expédié.');
+        }
+
         return back()->with('success', 'Devis envoyé par e-mail.');
     }
 }

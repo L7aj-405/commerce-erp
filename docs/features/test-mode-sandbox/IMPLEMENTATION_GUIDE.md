@@ -1,5 +1,17 @@
 # Test Mode / Sandbox — Implementation Guide
 
+## Phase 5.6 — Test quotation document flow (parity)
+
+Test quotations now run the **same Production actions** on the sandbox-scoped row; only outbound effects are simulated.
+
+- **Lifecycle:** issue → accept / reject → convert to a Test draft order. Conversion now requires an accepted quotation, exactly like Production (the Phase 2 draft shortcut is removed). Test issue refuses the "confirm supplier availability" shortcut (it writes procurement records): a Test line must be covered by Test stock.
+- **Numbering:** Test quotations take `TEST-DEV-000001` from the Test document sequence; `quotation_sequences` is never touched.
+- **Documents:** `quotations.print`, `pdf` (view) and `download` work for Test quotations with the normal template, a `DOCUMENT DE TEST — SANS VALEUR COMMERCIALE / LÉGALE` banner, the Test reference, and a diagonal Test mark drawn again after the stamp so it stays on top. The company stamp action is allowed; the Test mark remains dominant.
+- **E-mail (simulated):** same authorization, status and recipient validation as Production, then it stops: no organization mail service, no SMTP, no `document_email_deliveries` row. It renders the real attachment, records `quotation.email_simulated` in the audit trail and shows `EMAIL TEST — NON ENVOYÉ` (page, modal, flash).
+- **WhatsApp / share:** no external API is involved. In Test Mode the link is the authenticated in-session PDF (no signed public URL to sandbox data) and the message is prefixed `[DOCUMENT DE TEST …]`.
+- **Still blocked:** revision, duplicate, supplier sourcing / availability, signed public share link (`quotations.shared-pdf`), customer creation, fulfillment / carrier, returns / exchanges, procurement, integrations, reset.
+- **Tests:** `SandboxQuotationFlowTest` (PDF view/download, Test marking, lifecycle, simulated e-mail never reaching the mail service, blocked routes, Production unchanged). Sandbox suite 23 / 23.
+
 ## Phase 5.5 — Test Mode access bridge
 
 No new business logic: the modules made sandbox-safe in Phases 2–5 are now reachable from the Test Mode home, and the foundation-only page is replaced.

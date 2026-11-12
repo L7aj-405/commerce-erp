@@ -339,6 +339,9 @@
 </head>
 
 <body>
+@if (! empty($sandbox))
+    @include('documents.partials.sandbox-banner')
+@endif
 
 @if ($watermark)
     <div class="watermark-text">{{ $watermark }}</div>
@@ -726,6 +729,9 @@
 </div>
 
 @include('documents.partials.stamp', ['stamp' => $stamp ?? null])
+@if (! empty($sandbox))
+    @include('documents.partials.sandbox-banner', ['diagonalOnly' => true])
+@endif
 
 </body>
 </html>

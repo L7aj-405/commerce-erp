@@ -27,6 +27,8 @@ final class SandboxDocumentNumberGenerator
 
     public const PAYMENT_REFUND = 'payment_refund';
 
+    public const QUOTATION = 'quotation';
+
     private const PREFIXES = [
         self::INVOICE => 'TEST-FAC-',
         self::DELIVERY_NOTE => 'TEST-BL-',
@@ -34,6 +36,7 @@ final class SandboxDocumentNumberGenerator
         self::STOCK_TRANSFER => 'TEST-TRF-',
         self::PAYMENT => 'TEST-PAY-',
         self::PAYMENT_REFUND => 'TEST-REF-',
+        self::QUOTATION => 'TEST-DEV-',
     ];
 
     public function next(Organization $organization, string $type): string

@@ -8,6 +8,7 @@ use App\Models\Quotation;
 use App\Models\Store;
 use App\Models\User;
 use App\Services\Sandbox\SandboxContext;
+use App\Services\Sandbox\SandboxQuotationRules;
 
 trait AuthorizesQuotationAction
 {
@@ -30,7 +31,7 @@ trait AuthorizesQuotationAction
     {
         abort_unless((string) $quotation->sandbox_id === (string) app(SandboxContext::class)->id(), 404);
         if ($quotation->sandbox_id !== null) {
-            abort_unless(in_array($permission, ['quotations.view', 'quotations.update', 'quotations.convert'], true), 403, 'TEST: transition indisponible.');
+            abort_unless(SandboxQuotationRules::allows($quotation->sandbox_id, $permission), 403, 'TEST: transition indisponible.');
         }
         $this->authorizeQuotationScope($actor, $quotation->organization, $quotation->store, $permission);
     }

@@ -38,7 +38,15 @@ class SandboxSalesTest extends QuotationTestCase
         $quote = $this->createQuotation($owner, $org, $store);
         $this->addCatalogQuotationLine($owner, $quote, $variant);
         $this->assertStringStartsWith('TEST-', $quote->quotation_number);
+        // Production lifecycle parity: a Test quotation is issued and accepted before conversion
+        // (Test stock covers the line so no supplier attestation is needed).
+        $this->post('/inventory/adjustments', ['warehouse_id' => $warehouse->id, 'product_variant_id' => $variant->id, 'type' => 'adjustment_in', 'quantity' => '5', 'reason' => 'Stock test'])->assertRedirect();
+        $this->post('/quotations/'.$quote->id.'/issue')->assertRedirect()->assertSessionHasNoErrors();
+        $this->post('/quotations/'.$quote->id.'/accept')->assertRedirect()->assertSessionHasNoErrors();
+        $quote = Quotation::findOrFail($quote->id);
+        $this->assertStringStartsWith('TEST-DEV-', $quote->quotation_number);
         $result = app(ConvertQuotationToSalesOrderAction::class)->execute($owner, $quote, ['warehouse_id' => $warehouse->id]);
+        $this->post('/inventory/adjustments', ['warehouse_id' => $warehouse->id, 'product_variant_id' => $variant->id, 'type' => 'adjustment_out', 'quantity' => '5', 'reason' => 'Retrait stock test'])->assertRedirect();
         $order = $result['order'];
         $this->assertSame('draft', $order->status->value);
         $this->assertSame($quote->sandbox_id, $order->sandbox_id);
@@ -65,7 +73,7 @@ class SandboxSalesTest extends QuotationTestCase
         }
         foreach (['/sales/orders/'.$order->id.'/exchanges', '/sales/orders/'.$order->id.'/out-of-stock-articles', '/sales/orders/'.$order->id.'/purchase-orders',
             '/sales/orders/'.$order->id.'/fulfill', '/sales/orders/'.$order->id.'/returns', '/sales/orders/'.$order->id.'/procurements',
-            '/quotations/'.$quote->id.'/accept', '/quotations/'.$quote->id.'/email', '/quotations/'.$quote->id.'/stamp',
+            '/quotations/'.$quote->id.'/revise', '/quotations/'.$quote->id.'/duplicate',
             '/pos/drafts/'.$test.'/convert', '/inventory/opening-stock'] as $blocked) {
             $this->postJson($blocked, [])->assertForbidden()->assertJsonPath('code', 'SANDBOX_DOMAIN_UNAVAILABLE');
         }

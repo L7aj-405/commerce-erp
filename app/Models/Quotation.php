@@ -20,7 +20,12 @@ class Quotation extends Model
 
     public function sandboxStatuses(): ?array
     {
-        return ['draft', 'converted'];
+        return ['draft', 'issued', 'accepted', 'rejected', 'converted'];
+    }
+
+    public function isTest(): bool
+    {
+        return $this->sandbox_id !== null;
     }
 
     protected function casts(): array

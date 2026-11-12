@@ -1,4 +1,5 @@
 import FollowUpPanel from "@/components/followups/FollowUpPanel";
+import SandboxDocumentBadge from "@/components/SandboxDocumentBadge";
 import type { FollowUpPanelData } from "@/components/followups/types";
 import ActivityTimeline from "@/components/timeline/ActivityTimeline";
 import DocBadge from "@/components/ui/DocBadge";
@@ -108,6 +109,7 @@ type Props = {
     sourcing: LineSourcing[] | null;
     sharing: Sharing | null;
     mailConfigured: boolean;
+    isTest?: boolean;
     stamp: { applied: boolean; appliedAt: string | null; unavailable: boolean };
     can: {
         update: boolean;
@@ -141,6 +143,7 @@ export default function QuotationShow({
     sourcing,
     sharing,
     mailConfigured,
+    isTest = false,
     stamp,
     can,
     followUps,
@@ -265,6 +268,9 @@ export default function QuotationShow({
                     <DocBadge tone={quotationStatusTone(quotation.status)}>
                         {label(quotationStatusLabel, quotation.status)}
                     </DocBadge>
+                    {isTest && (
+                        <SandboxDocumentBadge sandboxId={1} label="TEST · SANS VALEUR COMMERCIALE / LÉGALE" />
+                    )}
                     {isRevision && (
                         <span className="text-xs text-ink-muted">
                             {t("quotations.revision")}{" "}
@@ -1036,6 +1042,7 @@ export default function QuotationShow({
                             canEmail={can.email}
                             mailConfigured={mailConfigured}
                             canConfigureMail={can.configureMail}
+                            isTest={isTest}
                         />
                     )}
 
@@ -1335,12 +1342,14 @@ function ShareCard({
     canEmail,
     mailConfigured,
     canConfigureMail,
+    isTest = false,
 }: {
     quotationId: number;
     sharing: Sharing;
     canEmail: boolean;
     mailConfigured: boolean;
     canConfigureMail: boolean;
+    isTest?: boolean;
 }) {
     const { t } = useI18n();
     const [tab, setTab] = useState<"email" | "whatsapp">("email");
@@ -1407,6 +1416,11 @@ function ShareCard({
                             )}
                         </p>
                     )}
+                    {isTest && (
+                        <p className="text-xs font-semibold text-amber-900">
+                            EMAIL TEST — NON ENVOYÉ : l’envoi est simulé.
+                        </p>
+                    )}
                     {!canEmail && (
                         <p className="text-xs text-ink-muted">
                             {t("quotations.noEmailPermission")}
@@ -1432,12 +1446,18 @@ function ShareCard({
                         canSend={canEmail}
                         mailConfigured={mailConfigured}
                         canConfigureMail={canConfigureMail}
+                        simulated={isTest}
                     />
                 </div>
             )}
 
             {tab === "whatsapp" && (
                 <div className="mt-3 space-y-2 text-sm">
+                    {isTest && (
+                        <p className="rounded-field border border-amber-400 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-950">
+                            DOCUMENT DE TEST — le lien PDF ne s’ouvre que dans votre session de test ; aucun envoi automatique.
+                        </p>
+                    )}
                     {usesUsername ? (
                         <Field label={t("quotations.whatsappUser")}>
                             <div className="rounded-field border border-line bg-raised px-3 py-2 text-ink">

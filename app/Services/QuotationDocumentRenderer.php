@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Enums\QuotationStatus;
 use App\Models\Quotation;
+use App\Services\Sandbox\SandboxDocumentMarking;
 use App\Support\Decimal;
 use App\Support\FrenchNumberToWords;
 
@@ -28,7 +29,7 @@ class QuotationDocumentRenderer
         $locale = config('documents.locale');
         $isRevision = $quotation->isRevision();
 
-        return [
+        $payload = [
             'kind' => 'quotation',
             'title' => __('documents.quotation', locale: $locale),
             'watermark' => match ($quotation->status) {
@@ -98,6 +99,10 @@ class QuotationDocumentRenderer
             ],
             'stamp' => $this->stamps->forQuotation($quotation),
         ];
+
+        return $quotation->isTest()
+            ? SandboxDocumentMarking::apply($payload, $quotation->quotation_number, $quotation->status->value, 'DOCUMENT DE TEST — SANS VALEUR COMMERCIALE / LÉGALE', keepStamp: true)
+            : $payload;
     }
 
     public function html(Quotation $quotation): string

@@ -85,7 +85,7 @@ class ConvertQuotationToSalesOrderAction
             // explicit step (DecideQuotationAction); conversion never implies it.
             // Checked under the row lock, before anything is written.
             $test = $quotation->sandbox_id !== null;
-            if ($quotation->status !== ($test ? QuotationStatus::Draft : QuotationStatus::Accepted)) {
+            if ($quotation->status !== QuotationStatus::Accepted) {
                 throw ValidationException::withMessages(['quotation' => 'Seul un devis accepté peut être transformé en commande. Acceptez d’abord le devis.']);
             }
             if ($quotation->lines->isEmpty()) {

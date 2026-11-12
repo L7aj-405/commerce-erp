@@ -38,6 +38,16 @@ class SendQuotationEmailAction
         }
         $envelope = $this->recipients->envelope($actor, $quotation->organization, is_array($recipient) ? $recipient : ['email' => $recipient]);
         $subject ??= __('documents.email.quotation_subject', ['number' => $quotation->quotation_number], config('documents.locale'));
+
+        // Test Mode: same authorization, status and recipient validation as
+        // Production, then STOP - no organization mail service, no SMTP, no
+        // delivery row (those feed real-send timelines and attention).
+        if ($quotation->sandbox_id !== null) {
+            $this->simulate($actor, $quotation, $envelope);
+
+            return;
+        }
+
         $delivery = $this->delivery($actor, $quotation, $envelope, $subject);
 
         try {
@@ -64,6 +74,21 @@ class SendQuotationEmailAction
             ]);
             throw $exception;
         }
+    }
+
+    /**
+     * Renders the real attachment (proves the document path works) and records
+     * the simulation in the audit trail only. Nothing leaves the application.
+     *
+     * @param  array<string, mixed>  $envelope
+     */
+    private function simulate(User $actor, Quotation $quotation, array $envelope): void
+    {
+        $document = $this->pdf->quotation($quotation);
+        $this->audit->record('quotation.email_simulated', $actor, $quotation->organization, $quotation->store, $quotation, newValues: [
+            'to' => $envelope['to'], 'cc' => $envelope['cc'], 'bcc' => $envelope['bcc'], 'filename' => $document['filename'],
+            'channel' => 'email', 'simulated' => true, 'label' => 'EMAIL TEST — NON ENVOYÉ',
+        ]);
     }
 
     /** @param array<string, mixed> $envelope */
