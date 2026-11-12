@@ -14,6 +14,7 @@ use App\Models\QuotationSupplierAvailabilityRequest;
 use App\Models\SalesOrder;
 use App\Models\SalesOrderProcurement;
 use App\Models\Supplier;
+use App\Services\Procurement\SupplierCatalogQuery;
 use App\Services\Sandbox\SandboxInventoryGuard;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
@@ -113,6 +114,56 @@ class SandboxProcurementTest extends QuotationTestCase
         $this->assertSame('3.0000', InventoryBalance::query()->where('warehouse_id', $warehouse->id)->value('on_hand'));
         $this->assertSame(1, PurchaseOrder::query()->count());
         $this->assertSame('TEST-PO-000001', PurchaseOrder::query()->value('purchase_order_number'));
+    }
+
+    public function test_price_hints_read_the_active_environment_purchase_history_only(): void
+    {
+        [$owner, $org, $store, $variant] = $this->quotationCatalogFixture();
+        $warehouse = $this->createWarehouse($org, 'Main', 'MAIN');
+        $supplier = $this->supplier($org);
+        $this->actingAs($owner);
+        $catalog = app(SupplierCatalogQuery::class);
+        $key = $supplier->id.':'.$variant->id;
+
+        // Production purchase history (ordered PO at 10.00).
+        $prodOrder = $this->createDraftOrder($owner, $org, $store);
+        $prodLine = $this->addCatalogLine($owner, $prodOrder, $variant, $warehouse, ['quantity' => '2']);
+        app(CreateProcurementAction::class)->execute($owner, $prodOrder, $prodLine, $supplier, ['quantity' => '2']);
+        $prodPo = app(CreatePurchaseOrderFromProcurementRequirementsAction::class)->forSalesOrder($owner, $prodOrder->fresh(), $supplier);
+        DB::table('purchase_order_lines')->where('id', $prodPo->lines->first()->id)->update(['unit_price' => '10.0000']);
+        DB::table('purchase_orders')->where('id', $prodPo->id)->update(['status' => 'ordered']);
+        $this->assertSame('BCF-000001', $catalog->lastPurchases($org->id, [$variant->id], null)[$key]['purchase_order_number']);
+
+        // Test Mode: Production history is invisible; the Test order page renders.
+        $this->enterTest();
+        $this->assertSame([], $catalog->lastPurchases($org->id, [$variant->id], null));
+        $quote = $this->createQuotation($owner, $org, $store);
+        $line = $this->addCatalogQuotationLine($owner, $quote, $variant, ['quantity' => '3']);
+        $this->post("/quotations/{$quote->id}/lines/{$line->id}/supplier-requests", ['supplier_id' => $supplier->id])->assertRedirect();
+        $request = QuotationSupplierAvailabilityRequest::query()->sole();
+        $this->patch("/quotations/{$quote->id}/supplier-requests/{$request->id}", ['outcome' => 'available', 'confirmed_quantity' => '3'])->assertRedirect();
+        $this->post("/quotations/{$quote->id}/issue")->assertRedirect();
+        $this->post("/quotations/{$quote->id}/accept")->assertRedirect();
+        $this->post("/quotations/{$quote->id}/conversion", ['warehouse_id' => $warehouse->id])->assertRedirect();
+        $order = SalesOrder::query()->findOrFail(Quotation::findOrFail($quote->id)->converted_sales_order_id);
+        $this->get("/sales/orders/{$order->id}")->assertOk();
+        $this->post("/sales/orders/{$order->id}/purchase-orders", ['supplier_id' => $supplier->id])->assertRedirect()->assertSessionHasNoErrors();
+        $testPo = PurchaseOrder::query()->sole();
+        PurchaseOrderLine::query()->sole()->forceFill(['unit_price' => '77.0000'])->save();
+        $testPo->forceFill(['status' => 'ordered'])->save();
+
+        $history = $catalog->lastPurchases($org->id, [$variant->id], null);
+        $this->assertSame('TEST-PO-000001', $history[$key]['purchase_order_number']);
+        $this->assertSame('77.0000', $history[$key]['unit_price']);
+        $this->assertSame('1', (string) $history[$key]['order_count']);
+        $this->get("/sales/orders/{$order->id}")->assertOk();
+
+        // Back in Production: only the Production history, untouched.
+        $this->leaveTest();
+        $back = $catalog->lastPurchases($org->id, [$variant->id], null);
+        $this->assertSame('BCF-000001', $back[$key]['purchase_order_number']);
+        $this->assertSame('10.0000', $back[$key]['unit_price']);
+        $this->get("/sales/orders/{$prodOrder->id}")->assertOk();
     }
 
     public function test_cross_environment_links_are_rejected_and_rollback_is_guarded(): void
