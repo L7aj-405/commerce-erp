@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\RoutesToSandboxInventory;
 use App\Models\Concerns\ScopesToActiveOrganization;
 use App\Support\InventoryQuantity;
 use Illuminate\Database\Eloquent\Model;
@@ -9,6 +10,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class InventoryBalance extends Model
 {
+    use RoutesToSandboxInventory;
     use ScopesToActiveOrganization;
 
     protected $guarded = ['*'];

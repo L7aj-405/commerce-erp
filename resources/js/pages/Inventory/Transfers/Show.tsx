@@ -1,5 +1,6 @@
 import { Notice, RouteLabel, SectionCard } from '@/components/inventory/TransferRequestUi';
 import { ButtonLink } from '@/components/ui/Button';
+import SandboxStockBadge from '@/components/SandboxStockBadge';
 import PageHeader from '@/components/ui/PageHeader';
 import StatusBadge from '@/components/ui/StatusBadge';
 import { useI18n } from '@/i18n';
@@ -32,6 +33,7 @@ export default function TransferShow({ transfer, origin = null }: { transfer: Tr
                 description={`${transfer.source_warehouse.name} → ${transfer.destination_warehouse.name}`}
                 actions={<><ButtonLink href="/inventory/transfers/create">{t('inventory.transfers.new')}</ButtonLink><ButtonLink href="/inventory/stock" variant="secondary">{t('inventory.warehouses.viewStock')}</ButtonLink></>}
             />
+            <SandboxStockBadge />
 
             <div className="space-y-4">
                 <Notice tone="success" title={t('inventory.trq.movementDone')}>

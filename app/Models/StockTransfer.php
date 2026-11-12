@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\RoutesToSandboxInventory;
 use App\Models\Concerns\ScopesToActiveOrganization;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -9,6 +10,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class StockTransfer extends Model
 {
+    use RoutesToSandboxInventory;
     use ScopesToActiveOrganization;
 
     protected $guarded = ['*'];
@@ -39,7 +41,8 @@ class StockTransfer extends Model
     /** Requests completed by this transfer (none for a direct transfer). */
     public function transferRequests(): HasMany
     {
-        return $this->hasMany(TransferRequest::class);
+        // Transfer requests are Production-only; a Test transfer never links to one.
+        return $this->hasMany(TransferRequest::class)->when($this->isSandboxInventory(), fn ($query) => $query->whereRaw('1 = 0'));
     }
 
     public function performedBy(): BelongsTo

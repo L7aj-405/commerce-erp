@@ -7,9 +7,11 @@ use App\Actions\Sales\ConfirmSalesOrderAction;
 use App\Http\Controllers\PosController;
 use App\Models\Quotation;
 use App\Models\SalesOrder;
+use App\Services\Sandbox\SandboxInventoryGuard;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 use Tests\Support\QuotationTestCase;
 
@@ -42,22 +44,24 @@ class SandboxSalesTest extends QuotationTestCase
         $this->assertSame($quote->sandbox_id, $order->sandbox_id);
         $this->assertStringStartsWith('TEST-', $order->order_number);
         $this->assertSame($sequence, DB::table('sales_order_sequences')->where('organization_id', $org->id)->value('next_number'));
-        $this->assertSame(0, DB::table('sales_order_inventory_allocations')->count());
-        $this->assertSame(0, DB::table('inventory_reservations')->count());
-        $this->assertSame(0, DB::table('inventory_movements')->count());
+        $this->assertSame(0, SandboxInventoryGuard::bypass(fn () => DB::table('sales_order_inventory_allocations')->count()));
+        $this->assertSame(0, SandboxInventoryGuard::bypass(fn () => DB::table('inventory_reservations')->count()));
+        $this->assertSame(0, SandboxInventoryGuard::bypass(fn () => DB::table('inventory_movements')->count()));
         $this->assertSame(0, $order->procurements()->count());
         $otherStore = $this->createStore($org, $owner, 'Other store');
         $this->activate($owner, $org, $otherStore);
         $this->get('/sales/orders/'.$order->id)->assertNotFound();
         $this->get('/quotations/'.$quote->id)->assertNotFound();
         $this->activate($owner, $org, $store);
-        $this->post('/sales/orders/'.$order->id.'/confirm')->assertForbidden();
+        // Phase 4: confirmation is enabled in Test Mode but evaluated on TEST
+        // stock only — this fixture has none, so it fails and stays a draft.
+        $this->post('/sales/orders/'.$order->id.'/confirm')->assertSessionHasErrors();
         $this->post('/quotations/'.$quote->id.'/issue')->assertForbidden();
         try {
             app(ConfirmSalesOrderAction::class)->execute($owner, $order);
-            $this->fail('Confirmation allowed');
-        } catch (HttpException $e) {
-            $this->assertSame(403, $e->getStatusCode());
+            $this->fail('Confirmation allowed without Test stock');
+        } catch (ValidationException $e) {
+            $this->assertArrayHasKey('quantity', $e->errors());
         }
         foreach (['/sales/orders/'.$order->id.'/cancel', '/sales/orders/'.$order->id.'/payments', '/sales/orders/'.$order->id.'/purchase-orders',
             '/sales/orders/'.$order->id.'/fulfill', '/sales/orders/'.$order->id.'/returns', '/sales/orders/'.$order->id.'/procurements',

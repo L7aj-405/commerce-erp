@@ -59,7 +59,8 @@ class CreateStockTransferAction
                 $permission,
             );
 
-            if ($respectTransferPromises) {
+            // Transfer requests are Production-only: a Test transfer has no promises to honour.
+            if ($respectTransferPromises && ! app(\App\Services\Sandbox\SandboxContext::class)->isSandbox()) {
                 $this->assertPromisesStillCovered($organization, $source, $movements);
             }
 

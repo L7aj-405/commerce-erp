@@ -544,14 +544,16 @@ class SalesOrderController extends Controller
             return null;
         }
 
+        // Phase 4: routed tables (Test inventory ledger in Test Mode).
+        $a = \App\Models\SalesOrderInventoryAllocation::environmentTable();
         $warehouses = \App\Models\SalesOrderInventoryAllocation::query()
-            ->join('sales_order_lines as l', 'l.id', '=', 'sales_order_inventory_allocations.sales_order_line_id')
-            ->join('warehouses as w', 'w.id', '=', 'sales_order_inventory_allocations.warehouse_id')
-            ->leftJoin('inventory_reservations as r', 'r.id', '=', 'sales_order_inventory_allocations.inventory_reservation_id')
-            ->where('sales_order_inventory_allocations.organization_id', $order->organization_id)
+            ->join('sales_order_lines as l', 'l.id', '=', $a.'.sales_order_line_id')
+            ->join('warehouses as w', 'w.id', '=', $a.'.warehouse_id')
+            ->leftJoin(\App\Models\InventoryReservation::environmentTable().' as r', 'r.id', '=', $a.'.inventory_reservation_id')
+            ->where($a.'.organization_id', $order->organization_id)
             ->where('l.sales_order_id', $order->getKey())
             ->orderBy('w.id')
-            ->get(['w.id', 'w.name', 'sales_order_inventory_allocations.quantity', 'r.status as reservation_status'])
+            ->get(['w.id', 'w.name', $a.'.quantity', 'r.status as reservation_status'])
             ->groupBy('id')
             ->map(fn ($rows) => [
                 'id' => (int) $rows->first()->id,

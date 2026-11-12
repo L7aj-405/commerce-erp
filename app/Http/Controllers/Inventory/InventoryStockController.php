@@ -160,7 +160,8 @@ class InventoryStockController extends Controller
 
         // A stock-out adjustment records physical reality and is never blocked,
         // but it may leave open transfer requests promising more than remains.
-        if ($type === InventoryMovementType::AdjustmentOut) {
+        // Transfer requests are Production-only, so Test stock-outs have no promises to check.
+        if ($type === InventoryMovementType::AdjustmentOut && ! app(\App\Services\Sandbox\SandboxContext::class)->isSandbox()) {
             $shortfall = $planner->promiseShortfalls($organization->getKey(), $warehouse->getKey(), [$variant->getKey()])[$variant->getKey()] ?? null;
             if ($shortfall !== null) {
                 return back()->with('success', sprintf(
@@ -216,35 +217,37 @@ class InventoryStockController extends Controller
         return [];
     }
 
+    // Phase 4: routed table (sandbox ledger in Test Mode).
+    $balances = InventoryBalance::environmentTable();
     $rows = InventoryBalance::query()
-        ->join('warehouses', function ($join) {
+        ->join('warehouses', function ($join) use ($balances) {
             $join->on(
                 'warehouses.id',
                 '=',
-                'inventory_balances.warehouse_id'
+                $balances.'.warehouse_id'
             )->on(
                 'warehouses.organization_id',
                 '=',
-                'inventory_balances.organization_id'
+                $balances.'.organization_id'
             );
         })
         ->where(
-            'inventory_balances.organization_id',
+            $balances.'.organization_id',
             $organizationId
         )
         ->whereIn(
-            'inventory_balances.product_variant_id',
+            $balances.'.product_variant_id',
             $variantIds
         )
         ->whereIn(
-            'inventory_balances.warehouse_id',
+            $balances.'.warehouse_id',
             $warehouseIds
         )
         ->orderBy('warehouses.name')
         ->get([
-            'inventory_balances.product_variant_id',
-            'inventory_balances.on_hand',
-            'inventory_balances.reserved',
+            $balances.'.product_variant_id',
+            $balances.'.on_hand',
+            $balances.'.reserved',
             'warehouses.id as warehouse_id',
             'warehouses.name',
             'warehouses.code',

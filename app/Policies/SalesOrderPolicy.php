@@ -97,7 +97,7 @@ class SalesOrderPolicy
         if ((string) $order->sandbox_id !== (string) app(SandboxContext::class)->id()) {
             return false;
         }
-        if ($order->sandbox_id !== null && ! in_array($permission, ['sales_orders.view', 'sales_orders.update'], true)) {
+        if ($order->sandbox_id !== null && ! in_array($permission, ['sales_orders.view', 'sales_orders.update', 'sales_orders.confirm'], true)) {
             return false;
         }
 
