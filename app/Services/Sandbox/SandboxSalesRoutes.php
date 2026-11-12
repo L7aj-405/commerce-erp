@@ -8,6 +8,8 @@ final class SandboxSalesRoutes
         'pos.index', 'pos.products.index', 'pos.customers.index',
         'pos.drafts.store', 'pos.drafts.update', 'pos.drafts.lines.store',
         'pos.drafts.lines.update', 'pos.drafts.lines.destroy', 'pos.drafts.hold', 'pos.drafts.resume',
+        // Discard a Test cart: runs through the (isolated) Test order cancellation.
+        'pos.drafts.destroy',
         'quotations.index', 'quotations.create', 'quotations.store', 'quotations.show',
         'quotations.update', 'quotations.search', 'quotations.customer-search',
         'quotations.lines.store', 'quotations.lines.update', 'quotations.lines.destroy', 'quotations.conversion.store',

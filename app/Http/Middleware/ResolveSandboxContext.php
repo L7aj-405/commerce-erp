@@ -23,7 +23,7 @@ class ResolveSandboxContext
         }
         if ($context->isRestricted() && !in_array($request->route()?->getName(), $allowed, true)) {
             if ($request->isMethod('GET') && !$request->expectsJson()) return redirect('/test-mode');
-            return response()->json(['code' => 'SANDBOX_DOMAIN_UNAVAILABLE', 'message' => 'Les opérations métier ne sont pas encore disponibles.'], 403);
+            return response()->json(['code' => 'SANDBOX_DOMAIN_UNAVAILABLE', 'message' => 'Ce module n’est pas disponible en mode test.'], 403);
         }
         return $next($request);
     }

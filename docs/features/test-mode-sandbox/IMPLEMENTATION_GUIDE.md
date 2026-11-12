@@ -1,5 +1,14 @@
 # Test Mode / Sandbox — Implementation Guide
 
+## Phase 5.5 — Test Mode access bridge
+
+No new business logic: the modules made sandbox-safe in Phases 2–5 are now reachable from the Test Mode home, and the foundation-only page is replaced.
+
+- **Home (`/test-mode`).** In Test Mode it shows `MODE TEST`, the current sandbox (name, number, state, generation), the available modules filtered by the user's permissions, and the list of modules still unavailable. Content comes from `SandboxModuleCatalog` (display only); enforcement remains the route allowlists in `ResolveSandboxContext`. The Production state of the page (policy toggle, "Entrer en mode test") is unchanged. The persistent Test banner stays on every page.
+- **Opened modules:** POS, quotations, sales orders, Test invoices, Test delivery notes, Test stock (stock, movements), Test stock transfers, Test payments. The only route added to the allowlist is `pos.drafts.destroy` (discard a Test cart, via the already-isolated Test order cancellation); all other supported routes were already allowed by Phases 2–5.
+- **Still blocked** (`403 SANDBOX_DOMAIN_UNAVAILABLE` for writes, redirect to `/test-mode` for pages): fulfillment / handover, returns / exchanges, procurement and supplier purchasing, transfer requests, finance reports and commissions pages, catalogue / customers / settings (shared data, incl. customer creation from POS and quotations), integrations, e-mail / stamp / quotation PDF, sandbox reset.
+- **Production navigation is untouched.** `SandboxModulesAccessTest` checks the opened routes, the guard on blocked domains, and that Production routes behave as before after leaving Test Mode.
+
 ## Phase 5 — Sandbox payments & finance isolation
 
 ### Status
