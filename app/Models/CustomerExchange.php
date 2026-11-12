@@ -3,6 +3,8 @@
 namespace App\Models;
 
 use App\Models\Concerns\ScopesToActiveStore;
+use App\Models\Concerns\ScopesToSandbox;
+use App\Services\Sandbox\SandboxContext;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -10,8 +12,30 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 class CustomerExchange extends Model
 {
     use ScopesToActiveStore;
+    use ScopesToSandbox;
 
     protected $guarded = ['*'];
+
+    public function sandboxLinks(): array
+    {
+        return ['sales_order_id' => 'sales_orders', 'customer_return_id' => 'customer_returns'];
+    }
+
+    public function sandboxStatuses(): ?array
+    {
+        return null;
+    }
+
+    public function isTest(): bool
+    {
+        return $this->sandbox_id !== null;
+    }
+
+    /** Table of the exchange <-> payment pivot of the current environment (Test payments live in the Test ledger). */
+    public static function paymentPivotTable(): string
+    {
+        return app(SandboxContext::class)->isSandbox() ? 'sandbox_customer_exchange_payments' : 'customer_exchange_payments';
+    }
 
     protected $hidden = ['client_operation_id', 'operation_hash'];
 
@@ -40,6 +64,8 @@ class CustomerExchange extends Model
 
     public function payments(): BelongsToMany
     {
-        return $this->belongsToMany(Payment::class, 'customer_exchange_payments')->withTimestamps();
+        $relation = $this->belongsToMany(Payment::class, self::paymentPivotTable())->withTimestamps();
+
+        return app(SandboxContext::class)->isSandbox() ? $relation->withPivot('sandbox_id', 'organization_id') : $relation;
     }
 }

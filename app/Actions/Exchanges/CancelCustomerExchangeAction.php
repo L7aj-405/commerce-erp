@@ -15,6 +15,7 @@ class CancelCustomerExchangeAction
 
     public function execute(User $actor, CustomerExchange $exchange, string $reason): CustomerExchange
     {
+        app(\App\Services\Sandbox\SandboxContext::class)->assertSameEnvironment($exchange->sandbox_id);
         abort_unless($actor->active_organization_id === $exchange->organization_id && $actor->active_store_id === $exchange->store_id, 404);
         abort_unless($actor->hasPermission($exchange->organization_id, 'sales_exchanges.process'), 403);
         if (trim($reason) === '') throw ValidationException::withMessages(['reason' => 'Le motif d’annulation est obligatoire.']);

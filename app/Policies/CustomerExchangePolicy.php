@@ -6,6 +6,7 @@ use App\Models\CustomerExchange;
 use App\Models\SalesOrder;
 use App\Models\User;
 use App\Services\ActiveTenantContext;
+use App\Services\Sandbox\SandboxContext;
 
 class CustomerExchangePolicy
 {
@@ -13,20 +14,23 @@ class CustomerExchangePolicy
 
     public function create(User $user, SalesOrder $order): bool
     {
-        return $this->scope($order->organization_id, $order->store_id)
+        return (string) $order->sandbox_id === (string) app(SandboxContext::class)->id()
+            && $this->scope($order->organization_id, $order->store_id)
             && $user->hasPermission($order->organization_id, 'sales_exchanges.create')
             && $user->hasPermission($order->organization_id, 'sales_returns.create');
     }
 
     public function view(User $user, CustomerExchange $exchange): bool
     {
-        return $this->scope($exchange->organization_id, $exchange->store_id)
+        return (string) $exchange->sandbox_id === (string) app(SandboxContext::class)->id()
+            && $this->scope($exchange->organization_id, $exchange->store_id)
             && $user->hasPermission($exchange->organization_id, 'sales_exchanges.view');
     }
 
     public function process(User $user, CustomerExchange $exchange): bool
     {
-        return $this->scope($exchange->organization_id, $exchange->store_id)
+        return (string) $exchange->sandbox_id === (string) app(SandboxContext::class)->id()
+            && $this->scope($exchange->organization_id, $exchange->store_id)
             && $user->hasPermission($exchange->organization_id, 'sales_exchanges.process');
     }
 

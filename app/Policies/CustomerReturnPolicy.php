@@ -7,6 +7,7 @@ use App\Models\Organization;
 use App\Models\Store;
 use App\Models\User;
 use App\Services\ActiveTenantContext;
+use App\Services\Sandbox\SandboxContext;
 
 class CustomerReturnPolicy
 {
@@ -16,6 +17,6 @@ class CustomerReturnPolicy
     public function receive(User $user, CustomerReturn $return): bool { return $return->status === 'draft' && $this->allowed($user, $return, 'sales_returns.receive'); }
     public function cancel(User $user, CustomerReturn $return): bool { return $return->status === 'draft' && $this->allowed($user, $return, 'sales_returns.cancel'); }
     public function refund(User $user, CustomerReturn $return): bool { return $return->status === 'received' && $this->allowed($user, $return, 'payments.reverse'); }
-    private function allowed(User $user, CustomerReturn $return, string $permission): bool { return $this->scope($return->organization_id, $return->store_id) && $user->hasPermission($return->organization_id, $permission); }
+    private function allowed(User $user, CustomerReturn $return, string $permission): bool { return (string) $return->sandbox_id === (string) app(SandboxContext::class)->id() && $this->scope($return->organization_id, $return->store_id) && $user->hasPermission($return->organization_id, $permission); }
     private function scope(int $organizationId, int $storeId): bool { return $this->context->organization()?->id === $organizationId && $this->context->store()?->id === $storeId; }
 }

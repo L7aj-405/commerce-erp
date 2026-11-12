@@ -25,6 +25,8 @@ class SandboxContext
     public function id(): ?int { return $this->sandbox?->id; }
     public function sandbox(): ?Sandbox { return $this->sandbox; }
     public function isSandbox(): bool { return $this->sandbox !== null; }
+    /** A record owned by another environment (NULL = Production) is invisible: 404. */
+    public function assertSameEnvironment(?int $sandboxId): void { abort_unless((string) $sandboxId === (string) $this->id(), 404); }
     // Invalidated selections remain blocked until an explicit exit; never fall through to production writes.
     public function isRestricted(): bool { return $this->selected; }
 }

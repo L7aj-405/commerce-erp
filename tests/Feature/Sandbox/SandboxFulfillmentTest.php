@@ -99,10 +99,9 @@ class SandboxFulfillmentTest extends QuotationTestCase
         $this->assertSame(2, Fulfillment::query()->count());
         $this->get("/sales/orders/{$order->id}")->assertOk()->assertInertia(fn ($page) => $page
             ->where('fulfillment.test', true)->where('fulfillment.can.attach', false));
-        // Proofs, customer sharing and returns stay blocked.
+        // Proofs and customer sharing stay blocked.
         $this->postJson("/sales/orders/{$order->id}/fulfillments/{$shipment->id}/share")->assertForbidden()->assertJsonPath('code', 'SANDBOX_DOMAIN_UNAVAILABLE');
         $this->postJson("/sales/orders/{$order->id}/fulfillments/{$shipment->id}/attachments")->assertForbidden()->assertJsonPath('code', 'SANDBOX_DOMAIN_UNAVAILABLE');
-        $this->postJson("/sales/orders/{$order->id}/returns")->assertForbidden()->assertJsonPath('code', 'SANDBOX_DOMAIN_UNAVAILABLE');
 
         // Raw SQL on Production fulfillment tables is refused in Test Mode.
         try {

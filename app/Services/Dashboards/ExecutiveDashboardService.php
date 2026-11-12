@@ -204,7 +204,7 @@ final class ExecutiveDashboardService
     /** @return array{count:int,amount:string} */
     private function receivedReturns(Organization $organization, FinancePeriod $period, ?Store $store): array
     {
-        $row = DB::table('customer_returns')->where('organization_id', $organization->getKey())
+        $row = DB::table('customer_returns')->whereNull('sandbox_id')->where('organization_id', $organization->getKey())
             ->when($store, fn (Builder $query) => $query->where('store_id', $store->getKey()))
             ->where('status', 'received')->whereBetween('received_at', [$period->start, $period->end])
             ->selectRaw('COUNT(*) as aggregate_count, COALESCE(SUM(total_incl_tax), 0) as aggregate_amount')->first();

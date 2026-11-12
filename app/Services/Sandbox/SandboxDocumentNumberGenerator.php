@@ -33,6 +33,10 @@ final class SandboxDocumentNumberGenerator
 
     public const PURCHASE_ORDER = 'purchase_order';
 
+    public const CUSTOMER_RETURN = 'customer_return';
+
+    public const CUSTOMER_EXCHANGE = 'customer_exchange';
+
     private const PREFIXES = [
         self::INVOICE => 'TEST-FAC-',
         self::DELIVERY_NOTE => 'TEST-BL-',
@@ -43,6 +47,8 @@ final class SandboxDocumentNumberGenerator
         self::QUOTATION => 'TEST-DEV-',
         self::PROCUREMENT => 'TEST-PR-',
         self::PURCHASE_ORDER => 'TEST-PO-',
+        self::CUSTOMER_RETURN => 'TEST-RET-',
+        self::CUSTOMER_EXCHANGE => 'TEST-ECH-',
     ];
 
     public function next(Organization $organization, string $type): string

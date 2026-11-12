@@ -40,6 +40,7 @@ class CreateCustomerExchangeAction
      */
     public function execute(User $actor, SalesOrder $order, string $operationId, array $returnedItems, array $replacementItems, string $reason, string $disposition, bool $override = false, ?string $overrideReason = null): CustomerExchange
     {
+        app(\App\Services\Sandbox\SandboxContext::class)->assertSameEnvironment($order->sandbox_id);
         abort_unless($actor->active_organization_id === $order->organization_id && $actor->active_store_id === $order->store_id, 404);
         abort_unless($actor->hasPermission($order->organization_id, 'sales_exchanges.create'), 403);
         if ($replacementItems === []) throw ValidationException::withMessages(['replacement_items' => 'Sélectionnez au moins un nouvel article.']);

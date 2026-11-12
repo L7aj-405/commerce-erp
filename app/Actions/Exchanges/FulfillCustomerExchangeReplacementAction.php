@@ -16,6 +16,7 @@ class FulfillCustomerExchangeReplacementAction
 
     public function execute(User $actor, CustomerExchange $exchange): CustomerExchange
     {
+        app(\App\Services\Sandbox\SandboxContext::class)->assertSameEnvironment($exchange->sandbox_id);
         abort_unless($actor->active_organization_id === $exchange->organization_id && $actor->active_store_id === $exchange->store_id, 404);
         abort_unless($actor->hasPermission($exchange->organization_id, 'sales_exchanges.process'), 403);
         if ($exchange->status !== 'awaiting_replacement' || $exchange->customerReturn->status !== 'received') {

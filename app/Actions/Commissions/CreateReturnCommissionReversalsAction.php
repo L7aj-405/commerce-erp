@@ -20,7 +20,8 @@ final class CreateReturnCommissionReversalsAction
         }
 
         $return->loadMissing('lines');
-        $order = SalesOrder::query()->withoutGlobalScopes()->whereNull('sales_orders.sandbox_id')
+        // The return's own environment (Test returns reverse Test commissions only; the source entries are routed).
+        $order = SalesOrder::query()->withoutGlobalScopes()->where('sales_orders.sandbox_id', $return->sandbox_id)
             ->where('organization_id', $return->organization_id)
             ->whereKey($return->sales_order_id)
             ->firstOrFail();

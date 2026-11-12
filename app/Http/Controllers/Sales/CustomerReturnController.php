@@ -102,7 +102,7 @@ class CustomerReturnController extends Controller
                 ->where('store_id', $customerReturn->store_id)
                 ->where('status', 'posted'))
             ->with('payment:id,organization_id,store_id,payment_number,method,amount,financial_account_id', 'payment.financialAccount:id,name,code,type')
-            ->orderBy('payment_allocations.id')
+            ->orderBy(\App\Models\PaymentAllocation::environmentTable().'.id')
             ->get()
             ->map(function ($allocation) use ($refundsByPayment, $remainingRefund) {
                 $payment = $allocation->payment;

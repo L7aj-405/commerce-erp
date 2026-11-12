@@ -11,7 +11,7 @@ use ZipArchive;
 class OrganizationBackupExporter
 {
     /** Tables with their own sandbox_id (NULL = Production). */
-    private const SANDBOX_ROOTS = ['sales_orders', 'quotations', 'invoice_families', 'invoices', 'delivery_notes', 'credit_notes'];
+    private const SANDBOX_ROOTS = ['sales_orders', 'quotations', 'invoice_families', 'invoices', 'delivery_notes', 'credit_notes', 'customer_returns', 'customer_exchanges'];
 
     /** Child tables isolated through their parent root: table => [parent, foreign key]. */
     private const SANDBOX_CHILDREN = [
@@ -20,6 +20,7 @@ class OrganizationBackupExporter
         'invoice_lines' => ['invoices', 'invoice_id'],
         'delivery_note_lines' => ['delivery_notes', 'delivery_note_id'],
         'credit_note_lines' => ['credit_notes', 'credit_note_id'],
+        'customer_return_lines' => ['customer_returns', 'customer_return_id'],
     ];
 
     public function __construct(

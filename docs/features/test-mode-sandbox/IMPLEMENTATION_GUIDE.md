@@ -1,5 +1,21 @@
 # Test Mode / Sandbox — Implementation Guide
 
+## Phase 8 — Sandbox returns, exchanges, refunds & credit notes
+
+**Architecture.** Returns, return lines and exchanges are sandbox-owned roots in their existing tables (nullable `sandbox_id`, NULL = Production), with the same non-removable scope and link guards as sales orders / invoices / credit notes. This keeps every existing foreign key valid: Test credit notes (single table), Test refunds and Test commission entries (Phase 5) already point at `customer_returns` through composite keys. Production readers that query the tables directly filter `sandbox_id IS NULL` (executive dashboard, Production backups). The exchange <-> payment pivot is the one routed table: `sandbox_customer_exchange_payments` with a `(sandbox_id, payment_id)` key into the Test payment ledger.
+
+**Migration** `2026_11_21_000008_isolate_sandbox_returns.php`: `sandbox_id` on `customer_returns`, `customer_return_lines`, `customer_exchanges`; new `sandbox_customer_exchange_payments`. `down()` refuses while Test returns/exchanges exist.
+
+**Numbering.** `TEST-RET-`, `TEST-ECH-`, `TEST-AV-` come from `sandbox_document_sequences`; the Production generators delegate in Test Mode and never touch `customer_return_sequences`, `customer_exchange_sequences` or `credit_note_sequences`.
+
+**Effects.** The Production actions run unchanged: receiving a return with disposition restock writes a Test inventory movement and raises Test stock; refunds and exchange settlements use the Test finance ledger (TEST-REF, Test payments only); exchange replacement stock is reserved and consumed on the Test ledger once; credit notes are issued as TEST-AV documents (Test watermark, no fiscal value); return commission reversals append to the Test commission ledger. Every action refuses a record or payment of the other environment (404).
+
+**Enabled routes** (`SandboxReturnsRules`): `sales.returns.*`, `sales.orders.returns.{create,store}`, `sales.orders.exchanges.{create,search,store}`, `sales.exchanges.*`; credit notes keep `credit-notes.{show,print,pdf}`. Screens show `MODE TEST — RETOUR TEST / ÉCHANGE TEST` and `REMBOURSEMENT TEST / SIMULÉ`.
+
+**Still blocked:** WooCommerce / integrations, sandbox reset, Test finance reporting, MCP return / exchange tools, the return-policy settings page, credit-note e-mail / stamp / share.
+
+**Validation.** `SandboxReturnsTest` (2 tests) on SQLite and MySQL 8.4; Sandbox, Returns, Exchanges, POS and backup suites pass; migration applied, rolled back and re-applied on MySQL.
+
 ## Phase 7 — Sandbox fulfillment, carrier & customer hand-over
 
 **Architecture.** Same routed-ledger design as Phases 4–6: the fulfillment models (`Fulfillment`, `FulfillmentItem`, `FulfillmentAttachment`, `FulfillmentCustomerNotification`) use `RoutesToSandboxInventory` and switch to physically separate `sandbox_*` tables only while a Test context is active. The Production `FulfillmentEngine` and the `App\Actions\Fulfillment` actions run unchanged on them; stock leaves through the Phase 4 Test inventory ledger.

@@ -223,8 +223,8 @@ class SandboxDocumentsTest extends QuotationTestCase
         $state = [SandboxInventoryGuard::bypass(fn () => DB::table('inventory_movements')->count()), SandboxInventoryGuard::bypass(fn () => DB::table('payments')->count()), DB::table('document_email_deliveries')->count()];
 
         foreach (["/invoices/{$invoice->id}/email", "/invoices/{$invoice->id}/stamp", "/invoices/{$invoice->id}/corrections",
-            "/delivery-notes/{$note->id}/email", "/sales/orders/{$order->id}/exchanges", "/sales/orders/{$order->id}/out-of-stock-articles",
-            "/sales/orders/{$order->id}/returns", "/sales/orders/{$order->id}/fulfillments/{$order->id}/share", "/sales/orders/{$order->id}/fulfillments/{$order->id}/attachments"] as $blocked) {
+            "/delivery-notes/{$note->id}/email", "/sales/orders/{$order->id}/out-of-stock-articles",
+            "/sales/orders/{$order->id}/fulfillments/{$order->id}/share", "/sales/orders/{$order->id}/fulfillments/{$order->id}/attachments"] as $blocked) {
             $this->postJson($blocked, [])->assertForbidden()->assertJsonPath('code', 'SANDBOX_DOMAIN_UNAVAILABLE');
         }
         $this->getJson("/invoices/{$invoice->id}/shared-pdf")->assertForbidden();
@@ -234,11 +234,11 @@ class SandboxDocumentsTest extends QuotationTestCase
         $this->assertFalse($owner->can('email', $note));
         $this->assertHttpStatus(403, fn () => app(SendInvoiceEmailAction::class)->execute($owner, $invoice, ['to' => ['client@example.test']]));
         $this->assertHttpStatus(403, fn () => app(StampInvoiceAction::class)->execute($owner, $invoice));
-        // Credit Notes need sandboxed returns (Phase 4+): no Test Credit Note may be persisted.
+        // Phase 8: Test Credit Notes exist only for Test returns; a status outside the lifecycle is still refused.
         $this->assertHttpStatus(403, function () use ($org, $store, $order, $invoice) {
             $note = new CreditNote;
             foreach (['organization_id' => $org->id, 'store_id' => $store->id, 'customer_return_id' => 1, 'invoice_id' => $invoice->id,
-                'sales_order_id' => $order->id, 'status' => 'draft', 'credit_note_date' => now()->toDateString(), 'currency_code' => 'MAD',
+                'sales_order_id' => $order->id, 'status' => 'bogus', 'credit_note_date' => now()->toDateString(), 'currency_code' => 'MAD',
                 'subtotal_excl_tax' => '0', 'discount_total' => '0', 'tax_total' => '0', 'total_incl_tax' => '0', 'reason' => 'x',
                 'seller_snapshot' => [], 'customer_snapshot' => []] as $key => $value) {
                 $note->{$key} = $value;
