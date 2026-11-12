@@ -1,5 +1,23 @@
 # Test Mode / Sandbox — Implementation Guide
 
+## Phase 7 — Sandbox fulfillment, carrier & customer hand-over
+
+**Architecture.** Same routed-ledger design as Phases 4–6: the fulfillment models (`Fulfillment`, `FulfillmentItem`, `FulfillmentAttachment`, `FulfillmentCustomerNotification`) use `RoutesToSandboxInventory` and switch to physically separate `sandbox_*` tables only while a Test context is active. The Production `FulfillmentEngine` and the `App\Actions\Fulfillment` actions run unchanged on them; stock leaves through the Phase 4 Test inventory ledger.
+
+**Migration** `2026_11_21_000007_create_sandbox_fulfillment.php`: `sandbox_fulfillments` (ULID id), `sandbox_fulfillment_items`, `sandbox_fulfillment_attachments`, `sandbox_fulfillment_customer_notifications`. Items, proofs and notifications reference their shipment through composite `(sandbox_id, id)` keys; the order link is guarded by the model (`sandboxSalesOrderColumn`) and a composite FK. `down()` refuses while Test shipments exist. `SandboxInventoryGuard` refuses any SQL naming the four Production tables in a Test request.
+
+**Stock lifecycle.** Unchanged rules: confirmation reserves Test stock; stock leaves Test inventory exactly once, when a shipment is handed over (carrier hand-over or direct `fulfill`), guarded by `stock_consumed_at`, the order/fulfillment row locks and `client_operation_id`. Preparation, ready, in transit, delivered and close move no stock. Test POS checkout now hands over on the spot like Production (the Phase 5 "deferred" branch was removed).
+
+**Carrier.** Carriers are shared transport contacts (master data). There is no carrier API, label generation or internal shipping number in the Production workflow (tracking is typed by the operator), so nothing external is called and no `TEST-SHP` sequence is consumed.
+
+**Notifications.** In Test Mode the automatic customer notification is recorded as skipped with reason `test_simulated` and shown as `NOTIFICATION TEST — NON ENVOYÉE`; it is never queued, mailed or messaged. WooCommerce stock tasks are not recorded for Test sales.
+
+**Enabled routes** (`SandboxFulfillmentRules`): `sales.orders.fulfill` and `sales.orders.fulfillments.{carrier-options,preparation,hand-to-carrier,ready,hand-ready-to-carrier,in-transit,delivered,close,cancel,update}`; the order page shows the existing fulfillment card with a `MODE TEST — EXPÉDITION TEST` banner.
+
+**Still blocked:** shipping proofs / attachments, "Partager au client" (e-mail / WhatsApp), shipment follow-up outcomes, returns, exchanges, return refunds and credit notes from returns, WooCommerce / integrations, sandbox reset, Test finance reporting.
+
+**Validation.** `SandboxFulfillmentTest` (2 tests); Sandbox, Fulfillment and POS suites pass on SQLite; the new test and migration apply/rollback/re-apply pass on MySQL 8.4.
+
 ## Phase 6 — Sandbox procurement & supplier purchasing
 
 A Test order that lacks stock can now go through the complete procurement flow without touching Production procurement, purchase orders, receipts, stock, finance or numbering:

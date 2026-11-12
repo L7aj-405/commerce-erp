@@ -79,6 +79,8 @@ class ShareFulfillmentWithCustomerAction
      */
     public function preview(User $actor, SalesOrder $order, Fulfillment $fulfillment, ?array $attachmentIds = null): array
     {
+        // Test Mode: shipping proofs (stored files) and customer sharing (e-mail / WhatsApp) are not simulated yet.
+        abort_if($order->sandbox_id !== null, 403, 'TEST: justificatifs et partage client indisponibles (NOTIFICATION TEST — NON ENVOYÉE).');
         $this->authorize($actor, $order);
         $fulfillment = $this->shipment($order, $fulfillment);
         $this->assertShareable($fulfillment);
@@ -114,6 +116,8 @@ class ShareFulfillmentWithCustomerAction
     /** @param array<string, mixed> $data */
     public function execute(User $actor, SalesOrder $order, Fulfillment $fulfillment, array $data): FulfillmentCustomerNotification
     {
+        // Test Mode: shipping proofs (stored files) and customer sharing (e-mail / WhatsApp) are not simulated yet.
+        abort_if($order->sandbox_id !== null, 403, 'TEST: justificatifs et partage client indisponibles (NOTIFICATION TEST — NON ENVOYÉE).');
         $this->authorize($actor, $order);
         $data = Validator::make($data, self::rules())->validate();
         $key = FulfillmentCustomerNotification::shareKey($data['client_operation_id']);

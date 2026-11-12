@@ -1,4 +1,5 @@
 import { Button } from '@/components/ui/Button';
+import SandboxFulfillmentBadge from '@/components/SandboxFulfillmentBadge';
 import { Dialog } from '@/components/ui/Dialog';
 import FollowUpFormDialog from '@/components/followups/FollowUpFormDialog';
 import type { FollowUpItem, ShipmentFollowUpProposal } from '@/components/followups/types';
@@ -6,7 +7,7 @@ import { useI18n } from '@/i18n';
 import type { TranslationKey } from '@/i18n/translations';
 import { formatDateTime, formatQuantity } from '@/utils/format';
 import { whatsappLink, type WhatsAppDestination } from '@/utils/whatsapp';
-import { router, useForm } from '@inertiajs/react';
+import { router, useForm, usePage } from '@inertiajs/react';
 import axios from 'axios';
 import type { FormEvent, ReactNode } from 'react';
 import { useEffect, useMemo, useState } from 'react';
@@ -60,6 +61,7 @@ export type FulfillmentPayload = {
     lines: Line[];
     fulfillments: Shipment[];
     actions: ('hand_to_carrier' | 'start_preparation')[];
+    test?: boolean;
     can: { manage: boolean; dispatch: boolean; deliver: boolean; attach: boolean };
 };
 
@@ -105,6 +107,7 @@ export default function FulfillmentCard({ orderId, data }: { orderId: number; da
 
     return (
         <section className="mb-6 rounded-card border border-line bg-surface p-5">
+            <SandboxFulfillmentBadge />
             <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                     <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">{k('title')}</h2>
@@ -324,6 +327,7 @@ function DispatchDialog({ base, shipment, lines, onClose }: { base: string; ship
     const { t } = useI18n();
     const k = (key: string) => t(`fulfillment.${key}` as TranslationKey);
     const operationId = useMemo(() => crypto.randomUUID(), []);
+    const test = !!usePage<{ sandbox?: { active: boolean } }>().props.sandbox?.active;
     const [carrierSearch, setCarrierSearch] = useState('');
     const carriers = useCarrierOptions(base, carrierSearch);
     type DispatchForm = {
@@ -380,10 +384,12 @@ function DispatchDialog({ base, shipment, lines, onClose }: { base: string; ship
                     <Field label={k('handedAt')} error={errors.handed_at}><input type="datetime-local" required value={form.data.handed_at} onChange={(event) => form.setData('handed_at', event.target.value)} className="control-input w-full" /></Field>
                     <Field label={k('packageCount')} error={errors.package_count}><input type="number" min={1} value={form.data.package_count} onChange={(event) => form.setData('package_count', event.target.value)} className="control-input w-full" /></Field>
                 </div>
-                <Field label={k('proofs')} error={errors.proofs ?? Object.entries(errors).find(([key]) => key.startsWith('proofs.'))?.[1]}>
-                    <input type="file" multiple accept={ACCEPT} onChange={(event) => form.setData('proofs', Array.from(event.target.files ?? []))} className="block w-full text-sm" />
-                    <span className="mt-1 block text-xs text-ink-faint">{k('proofsHint')}</span>
-                </Field>
+                {!test && (
+                    <Field label={k('proofs')} error={errors.proofs ?? Object.entries(errors).find(([key]) => key.startsWith('proofs.'))?.[1]}>
+                        <input type="file" multiple accept={ACCEPT} onChange={(event) => form.setData('proofs', Array.from(event.target.files ?? []))} className="block w-full text-sm" />
+                        <span className="mt-1 block text-xs text-ink-faint">{k('proofsHint')}</span>
+                    </Field>
+                )}
                 <Field label={k('note')} error={errors.note}><textarea value={form.data.note} onChange={(event) => form.setData('note', event.target.value)} rows={2} className="control-input w-full" maxLength={2000} /></Field>
                 {(errors.order || errors.mode || errors.status) && <p className="text-xs text-danger">{errors.order ?? errors.mode ?? errors.status}</p>}
             </form>

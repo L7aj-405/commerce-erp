@@ -32,6 +32,7 @@ final class FulfillmentQuery
     public function forOrder(SalesOrder $order, User $viewer): array
     {
         $orgId = (int) $order->organization_id;
+        $test = $order->sandbox_id !== null;
         $can = [
             'manage' => $viewer->hasPermission($orgId, 'fulfillment.manage'),
             'dispatch' => $viewer->hasPermission($orgId, 'fulfillment.dispatch'),
@@ -69,7 +70,7 @@ final class FulfillmentQuery
         $articles = collect($lines)->keyBy('line_id');
 
         $fulfillments = $order->fulfillments()->with(['items', 'carrier:id,full_name,company_name,phone', 'attachments', 'customerNotifications.sentBy:id,name', 'createdBy:id,name', 'handedBy:id,name',
-            'followUps.assignee:id,name', 'followUps.customer:id,organization_id,display_name', 'followUps.salesOrder:id,organization_id,store_id,order_number,status', 'followUps.fulfillment:id,organization_id,sales_order_id,status'])
+            ...($test ? [] : ['followUps.assignee:id,name', 'followUps.customer:id,organization_id,display_name', 'followUps.salesOrder:id,organization_id,store_id,order_number,status', 'followUps.fulfillment:id,organization_id,sales_order_id,status'])])
             ->orderBy('created_at')->orderBy('id')->get()
             ->values()
             ->map(fn (Fulfillment $fulfillment, int $index) => [
@@ -116,7 +117,8 @@ final class FulfillmentQuery
                     'sent_by' => $notification->sentBy?->name,
                     'sent_at' => ($notification->sent_at ?? ($notification->origin === FulfillmentCustomerNotification::ORIGIN_MANUAL ? $notification->created_at : null))?->toIso8601String(),
                 ])->all(),
-                'follow_up' => ($followUp = $fulfillment->followUps
+                // Shipment follow-ups are Production-only (Test shipments never create them).
+                'follow_up' => ! $test && ($followUp = $fulfillment->followUps
                     ->filter(fn ($item) => $this->followUpAccess->canView($viewer, $item))
                     ->sortBy(fn ($item) => ($item->status->value === 'open' ? '0' : '1').str_pad((string) (999999999 - (int) $item->getKey()), 12, '0', STR_PAD_LEFT))
                     ->first()) ? $this->followUpQuery->present($viewer, $order->organization, $followUp) : null,
@@ -129,7 +131,7 @@ final class FulfillmentQuery
                     'size_bytes' => $attachment->size_bytes,
                     'url' => route('sales.orders.fulfillments.attachments.show', [$order->getKey(), $fulfillment->getKey(), $attachment->getKey()]),
                 ])->all(),
-                'actions' => $this->actions($fulfillment, $can),
+                'actions' => $this->actions($fulfillment, $can, $test),
             ])->all();
 
         return [
@@ -144,7 +146,8 @@ final class FulfillmentQuery
                 $mode === Fulfillment::MODE_SIMPLE && $can['dispatch'] && $canShipMore ? 'hand_to_carrier' : null,
                 $mode === Fulfillment::MODE_ADVANCED && $can['manage'] && $canShipMore ? 'start_preparation' : null,
             ])),
-            'can' => [...$can, 'attach' => $can['manage'] || $can['dispatch']],
+            'test' => $test,
+            'can' => [...$can, 'attach' => ! $test && ($can['manage'] || $can['dispatch'])],
         ];
     }
 
@@ -160,7 +163,7 @@ final class FulfillmentQuery
     }
 
     /** @param array<string, bool> $can @return list<string> */
-    private function actions(Fulfillment $fulfillment, array $can): array
+    private function actions(Fulfillment $fulfillment, array $can, bool $test = false): array
     {
         $advanced = $fulfillment->workflow_mode === Fulfillment::MODE_ADVANCED;
         $actions = match ($fulfillment->status) {
@@ -174,7 +177,7 @@ final class FulfillmentQuery
         if (! in_array($fulfillment->status, [FulfillmentStatus::Closed, FulfillmentStatus::Cancelled], true) && $fulfillment->channel === Fulfillment::CHANNEL_CARRIER && $can['manage']) {
             $actions[] = 'edit_details';
         }
-        if (in_array($fulfillment->status, ShareFulfillmentWithCustomerAction::STATUSES, true) && $fulfillment->channel === Fulfillment::CHANNEL_CARRIER && ($can['manage'] || $can['dispatch'])) {
+        if (! $test && in_array($fulfillment->status, ShareFulfillmentWithCustomerAction::STATUSES, true) && $fulfillment->channel === Fulfillment::CHANNEL_CARRIER && ($can['manage'] || $can['dispatch'])) {
             $actions[] = 'share_with_customer';
         }
 

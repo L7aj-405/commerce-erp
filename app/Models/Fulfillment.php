@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\FulfillmentStatus;
+use App\Models\Concerns\RoutesToSandboxInventory;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -12,6 +13,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class Fulfillment extends Model
 {
     use HasUlids;
+    use RoutesToSandboxInventory;
 
     public const MODE_SIMPLE = 'simple';
     public const MODE_ADVANCED = 'advanced';
@@ -21,6 +23,12 @@ class Fulfillment extends Model
     public const CHANNEL_DIRECT = 'direct';
 
     protected $guarded = ['*'];
+
+    /** Phase 7: a Test shipment only ever references a Test Sales Order (and Production one a Production order). */
+    public function sandboxSalesOrderColumn(): ?string
+    {
+        return 'sales_order_id';
+    }
 
     protected function casts(): array
     {

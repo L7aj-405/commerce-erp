@@ -10,6 +10,7 @@ use App\Models\Organization;
 use App\Models\SalesOrder;
 use App\Services\AuditLogger;
 use App\Services\OrganizationOutboundMailService;
+use App\Services\Sandbox\SandboxContext;
 use App\Support\SensitiveDataRedactor;
 use Illuminate\Support\Facades\DB;
 use Throwable;
@@ -39,6 +40,9 @@ final class FulfillmentCustomerNotifier
     /** Organization setting key; notifications are on unless explicitly turned off. */
     public const SETTING = 'fulfillment_customer_notifications';
 
+    /** Skip reason of a Test Mode notification: recorded, never sent. */
+    public const SKIP_TEST_SIMULATED = 'test_simulated';
+
     public function __construct(
         private readonly OrganizationOutboundMailService $mail,
         private readonly AuditLogger $audit,
@@ -54,6 +58,11 @@ final class FulfillmentCustomerNotifier
     public function request(Fulfillment $fulfillment, string $event): void
     {
         if ($fulfillment->channel !== Fulfillment::CHANNEL_CARRIER || ! in_array($event, FulfillmentCustomerNotification::EVENTS, true)) return;
+        if ($fulfillment->isSandboxInventory()) {
+            $this->simulate($fulfillment, $event);
+
+            return;
+        }
 
         $now = now();
         $inserted = FulfillmentCustomerNotification::query()->insertOrIgnore([
@@ -76,8 +85,37 @@ final class FulfillmentCustomerNotifier
         SendFulfillmentCustomerNotificationJob::dispatch((int) $id)->afterCommit();
     }
 
+    /**
+     * Test Mode: the notification is recorded as skipped (reason test_simulated,
+     * shown as "NOTIFICATION TEST — NON ENVOYÉE") and NEVER queued, mailed or
+     * messaged — there is no job, no mail service call and no recipient.
+     * Same once-per-(shipment, event) idempotency as Production.
+     */
+    private function simulate(Fulfillment $fulfillment, string $event): void
+    {
+        $key = FulfillmentCustomerNotification::automaticKey($event);
+        $exists = FulfillmentCustomerNotification::query()->where('organization_id', $fulfillment->organization_id)
+            ->where('fulfillment_id', $fulfillment->getKey())->where('dedupe_key', $key)->exists();
+        if ($exists) return;
+
+        (new FulfillmentCustomerNotification)->forceFill([
+            'organization_id' => $fulfillment->organization_id,
+            'store_id' => $fulfillment->store_id,
+            'sales_order_id' => $fulfillment->sales_order_id,
+            'fulfillment_id' => $fulfillment->getKey(),
+            'event' => $event,
+            'origin' => FulfillmentCustomerNotification::ORIGIN_AUTOMATIC,
+            'dedupe_key' => $key,
+            'channel' => FulfillmentCustomerNotification::CHANNEL_EMAIL,
+            'status' => FulfillmentCustomerNotification::STATUS_SKIPPED,
+            'skip_reason' => self::SKIP_TEST_SIMULATED,
+        ])->save();
+    }
+
     public function deliver(int $notificationId): void
     {
+        // Defence in depth: a Test notification is never queued, and a queued job never mails from a Test context.
+        if (app(SandboxContext::class)->isSandbox()) return;
         $claim = DB::transaction(function () use ($notificationId) {
             $notification = FulfillmentCustomerNotification::query()->whereKey($notificationId)->lockForUpdate()->first();
             if (! $notification || $notification->status !== FulfillmentCustomerNotification::STATUS_PENDING) return null;

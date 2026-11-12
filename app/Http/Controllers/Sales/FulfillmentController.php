@@ -25,6 +25,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
@@ -66,6 +67,10 @@ class FulfillmentController extends Controller
             'proofs' => ['nullable', 'array', 'max:'.(int) config('fulfillment.attachments.max_files', 5)],
             'proofs.*' => AttachFulfillmentProofAction::fileRules(),
         ]);
+        // Test Mode: shipping proofs are stored files and are not simulated; refuse before anything moves.
+        if ($order->sandbox_id !== null && ($data['proofs'] ?? []) !== []) {
+            throw ValidationException::withMessages(['proofs' => 'TEST: les justificatifs d’expédition ne sont pas disponibles en mode test.']);
+        }
         $fulfillment = $action->execute($request->user(), $order, $request->only([...array_keys(HandFulfillmentToCarrierAction::rules()), 'items']),
             $fulfillment, $data['expected_status'] ?? null, $data['client_operation_id'] ?? null);
         if (($data['proofs'] ?? []) !== []) {

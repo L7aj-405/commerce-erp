@@ -17,6 +17,8 @@ class RemoveFulfillmentProofAction
 
     public function execute(User $actor, SalesOrder $order, Fulfillment $fulfillment, FulfillmentAttachment $attachment): void
     {
+        // Test Mode: shipping proofs (stored files) and customer sharing (e-mail / WhatsApp) are not simulated yet.
+        abort_if($order->sandbox_id !== null, 403, 'TEST: justificatifs et partage client indisponibles (NOTIFICATION TEST — NON ENVOYÉE).');
         $this->engine->authorize($actor, $order, 'fulfillment.manage');
 
         DB::transaction(function () use ($actor, $order, $fulfillment, $attachment) {

@@ -47,7 +47,7 @@ class SandboxModulesAccessTest extends QuotationTestCase
         foreach (['/finance', '/inventory/warehouses', '/inventory/transfer-requests', '/catalog/products', '/integrations/woocommerce'] as $url) {
             $this->get($url)->assertRedirect('/test-mode');
         }
-        foreach (['/sales/orders/1/fulfill', '/sales/orders/1/returns', '/sales/orders/1/exchanges', '/sales/orders/1/out-of-stock-articles',
+        foreach (['/sales/orders/1/returns', '/sales/orders/1/exchanges', '/sales/orders/1/out-of-stock-articles',
             '/procurement/suppliers', '/inventory/transfer-requests', '/integrations/woocommerce', '/inventory/opening-stock'] as $url) {
             $this->postJson($url, [])->assertForbidden()->assertJsonPath('code', 'SANDBOX_DOMAIN_UNAVAILABLE');
         }
