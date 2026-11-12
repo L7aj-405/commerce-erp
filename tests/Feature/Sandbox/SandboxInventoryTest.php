@@ -259,6 +259,42 @@ class SandboxInventoryTest extends QuotationTestCase
         $this->assertTrue(Schema::hasColumn('sandboxes', 'inventory_initialized_at'));
     }
 
+    public function test_test_order_page_renders_and_aliased_inventory_queries_stay_sandbox_scoped(): void
+    {
+        [$owner, $org, $store, $variant, $main] = $this->fixture();
+        $production = $this->createDraftOrder($owner, $org, $store);
+        $this->addCatalogLine($owner, $production, $variant, $main);
+        $this->get("/sales/orders/{$production->id}")->assertOk(); // Production page unchanged
+
+        $this->enterTest();
+        $order = $this->createDraftOrder($owner, $org, $store);
+        $line = $this->addCatalogLine($owner, $order, $variant, $main, ['quantity' => '2']);
+        $this->get("/sales/orders/{$order->id}")->assertOk();
+        $this->post("/sales/orders/{$order->id}/confirm")->assertRedirect()->assertSessionHasNoErrors();
+        // Confirmed: the page now aggregates reservations through the aliased allocation query.
+        $this->get("/sales/orders/{$order->id}")->assertOk();
+
+        // Another sandbox's allocation on the same line must never be visible from this one.
+        $other = User::factory()->create();
+        $otherOrg = $this->createOrganization($other);
+        $foreignSandbox = DB::table('sandboxes')->insertGetId(['organization_id' => $otherOrg->id, 'name' => 'Test', 'status' => 'active',
+            'generation' => 1, 'created_by_user_id' => $other->id, 'created_at' => now(), 'updated_at' => now()]);
+        DB::table('sandbox_sales_order_inventory_allocations')->insert(['sandbox_id' => $foreignSandbox, 'organization_id' => $org->id,
+            'sales_order_line_id' => $line->id, 'warehouse_id' => $main->id, 'quantity' => '9.0000', 'created_at' => now(), 'updated_at' => now()]);
+
+        $aliased = SalesOrderInventoryAllocation::query()->from(SalesOrderInventoryAllocation::environmentTable().' as a');
+        $this->assertMatchesRegularExpression('/["`]a["`]\.["`]sandbox_id["`]/', $aliased->toSql()); // the alias, not the table name
+        $this->assertSame(1, $aliased->count());
+        $this->assertSame('2.0000', Decimal::normalize((string) $aliased->sum('a.quantity')));
+        // The scope cannot be removed, and still groups correctly with a caller OR clause.
+        $this->assertSame(1, SalesOrderInventoryAllocation::query()->withoutGlobalScopes()->count());
+        $this->assertSame(1, SalesOrderInventoryAllocation::query()->where('quantity', '2')->orWhere('quantity', '9')->count());
+
+        $this->leaveTest();
+        $this->get("/sales/orders/{$production->id}")->assertOk();
+        $this->assertSame(1, SandboxInventoryGuard::bypass(fn () => DB::table('sales_order_inventory_allocations')->count()));
+    }
+
     /** @return array{User, Organization, Store, ProductVariant, Warehouse, Warehouse} */
     private function fixture(): array
     {
