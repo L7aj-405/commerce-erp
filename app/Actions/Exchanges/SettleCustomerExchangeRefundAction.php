@@ -17,6 +17,7 @@ class SettleCustomerExchangeRefundAction
 
     public function execute(User $actor, CustomerExchange $exchange, Payment $payment, string $amount, string $reason, string $operationId): CustomerExchange
     {
+        app(\App\Services\Sandbox\SandboxContext::class)->assertSameEnvironment($exchange->sandbox_id);
         abort_unless($actor->active_organization_id === $exchange->organization_id && $actor->active_store_id === $exchange->store_id, 404);
         abort_unless($actor->hasPermission($exchange->organization_id, 'sales_exchanges.process'), 403);
         if ($exchange->status !== 'awaiting_settlement' || Decimal::compare($exchange->difference_amount, '0') >= 0) {

@@ -1,3 +1,4 @@
+import SandboxReturnsBadge from "@/components/SandboxReturnsBadge";
 import { Button } from "@/components/ui/Button";
 import { useDebouncedValue } from "@/components/pos/useDebouncedValue";
 import SalesLayout from "@/layouts/SalesLayout";
@@ -159,6 +160,7 @@ export default function CreateExchange({
                     >
                         ← <bdi>{order.order_number}</bdi>
                     </Link>
+                    <SandboxReturnsBadge kind="exchange" />
                     <h1 className="mt-1 text-2xl font-semibold text-ink">
                         {t("exchanges.exchangeItems")}
                     </h1>

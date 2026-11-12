@@ -31,6 +31,7 @@ class CreateCustomerReturnAction
     /** @param list<array{sales_order_line_id:int,quantity:string|int|float}> $requestedLines */
     public function execute(User $actor, SalesOrder $order, array $requestedLines, string $reason, string $disposition, string $operationId, bool $override = false, ?string $overrideReason = null): CustomerReturn
     {
+        app(\App\Services\Sandbox\SandboxContext::class)->assertSameEnvironment($order->sandbox_id);
         abort_unless($actor->active_organization_id === $order->organization_id && $actor->active_store_id === $order->store_id, 404);
         abort_unless($order->store()->whereHas('memberships', fn ($query) => $query->where('user_id', $actor->id))->exists(), 404);
         abort_unless($actor->hasPermission($order->organization_id, 'sales_returns.create'), 403);

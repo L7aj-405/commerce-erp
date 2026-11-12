@@ -4,6 +4,7 @@ namespace App\Actions\Exchanges;
 
 use App\Actions\Payments\RecordSalesOrderPaymentsAction;
 use App\Models\CustomerExchange;
+use App\Models\Payment;
 use App\Models\User;
 use App\Services\AuditLogger;
 use App\Support\Decimal;
@@ -17,13 +18,14 @@ class SettleCustomerExchangePaymentAction
     /** @param list<array<string,mixed>> $entries */
     public function execute(User $actor, CustomerExchange $exchange, array $entries, string $operationId): CustomerExchange
     {
+        app(\App\Services\Sandbox\SandboxContext::class)->assertSameEnvironment($exchange->sandbox_id);
         abort_unless($actor->active_organization_id === $exchange->organization_id && $actor->active_store_id === $exchange->store_id, 404);
         abort_unless($actor->hasPermission($exchange->organization_id, 'sales_exchanges.process'), 403);
         if ($exchange->status !== 'awaiting_settlement' || Decimal::compare($exchange->difference_amount, '0') <= 0) {
             throw ValidationException::withMessages(['exchange' => 'Cet échange n’attend pas de paiement complémentaire.']);
         }
 
-        $already = $exchange->payments()->where('payments.status', 'posted')->get()->reduce(
+        $already = $exchange->payments()->where(Payment::environmentTable().'.status', 'posted')->get()->reduce(
             fn (string $sum, $payment) => Decimal::add($sum, $payment->amount), '0.0000',
         );
         $remaining = Decimal::subtract($exchange->difference_amount, $already);
@@ -36,9 +38,9 @@ class SettleCustomerExchangePaymentAction
 
         return DB::transaction(function () use ($actor, $exchange, $created) {
             $exchange = CustomerExchange::query()->where('organization_id', $exchange->organization_id)->whereKey($exchange->id)->lockForUpdate()->firstOrFail();
-            $sync = $created->mapWithKeys(fn ($payment) => [$payment->id => ['organization_id' => $exchange->organization_id]])->all();
+            $sync = $created->mapWithKeys(fn ($payment) => [$payment->id => ['organization_id' => $exchange->organization_id, ...($exchange->sandbox_id !== null ? ['sandbox_id' => $exchange->sandbox_id] : [])]])->all();
             $exchange->payments()->syncWithoutDetaching($sync);
-            $paid = $exchange->payments()->where('payments.status', 'posted')->get()->reduce(
+            $paid = $exchange->payments()->where(Payment::environmentTable().'.status', 'posted')->get()->reduce(
                 fn (string $sum, $payment) => Decimal::add($sum, $payment->amount), '0.0000',
             );
             $this->audit->record('sales_exchange.settlement_recorded', $actor, $exchange->organization, $exchange->store, $exchange, newValues: [

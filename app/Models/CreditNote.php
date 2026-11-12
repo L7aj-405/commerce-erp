@@ -18,17 +18,16 @@ class CreditNote extends Model
 
     public function sandboxLinks(): array
     {
-        return ['sales_order_id' => 'sales_orders', 'invoice_id' => 'invoices'];
+        return ['sales_order_id' => 'sales_orders', 'invoice_id' => 'invoices', 'customer_return_id' => 'customer_returns'];
     }
 
     /**
-     * Credit Notes only arise from a received customer return (stock, refund
-     * and commission effects). Returns are not sandboxed yet, so no Test
-     * Credit Note may be persisted in any status — fail closed.
+     * Phase 8: Test Credit Notes arise from Test returns only (their link is
+     * guarded above); every lifecycle status of the Production flow is allowed.
      */
     public function sandboxStatuses(): ?array
     {
-        return [];
+        return ['draft', 'issued', 'cancelled'];
     }
 
     public function isTest(): bool

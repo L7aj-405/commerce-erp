@@ -1,3 +1,4 @@
+import SandboxReturnsBadge from "@/components/SandboxReturnsBadge";
 import { Button } from "@/components/ui/Button";
 import SalesLayout from "@/layouts/SalesLayout";
 import { useI18n } from "@/i18n";
@@ -110,6 +111,7 @@ export default function ReturnCreate({
                     >
                         ← <bdi>{order.order_number}</bdi>
                     </Link>
+                    <SandboxReturnsBadge kind="return" />
                     <h1 className="text-2xl font-semibold">
                         {t("returns.returnItems")}
                     </h1>

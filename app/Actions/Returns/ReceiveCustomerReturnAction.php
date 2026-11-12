@@ -29,6 +29,7 @@ class ReceiveCustomerReturnAction
 
     public function execute(User $actor, CustomerReturn $customerReturn): CustomerReturn
     {
+        app(\App\Services\Sandbox\SandboxContext::class)->assertSameEnvironment($customerReturn->sandbox_id);
         abort_unless($actor->active_organization_id === $customerReturn->organization_id && $actor->active_store_id === $customerReturn->store_id, 404);
         abort_unless($customerReturn->store()->whereHas('memberships', fn ($query) => $query->where('user_id', $actor->id))->exists(), 404);
         abort_unless($actor->hasPermission($customerReturn->organization_id, 'sales_returns.receive'), 403);

@@ -169,7 +169,10 @@ class AddItemsToCompletedPosOrderAction
                     $allocation->inventory_reservation_id = $reservation->getKey();
                     $allocation->save();
                     $reservation = $this->inventory->consume($actor, $order->organization, $reservation);
-                    $this->wooStockTasks->recordForConsumedSale($order->organization, $order, $reservation);
+                    // Integrations are not part of Test Mode: no WooCommerce stock task for a Test sale.
+                    if ($order->sandbox_id === null) {
+                        $this->wooStockTasks->recordForConsumedSale($order->organization, $order, $reservation);
+                    }
 
                     $addedTotal = Decimal::add($addedTotal, $calculated['total_incl_tax']);
                     $auditLines[] = [

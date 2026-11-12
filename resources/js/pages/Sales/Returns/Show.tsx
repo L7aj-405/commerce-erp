@@ -1,3 +1,4 @@
+import SandboxReturnsBadge from "@/components/SandboxReturnsBadge";
 import { Button } from "@/components/ui/Button";
 import SalesLayout from "@/layouts/SalesLayout";
 import { useI18n } from "@/i18n";
@@ -61,6 +62,7 @@ export default function ReturnShow({
                         >
                             ← {t("returns.title")}
                         </Link>
+                        <SandboxReturnsBadge kind="return" />
                         <h1 className="text-2xl font-semibold">
                             {item.return_number}
                         </h1>

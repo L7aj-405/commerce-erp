@@ -19,7 +19,7 @@ class ResolveSandboxContext
         // Explicit route allowlist: expand only after each domain implements real isolation.
         $allowed = ['sandbox.show', 'sandbox.leave', 'logout'];
         if ($context->isSandbox()) {
-            $allowed = [...$allowed, ...\App\Services\Sandbox\SandboxSalesRoutes::ALLOWED, ...\App\Services\Sandbox\SandboxDocumentRules::ROUTES, ...\App\Services\Sandbox\SandboxInventoryGuard::ROUTES, ...\App\Services\Sandbox\SandboxQuotationRules::ROUTES, ...\App\Services\Sandbox\SandboxProcurementRules::ROUTES, ...\App\Services\Sandbox\SandboxFulfillmentRules::ROUTES];
+            $allowed = [...$allowed, ...\App\Services\Sandbox\SandboxSalesRoutes::ALLOWED, ...\App\Services\Sandbox\SandboxDocumentRules::ROUTES, ...\App\Services\Sandbox\SandboxInventoryGuard::ROUTES, ...\App\Services\Sandbox\SandboxQuotationRules::ROUTES, ...\App\Services\Sandbox\SandboxProcurementRules::ROUTES, ...\App\Services\Sandbox\SandboxFulfillmentRules::ROUTES, ...\App\Services\Sandbox\SandboxReturnsRules::ROUTES];
         }
         if ($context->isRestricted() && !in_array($request->route()?->getName(), $allowed, true)) {
             if ($request->isMethod('GET') && !$request->expectsJson()) return redirect('/test-mode');

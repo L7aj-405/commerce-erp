@@ -1,4 +1,5 @@
 import { useDebouncedValue } from "@/components/pos/useDebouncedValue";
+import SandboxReturnsBadge from "@/components/SandboxReturnsBadge";
 import EmptyState from "@/components/ui/EmptyState";
 import PageHeader from "@/components/ui/PageHeader";
 import Pagination from "@/components/ui/Pagination";
@@ -72,6 +73,7 @@ export default function ReturnsIndex({ returns, searchUrl }: Props) {
     return (
         <SalesLayout>
             <Head title={t("returns.title")} />
+            <SandboxReturnsBadge kind="return" />
             <PageHeader
                 title={t("returns.title")}
                 description={t("returns.description")}

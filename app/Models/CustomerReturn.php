@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\ScopesToActiveStore;
+use App\Models\Concerns\ScopesToSandbox;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -11,8 +12,25 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 class CustomerReturn extends Model
 {
     use ScopesToActiveStore;
+    use ScopesToSandbox;
 
     protected $guarded = ['*'];
+
+    /** Phase 8: a Test return only ever references a Test Sales Order (and a Production one a Production order). */
+    public function sandboxLinks(): array
+    {
+        return ['sales_order_id' => 'sales_orders'];
+    }
+
+    public function sandboxStatuses(): ?array
+    {
+        return ['draft', 'received', 'cancelled'];
+    }
+
+    public function isTest(): bool
+    {
+        return $this->sandbox_id !== null;
+    }
 
     protected $hidden = ['client_operation_id'];
 

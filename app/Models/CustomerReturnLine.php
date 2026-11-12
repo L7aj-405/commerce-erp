@@ -2,13 +2,26 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\ScopesToSandbox;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use LogicException;
 
 class CustomerReturnLine extends Model
 {
+    use ScopesToSandbox;
+
     protected $guarded = ['*'];
+
+    public function sandboxLinks(): array
+    {
+        return ['customer_return_id' => 'customer_returns'];
+    }
+
+    public function sandboxStatuses(): ?array
+    {
+        return null;
+    }
 
     protected static function booted(): void
     {

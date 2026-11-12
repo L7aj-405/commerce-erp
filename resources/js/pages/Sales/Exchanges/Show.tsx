@@ -1,3 +1,4 @@
+import SandboxReturnsBadge from "@/components/SandboxReturnsBadge";
 import { Button } from "@/components/ui/Button";
 import SalesLayout from "@/layouts/SalesLayout";
 import { useI18n } from "@/i18n";
@@ -61,6 +62,7 @@ export default function ShowExchange({
                     >
                         ← {exchange.sales_order.order_number}
                     </Link>
+                    <SandboxReturnsBadge kind="exchange" />
                     <h1 className="mt-1 text-2xl font-semibold">
                         {exchange.exchange_number}
                     </h1>
