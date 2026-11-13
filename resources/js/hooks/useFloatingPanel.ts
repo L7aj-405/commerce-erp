@@ -27,8 +27,14 @@ export function useFloatingPanel(
         const panelWidth = Math.max(panel.offsetWidth, matchWidth ? rect.width : 0);
         const rtl = getComputedStyle(trigger).direction === 'rtl';
         const alignRightEdges = (align === 'end') !== rtl;
+        // In an RTL document a classic scrollbar sits on the left and `position: fixed`
+        // offsets start after it, while getBoundingClientRect() includes it. Work in
+        // rect coordinates, clamp to the visible client area, then convert.
+        const root = document.documentElement;
+        const scrollbarStart = getComputedStyle(root).direction === 'rtl' ? Math.max(0, window.innerWidth - root.clientWidth) : 0;
         let left = alignRightEdges ? rect.right - panelWidth : rect.left;
-        left = Math.min(Math.max(gutter, left), window.innerWidth - gutter - panelWidth);
+        left = Math.min(Math.max(scrollbarStart + gutter, left), scrollbarStart + root.clientWidth - gutter - panelWidth);
+        left -= scrollbarStart;
         const below = window.innerHeight - rect.bottom - gap - gutter;
         const above = rect.top - gap - gutter;
         const needed = panel.scrollHeight;

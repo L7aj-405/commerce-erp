@@ -179,7 +179,7 @@ export default function CreateExchange({
                     </p>
                 )}
 
-                <section className="rounded-card border border-line bg-surface p-5">
+                <section className="surface-card p-5">
                     <h2 className="font-semibold text-ink">
                         1 — {t("returns.returnedItems")}
                     </h2>
@@ -235,7 +235,7 @@ export default function CreateExchange({
                     </div>
                 </section>
 
-                <section className="rounded-card border border-line bg-surface p-5">
+                <section className="surface-card p-5">
                     <h2 className="font-semibold text-ink">
                         2 — {t("exchanges.newItems")}
                     </h2>
@@ -358,7 +358,7 @@ export default function CreateExchange({
                     </div>
                 </section>
 
-                <section className="rounded-card border border-line bg-surface p-5">
+                <section className="surface-card p-5">
                     <h2 className="font-semibold text-ink">
                         3 — {t("exchanges.summary")}
                     </h2>

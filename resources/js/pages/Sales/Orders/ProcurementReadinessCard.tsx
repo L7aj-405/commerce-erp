@@ -79,7 +79,7 @@ export default function ProcurementReadinessCard({ orderId, plan }: { orderId: n
 
     if (summary.state === 'covered') {
         return (
-            <section className="mb-6 rounded-card border border-line bg-surface p-5">
+            <section className="mb-6 surface-card p-5">
                 <h2 className="font-semibold text-base text-ink">{k('title')}</h2>
                 <p className="mt-2 text-sm text-success">{k('covered')}</p>
             </section>

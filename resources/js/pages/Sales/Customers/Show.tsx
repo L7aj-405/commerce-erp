@@ -110,7 +110,7 @@ function SummaryTile({
     tone?: "neutral" | "warning";
 }) {
     return (
-        <div className="rounded-card border border-line bg-surface px-4 py-3.5">
+        <div className="surface-card px-4 py-3.5">
             <p className="text-[13px] font-medium text-ink-muted">
                 {title}
             </p>
@@ -138,7 +138,7 @@ function Section({
     return (
         <section
             id={id}
-            className="mb-6 scroll-mt-4 rounded-card border border-line bg-surface"
+            className="mb-6 scroll-mt-4 surface-card"
         >
             <div className="flex items-center justify-between border-b border-line px-4 py-3">
                 <h2 className="text-sm font-semibold text-ink">{title}</h2>

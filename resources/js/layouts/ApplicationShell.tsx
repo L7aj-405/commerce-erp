@@ -9,7 +9,7 @@ import type { SharedPageProps } from '@/types/app';
 import { Link, router, usePage } from '@inertiajs/react';
 import { Dropdown, MenuLink } from '@/components/ui/Menu';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import type { PropsWithChildren, ReactNode } from 'react';
+import type { MutableRefObject, PropsWithChildren, ReactNode } from 'react';
 import {
     buildNavGroups,
     buildQuickActions,
@@ -35,8 +35,16 @@ import {
 } from './navigation';
 import type { NavEntry, NavGroup, NavItem } from './navigation';
 
-const HOVER_OPEN_DELAY = 140;
-const HOVER_CLOSE_DELAY = 260;
+// Hover-intent timings: a short dwell at the edge opens; leaving the drawer corridor
+// closes only after a grace period (diagonal / overshooting movements survive).
+const HOVER_OPEN_DELAY = 180;
+const HOVER_CLOSE_DELAY = 380;
+/** Width of the screen-edge activation zone (px). The floating rail starts at 24px. */
+const EDGE_ZONE = 18;
+/** Extra px beyond the drawer's inline-end edge that still count as "inside". */
+const DRAWER_CORRIDOR = 32;
+/** Header row height: the edge zone starts below it so header controls are never armed. */
+const EDGE_TOP_OFFSET = 64;
 
 export type WorkspaceWidth = 'full' | 'reading';
 
@@ -113,8 +121,11 @@ export default function ApplicationShell({
         if (opener) launcherRef.current = opener;
         setDrawer('pinned');
     };
+    const drawerPanelRef = useRef<HTMLDivElement | null>(null);
     const closeDrawer = useCallback(() => {
         window.clearTimeout(hoverTimer.current);
+        // A pointer still resting on the edge must leave it before hover may reopen.
+        if (pointerInEdge.current) edgeArmed.current = false;
         setDrawer((state) => {
             if (state === 'pinned') window.setTimeout(() => launcherRef.current?.focus(), 0);
             return 'closed';
@@ -141,9 +152,83 @@ export default function ApplicationShell({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    const hoverOpen = () => {
-        clearHoverTimer();
-        hoverTimer.current = window.setTimeout(() => setDrawer('hover'), HOVER_OPEN_DELAY);
+    /*
+     * Hover preview (fine pointers, lg+ only). One passive document listener decides from
+     * the pointer position instead of enter/leave events on several overlapping layers:
+     *  - closed: dwelling in the edge zone (below the header) opens after a delay;
+     *  - hover:  anywhere inside the drawer or its corridor cancels a pending close,
+     *            outside it schedules one;
+     *  - after any close the edge must be left once before hover can reopen (no flicker
+     *    loop when the pointer is parked on the edge);
+     *  - pinned: hover logic is ignored entirely (manual state wins).
+     */
+    const drawerRef = useRef(drawer);
+    drawerRef.current = drawer;
+    const edgeArmed = useRef(true);
+    const pointerInEdge = useRef(false);
+    const pendingAction = useRef<'open' | 'close' | null>(null);
+    useEffect(() => {
+        if (!canHover) return;
+        const schedule = (action: 'open' | 'close', delay: number, run: () => void) => {
+            if (pendingAction.current === action) return;
+            window.clearTimeout(hoverTimer.current);
+            pendingAction.current = action;
+            hoverTimer.current = window.setTimeout(() => {
+                pendingAction.current = null;
+                run();
+            }, delay);
+        };
+        const cancel = () => {
+            window.clearTimeout(hoverTimer.current);
+            pendingAction.current = null;
+        };
+        const onMove = (event: PointerEvent) => {
+            if (event.pointerType !== 'mouse') return;
+            const rtl = document.documentElement.dir === 'rtl';
+            const fromStart = rtl ? window.innerWidth - event.clientX : event.clientX;
+            const inEdge = fromStart <= EDGE_ZONE && event.clientY >= EDGE_TOP_OFFSET;
+            const state = drawerRef.current;
+            pointerInEdge.current = inEdge;
+            if (!inEdge) edgeArmed.current = true;
+
+            if (state === 'pinned') return cancel();
+            if (state === 'closed') {
+                if (!inEdge) {
+                    if (pendingAction.current === 'open') cancel();
+                    return;
+                }
+                if (edgeArmed.current && !document.querySelector('[aria-modal="true"]')) {
+                    schedule('open', HOVER_OPEN_DELAY, () => setDrawer((current) => (current === 'closed' ? 'hover' : current)));
+                }
+                return;
+            }
+            // state === 'hover'
+            const panel = drawerPanelRef.current?.getBoundingClientRect();
+            const reach = panel ? (rtl ? window.innerWidth - panel.left : panel.right) + DRAWER_CORRIDOR : 0;
+            if (fromStart <= reach || inEdge) {
+                if (pendingAction.current === 'close') cancel();
+                return;
+            }
+            schedule('close', HOVER_CLOSE_DELAY, () => setDrawer((current) => (current === 'hover' ? 'closed' : current)));
+        };
+        // Pointer leaving the window: close a hover preview after the grace period.
+        const onLeave = (event: MouseEvent) => {
+            if (event.relatedTarget === null && drawerRef.current === 'hover') {
+                schedule('close', HOVER_CLOSE_DELAY, () => setDrawer((current) => (current === 'hover' ? 'closed' : current)));
+            }
+        };
+        document.addEventListener('pointermove', onMove, { passive: true });
+        document.documentElement.addEventListener('mouseleave', onLeave);
+        return () => {
+            cancel();
+            document.removeEventListener('pointermove', onMove);
+            document.documentElement.removeEventListener('mouseleave', onLeave);
+        };
+    }, [canHover]);
+
+    const toggleFromMenuButton = (button: HTMLButtonElement) => {
+        if (drawer === 'pinned') closeDrawer();
+        else openPinned(button);
     };
 
     return (
@@ -154,10 +239,8 @@ export default function ApplicationShell({
             >
                 {t('shell.skipToContent')}
             </a>
-            {/* Edge hover strip (12px) — independent of the rail, which starts 20px in. */}
-            {canHover && drawer === 'closed' && (
-                <div aria-hidden="true" className="fixed inset-y-0 start-0 z-40 w-3" onMouseEnter={hoverOpen} onMouseLeave={clearHoverTimer} />
-            )}
+            {/* No invisible edge strip: the hover zone is evaluated from pointer coordinates
+                (see the hover-intent effect), so nothing blocks clicks near the edge. */}
 
             {/* Discoverable reveal handle on the true screen edge, centred at 50vh.
                 Hover (pointer devices) previews the drawer; click / tap / Enter pins it open. */}
@@ -166,15 +249,13 @@ export default function ApplicationShell({
                 <button
                     type="button"
                     onClick={(event) => openPinned(event.currentTarget)}
-                    onMouseEnter={canHover ? hoverOpen : undefined}
-                    onMouseLeave={canHover ? clearHoverTimer : undefined}
                     aria-label={t('shell.openNavigation')}
                     aria-controls="erp-nav-drawer"
                     aria-expanded={drawer !== 'closed'}
-                    aria-hidden={drawer !== 'closed' || undefined}
-                    tabIndex={drawer !== 'closed' ? -1 : undefined}
+                    aria-hidden={drawer === 'pinned' || undefined}
+                    tabIndex={drawer === 'pinned' ? -1 : undefined}
                     className={`edge-handle fixed start-0 top-1/2 z-[41] flex h-[55px] w-[11px] cursor-pointer items-center justify-center rounded-e-[10px] bg-[linear-gradient(#b9ddd5,#248a7d,#b9ddd5)] text-white opacity-60 shadow-[0_2px_8px_rgb(0_93_86/0.25)] transition-[width,opacity] hover:w-4 hover:opacity-100 focus-visible:w-4 focus-visible:opacity-100 dark:bg-[linear-gradient(#1e4a45,#3fb8ab,#1e4a45)] ${
-                        drawer !== 'closed' ? 'pointer-events-none opacity-0' : ''
+                        drawer === 'pinned' ? 'pointer-events-none opacity-0' : ''
                     }`}
                 >
                     <svg aria-hidden="true" className="directional-icon rtl:rotate-180" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round">
@@ -195,13 +276,11 @@ export default function ApplicationShell({
                 activeSectionKey={activeMatch?.sectionKey ?? null}
                 direction={direction}
                 onClose={closeDrawer}
-                onPointerEnter={clearHoverTimer}
-                onPointerLeave={() => {
-                    if (drawer !== 'hover') return;
+                panelRef={drawerPanelRef}
+                onPin={() => {
                     clearHoverTimer();
-                    hoverTimer.current = window.setTimeout(() => setDrawer('closed'), HOVER_CLOSE_DELAY);
+                    setDrawer('pinned');
                 }}
-                onPin={() => setDrawer('pinned')}
                 contextSwitcher={<ContextSelects />}
             />
 
@@ -218,11 +297,13 @@ export default function ApplicationShell({
                             <div ref={headerStartRef} className="flex w-max items-center gap-2">
                                 <button
                                     type="button"
-                                    onClick={(event) => openPinned(event.currentTarget)}
-                                    aria-label={t('shell.openNavigation')}
-                                    aria-expanded={drawer !== 'closed'}
+                                    onClick={(event) => toggleFromMenuButton(event.currentTarget)}
+                                    aria-label={drawer === 'pinned' ? t('common.closeMenu') : t('common.openMenu')}
+                                    aria-expanded={drawer === 'pinned'}
                                     aria-controls="erp-nav-drawer"
-                                    className="glass-pill flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-full text-ink transition-soft hover:text-accent sm:size-10 lg:hidden"
+                                    className={`flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-full transition-soft focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary sm:size-10 ${
+                                        drawer === 'pinned' ? 'bg-accent-soft text-accent ring-1 ring-accent/30' : 'glass-pill text-ink hover:text-accent'
+                                    }`}
                                 >
                                     <IconMenu />
                                 </button>
@@ -296,7 +377,7 @@ function IconRail({ groups, activeGroupKey }: { groups: NavGroup[]; activeGroupK
     return (
         <aside
             aria-label={t('shell.mainNavigation')}
-            className="glass-nav fixed start-5 top-1/2 z-30 hidden h-max max-h-[calc(100dvh-8rem)] w-[57px] -translate-y-1/2 flex-col items-center rounded-[25px] py-2.5 lg:flex"
+            className="glass-nav fixed start-6 top-1/2 z-30 hidden h-max max-h-[calc(100dvh-8rem)] w-[57px] -translate-y-1/2 flex-col items-center rounded-[25px] py-2.5 lg:flex"
         >
             <nav className="flex min-h-0 w-full flex-col items-center gap-2 overflow-y-auto px-[9px] [scrollbar-width:none]">
                 {groups.map((group) => {
@@ -329,7 +410,7 @@ function RailTooltip({ label }: { label: string }) {
         <span
             aria-hidden="true"
             className="pointer-events-none fixed z-50 whitespace-nowrap rounded-lg bg-ink px-2.5 py-1.5 text-[13px] font-semibold text-surface opacity-0 shadow-pop transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100"
-            style={{ insetInlineStart: '5rem' }}
+            style={{ insetInlineStart: '5.25rem' }}
         >
             {label}
         </span>
@@ -349,8 +430,7 @@ function NavDrawer({
     activeSectionKey,
     direction,
     onClose,
-    onPointerEnter,
-    onPointerLeave,
+    panelRef: externalPanelRef,
     onPin,
     contextSwitcher,
 }: {
@@ -362,8 +442,7 @@ function NavDrawer({
     activeSectionKey: string | null;
     direction: 'ltr' | 'rtl';
     onClose: () => void;
-    onPointerEnter: () => void;
-    onPointerLeave: () => void;
+    panelRef: MutableRefObject<HTMLDivElement | null>;
     onPin: () => void;
     contextSwitcher: ReactNode;
 }) {
@@ -457,39 +536,44 @@ function NavDrawer({
 
     return (
         <>
-            {open && (
+            {/* Scrim only when pinned; a hover preview never covers the page with an invisible layer. */}
+            {open && mode === 'pinned' && (
                 <button
                     type="button"
                     tabIndex={-1}
                     aria-label={t('common.closeMenu')}
                     onClick={onClose}
-                    className={`animate-overlay-in fixed inset-0 z-40 cursor-default ${mode === 'pinned' ? 'glass-scrim' : 'bg-transparent'}`}
+                    className="animate-overlay-in glass-scrim fixed inset-0 z-40 cursor-default"
                 />
             )}
             <div
                 id="erp-nav-drawer"
-                ref={panelRef}
+                ref={(node) => {
+                    panelRef.current = node;
+                    externalPanelRef.current = node;
+                }}
                 role="dialog"
                 aria-modal={mode === 'pinned' ? true : undefined}
                 aria-label={t('shell.mainNavigation')}
                 hidden={!open}
-                onMouseEnter={onPointerEnter}
-                onMouseLeave={onPointerLeave}
                 onFocus={() => mode === 'hover' && onPin()}
+                onPointerDown={() => mode === 'hover' && onPin()}
                 className="animate-drawer-in fixed inset-y-0 start-0 z-50 flex w-[88vw] max-w-[22rem] flex-col glass-popover border-y-0 border-s-0 lg:inset-y-3 lg:start-3 lg:rounded-panel lg:border"
             >
-                <div className="flex h-16 shrink-0 items-center justify-between border-b border-line px-4">
-                    <Link href="/platform" className="rounded-lg">
-                        <BrandLockup />
-                    </Link>
+                <div className="flex h-16 shrink-0 items-center gap-2.5 border-b border-line px-3">
                     <button
                         type="button"
                         onClick={onClose}
                         aria-label={t('common.closeMenu')}
-                        className="flex size-10 cursor-pointer items-center justify-center rounded-lg text-ink-muted transition-soft hover:bg-sage hover:text-ink"
+                        aria-expanded={true}
+                        aria-controls="erp-nav-drawer"
+                        className="flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-full bg-accent-soft text-accent ring-1 ring-accent/30 transition-soft hover:bg-accent/15 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                     >
                         <IconClose />
                     </button>
+                    <Link href="/platform" className="rounded-lg">
+                        <BrandLockup />
+                    </Link>
                 </div>
 
                 <div className="shrink-0 space-y-3 border-b border-line p-3">

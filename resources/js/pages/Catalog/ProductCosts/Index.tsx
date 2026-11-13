@@ -154,7 +154,7 @@ export default function ProductCostIndex({
             {showImport && can.import && (
                 <form
                     onSubmit={upload}
-                    className="mb-6 rounded-card border border-line bg-surface p-5 shadow-soft"
+                    className="mb-6 surface-card p-5 shadow-soft"
                 >
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-end">
                         <div className="min-w-0 flex-1">
@@ -199,7 +199,7 @@ export default function ProductCostIndex({
                 </form>
             )}
 
-            <section className="mb-6 rounded-card border border-line bg-surface p-4 shadow-soft">
+            <section className="mb-6 surface-card p-4 shadow-soft">
                 <div className="grid gap-2 lg:grid-cols-[minmax(240px,1fr)_160px_180px_190px_190px_auto]">
                     <SearchInput
                         value={search}
@@ -315,9 +315,9 @@ export default function ProductCostIndex({
                 />
             ) : (
                 <>
-                    <div className="hidden overflow-x-auto rounded-card border border-line bg-surface shadow-soft md:block">
+                    <div className="hidden overflow-x-auto surface-card md:block">
                         <table className="w-full min-w-[1050px] text-start text-sm">
-                            <thead className="bg-raised text-[11px] uppercase tracking-wide text-ink-faint">
+                            <thead className="bg-raised text-[13px] text-ink-muted font-medium">
                                 <tr>
                                     <th className="px-4 py-3">
                                         {t("imports.products.productVariant")}
@@ -423,7 +423,7 @@ export default function ProductCostIndex({
                         {variants.data.map((variant) => (
                             <article
                                 key={variant.id}
-                                className="rounded-card border border-line bg-surface p-4 shadow-soft"
+                                className="surface-card p-4 shadow-soft"
                             >
                                 <div className="flex items-start justify-between gap-3">
                                     <div>
@@ -486,8 +486,8 @@ function Summary({
               ? "text-warning"
               : "text-ink";
     return (
-        <div className="rounded-card border border-line bg-surface p-4 shadow-soft">
-            <p className="text-xs font-medium uppercase tracking-wide text-ink-faint">
+        <div className="surface-card p-4 shadow-soft">
+            <p className="text-[13px] font-medium text-ink-muted">
                 {label}
             </p>
             <p className={`mt-2 text-2xl font-semibold tabular-nums ${color}`}>

@@ -105,7 +105,7 @@ export default function QuotationCreate({ defaults, currencyCode, can }: Props) 
                 <PageHeader title={t('quotations.new')} description={t('quotations.newHelp')} />
 
                 <form onSubmit={submit} className="space-y-6">
-                    <section className="rounded-card border border-line bg-surface p-5">
+                    <section className="surface-card p-5">
                         <h2 className="mb-3 text-sm font-semibold text-ink">{t('common.customer')}</h2>
                         {picked ? (
                             <div className="flex items-center justify-between rounded-field border border-line bg-raised px-3 py-2 text-sm">
@@ -170,7 +170,7 @@ export default function QuotationCreate({ defaults, currencyCode, can }: Props) 
                         </div>
                     </section>
 
-                    <section className="rounded-card border border-line bg-surface p-5">
+                    <section className="surface-card p-5">
                         <h2 className="mb-3 text-sm font-semibold text-ink">{t('quotations.dates')}</h2>
                         <div className="grid grid-cols-2 gap-3 text-sm">
                             <Field label={t('quotations.date')}>
@@ -182,7 +182,7 @@ export default function QuotationCreate({ defaults, currencyCode, can }: Props) 
                         </div>
                     </section>
 
-                    <section className="rounded-card border border-line bg-surface p-5">
+                    <section className="surface-card p-5">
                         <h2 className="mb-3 text-sm font-semibold text-ink">{t('quotations.notesTerms')}</h2>
                         <div className="space-y-3 text-sm">
                             <Field label={t('quotations.notes')}>

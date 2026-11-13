@@ -166,7 +166,7 @@ export default function CompletePosOrder({ order, paymentSummary, searchUrl, sub
                     </p>
                 </header>
 
-                <section className="rounded-card border border-line bg-surface p-5">
+                <section className="surface-card p-5">
                     <h2 className="font-semibold text-base text-ink">{t('orders.complete.existing')}</h2>
                     <ul className="mt-3 divide-y divide-line text-sm">
                         {order.lines.map((line) => (
@@ -182,7 +182,7 @@ export default function CompletePosOrder({ order, paymentSummary, searchUrl, sub
                     </ul>
                 </section>
 
-                <section className="rounded-card border border-line bg-surface p-5">
+                <section className="surface-card p-5">
                     <h2 className="font-semibold text-ink">{t('orders.complete.addItem')}</h2>
                     <div className="relative mt-3">
                         <input
@@ -247,7 +247,7 @@ export default function CompletePosOrder({ order, paymentSummary, searchUrl, sub
                 </section>
 
                 {cart.length > 0 && (
-                    <section className="rounded-card border border-line bg-surface p-5">
+                    <section className="surface-card p-5">
                         <h2 className="font-semibold text-ink">{t('orders.complete.newItems')}</h2>
                         <div className="mt-3 space-y-3">
                             {cart.map((line) => (

@@ -23,7 +23,7 @@ function ReplenishmentForm({ warehouse }: { warehouse: { id: number; replenishme
             }}
             className="mt-4 rounded-field border border-line bg-raised p-4 text-sm"
         >
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-faint">{t('inventory.warehouses.autoReplenishment')}</p>
+            <p className="text-[13px] font-medium text-ink-muted">{t('inventory.warehouses.autoReplenishment')}</p>
             <label className="mt-2.5 flex items-center gap-2 text-ink">
                 <input
                     type="checkbox"
@@ -186,7 +186,7 @@ export default function WarehouseIndex({ warehouses, stores, can }: Props) {
                             <div className="flex items-start justify-between gap-3">
                                 <div>
                                     <h2 className="text-base font-semibold text-ink">{warehouse.name}</h2>
-                                    <p className="mt-0.5 text-[12px] font-medium uppercase tracking-wide text-ink-faint">{warehouse.code}</p>
+                                    <p className="mt-0.5 text-[13px] font-medium text-ink-muted">{warehouse.code}</p>
                                     <p className="mt-1 text-[12px] text-ink-muted">
                                         {warehouse.store_id !== null
                                             ? t('inventory.warehouses.kindStore').replace('{store}', storeName(warehouse.store_id))
@@ -199,11 +199,11 @@ export default function WarehouseIndex({ warehouses, stores, can }: Props) {
                             <p className="mt-3.5 min-h-10 text-[13px] text-ink-muted">{warehouse.description ?? t('inventory.warehouses.noDescription')}</p>
                             <dl className="mt-4 grid grid-cols-2 gap-3 rounded-field bg-raised p-4 text-sm">
                                 <div>
-                                    <dt className="text-[11px] uppercase tracking-wide text-ink-faint">{t('inventory.transfers.products')}</dt>
+                                    <dt className="text-[13px] text-ink-muted font-medium">{t('inventory.transfers.products')}</dt>
                                     <dd className="mt-1 text-lg font-semibold text-ink">{warehouse.product_count}</dd>
                                 </div>
                                 <div>
-                                    <dt className="text-[11px] uppercase tracking-wide text-ink-faint">{t('inventory.warehouses.stockUnits')}</dt>
+                                    <dt className="text-[13px] text-ink-muted font-medium">{t('inventory.warehouses.stockUnits')}</dt>
                                     <dd className="mt-1 text-lg font-semibold text-ink">{formatQuantity(warehouse.unit_count)}</dd>
                                 </div>
                             </dl>
@@ -236,7 +236,7 @@ export default function WarehouseIndex({ warehouses, stores, can }: Props) {
             )}
 
             {can.create && (
-                <section id="warehouse-create" className="mt-8 rounded-card border border-line bg-surface p-6">
+                <section id="warehouse-create" className="mt-8 surface-card p-6">
                     <h2 className="text-base font-semibold text-ink">{t('inventory.warehouses.add')}</h2>
                     <p className="mt-1 text-[13px] text-ink-muted">{t('inventory.warehouses.addHelp')}</p>
                     <form onSubmit={create} className="mt-5 grid gap-4 md:grid-cols-3">

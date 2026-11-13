@@ -1,6 +1,7 @@
 import { OrderStatesChart, RankedMoneyChart, SalesCollectionsChart } from '@/components/dashboard/DashboardCharts';
 import { ButtonLink } from '@/components/ui/Button';
 import { PanelTitle } from '@/components/ui/Panel';
+import MonthPicker, { currentMonthValue } from '@/components/ui/MonthPicker';
 import { useI18n } from '@/i18n';
 import {
     IconAlertBox,
@@ -97,13 +98,19 @@ export default function RoleDashboard({ firstName, dashboard, onboarding, execut
     pushCount('woo', dashboard.woo_stock_tasks_pending, t('platform.wooStockPending'), '/integrations/woocommerce/stock-tasks', <IconSync />, 'blue', ['inventory']);
     // Skip executive items already covered by a counter above or by a key figure.
     const kpiPaths = new Set(['/finance/creances', '/finance/ventes', '/finance/ca-encaisse']);
+    // The executive service returns French labels; localise the ones we know by destination.
+    const execLabels: Record<string, string> = {
+        '/sales/orders?payment_status=partially_paid': t('dash.partiallyPaidOrders'),
+        '/sales/orders?payment_status=unpaid': t('dash.unpaidOrders'),
+        '/procurement/out-of-stock-articles': t('platform.itemsToCatalog'),
+    };
     executiveDashboard?.attention.forEach((item) => {
         const path = item.href.split('?')[0];
         if (kpiPaths.has(path) || attention.some((existing) => existing.href === item.href)) return;
         const numeric = Number(item.value);
         attention.push({
             key: `exec-${item.label}`,
-            label: item.label,
+            label: execLabels[item.href] ?? item.label,
             value: Number.isFinite(numeric) ? numeric : 0,
             display: item.kind === 'money' ? formatMoney(item.value) : formatInteger(numeric),
             href: item.href,
@@ -222,7 +229,7 @@ export default function RoleDashboard({ firstName, dashboard, onboarding, execut
                                 </span>
                                 <span className="min-w-0 flex-1">
                                     <span className="block text-sm font-semibold text-ink">{item.label}</span>
-                                    <span className="text-[13px] text-ink-muted">{t('dash.pending')}</span>
+                                    <span className="mt-0.5 block text-[13px] leading-snug font-medium text-ink-muted">{t('dash.pending')}</span>
                                 </span>
                                 <span className="metric-value text-base font-bold text-ink">{item.display}</span>
                                 <svg aria-hidden="true" className="directional-icon shrink-0 text-ink-faint rtl:rotate-180" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
@@ -315,21 +322,12 @@ export default function RoleDashboard({ firstName, dashboard, onboarding, execut
                     </p>
                 </div>
                 {executiveDashboard && (
-                    <label className="glass-pill flex min-h-10 items-center gap-2 rounded-full ps-3.5 pe-2.5 text-sm font-semibold text-ink focus-within:ring-2 focus-within:ring-primary/30">
-                        <svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" className="text-ink-muted">
-                            <rect x="3" y="5" width="18" height="16" rx="2.5" />
-                            <path d="M8 3v4M16 3v4M3 10h18" />
-                        </svg>
-                        <span className="sr-only">{t('common.period')}</span>
-                        <input
-                            type="month"
-                            value={executiveDashboard.period.month}
-                            onChange={(event) =>
-                                event.target.value && router.get('/platform', { month: event.target.value }, { preserveState: true, preserveScroll: true })
-                            }
-                            className="h-9 border-0 bg-transparent px-1 text-sm font-semibold text-ink focus:outline-none"
-                        />
-                    </label>
+                    <MonthPicker
+                        label={t('common.period')}
+                        value={executiveDashboard.period.month}
+                        max={currentMonthValue()}
+                        onChange={(month) => router.get('/platform', { month }, { preserveState: true, preserveScroll: true })}
+                    />
                 )}
             </header>
 

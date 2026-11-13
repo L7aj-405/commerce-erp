@@ -829,7 +829,7 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
                                     <p className="font-medium text-ink">{exchange.exchange_number} · {exchange.status}</p>
                                     <p className="text-xs text-ink-muted">{t('orders.show.return')} <bdi>{exchange.return_number ?? '—'}</bdi>{exchange.addendum_sequence ? ` · ${t('orders.show.addendum')} #${exchange.addendum_sequence}` : ''}</p>
                                 </div>
-                                <div className="text-right text-xs text-ink-muted">
+                                <div className="text-end text-xs text-ink-muted">
                                     <p>{t('orders.show.return')} : {formatMoney(exchange.returned_total, order.currency_code)}</p>
                                     <p>{t('orders.show.newItems')} : {formatMoney(exchange.new_items_total, order.currency_code)}</p>
                                     <p className="font-semibold text-ink">{t('orders.show.difference')} : {formatMoney(Math.abs(Number(exchange.difference_amount)), order.currency_code)}</p>
@@ -1090,7 +1090,7 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
                                                 paymentForm.data.payments.filter((_, position) => position !== index),
                                             )
                                         }
-                                        className="text-left text-sm text-danger"
+                                        className="text-start text-sm text-danger"
                                     >
                                         {t('common.remove')}
                                     </button>

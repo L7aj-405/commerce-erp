@@ -106,7 +106,7 @@ export default function FulfillmentCard({ orderId, data }: { orderId: number; da
     const shippable = data.lines.filter((line) => Number(line.shippable) > 0);
 
     return (
-        <section className="mb-6 rounded-card border border-line bg-surface p-5">
+        <section className="mb-6 surface-card p-5">
             <SandboxFulfillmentBadge />
             <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>

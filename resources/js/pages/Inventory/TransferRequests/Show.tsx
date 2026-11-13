@@ -163,8 +163,8 @@ function DriverFields({ form, members }: { form: DriverFormLike; members: Member
 function NeedTag({ kind }: { kind: 'mandatory' | 'optional' }) {
     const { t } = useI18n();
     return kind === 'mandatory'
-        ? <span className="ms-1.5 rounded border border-danger/25 bg-danger-soft px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide text-danger">{t('inventory.trq.mandatory')}</span>
-        : <span className="ms-1.5 rounded border border-line-strong bg-surface px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide text-ink-muted">{t('inventory.trq.optional')}</span>;
+        ? <span className="ms-1.5 rounded border border-danger/25 bg-danger-soft px-1.5 py-px text-[11px] font-medium text-danger">{t('inventory.trq.mandatory')}</span>
+        : <span className="ms-1.5 rounded border border-line-strong bg-surface px-1.5 py-px text-[11px] font-medium text-ink-muted">{t('inventory.trq.optional')}</span>;
 }
 
 function QtyRow({ label, value, hint, strong = false, tone, icon }: { label: ReactNode; value: ReactNode; hint?: ReactNode; strong?: boolean; tone?: 'muted' | 'danger' | 'success'; icon?: ReactNode }) {
@@ -377,7 +377,7 @@ export default function TransferRequestShow({ request, breakdown, history, membe
                     {nextStep && (
                         <div className="mt-5 flex flex-col gap-3 rounded-field border border-primary/20 bg-sage/60 p-4 sm:flex-row sm:items-center sm:justify-between">
                             <div className="min-w-0">
-                                <p className="text-[11px] font-semibold uppercase tracking-wide text-primary">{t('inventory.trq.nextStep')}</p>
+                                <p className="text-[13px] font-medium text-primary">{t('inventory.trq.nextStep')}</p>
                                 <p className="mt-0.5 font-semibold text-ink">{nextStep.title}</p>
                                 <p className="mt-0.5 text-sm text-ink-muted">{nextStep.body}</p>
                             </div>
@@ -431,8 +431,8 @@ export default function TransferRequestShow({ request, breakdown, history, membe
                         { label: t('inventory.trq.metricReplenishment'), value: formatQuantity(forReplenishment), helper: request.status === 'requested' ? t('inventory.trq.adjustableHelp') : t('inventory.trq.lockedHelp') },
                         { label: t('inventory.trq.metricRoute'), value: request.source?.code ?? '—', helper: t('inventory.trq.toDestination').replace('{code}', request.destination?.code ?? '—') },
                     ].map((m) => (
-                        <div key={m.label} className="rounded-card border border-line bg-surface px-4 py-3 shadow-soft">
-                            <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-faint">{m.label}</p>
+                        <div key={m.label} className="surface-card px-4 py-3 shadow-soft">
+                            <p className="text-[13px] font-medium text-ink-muted">{m.label}</p>
                             <p className={`mt-1 text-2xl font-semibold tabular-nums ${m.tone ?? 'text-ink'}`} dir="ltr">{m.value}</p>
                             <p className="mt-0.5 truncate text-xs text-ink-muted">{m.helper}</p>
                         </div>
@@ -556,7 +556,7 @@ export default function TransferRequestShow({ request, breakdown, history, membe
 
                                 <div className="grid content-start gap-2 text-[13px] sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
                                     <div className="rounded-field border border-line px-3 py-2.5">
-                                        <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-faint">{t('inventory.trq.ctxSource').replace('{source}', src)}</p>
+                                        <p className="text-[13px] font-medium text-ink-muted">{t('inventory.trq.ctxSource').replace('{source}', src)}</p>
                                         <dl className="mt-1">
                                             <QtyRow label={t('inventory.trq.ctxOnHand')} value={formatQuantity(b.source_on_hand)} />
                                             <QtyRow label={t('inventory.trq.ctxReserved')} value={formatQuantity(b.source_reserved)} tone="muted" />
@@ -574,7 +574,7 @@ export default function TransferRequestShow({ request, breakdown, history, membe
                                         )}
                                     </div>
                                     <div className="rounded-field border border-line px-3 py-2.5">
-                                        <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-faint">{t('inventory.trq.ctxDestination').replace('{destination}', dst)}</p>
+                                        <p className="text-[13px] font-medium text-ink-muted">{t('inventory.trq.ctxDestination').replace('{destination}', dst)}</p>
                                         <dl className="mt-1">
                                             <QtyRow label={t('inventory.trq.ctxFreeNow')} hint={t('inventory.trq.ctxFreeNowHelp')} value={formatQuantity(b.destination_available)} />
                                             <QtyRow label={t('inventory.trq.ctxOtherIncoming')} value={formatQuantity(b.other_active_incoming)} tone="muted" />
@@ -727,7 +727,7 @@ export default function TransferRequestShow({ request, breakdown, history, membe
                         <p className="mb-2 text-sm text-ink-muted">{t('inventory.requestShow.reviewHelp')}</p>
                         <div className="max-h-[min(22rem,45dvh)] overflow-y-auto rounded-field border border-line">
                             <table className="w-full text-start text-sm">
-                                <thead className="sticky top-0 z-[1] bg-raised text-[11px] uppercase tracking-wide text-ink-faint">
+                                <thead className="sticky top-0 z-[1] bg-raised text-[13px] text-ink-muted font-medium">
                                     <tr>
                                         <th scope="col" className="px-3 py-2 text-start font-semibold">{t('inventory.requests.article')}</th>
                                         <th scope="col" className="px-3 py-2 text-end font-semibold">{t('inventory.requestShow.requestedQty')}</th>

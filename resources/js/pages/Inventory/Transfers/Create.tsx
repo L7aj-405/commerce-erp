@@ -27,7 +27,7 @@ type Props = {
 };
 
 const fieldClass = 'h-11 w-full rounded-field border border-line-strong bg-surface px-3 text-sm text-ink outline-none transition-soft focus:border-primary disabled:bg-raised disabled:text-ink-faint';
-const labelClass = 'block text-xs font-semibold uppercase tracking-wide text-ink-muted';
+const labelClass = 'block text-[13px] font-medium text-ink-muted';
 
 const toItem = (result: SearchResult): PickerItem => ({
     product_variant_id: result.id,
@@ -139,7 +139,7 @@ export default function TransferCreate({ filters, warehouses, searchResults, pre
                 actions={<ButtonLink href="/inventory/transfers" variant="secondary">{t('inventory.transferCreate.back')}</ButtonLink>}
             />
 
-            <section className="mb-4 rounded-card border border-line bg-surface p-4 shadow-soft sm:p-5">
+            <section className="mb-4 surface-card p-4 shadow-soft sm:p-5">
                 <h2 className="text-base font-semibold text-ink">{t('inventory.transferCreate.info')}</h2>
                 <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-[1fr_1fr_1.4fr]">
                     <Field label={t('inventory.transferCreate.source')} error={form.errors.source_warehouse_id}>

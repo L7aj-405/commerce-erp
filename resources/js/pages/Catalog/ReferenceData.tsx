@@ -107,9 +107,9 @@ export default function ReferenceData({
             />
 
             <div className="grid gap-6 lg:grid-cols-[1fr_22rem]">
-                <section className="overflow-x-auto rounded-card border border-line bg-surface">
+                <section className="overflow-x-auto surface-card">
                     <table className="w-full min-w-[520px] text-start text-sm">
-                        <thead className="bg-raised text-[11px] uppercase tracking-wide text-ink-faint">
+                        <thead className="bg-raised text-[13px] text-ink-muted font-medium">
                             <tr>
                                 <th className="px-4 py-2.5">
                                     {t("common.name")}
@@ -189,7 +189,7 @@ export default function ReferenceData({
                                                 : t("status.inactive")}
                                         </span>
                                     </td>
-                                    <td className="px-4 py-3 text-right">
+                                    <td className="px-4 py-3 text-end">
                                         <button
                                             type="button"
                                             onClick={() => select(record)}
@@ -216,7 +216,7 @@ export default function ReferenceData({
 
                 <form
                     onSubmit={submit}
-                    className="h-fit space-y-3.5 rounded-card border border-line bg-surface p-5"
+                    className="h-fit space-y-3.5 surface-card p-5"
                 >
                     <h3 className="text-sm font-semibold text-ink">
                         {editing
@@ -382,7 +382,7 @@ export default function ReferenceData({
                     <p className="mt-1 text-[13px] text-ink-muted">
                         {t("referenceData.storeDefaultTaxHelp")}
                     </p>
-                    <div className="mt-4 divide-y divide-line rounded-card border border-line bg-surface">
+                    <div className="mt-4 divide-y divide-line surface-card">
                         {stores.map((store) => (
                             <div
                                 key={store.id}

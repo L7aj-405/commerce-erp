@@ -255,6 +255,13 @@
 }
 
 @layer base {
+    /* Browsers centre <th> unless an explicit non-start alignment is inherited, so
+       `text-start` on a table/row had no effect. Start-align headers (RTL-aware);
+       `text-end` / `.num` utilities on a header still override this layer. */
+    th {
+        text-align: start;
+    }
+
     /* Tailwind v4 defaults bare `border` to currentColor (near-black hairlines on
        panels and fields). Default to the token hairlines; explicit border-* utilities
        still win because utilities sit above this layer. */
@@ -552,6 +559,13 @@
 
     .erp-table tbody tr[aria-selected='true'] {
         background-color: var(--color-accent-soft);
+    }
+
+    /* Amount cells often carry dir="ltr" (keeps "1 428,00 DH" in reading order). In an
+       RTL document their own `end` would be the right edge while the header's is the
+       left; pin them to the table's end edge so columns stay aligned. */
+    [dir='rtl'] .erp-table .num[dir='ltr'] {
+        text-align: left;
     }
 
     .erp-table .num,

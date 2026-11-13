@@ -70,7 +70,7 @@ export default function ShowExchange({
                         {exchange.status} · {exchange.settlement_status}
                     </p>
                 </header>
-                <section className="rounded-card border border-line bg-surface p-5">
+                <section className="surface-card p-5">
                     <div className="grid gap-4 sm:grid-cols-4">
                         <div>
                             <p className="text-sm text-ink-muted">
@@ -117,7 +117,7 @@ export default function ShowExchange({
                     </div>
                 </section>
                 <div className="grid gap-6 md:grid-cols-2">
-                    <section className="rounded-card border border-line bg-surface p-5">
+                    <section className="surface-card p-5">
                         <h2 className="font-semibold">
                             {t("returns.returnedItems")}
                         </h2>
@@ -136,7 +136,7 @@ export default function ShowExchange({
                             </div>
                         ))}
                     </section>
-                    <section className="rounded-card border border-line bg-surface p-5">
+                    <section className="surface-card p-5">
                         <h2 className="font-semibold">
                             {t("exchanges.newItems")}
                         </h2>
@@ -186,7 +186,7 @@ export default function ShowExchange({
                 {can.process &&
                     exchange.status === "awaiting_settlement" &&
                     difference > 0 && (
-                        <section className="rounded-card border border-line bg-surface p-5">
+                        <section className="surface-card p-5">
                             <h2 className="font-semibold">
                                 {t("exchanges.additionalPayment")}
                             </h2>
@@ -271,7 +271,7 @@ export default function ShowExchange({
                     can.refund &&
                     exchange.status === "awaiting_settlement" &&
                     difference < 0 && (
-                        <section className="rounded-card border border-line bg-surface p-5">
+                        <section className="surface-card p-5">
                             <h2 className="font-semibold">
                                 {t("exchanges.refund")}
                             </h2>
@@ -323,7 +323,7 @@ export default function ShowExchange({
                 {can.process &&
                     !["completed", "cancelled"].includes(exchange.status) &&
                     !exchange.sales_order_addendum_id && (
-                        <section className="rounded-card border border-line bg-surface p-5">
+                        <section className="surface-card p-5">
                             <h2 className="font-semibold">
                                 {t("exchanges.stop")}
                             </h2>

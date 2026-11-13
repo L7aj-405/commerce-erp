@@ -34,7 +34,7 @@ type Props = {
 type FormLine = PickerLine & { lineId: number | null; reason: string };
 
 const fieldClass = 'h-11 w-full rounded-field border border-line-strong bg-surface px-3 text-sm text-ink outline-none transition-soft focus:border-primary';
-const labelClass = 'block text-xs font-semibold uppercase tracking-wide text-ink-muted';
+const labelClass = 'block text-[13px] font-medium text-ink-muted';
 const trim = (q: string) => String(Number(q));
 
 export default function TransferRequestForm({ mode, request, prefill, filters, warehouses, searchResults, selectedStock, operationId }: Props) {
@@ -183,7 +183,7 @@ export default function TransferRequestForm({ mode, request, prefill, filters, w
                 </p>
             )}
 
-            <section className="mb-4 rounded-card border border-line bg-surface p-4 shadow-soft sm:p-5">
+            <section className="mb-4 surface-card p-4 shadow-soft sm:p-5">
                 <h2 className="text-base font-semibold text-ink">{t('inventory.transferCreate.info')}</h2>
                 {editing ? (
                     <dl className="mt-3 grid gap-3 text-sm md:grid-cols-[1fr_1fr_1.4fr]">

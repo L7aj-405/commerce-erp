@@ -54,7 +54,7 @@ export default function CustomerForm({ customer }: { customer: Customer | null }
                     <h1 className="mt-1 text-2xl font-semibold tracking-tight text-ink">{customer ? t('customers.edit') : t('customers.new')}</h1>
                 </div>
 
-                <div className="grid gap-4 rounded-card border border-line bg-surface p-5 md:grid-cols-2">
+                <div className="grid gap-4 surface-card p-5 md:grid-cols-2">
                     <label className={labelClass}>
                         {t('customers.customerType')}
                         <select value={form.data.type} onChange={(e) => form.setData('type', e.target.value)} className={selectClass}>

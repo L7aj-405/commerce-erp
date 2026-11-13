@@ -131,7 +131,7 @@ export default function ProductForm({
                 }
             />
             <form onSubmit={submit} className="max-w-4xl space-y-6">
-                <section className="rounded-2xl border bg-white p-6">
+                <section className="rounded-2xl border bg-surface p-6">
                     <h2 className="font-semibold">
                         {t("products.form.essentialInfo")}
                     </h2>
@@ -235,11 +235,11 @@ export default function ProductForm({
                                             errors["variant.public_price_ttc"]
                                         }
                                     />
-                                    <p className="mt-1 text-xs text-slate-500">
+                                    <p className="mt-1 text-xs text-ink-muted">
                                         {t("products.form.publicPriceHelp")}
                                     </p>
                                 </div>
-                                <label className="text-sm font-medium text-slate-800">
+                                <label className="text-sm font-medium text-ink">
                                     {t("products.tax")}
                                     <select
                                         value={
@@ -292,7 +292,7 @@ export default function ProductForm({
                                         }
                                         error={errors["variant.unit_price_ht"]}
                                     />
-                                    <p className="mt-1 text-xs text-slate-500">
+                                    <p className="mt-1 text-xs text-ink-muted">
                                         {t("products.form.netPriceHelp")}
                                         {derivedHt ? ` : ${derivedHt} DH` : ""}.
                                     </p>
@@ -301,7 +301,7 @@ export default function ProductForm({
                         )}
                     </div>
                 </section>
-                <section className="rounded-2xl border bg-white p-6">
+                <section className="rounded-2xl border bg-surface p-6">
                     <h2 className="font-semibold">
                         {t("products.form.classification")}
                     </h2>
@@ -368,7 +368,7 @@ export default function ProductForm({
                         </label>
                     </div>
                 </section>
-                <section className="rounded-2xl border bg-white p-6">
+                <section className="rounded-2xl border bg-surface p-6">
                     <h2 className="font-semibold">
                         {t("products.form.optionalInfo")}
                     </h2>
@@ -407,7 +407,7 @@ export default function ProductForm({
                     </details>
                 </section>
                 {Object.keys(form.errors).length > 0 && (
-                    <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">
+                    <p className="rounded-lg bg-danger-soft p-3 text-sm text-danger">
                         {t("products.form.validationError")}
                     </p>
                 )}
@@ -419,7 +419,7 @@ export default function ProductForm({
                     >
                         {t("products.form.save")}
                     </Button>
-                    <p className="text-sm text-slate-500">
+                    <p className="text-sm text-ink-muted">
                         {t("products.form.stockSeparate")}
                     </p>
                 </div>

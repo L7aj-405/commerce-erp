@@ -67,7 +67,7 @@ export default function CommissionFilters({ path, filters, stores, salespeople, 
     };
 
     return (
-        <section className="mb-5 rounded-card border border-line bg-surface p-4">
+        <section className="surface-card mb-5 p-4">
             <div className="flex flex-wrap gap-1.5" role="group" aria-label={t('commissions.period')}>
                 {periods.map((period) => (
                     <button
@@ -87,14 +87,14 @@ export default function CommissionFilters({ path, filters, stores, salespeople, 
             </div>
             <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
                 <Field label={t('activity.from')}>
-                    <input type="date" className={input} value={local.from} disabled={local.period !== 'custom'} onChange={(e) => setLocal({ ...local, from: e.target.value })} />
+                    <input type="date" className="control-input w-full" value={local.from} disabled={local.period !== 'custom'} onChange={(e) => setLocal({ ...local, from: e.target.value })} />
                 </Field>
                 <Field label={t('activity.to')}>
-                    <input type="date" className={input} value={local.to} disabled={local.period !== 'custom'} onChange={(e) => setLocal({ ...local, to: e.target.value })} />
+                    <input type="date" className="control-input w-full" value={local.to} disabled={local.period !== 'custom'} onChange={(e) => setLocal({ ...local, to: e.target.value })} />
                 </Field>
                 {stores && (
                     <Field label={t('activity.store')}>
-                        <select className={input} value={local.store_id} onChange={(e) => setLocal({ ...local, store_id: e.target.value })}>
+                        <select className="control-select w-full" value={local.store_id} onChange={(e) => setLocal({ ...local, store_id: e.target.value })}>
                             <option value="">{t('activity.all')}</option>
                             {stores.map((store) => <option key={store.id} value={store.id}>{store.name}</option>)}
                         </select>
@@ -102,19 +102,19 @@ export default function CommissionFilters({ path, filters, stores, salespeople, 
                 )}
                 {salespeople && (
                     <Field label={t('commissions.salesperson')}>
-                        <select className={input} value={local.salesperson} onChange={(e) => setLocal({ ...local, salesperson: e.target.value })}>
+                        <select className="control-select w-full" value={local.salesperson} onChange={(e) => setLocal({ ...local, salesperson: e.target.value })}>
                             <option value="">{t('activity.all')}</option><option value="unattributed">{t('commissions.unattributed')}</option>
                             {salespeople.map((person) => <option key={person.id} value={person.id}>{person.name ?? `#${person.id}`}</option>)}
                         </select>
                     </Field>
                 )}
                 <Field label={t('common.status')}>
-                    <select className={input} value={local.status} onChange={(e) => setLocal({ ...local, status: e.target.value })}>
+                    <select className="control-select w-full" value={local.status} onChange={(e) => setLocal({ ...local, status: e.target.value })}>
                         <option value="">{t('activity.all')}</option>{Object.entries(statusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                     </select>
                 </Field>
                 <Field label={t('commissions.type')}>
-                    <select className={input} value={local.entry_type} onChange={(e) => setLocal({ ...local, entry_type: e.target.value })}>
+                    <select className="control-select w-full" value={local.entry_type} onChange={(e) => setLocal({ ...local, entry_type: e.target.value })}>
                         <option value="">{t('activity.all')}</option>{Object.entries(typeLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                     </select>
                 </Field>
@@ -128,7 +128,7 @@ export default function CommissionFilters({ path, filters, stores, salespeople, 
 }
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
-    return <label className="text-xs font-medium text-ink-muted">{label}<div className="mt-1">{children}</div></label>;
+    return <label className="text-[13px] font-medium text-ink-muted">{label}<div className="mt-1">{children}</div></label>;
 }
 
 /** Build a query string from the applied (server-resolved) filters, e.g. for export links. */
@@ -145,4 +145,3 @@ export function filterQuery(filters: CommissionFilterState, extra: Record<string
     return params.toString();
 }
 
-const input = 'w-full rounded-field border border-line-strong bg-surface px-3 py-2 text-sm text-ink focus:border-primary focus:outline-none disabled:opacity-60';

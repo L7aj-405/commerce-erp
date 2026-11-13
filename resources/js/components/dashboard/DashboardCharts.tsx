@@ -48,7 +48,8 @@ const darkChartColors: typeof chartColors = {
     sales: "#5cc0b8",
     collections: "#e8a65a",
     outgoing: "#ec9286",
-    unpaid: "#ec9286",
+    // Muted terracotta: still reads as "unpaid" but no longer dominates a full ring.
+    unpaid: "#c96f62",
     partial: "#e8a65a",
     paid: "#79c99a",
     muted: "#2b3234",
@@ -70,7 +71,8 @@ function useIsDarkTheme() {
 /** Theme-aware series colors; also retunes Chart.js tick/grid defaults. */
 export function useChartPalette() {
     const dark = useIsDarkTheme();
-    ChartJS.defaults.color = dark ? "#aab4b2" : "#515b5b";
+    ChartJS.defaults.color = dark ? "#b9c3c1" : "#4a5354";
+    ChartJS.defaults.font.size = 12.5;
     ChartJS.defaults.borderColor = dark ? "#252b2c" : "#ecece7";
     ChartJS.defaults.font.family = document.documentElement.dir === "rtl" ? "'IBM Plex Sans Arabic', 'Plus Jakarta Sans', sans-serif" : "'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif";
     return dark ? darkChartColors : chartColors;
@@ -95,6 +97,9 @@ const compactMoney = (value: number, locale: string) =>
         notation: "compact",
         maximumFractionDigits: 1,
     }).format(value);
+/** Arabic: time/magnitude runs right-to-left and the value axis sits on the right. */
+const isRtlLocale = (locale: string) => locale.startsWith("ar");
+
 const baseOptions = (locale: string): ChartOptions<"line"> => ({
     responsive: true,
     maintainAspectRatio: false,
@@ -103,9 +108,11 @@ const baseOptions = (locale: string): ChartOptions<"line"> => ({
         legend: {
             position: "top",
             align: "end",
+            rtl: isRtlLocale(locale),
             labels: { usePointStyle: true, pointStyle: "circle", boxWidth: 8, boxHeight: 8, padding: 16 },
         },
         tooltip: {
+            rtl: isRtlLocale(locale),
             callbacks: {
                 label: (item: TooltipItem<"line">) =>
                     `${item.dataset.label}: ${formatMoney(item.parsed.y)}`,
@@ -113,9 +120,10 @@ const baseOptions = (locale: string): ChartOptions<"line"> => ({
         },
     },
     scales: {
-        x: { grid: { display: false }, ticks: { maxTicksLimit: 10 } },
+        x: { reverse: isRtlLocale(locale), grid: { display: false }, ticks: { maxTicksLimit: 10, maxRotation: 0, autoSkipPadding: 14 } },
         y: {
             beginAtZero: true,
+            position: isRtlLocale(locale) ? "right" : "left",
             ticks: { callback: (value) => compactMoney(Number(value), locale) },
         },
     },
@@ -260,6 +268,7 @@ export function OrderStatesChart({
     const { t } = useI18n();
     const colors = useChartPalette();
     const values = [states.paid, states.partially_paid, states.unpaid];
+    const segments = values.filter((value) => value > 0).length;
     return (
         <ChartPanel
             title={t("finance.orderState")}
@@ -289,17 +298,20 @@ export function OrderStatesChart({
                                     colors.unpaid,
                                 ],
                                 borderWidth: 0,
+                                borderRadius: segments > 1 ? 3 : 0,
+                                spacing: segments > 1 ? 2 : 0,
                             },
                         ],
                     }}
                     options={{
                         responsive: true,
                         maintainAspectRatio: false,
-                        cutout: "66%",
+                        cutout: "68%",
                         plugins: {
                             legend: {
                                 position: "bottom",
-                                labels: { usePointStyle: true, boxWidth: 8 },
+                                rtl: document.documentElement.dir === "rtl",
+                                labels: { usePointStyle: true, pointStyle: "circle", boxWidth: 8, boxHeight: 8, padding: 14 },
                             },
                             tooltip: {
                                 callbacks: {
@@ -370,6 +382,7 @@ export function RankedMoneyChart({
                         plugins: {
                             legend: { display: false },
                             tooltip: {
+                                rtl: isRtlLocale(intlLocale),
                                 callbacks: {
                                     label: (item) => formatMoney(item.parsed.x),
                                 },
@@ -378,12 +391,13 @@ export function RankedMoneyChart({
                         scales: {
                             x: {
                                 beginAtZero: true,
+                                reverse: isRtlLocale(intlLocale),
                                 ticks: {
                                     callback: (value) =>
                                         compactMoney(Number(value), intlLocale),
                                 },
                             },
-                            y: { grid: { display: false } },
+                            y: { grid: { display: false }, position: isRtlLocale(intlLocale) ? "right" : "left" },
                         },
                     }}
                 />
@@ -450,11 +464,13 @@ export function CashFlowChart({ points }: { points: FlowPoint[] }) {
                         scales: {
                             x: {
                                 stacked: false,
+                                reverse: isRtlLocale(intlLocale),
                                 grid: { display: false },
-                                ticks: { maxTicksLimit: 10 },
+                                ticks: { maxTicksLimit: 10, maxRotation: 0, autoSkipPadding: 14 },
                             },
                             y: {
                                 beginAtZero: true,
+                                position: isRtlLocale(intlLocale) ? "right" : "left",
                                 ticks: {
                                     callback: (value) =>
                                         compactMoney(Number(value), intlLocale),

@@ -176,7 +176,7 @@ export default function ReturnCreate({
                         )}
                 </section>
                 <form onSubmit={submit} className="space-y-5">
-                    <section className="overflow-x-auto rounded-card border border-line bg-surface">
+                    <section className="overflow-x-auto surface-card">
                         <div className="flex justify-between p-4">
                             <h2 className="font-semibold">
                                 {t("returns.deliveredItems")}
@@ -275,7 +275,7 @@ export default function ReturnCreate({
                             </tbody>
                         </table>
                     </section>
-                    <section className="grid gap-4 rounded-card border border-line bg-surface p-5 sm:grid-cols-2">
+                    <section className="grid gap-4 surface-card p-5 sm:grid-cols-2">
                         <label className="text-sm font-medium">
                             {t("returns.itemDisposition")}
                             <select
