@@ -109,6 +109,8 @@ class FinanceMonthlyReportService
                 $organization,
                 $store
             )
+                // Production report: Test-mode orders share this table (sandbox_id NOT NULL).
+                ->whereNull('sales_orders.sandbox_id')
                 ->where('status', SalesOrderStatus::Confirmed->value)
                 ->where(
                     'sale_date',
@@ -154,6 +156,8 @@ class FinanceMonthlyReportService
                 $organization,
                 $store
             )
+                // Production report: Test invoices share this table (sandbox_id NOT NULL).
+                ->whereNull('invoices.sandbox_id')
                 ->where('status', InvoiceStatus::Issued->value)
                 ->where(
                     'invoice_date',
@@ -206,6 +210,8 @@ class FinanceMonthlyReportService
                 $organization,
                 $store
             )
+                // Production report: Test credit notes share this table (sandbox_id NOT NULL).
+                ->whereNull('credit_notes.sandbox_id')
                 ->where('status', 'issued')
                 ->where(
                     'credit_note_date',

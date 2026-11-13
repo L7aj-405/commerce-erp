@@ -1,12 +1,13 @@
 import ProductImage from '@/components/catalog/ProductImage';
 import { Money, NumericInput, Quantity, SegmentedControl } from '@/components/pos/primitives';
-import { Button } from '@/components/ui/Button';
+import { Button, IconButton } from '@/components/ui/Button';
 import { InlineLoader, Spinner } from '@/components/ui/Spinner';
 import { formatEditableNumber } from '@/utils/format';
 import { useI18n } from '@/i18n';
 import { useEffect, useRef, useState } from 'react';
 import type { PosPending } from './pos-shared';
-import type { ActiveSale, CartLine, StockConflict } from './types';
+import PosCustomerCard from './PosCustomerCard';
+import type { ActiveSale, CartLine, Customer, StockConflict } from './types';
 
 type Props = {
     sale: ActiveSale | null;
@@ -29,6 +30,10 @@ type Props = {
     onCheckout: () => void;
     /** Present only in the mobile full-screen cart overlay: returns to the catalogue. */
     onMobileBack?: () => void;
+    /** Customer currently attached to the sale (null = walk-in). */
+    customer: Customer | null;
+    attachingCustomer: boolean;
+    onOpenCustomer: () => void;
 };
 
 type DiscountUnit = 'percentage' | 'fixed';
@@ -141,6 +146,9 @@ export default function PosCartPanel({
     onOpenHeld,
     onCheckout,
     onMobileBack,
+    customer,
+    attachingCustomer,
+    onOpenCustomer,
 }: Props) {
     const { direction, t } = useI18n();
     const lines = sale?.lines ?? [];
@@ -181,42 +189,35 @@ export default function PosCartPanel({
                         </button>
                     )}
                     <div className="min-w-0">
-                        <h2 className="text-sm font-semibold text-ink">
+                        <h2 className="text-base font-semibold text-ink">
                             {t('pos.cart')}{' '}
                             {count > 0 && (
                                 <span className={`inline-block text-ink-muted transition-transform duration-200 ${bump ? 'scale-125 text-primary' : ''}`}>({count})</span>
                             )}
                         </h2>
-                        <p className="truncate text-[12px] text-ink-muted">{sale ? <bdi>{sale.order_number}</bdi> : t('pos.newSale')}</p>
+                        <p className="truncate text-[13px] text-ink-muted">{sale ? <bdi>{sale.order_number}</bdi> : t('pos.newSale')}</p>
                     </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-1.5">
-                    <button
-                        type="button"
-                        onClick={onOpenHeld}
-                        className="rounded-field border border-line-strong px-2.5 py-1.5 text-[12px] font-medium text-ink-muted transition-soft hover:text-ink"
-                    >
+                    <Button size="sm" variant="secondary" onClick={onOpenHeld}>
                         {t('pos.pending')} ({heldCount})
-                    </button>
-                    <button
-                        type="button"
-                        onClick={onNewSale}
-                        className="rounded-field border border-line-strong px-2.5 py-1.5 text-[12px] font-medium text-ink-muted transition-soft hover:text-ink"
-                    >
+                    </Button>
+                    <Button size="sm" variant="secondary" onClick={onNewSale}>
+                        <svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
                         {t('pos.new')}
-                    </button>
+                    </Button>
                 </div>
             </div>
 
             {/* Items (internal scroll) */}
             <div className="min-h-0 flex-1 overflow-y-auto">
                 {stockConflict && (
-                    <div role="alert" className="m-3 rounded-field border border-danger/30 bg-danger-soft/50 px-3 py-2.5 text-[12px] text-danger">
+                    <div role="alert" className="m-3 rounded-field border border-danger/30 bg-danger-soft px-3 py-2.5 text-[13px] text-danger">
                         <div className="flex items-start justify-between gap-2">
                             <p className="font-semibold">{stockConflict.message}</p>
-                            <button type="button" onClick={onDismissConflict} aria-label={t('common.close')} className="shrink-0 text-danger/70 hover:text-danger">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12" /></svg>
-                            </button>
+                            <IconButton label={t('common.close')} size="sm" onClick={onDismissConflict} className="-me-1 -mt-1 text-danger hover:bg-danger-soft">
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12" /></svg>
+                            </IconButton>
                         </div>
                         <p className="mt-0.5 text-ink-muted">{t('pos.stockConflictHelp')}</p>
                         {stockConflict.lines.length > 0 && (
@@ -242,9 +243,9 @@ export default function PosCartPanel({
                             </table>
                         )}
                         {toSourceCount > 0 && (
-                            <button type="button" onClick={onOpenSourcing} className="mt-2 font-semibold underline">
+                            <Button size="sm" variant="danger" onClick={onOpenSourcing} className="mt-2">
                                 {t('pos.checkAvailability')}
-                            </button>
+                            </Button>
                         )}
                     </div>
                 )}
@@ -269,25 +270,25 @@ export default function PosCartPanel({
                                     <div className="min-w-0 flex-1">
                                         <div className="flex items-start justify-between gap-2">
                                             <div className="min-w-0">
-                                                <p className="truncate text-[13px] font-semibold text-ink">{line.description}</p>
+                                                <p className="truncate text-sm font-semibold text-ink">{line.description}</p>
                                                 {(line.sku || line.reference) && (
-                                                    <p className="truncate text-[11px] text-ink-muted">{line.sku ?? line.reference}</p>
+                                                    <p className="truncate text-[12px] text-ink-muted">{line.sku ?? line.reference}</p>
                                                 )}
                                             </div>
-                                            <button
-                                                type="button"
+                                            <IconButton
+                                                label={`${t('pos.remove')} : ${line.description}`}
+                                                size="sm"
                                                 onClick={() => onRemove(line)}
                                                 disabled={removing}
                                                 aria-busy={removing || undefined}
-                                                aria-label={t('pos.remove')}
-                                                className="shrink-0 rounded p-0.5 text-ink-faint transition-soft hover:text-danger disabled:opacity-50"
+                                                className="-me-1.5 -mt-1.5 shrink-0 text-ink-muted hover:bg-danger-soft hover:text-danger"
                                             >
                                                 {removing ? (
                                                     <Spinner size="xs" />
                                                 ) : (
-                                                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12" /></svg>
+                                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13" /></svg>
                                                 )}
-                                            </button>
+                                            </IconButton>
                                         </div>
 
                                         <div className="mt-2 flex items-center justify-between gap-2">
@@ -316,13 +317,13 @@ export default function PosCartPanel({
                                                 </button>
                                             </div>
                                             <div className="text-end">
-                                                <p className="text-[11px] text-ink-muted">
+                                                <p className="text-[12px] text-ink-muted">
                                                     <Money value={line.unit_price_incl_tax ?? line.unit_price_excl_tax} currency={currencyCode} /> {t('pos.vatIncluded')} / {t('pos.unit')}
                                                 </p>
                                                 {line.discount_type !== 'none' && (
                                                     <p className="text-[11px] text-ink-faint line-through"><Money value={line.line_subtotal ?? '0'} currency={currencyCode} /></p>
                                                 )}
-                                                <p className="text-[13px] font-semibold text-ink"><Money value={line.line_total ?? '0'} currency={currencyCode} /></p>
+                                                <p className="text-sm font-semibold text-ink tabular-nums"><Money value={line.line_total ?? '0'} currency={currencyCode} /></p>
                                             </div>
                                         </div>
 
@@ -340,9 +341,9 @@ export default function PosCartPanel({
                                                     <Quantity value={line.stock_source ? String(Number(line.stock_source.here) + Number(line.stock_source.elsewhere)) : (line.sourcing.internal_available ?? '0')} />{' '}
                                                     · {t('pos.missingQty')} <Quantity value={line.stock_source?.missing ?? line.sourcing.shortage} />
                                                 </span>
-                                                <button type="button" onClick={onOpenSourcing} className="font-semibold text-primary hover:underline">
+                                                <Button size="sm" variant="outline" onClick={onOpenSourcing} className="min-h-8 px-2.5 text-[12px]">
                                                     {t('pos.checkAvailability')}
-                                                </button>
+                                                </Button>
                                             </div>
                                         )}
                                         {line.line_type === 'catalog' &&
@@ -378,31 +379,32 @@ export default function PosCartPanel({
             {/* Sticky totals + actions */}
             <div className="shrink-0 border-t border-line bg-raised p-3.5">
                 {(procurementDeficit || awaitingProcurement) && (
-                    <div className="mb-3 rounded-field border border-warning/30 bg-warning-soft/40 px-3 py-2 text-[12px] text-warning">
+                    <div className="mb-3 rounded-field border border-warning/30 bg-warning-soft px-3 py-2 text-[13px] leading-5 text-warning">
                         {procurementDeficit ? (
                             <>
                                 {canConvert ? t('pos.sourcingReady') : t('pos.sourcingStockHelp')}
                                 {toSourceCount > 0 && (
-                                    <button type="button" onClick={onOpenSourcing} className="ms-1 font-semibold underline">
+                                    <Button size="sm" variant="secondary" onClick={onOpenSourcing} className="mt-2 flex">
                                         {canConvert ? t('pos.createOrder') : t('pos.checkAvailability')}
-                                    </button>
+                                    </Button>
                                 )}
                             </>
                         ) : (
                             <>
                                 {t('pos.supplierPending')}
                                 {canConvert && (
-                                    <button type="button" onClick={onOpenSourcing} className="ms-1 font-semibold underline">
+                                    <Button size="sm" variant="secondary" onClick={onOpenSourcing} className="mt-2 flex">
                                         {t('pos.createOrder')}
-                                    </button>
+                                    </Button>
                                 )}
                             </>
                         )}
                     </div>
                 )}
+                <PosCustomerCard compact customer={customer} attaching={attachingCustomer} canUpdate={false} onOpen={onOpenCustomer} onEdit={onOpenCustomer} onRemove={() => undefined} />
                 {canApplyDiscount && sale && lines.length > 0 && <GlobalDiscount sale={sale} pending={pending.globalDiscount} onChange={onGlobalDiscountChange} />}
 
-                <dl className={`space-y-1 text-[13px] transition-opacity ${pending.recalculating ? 'opacity-70' : ''}`}>
+                <dl className={`space-y-1 text-sm tabular-nums transition-opacity ${pending.recalculating ? 'opacity-70' : ''}`}>
                     <div className="flex justify-between"><dt className="text-ink-muted">{t('pos.grossExcl')}</dt><dd><Money value={summary?.subtotal_excl_tax ?? '0'} currency={currencyCode} /></dd></div>
                     {Number(summary?.line_discount_total ?? 0) > 0 && (
                         <div className="flex justify-between"><dt className="text-ink-muted">{t('pos.itemDiscountsExcl')}</dt><dd className="text-success">- <Money value={summary?.line_discount_total ?? '0'} currency={currencyCode} /></dd></div>
@@ -418,7 +420,7 @@ export default function PosCartPanel({
                         <dt className="flex items-center gap-2 text-sm font-semibold text-ink">
                             {t('pos.totalIncl')}{pending.recalculating && <InlineLoader label={t('pos.recalculating')} className="text-[11px] font-normal" />}
                         </dt>
-                        <dd className="text-lg font-semibold text-ink"><Money value={summary?.total ?? '0'} currency={currencyCode} /></dd>
+                        <dd className="metric-value text-xl font-semibold text-ink"><Money value={summary?.total ?? '0'} currency={currencyCode} /></dd>
                     </div>
                 </dl>
 
@@ -426,22 +428,18 @@ export default function PosCartPanel({
                     <Button
                         type="button"
                         variant="secondary"
+                        size="lg"
                         disabled={!sale || lines.length === 0}
                         loading={pending.hold}
                         loadingText={t('pos.holding')}
                         onClick={onHold}
-                        className="px-3 py-2.5 text-[13px]"
                     >
                         {t('pos.pending')}
                     </Button>
-                    <button
-                        type="button"
-                        disabled={blocked || pending.recalculating}
-                        onClick={onCheckout}
-                        className="rounded-field bg-primary px-4 py-2.5 text-sm font-semibold text-primary-fg transition-soft hover:bg-primary-hover disabled:opacity-50"
-                    >
+                    <Button type="button" size="lg" disabled={blocked || pending.recalculating} onClick={onCheckout}>
                         {t('pos.checkout')}
-                    </button>
+                        <span aria-hidden="true">{direction === 'rtl' ? '←' : '→'}</span>
+                    </Button>
                 </div>
             </div>
         </div>

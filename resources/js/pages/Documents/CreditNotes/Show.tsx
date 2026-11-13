@@ -1,3 +1,4 @@
+import { ButtonLink } from '@/components/ui/Button';
 import SalesLayout from '@/layouts/SalesLayout';
 import SandboxDocumentBadge from '@/components/SandboxDocumentBadge';
 import { useI18n } from '@/i18n';
@@ -41,31 +42,32 @@ type Props = {
 };
 
 export default function CreditNoteShow({ creditNote: note, summary }: Props) {
-    const { direction, t } = useI18n();
+    const { t } = useI18n();
     return (
         <SalesLayout>
             <Head title={note.credit_note_number || `${t('creditNotes.title')} ${t('creditNotes.draft')}`} />
-            <div className="mx-auto max-w-6xl space-y-6">
+            <div className="space-y-6">
                 <header className="flex flex-wrap justify-between gap-3">
                     <div>
-                        <Link href={`/invoices/${note.invoice.id}`} className="text-sm text-ink-muted">
-                            {direction === 'rtl' ? '→' : '←'} {t('invoices.invoice')} <bdi>{note.invoice.invoice_number}</bdi>{note.invoice.version > 1 ? ` · V${note.invoice.version}` : ''}
-                        </Link>
-                        <h1 className="mt-1 text-2xl font-semibold">{t('creditNotes.title')} <bdi>{note.credit_note_number || t('creditNotes.draft')}</bdi> <SandboxDocumentBadge sandboxId={note.sandbox_id} /></h1>
+                        <ButtonLink href={`/invoices/${note.invoice.id}`} variant="ghost" size="sm" className="-ms-2 mb-1">
+                            <svg aria-hidden="true" className="directional-icon rtl:rotate-180" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 6 8 12l6 6" /></svg>
+                            {t('invoices.invoice')} <bdi>{note.invoice.invoice_number}</bdi>{note.invoice.version > 1 ? ` · V${note.invoice.version}` : ''}
+                        </ButtonLink>
+                        <h1 className="flex flex-wrap items-center gap-2 text-2xl font-semibold tracking-[-0.02em] text-ink sm:text-page">{t('creditNotes.title')} <bdi>{note.credit_note_number || t('creditNotes.draft')}</bdi> <SandboxDocumentBadge sandboxId={note.sandbox_id} /></h1>
                         <p className="text-sm text-ink-muted">
-                            <Link href={`/sales/orders/${note.sales_order.id}`} className="hover:underline">{t('invoices.order')} <bdi>{note.sales_order.order_number}</bdi></Link>
+                            <Link href={`/sales/orders/${note.sales_order.id}`} className="font-medium text-ink underline-offset-2 hover:text-accent hover:underline">{t('invoices.order')} <bdi>{note.sales_order.order_number}</bdi></Link>
                             {' · '}
-                            <Link href={`/sales/returns/${note.customer_return.id}`} className="hover:underline">{t('creditNotes.return')} <bdi>{note.customer_return.return_number}</bdi></Link>
+                            <Link href={`/sales/returns/${note.customer_return.id}`} className="font-medium text-ink underline-offset-2 hover:text-accent hover:underline">{t('creditNotes.return')} <bdi>{note.customer_return.return_number}</bdi></Link>
                         </p>
                     </div>
                     {note.status === 'issued' && (
-                        <a href={`/credit-notes/${note.id}/pdf`} target="_blank" rel="noreferrer" className="rounded-field border border-line-strong px-4 py-2 text-sm">
+                        <a href={`/credit-notes/${note.id}/pdf`} target="_blank" rel="noreferrer" className="inline-flex min-h-10 items-center justify-center gap-2 self-start rounded-field bg-primary px-4 text-sm font-semibold text-primary-fg shadow-sm transition-soft hover:bg-primary-hover">
                             {t('creditNotes.officialPdf')}
                         </a>
                     )}
                 </header>
 
-                <section className="rounded-card border border-line bg-surface p-5 text-sm">
+                <section className="surface-card p-5 text-sm">
                     <p><span className="text-ink-muted">{t('creditNotes.issueDate')} :</span> {formatDate(note.credit_note_date)}</p>
                     <p className="mt-1"><span className="text-ink-muted">{t('creditNotes.reason')} :</span> {note.reason}</p>
                     <p className="mt-3 rounded-field bg-raised px-3 py-2 text-xs text-ink-muted">
@@ -75,7 +77,7 @@ export default function CreditNoteShow({ creditNote: note, summary }: Props) {
 
                 <div className="overflow-x-auto rounded-card border border-line bg-surface">
                     <table className="erp-table w-full text-sm">
-                        <thead className="bg-raised text-start text-xs uppercase text-ink-faint">
+                        <thead className="bg-raised text-start text-[13px] text-ink-muted font-medium">
                             <tr><th className="p-3">{t('quotations.item')}</th><th className="p-3">{t('quotations.quantityShort')}</th><th className="p-3 text-end">{t('creditNotes.netExcl')}</th><th className="p-3 text-end">{t('creditNotes.discount')}</th><th className="p-3 text-end">{t('quotations.tax')}</th><th className="p-3 text-end">{t('creditNotes.creditedIncl')}</th></tr>
                         </thead>
                         <tbody>{note.lines.map((line) => (

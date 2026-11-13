@@ -11,8 +11,15 @@ export default defineConfig({
             input: ['resources/js/app.tsx'],
             refresh: true,
             fonts: [
-                bunny('Instrument Sans', {
+                // UI: Plus Jakarta Sans (Latin). Arabic UI: IBM Plex Sans Arabic.
+                // Self-hosted at build time by the Laravel Vite plugin (no runtime CDN).
+                bunny('Plus Jakarta Sans', {
+                    weights: [400, 500, 600, 700],
+                    optimizedFallbacks: false,
+                }),
+                bunny('IBM Plex Sans Arabic', {
                     weights: [400, 500, 600],
+                    optimizedFallbacks: false,
                 }),
             ],
         }),

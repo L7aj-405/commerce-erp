@@ -60,7 +60,7 @@ export default function SupplierRecommendations({
 
     return (
         <section aria-labelledby="supplier-reco-title">
-            <h3 id="supplier-reco-title" className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
+            <h3 id="supplier-reco-title" className="font-semibold text-base text-ink">
                 {t("supplierReco.title")}
             </h3>
             <p className="mt-0.5 text-[11px] text-ink-faint">{t("supplierReco.advisory")}</p>

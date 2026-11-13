@@ -1,49 +1,44 @@
 import { Money, NumericInput, SegmentedControl } from '@/components/pos/primitives';
 import SandboxPaymentBadge from '@/components/SandboxPaymentBadge';
-import { useDebouncedValue } from '@/components/pos/useDebouncedValue';
-import { Button } from '@/components/ui/Button';
+import { Alert } from '@/components/ui/Alert';
+import { Button, IconButton } from '@/components/ui/Button';
 import { Spinner } from '@/components/ui/Spinner';
-import { useToast } from '@/components/ui/toast';
 import { useI18n } from '@/i18n';
 import { Link } from '@inertiajs/react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import { posJson } from './api';
+import PosCustomerCard from './PosCustomerCard';
+import { PlusIcon } from './PosCustomerDialog';
 import {
     type Account,
     type CheckoutState,
-    type CustomerForm,
     type FulfillmentOrigin,
     type PaymentDraft,
     type PaymentMethod,
     type ReviewData,
     type SettlementMode,
-    blankCustomerForm,
     buildEmptyPayment,
     buildInitialPayment,
     compatibleAccounts,
-    customerFormFrom,
-    customerTypeFor,
     defaultOriginFor,
     firstCompatibleAccountId,
     normalizeAmount,
     positiveAmount,
 } from './pos-shared';
-import type { ActiveSale, Customer } from './types';
+import type { ActiveSale } from './types';
 
 type Props = {
     sale: ActiveSale;
     currencyCode: string;
     financialAccounts: Account[];
-    canCreateCustomer: boolean;
     canUpdateCustomer: boolean;
     /** A fulfilment/shipping write to the draft is in flight. */
     savingCheckout: boolean;
     /** The selected customer is being attached to / detached from the draft. */
     attachingCustomer: boolean;
     onBack: () => void;
-    onCustomerSelected: (customer: Customer) => Promise<void>;
-    onCustomerUpdated: (customer: Customer) => Promise<void>;
+    /** Opens the shared customer dialog (search, or edit the attached customer). */
+    onOpenCustomer: (view: 'search' | 'edit') => void;
     onCustomerDetach: () => void;
     onCheckoutStateSave: (state: CheckoutState) => Promise<void>;
     onReview: (data: ReviewData) => void;
@@ -52,8 +47,8 @@ type Props = {
 function Section({ title, children, action }: { title: string; children: ReactNode; action?: ReactNode }) {
     return (
         <section className="border-t border-line px-4 py-3.5 first:border-t-0">
-            <div className="mb-2.5 flex items-center justify-between">
-                <h3 className="text-[11px] font-semibold uppercase tracking-wide text-ink-faint">{title}</h3>
+            <div className="mb-2.5 flex min-h-8 items-center justify-between gap-2">
+                <h3 className="text-[13px] font-semibold text-ink-muted">{title}</h3>
                 {action}
             </div>
             {children}
@@ -61,7 +56,55 @@ function Section({ title, children, action }: { title: string; children: ReactNo
     );
 }
 
-const fieldClass = 'h-9 w-full rounded-field border border-line-strong bg-surface px-2.5 text-[13px] outline-none transition-soft focus:border-primary';
+const fieldClass = 'control-input h-10 text-sm';
+
+/** Selectable option tile (fulfilment mode / origin). Selection = border + fill + check mark, never color alone. */
+function ChoiceTile({ selected, title, help, icon, onClick, role, ariaDisabled, tooltip }: {
+    selected: boolean;
+    title: string;
+    help: string;
+    icon: ReactNode;
+    onClick: () => void;
+    role?: 'radio';
+    ariaDisabled?: boolean;
+    tooltip?: string;
+}) {
+    return (
+        <button
+            type="button"
+            role={role}
+            aria-checked={role ? selected : undefined}
+            aria-pressed={role ? undefined : selected}
+            aria-disabled={ariaDisabled}
+            title={tooltip}
+            onClick={onClick}
+            className={`relative flex min-h-16 cursor-pointer flex-col items-start rounded-field border p-2.5 pe-7 text-start transition-soft ${
+                selected ? 'border-primary bg-sage shadow-[inset_0_0_0_1px_var(--color-primary)]' : 'border-line-strong bg-surface hover:bg-sage'
+            } ${ariaDisabled ? 'cursor-not-allowed opacity-55' : ''}`}
+        >
+            <span className="flex items-center gap-1.5 text-[13px] font-semibold text-ink">
+                <span aria-hidden="true" className="text-ink-muted">{icon}</span>
+                {title}
+            </span>
+            <span className="mt-0.5 block text-[12px] leading-4 text-ink-muted">{help}</span>
+            {selected && (
+                <span aria-hidden="true" className="absolute end-2 top-2 grid size-4 place-items-center rounded-full bg-primary text-primary-fg">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5"><path d="m5 12.5 4.5 4.5L19 7.5" /></svg>
+                </span>
+            )}
+        </button>
+    );
+}
+
+const svgIcon = (path: ReactNode) => (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">{path}</svg>
+);
+const icons = {
+    pickup: svgIcon(<><path d="M5 8h14l-1 12H6L5 8Z" /><path d="M9 8a3 3 0 0 1 6 0" /></>),
+    delivery: svgIcon(<><path d="M3 6h11v10H3V6ZM14 10h4l3 3v3h-7v-6Z" /><circle cx="7" cy="18" r="2" /><circle cx="18" cy="18" r="2" /></>),
+    showroom: svgIcon(<path d="M4 9h16l-1-5H5L4 9ZM5 9v11h14V9M9 20v-6h6v6" />),
+    direct: svgIcon(<><path d="M12 3 4 7v10l8 4 8-4V7l-8-4Z" /><path d="M4 7l8 4 8-4M12 11v10" /></>),
+};
 
 /** One-sentence consequence of the chosen origin, shown before confirming. */
 export function originExplanation(
@@ -81,18 +124,15 @@ export default function PosCheckoutPanel({
     sale,
     currencyCode,
     financialAccounts,
-    canCreateCustomer,
     canUpdateCustomer,
     savingCheckout,
     attachingCustomer,
     onBack,
-    onCustomerSelected,
-    onCustomerUpdated,
+    onOpenCustomer,
     onCustomerDetach,
     onCheckoutStateSave,
     onReview,
 }: Props) {
-    const toast = useToast();
     const { direction, t } = useI18n();
     const paymentLabels: Record<PaymentMethod, string> = {
         cash: t('pos.cash'), card: t('pos.card'), bank_transfer: t('pos.bankTransfer'), cheque: t('pos.cheque'),
@@ -114,53 +154,12 @@ export default function PosCheckoutPanel({
     const [settlementMode, setSettlementMode] = useState<SettlementMode>('full');
     const [payments, setPayments] = useState<PaymentDraft[]>(() => [buildInitialPayment(sale.summary.total, financialAccounts)]);
     const [error, setError] = useState('');
+    /** Every blocking payment problem found by the last "review" attempt (shown together). */
+    const [paymentIssues, setPaymentIssues] = useState<string[]>([]);
+    const [attempted, setAttempted] = useState(false);
     const [savingState, setSavingState] = useState(false);
 
-    // Customer search
-    const [search, setSearch] = useState('');
-    const [results, setResults] = useState<Customer[]>([]);
-    const [searching, setSearching] = useState(false);
-    const [searched, setSearched] = useState(false);
-    const abortRef = useRef<AbortController | null>(null);
-    const debouncedSearch = useDebouncedValue(search.trim(), 250);
-    const [customerType, setCustomerType] = useState<'individual' | 'company'>(customerTypeFor(sale.customer));
-    const [customerForm, setCustomerForm] = useState<CustomerForm>(customerFormFrom(sale.customer));
-    const [customerMode, setCustomerMode] = useState<'idle' | 'create' | 'edit'>('idle');
-    const [customerBusy, setCustomerBusy] = useState(false);
-
     const selectedCustomer = sale.customer;
-
-    useEffect(() => {
-        if (debouncedSearch.length < 2) {
-            abortRef.current?.abort();
-            setResults([]);
-            setSearching(false);
-            setSearched(false);
-            return;
-        }
-        abortRef.current?.abort();
-        const controller = new AbortController();
-        abortRef.current = controller;
-        setSearching(true);
-        fetch(`/pos/customers?${new URLSearchParams({ search: debouncedSearch })}`, {
-            headers: { Accept: 'application/json' },
-            credentials: 'same-origin',
-            signal: controller.signal,
-        })
-            .then((response) => {
-                if (!response.ok) throw new Error('search failed');
-                return response.json() as Promise<{ data: Customer[] }>;
-            })
-            .then((payload) => {
-                setResults(payload.data);
-                setSearched(true);
-            })
-            .catch((reason: Error) => {
-                if (reason.name !== 'AbortError') setError(t('pos.customerSearchFailed'));
-            })
-            .finally(() => setSearching(false));
-        return () => controller.abort();
-    }, [debouncedSearch, t]);
 
     // Authoritative merchandise TTC (net HT + VAT, after item + global discounts), from the server.
     const merchandiseNetTtc = Number(sale.summary.net_excl_tax) + Number(sale.summary.tax_total);
@@ -238,6 +237,8 @@ export default function PosCheckoutPanel({
     function setSettlement(mode: SettlementMode) {
         setSettlementMode(mode);
         setError('');
+        setPaymentIssues([]);
+        setAttempted(false);
         if (mode === 'full') {
             setPayments([buildInitialPayment(currentTotal, financialAccounts)]);
         } else if (mode === 'partial') {
@@ -268,58 +269,21 @@ export default function PosCheckoutPanel({
         );
     }
 
-    async function createCustomer() {
-        setCustomerBusy(true);
-        setError('');
-        try {
-            const payload = await posJson<{ data: Customer }>('/pos/customers', { method: 'POST', body: { type: customerType, ...customerForm } });
-            await onCustomerSelected(payload.data);
-            setCustomerMode('idle');
-            setSearch('');
-            toast.success(t('pos.customerSaved'));
-        } catch (reason) {
-            setError(reason instanceof Error ? reason.message : t('pos.customerCreateFailed'));
-        } finally {
-            setCustomerBusy(false);
-        }
-    }
-
-    async function updateCustomer() {
-        if (!selectedCustomer) return;
-        setCustomerBusy(true);
-        setError('');
-        try {
-            const payload = await posJson<{ data: Customer }>(`/pos/customers/${selectedCustomer.id}`, { method: 'PATCH', body: { type: customerType, ...customerForm } });
-            await onCustomerUpdated(payload.data);
-            setCustomerMode('idle');
-            toast.success(t('pos.customerUpdated'));
-        } catch (reason) {
-            setError(reason instanceof Error ? reason.message : t('pos.customerUpdateFailed'));
-        } finally {
-            setCustomerBusy(false);
-        }
-    }
-
     function submitReview() {
+        setAttempted(true);
         if (settlementMode !== 'deferred') {
+            // Same rules and order as before; all failing rules are now listed together.
             const messages = [...cashErrors, ...accountErrors];
+            if (paid <= 0) messages.push(t('pos.selectPayment'));
+            else if (settlementMode === 'full' && Math.abs(Number(currentTotal) - paid) > 0.00005) messages.push(t('pos.fullPaymentRequired'));
+            else if (settlementMode === 'partial' && paid >= Number(currentTotal)) messages.push(t('pos.partialMustBeLower'));
             if (messages.length > 0) {
-                setError(messages[0]);
-                return;
-            }
-            if (paid <= 0) {
-                setError(t('pos.selectPayment'));
-                return;
-            }
-            if (settlementMode === 'full' && Math.abs(Number(currentTotal) - paid) > 0.00005) {
-                setError(t('pos.fullPaymentRequired'));
-                return;
-            }
-            if (settlementMode === 'partial' && paid >= Number(currentTotal)) {
-                setError(t('pos.partialMustBeLower'));
+                setPaymentIssues(messages);
+                setError('');
                 return;
             }
         }
+        setPaymentIssues([]);
         setError('');
 
         const active = payments.filter((payment) => payment.method && positiveAmount(payment.amount) > 0);
@@ -362,71 +326,37 @@ export default function PosCheckoutPanel({
         });
     }
 
-    function renderCustomerForm(action: 'create' | 'edit') {
-        const isCreate = action === 'create';
-        const set = <K extends keyof CustomerForm>(field: K, value: CustomerForm[K]) => setCustomerForm((current) => ({ ...current, [field]: value }));
-        return (
-            <div className="mt-2 space-y-2">
-                <SegmentedControl
-                    size="sm"
-                    ariaLabel={t('pos.customerType')}
-                    value={customerType}
-                    onChange={setCustomerType}
-                    options={[
-                        { value: 'individual', label: t('pos.individual') },
-                        { value: 'company', label: t('pos.companyCustomerType') },
-                    ]}
-                />
-                {customerType === 'individual' ? (
-                    <input value={customerForm.display_name} onChange={(event) => set('display_name', event.target.value)} placeholder={t('pos.fullName')} className={fieldClass} />
-                ) : (
-                    <>
-                        <input value={customerForm.company_name} onChange={(event) => set('company_name', event.target.value)} placeholder={t('pos.companyName')} className={fieldClass} />
-                        <input value={customerForm.contact_name} onChange={(event) => set('contact_name', event.target.value)} placeholder={t('pos.contact')} className={fieldClass} />
-                    </>
-                )}
-                <input value={customerForm.phone} onChange={(event) => set('phone', event.target.value)} placeholder={t('pos.phone')} className={fieldClass} />
-                <input value={customerForm.email} onChange={(event) => set('email', event.target.value)} placeholder={t('pos.email')} className={fieldClass} />
-                {customerType === 'company' && (
-                    <input value={customerForm.tax_identifier} onChange={(event) => set('tax_identifier', event.target.value)} placeholder={t('pos.taxIdentifiers')} className={fieldClass} />
-                )}
-                <div className="flex gap-2">
-                    <Button
-                        type="button"
-                        size="sm"
-                        loading={customerBusy}
-                        loadingText={t('pos.saving')}
-                        onClick={() => void (isCreate ? createCustomer() : updateCustomer())}
-                        className="px-3 py-2 text-[13px]"
-                    >
-                        {isCreate ? t('pos.createCustomer') : t('pos.save')}
-                    </Button>
-                    <button type="button" disabled={customerBusy} onClick={() => setCustomerMode('idle')} className="rounded-field border border-line-strong px-3 py-2 text-[13px] font-medium text-ink-muted disabled:opacity-50">
-                        {t('pos.cancel')}
-                    </button>
-                </div>
-            </div>
-        );
-    }
+    // A customer is optional (walk-in sales are valid server-side); it is only
+    // advised when an unpaid balance or a delivery must be followed up.
+    const customerAdvised = !selectedCustomer && (settlementMode !== 'full' || checkoutState.fulfillment_mode === 'delivery');
 
     return (
         <div className="flex min-h-0 flex-1 flex-col">
             {/* Header */}
             <div className="flex shrink-0 items-center gap-2 border-b border-line px-4 py-3">
-                <button type="button" onClick={onBack} className="flex items-center gap-1 rounded-field px-2 py-1 text-[13px] font-medium text-ink-muted transition-soft hover:bg-sage hover:text-ink">
-                    <svg className={direction === 'rtl' ? 'rotate-180' : undefined} width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 6 8 12l6 6" /></svg>
+                <Button variant="secondary" size="sm" onClick={onBack}>
+                    <svg aria-hidden="true" className={direction === 'rtl' ? 'rotate-180' : undefined} width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 6 8 12l6 6" /></svg>
                     {t('pos.back')}
-                </button>
-                <h2 className="text-sm font-semibold text-ink">{t('pos.payment')}<SandboxPaymentBadge inline /></h2>
+                </Button>
+                <h2 className="text-base font-semibold text-ink">{t('pos.payment')}<SandboxPaymentBadge inline /></h2>
             </div>
 
             {/* Body (scroll) */}
             <div className="min-h-0 flex-1 overflow-y-auto">
-                {error && <p className="mx-4 mt-3 rounded-field bg-danger-soft px-3 py-2 text-[12px] text-danger">{error}</p>}
+                {/* Customer first: visible without scrolling, next to the totals */}
+                <PosCustomerCard
+                    customer={selectedCustomer}
+                    attaching={attachingCustomer}
+                    canUpdate={canUpdateCustomer}
+                    recommended={customerAdvised}
+                    onOpen={() => onOpenCustomer('search')}
+                    onEdit={() => onOpenCustomer('edit')}
+                    onRemove={onCustomerDetach}
+                />
 
                 {/* Totals */}
                 <Section title={t('pos.summary')}>
-                    <dl className="space-y-1 text-[13px]">
+                    <dl className="space-y-1 text-sm tabular-nums">
                         <div className="flex justify-between"><dt className="text-ink-muted">{t('pos.grossExcl')}</dt><dd><Money value={sale.summary.subtotal_excl_tax} currency={currencyCode} /></dd></div>
                         {discountTotal > 0 && (
                             <div className="flex justify-between"><dt className="text-ink-muted">{t('pos.discountExcl')}</dt><dd className="text-success">- <Money value={discountTotal.toFixed(4)} currency={currencyCode} /></dd></div>
@@ -438,7 +368,7 @@ export default function PosCheckoutPanel({
                         {shippingNumeric > 0 && (
                             <div className="flex justify-between"><dt className="text-ink-muted">{t('pos.shipping')}</dt><dd><Money value={shippingNumeric.toFixed(4)} currency={currencyCode} /></dd></div>
                         )}
-                        <div className="flex items-baseline justify-between border-t border-line pt-1.5"><dt className="text-sm font-semibold text-ink">{t('pos.totalIncl')}</dt><dd className="text-base font-semibold text-ink"><Money value={currentTotal} currency={currencyCode} /></dd></div>
+                        <div className="flex items-baseline justify-between border-t border-line pt-1.5"><dt className="text-sm font-semibold text-ink">{t('pos.totalIncl')}</dt><dd className="metric-value text-lg font-semibold text-ink"><Money value={currentTotal} currency={currencyCode} /></dd></div>
                     </dl>
                 </Section>
 
@@ -448,22 +378,8 @@ export default function PosCheckoutPanel({
                     action={(savingState || savingCheckout) ? <Spinner size="xs" className="text-ink-faint" /> : undefined}
                 >
                     <div className="grid grid-cols-2 gap-2">
-                        <button
-                            type="button"
-                            onClick={() => setFulfillment('pickup')}
-                            className={`rounded-field border p-2.5 text-start transition-soft ${checkoutState.fulfillment_mode === 'pickup' ? 'border-primary bg-sage' : 'border-line-strong hover:bg-raised'}`}
-                        >
-                            <span className="text-[13px] font-semibold text-ink">⚡ {t('pos.pickupNow')}</span>
-                            <span className="mt-0.5 block text-[11px] text-ink-muted">{t('pos.pickupHelp')}</span>
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => setFulfillment('delivery')}
-                            className={`rounded-field border p-2.5 text-start transition-soft ${checkoutState.fulfillment_mode === 'delivery' ? 'border-primary bg-sage' : 'border-line-strong hover:bg-raised'}`}
-                        >
-                            <span className="text-[13px] font-semibold text-ink">🚚 {t('pos.deliveryLater')}</span>
-                            <span className="mt-0.5 block text-[11px] text-ink-muted">{t('pos.prepareDeliver')}</span>
-                        </button>
+                        <ChoiceTile selected={checkoutState.fulfillment_mode === 'pickup'} title={t('pos.pickupNow')} help={t('pos.pickupHelp')} icon={icons.pickup} onClick={() => setFulfillment('pickup')} />
+                        <ChoiceTile selected={checkoutState.fulfillment_mode === 'delivery'} title={t('pos.deliveryLater')} help={t('pos.prepareDeliver')} icon={icons.delivery} onClick={() => setFulfillment('delivery')} />
                     </div>
 
                     {checkoutState.fulfillment_mode === 'delivery' && (
@@ -474,23 +390,27 @@ export default function PosCheckoutPanel({
                                 onBlur={() => void saveCheckoutState()}
                                 rows={2}
                                 placeholder={t('pos.deliveryAddress')}
-                                className="w-full rounded-field border border-line-strong bg-surface px-2.5 py-2 text-[13px] outline-none focus:border-primary"
+                                aria-label={t('pos.deliveryAddress')}
+                                className="control-base px-3 py-2 text-sm"
                             />
                             <input
                                 value={checkoutState.delivery_phone}
                                 onChange={(event) => setCheckoutState((current) => ({ ...current, delivery_phone: event.target.value }))}
                                 onBlur={() => void saveCheckoutState()}
                                 placeholder={t('pos.phone')}
+                                aria-label={t('pos.phone')}
+                                type="tel"
+                                inputMode="tel"
                                 className={fieldClass}
                             />
-                            <label className="flex items-center gap-2 text-[13px] text-ink-muted">
+                            <label className="flex items-center gap-2 text-sm font-medium text-ink-muted">
                                 {t('pos.shippingFee')}
                                 <NumericInput
                                     value={checkoutState.shipping_fee === '0.0000' || checkoutState.shipping_fee === '0' ? '' : checkoutState.shipping_fee}
                                     onValueChange={(next) => setCheckoutState((current) => ({ ...current, shipping_fee: next || '0' }))}
                                     onCommit={() => void saveCheckoutState()}
                                     placeholder="0,00"
-                                    className="h-9 w-24 rounded-field border border-line-strong bg-surface px-2.5 text-[13px] outline-none focus:border-primary"
+                                    className="control-input h-10 w-28 text-end text-sm tabular-nums"
                                 />
                                 <span className="text-ink-faint">DH</span>
                             </label>
@@ -500,7 +420,8 @@ export default function PosCheckoutPanel({
                                 onBlur={() => void saveCheckoutState()}
                                 rows={2}
                                 placeholder={t('pos.notes')}
-                                className="w-full rounded-field border border-line-strong bg-surface px-2.5 py-2 text-[13px] outline-none focus:border-primary"
+                                aria-label={t('pos.notes')}
+                                className="control-base px-3 py-2 text-sm"
                             />
                         </div>
                     )}
@@ -513,25 +434,21 @@ export default function PosCheckoutPanel({
                             const selected = checkoutState.fulfillment_origin === origin;
                             const unsupported = origin === 'direct' && checkoutState.fulfillment_mode === 'pickup';
                             return (
-                                <button
+                                <ChoiceTile
                                     key={origin}
-                                    type="button"
                                     role="radio"
-                                    aria-checked={selected}
-                                    aria-disabled={unsupported}
-                                    title={unsupported ? t('pos.originPickupDirectBlocked') : undefined}
+                                    selected={selected}
+                                    ariaDisabled={unsupported}
+                                    tooltip={unsupported ? t('pos.originPickupDirectBlocked') : undefined}
+                                    title={origin === 'showroom' ? t('pos.originShowroom') : t('pos.originDirect')}
+                                    help={origin === 'showroom' ? t('pos.originShowroomHelp') : t('pos.originDirectHelp')}
+                                    icon={origin === 'showroom' ? icons.showroom : icons.direct}
                                     onClick={() => setOrigin(origin)}
-                                    className={`rounded-field border p-2.5 text-start transition-soft ${selected ? 'border-primary bg-sage' : 'border-line-strong hover:bg-raised'} ${unsupported ? 'cursor-not-allowed opacity-50' : ''}`}
-                                >
-                                    <span className="text-[13px] font-semibold text-ink">{origin === 'showroom' ? `🏬 ${t('pos.originShowroom')}` : `📦 ${t('pos.originDirect')}`}</span>
-                                    <span className="mt-0.5 block text-[11px] text-ink-muted">
-                                        {origin === 'showroom' ? t('pos.originShowroomHelp') : t('pos.originDirectHelp')}
-                                    </span>
-                                </button>
+                                />
                             );
                         })}
                     </div>
-                    <p className={`mt-2 rounded-field px-3 py-2 text-[12px] ${checkoutState.fulfillment_origin === 'showroom' && sale.requires_replenishment ? 'bg-warning-soft text-warning' : 'bg-raised text-ink-muted'}`}>
+                    <p className={`mt-2 rounded-field px-3 py-2 text-[13px] leading-5 ${checkoutState.fulfillment_origin === 'showroom' && sale.requires_replenishment ? 'bg-warning-soft text-warning' : 'bg-raised text-ink-muted'}`}>
                         {originExplanation(checkoutState.fulfillment_origin, sale.requires_replenishment, String(Number(sale.remote_required)), sale.warehouse?.name ?? t('pos.originShowroomFallback'), t)}
                     </p>
                 </Section>
@@ -541,9 +458,10 @@ export default function PosCheckoutPanel({
                     title={t('pos.payment')}
                     action={
                         settlementMode !== 'deferred' ? (
-                            <button type="button" onClick={() => setPayments((current) => [...current, buildEmptyPayment()])} className="text-[12px] font-medium text-ink-muted transition-soft hover:text-ink">
+                            <Button size="sm" variant="secondary" onClick={() => setPayments((current) => [...current, buildEmptyPayment()])}>
+                                <PlusIcon />
                                 {t('pos.addMethod')}
-                            </button>
+                            </Button>
                         ) : undefined
                     }
                 >
@@ -556,7 +474,7 @@ export default function PosCheckoutPanel({
                     />
 
                     {settlementMode === 'deferred' ? (
-                        <p className="mt-2.5 rounded-field bg-raised px-3 py-2 text-[12px] text-ink-muted">
+                        <p className="mt-2.5 rounded-field border border-line bg-raised px-3 py-2 text-[13px] leading-5 text-ink-muted">
                             {t('pos.deferredDetailedHelp')}
                         </p>
                     ) : (
@@ -566,7 +484,13 @@ export default function PosCheckoutPanel({
                             return (
                                 <div key={index} className="rounded-field border border-line p-2.5">
                                     <div className="flex items-center gap-2">
-                                        <select value={payment.method} onChange={(event) => assignMethod(index, event.target.value as PaymentMethod | '')} className={`${fieldClass} flex-1`}>
+                                        <select
+                                            value={payment.method}
+                                            onChange={(event) => assignMethod(index, event.target.value as PaymentMethod | '')}
+                                            aria-label={`${t('pos.method')} ${index + 1}`}
+                                            aria-invalid={attempted && !payment.method ? true : undefined}
+                                            className="control-select h-10 min-w-0 flex-1 text-sm"
+                                        >
                                             <option value="">{t('pos.method')}</option>
                                             {(Object.keys(paymentLabels) as PaymentMethod[]).map((method) => (
                                                 <option key={method} value={method}>{paymentLabels[method]}</option>
@@ -582,25 +506,35 @@ export default function PosCheckoutPanel({
                                                 })
                                             }
                                             placeholder={t('pos.amount')}
-                                            className={`${fieldClass} w-24`}
+                                            aria-label={`${t('pos.amount')} ${index + 1}`}
+                                            aria-invalid={attempted && payment.method !== '' && positiveAmount(payment.amount) <= 0 ? true : undefined}
+                                            className="control-input h-10 w-28 text-end text-sm tabular-nums"
                                         />
                                         {payments.length > 1 && (
-                                            <button type="button" onClick={() => setPayments((current) => current.filter((_, itemIndex) => itemIndex !== index))} aria-label={t('pos.deletePayment')} className="shrink-0 text-ink-faint transition-soft hover:text-danger">
-                                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12" /></svg>
-                                            </button>
+                                            <IconButton
+                                                label={t('pos.deletePayment')}
+                                                size="sm"
+                                                onClick={() => setPayments((current) => current.filter((_, itemIndex) => itemIndex !== index))}
+                                                className="hover:bg-danger-soft hover:text-danger"
+                                            >
+                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13" /></svg>
+                                            </IconButton>
                                         )}
                                     </div>
 
                                     {payment.method === 'cash' && (
-                                        <div className="mt-2 flex items-center gap-2">
-                                            <span className="text-[12px] text-ink-muted">{t('pos.receipt')}</span>
-                                            <NumericInput
-                                                value={payment.cash_received}
-                                                onValueChange={(next) => patchPayment(index, { cash_received: next, cashReceivedTouched: true })}
-                                                placeholder="0,00"
-                                                className={`${fieldClass} w-24`}
-                                            />
-                                            <span className="text-[12px] text-ink-muted">
+                                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                                            <label className="flex items-center gap-2 text-[13px] font-medium text-ink-muted">
+                                                {t('pos.receipt')}
+                                                <NumericInput
+                                                    value={payment.cash_received}
+                                                    onValueChange={(next) => patchPayment(index, { cash_received: next, cashReceivedTouched: true })}
+                                                    aria-invalid={attempted && positiveAmount(payment.amount) > 0 && positiveAmount(payment.cash_received) < positiveAmount(payment.amount) ? true : undefined}
+                                                    placeholder="0,00"
+                                                    className="control-input h-10 w-28 text-end text-sm tabular-nums"
+                                                />
+                                            </label>
+                                            <span className="text-[13px] text-ink-muted">
                                                 {t('pos.change')} <strong className="text-ink"><Money value={Math.max(0, (Number(payment.cash_received) || 0) - positiveAmount(payment.amount)).toFixed(4)} currency={currencyCode} /></strong>
                                             </span>
                                         </div>
@@ -611,6 +545,7 @@ export default function PosCheckoutPanel({
                                             value={payment.reference}
                                             onChange={(event) => patchPayment(index, { reference: event.target.value })}
                                             placeholder={referenceLabels[payment.method]}
+                                            aria-label={referenceLabels[payment.method]}
                                             className={`${fieldClass} mt-2`}
                                         />
                                     )}
@@ -619,7 +554,9 @@ export default function PosCheckoutPanel({
                                         <select
                                             value={payment.financial_account_id}
                                             onChange={(event) => patchPayment(index, { financial_account_id: event.target.value ? Number(event.target.value) : '' })}
-                                            className={`${fieldClass} mt-2`}
+                                            aria-label={t('pos.receiptAccount')}
+                                            aria-invalid={attempted && payment.financial_account_id === '' ? true : undefined}
+                                            className="control-select mt-2 h-10 text-sm"
                                         >
                                             <option value="">{t('pos.receiptAccount')}</option>
                                             {compatible.map((account) => (
@@ -629,8 +566,8 @@ export default function PosCheckoutPanel({
                                     )}
 
                                     {payment.method && compatible.length === 0 && (
-                                        <p className="mt-2 rounded-field bg-warning-soft px-2.5 py-1.5 text-[12px] text-warning">
-                                            {t('pos.noAccount')} <Link href="/financial-accounts" className="underline">{t('pos.configure')}</Link>
+                                        <p className="mt-2 rounded-field border border-warning/30 bg-warning-soft px-2.5 py-1.5 text-[13px] text-warning">
+                                            {t('pos.noAccount')} <Link href="/financial-accounts" className="font-semibold underline">{t('pos.configure')}</Link>
                                         </p>
                                     )}
                                 </div>
@@ -639,110 +576,69 @@ export default function PosCheckoutPanel({
                     </div>
                     )}
 
-                    <div className="mt-2.5 space-y-1 rounded-field bg-raised px-3 py-2 text-[13px]">
+                    <div className="mt-2.5 space-y-1 rounded-field border border-line bg-raised px-3 py-2 text-sm tabular-nums">
                         <div className="flex justify-between"><span className="text-ink-muted">{t('pos.orderTotal')}</span><strong><Money value={currentTotal} currency={currencyCode} /></strong></div>
                         <div className="flex justify-between">
                             <span className="text-ink-muted">{settlementMode === 'deferred' ? t('pos.collectNow') : t('pos.receivedNow')}</span>
                             <strong><Money value={paid.toFixed(4)} currency={currencyCode} /></strong>
                         </div>
-                        <div className="flex justify-between"><span className="text-ink-muted">{t('pos.remaining')}</span><strong className={Number(remaining) > 0 ? 'text-warning' : 'text-ink'}><Money value={remaining} currency={currencyCode} /></strong></div>
+                        <div className="flex justify-between"><span className="text-ink-muted">{t('pos.remaining')}</span><strong className={Number(remaining) > 0 ? 'text-warning' : 'text-success'}><Money value={remaining} currency={currencyCode} /></strong></div>
                     </div>
-                </Section>
-
-                {/* Customer */}
-                <Section title={t('common.customer')}>
-                    {selectedCustomer ? (
-                        <div className="rounded-field border border-line bg-raised p-2.5">
-                            <p className="text-[13px] font-semibold text-ink">{selectedCustomer.display_name}</p>
-                            <p className="text-[12px] text-ink-muted">
-                                {[selectedCustomer.company_name, selectedCustomer.phone, selectedCustomer.email].filter(Boolean).join(' · ') || t('pos.counterCustomerFallback')}
-                            </p>
-                            <div className="mt-2 flex gap-2">
-                                <button type="button" onClick={() => { setSearch(''); setResults([]); setCustomerMode('idle'); onCustomerDetach(); }} className="text-[12px] font-medium text-ink-muted underline">
-                                    {t('pos.changeCustomer')}
-                                </button>
-                                {canUpdateCustomer && (
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            setCustomerType(customerTypeFor(selectedCustomer));
-                                            setCustomerForm(customerFormFrom(selectedCustomer));
-                                            setCustomerMode(customerMode === 'edit' ? 'idle' : 'edit');
-                                        }}
-                                        className="text-[12px] font-medium text-ink-muted underline"
-                                    >
-                                        {t('pos.edit')}
-                                    </button>
-                                )}
-                            </div>
-                            {customerMode === 'edit' && canUpdateCustomer && renderCustomerForm('edit')}
-                        </div>
-                    ) : (
-                        <>
-                            <div className="relative">
-                                <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t('pos.searchCustomer')} className={fieldClass} aria-busy={searching || undefined} />
-                                {searching && (
-                                    <span className="absolute end-2.5 top-1/2 -translate-y-1/2 text-ink-faint">
-                                        <Spinner size="xs" />
-                                    </span>
-                                )}
-                            </div>
-                            {results.length > 0 && (
-                                <ul className="mt-2 max-h-44 space-y-1 overflow-y-auto">
-                                    {results.map((customer) => (
-                                        <li key={customer.id}>
-                                            <button
-                                                type="button"
-                                                onClick={() => void onCustomerSelected(customer).then(() => { setSearch(''); setResults([]); })}
-                                                className="w-full rounded-field border border-line px-2.5 py-1.5 text-start transition-soft hover:bg-raised"
-                                            >
-                                                <span className="block text-[13px] font-medium text-ink">{customer.display_name}</span>
-                                                <span className="block text-[11px] text-ink-muted">{[customer.company_name, customer.phone, customer.email].filter(Boolean).join(' · ') || '—'}</span>
-                                            </button>
-                                        </li>
-                                    ))}
-                                </ul>
-                            )}
-                            {searched && !searching && results.length === 0 && <p className="mt-2 text-[12px] text-ink-muted">{t('pos.noCustomerFound')}</p>}
-                            {canCreateCustomer && customerMode !== 'create' && (
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        setCustomerType('individual');
-                                        setCustomerForm({ ...blankCustomerForm(), display_name: search.trim() });
-                                        setCustomerMode('create');
-                                    }}
-                                    className="mt-2 text-[12px] font-medium text-ink-muted underline"
-                                >
-                                    {t('pos.newCustomer')}
-                                </button>
-                            )}
-                            {customerMode === 'create' && renderCustomerForm('create')}
-                        </>
-                    )}
                 </Section>
             </div>
 
             {/* Footer */}
             <div className="shrink-0 border-t border-line bg-raised p-3.5">
+                {/* Validation feedback lives next to the action that triggers it, never scrolled away. */}
+                <div aria-live="assertive">
+                    {error && (
+                        <Alert tone="danger" className="mb-2.5 px-3 py-2">
+                            {error}
+                        </Alert>
+                    )}
+                    {paymentIssues.length === 1 && (
+                        <Alert tone="danger" className="mb-2.5 px-3 py-2">
+                            {paymentIssues[0]}
+                        </Alert>
+                    )}
+                    {paymentIssues.length > 1 && (
+                        <Alert tone="danger" className="mb-2.5 px-3 py-2" title={t('pos.fixPaymentIssues').replace('{count}', String(paymentIssues.length))}>
+                            <ul className="mt-0.5 list-disc space-y-0.5 ps-4">
+                                {paymentIssues.map((message) => (
+                                    <li key={message}>{message}</li>
+                                ))}
+                            </ul>
+                        </Alert>
+                    )}
+                </div>
                 {sale.procurement_deficit && (
-                    <p className="mb-2 rounded-field border border-warning/30 bg-warning-soft/40 px-3 py-2 text-[12px] text-warning">
+                    <Alert tone="warning" className="mb-2.5 px-3 py-2">
                         {t('pos.stockOutCheckoutHelp')}
-                    </p>
+                    </Alert>
                 )}
+                <div className="mb-2.5 flex items-baseline justify-between gap-3 tabular-nums">
+                    <span className="text-sm font-semibold text-ink">{t('pos.totalIncl')}</span>
+                    <span className="text-end">
+                        <span className="metric-value block text-xl font-semibold text-ink"><Money value={currentTotal} currency={currencyCode} /></span>
+                        {Number(remaining) > 0 && settlementMode !== 'full' && (
+                            <span className="block text-[13px] font-medium text-warning">
+                                {t('pos.remaining')} <Money value={remaining} currency={currencyCode} />
+                            </span>
+                        )}
+                    </span>
+                </div>
                 <div className="grid grid-cols-[auto_1fr] gap-2">
-                    <button type="button" onClick={onBack} className="rounded-field border border-line-strong bg-surface px-3 py-2.5 text-[13px] font-medium text-ink transition-soft hover:bg-sage">
+                    <Button variant="secondary" size="lg" onClick={onBack}>
                         {t('pos.cancel')}
-                    </button>
-                    <button
-                        type="button"
+                    </Button>
+                    <Button
+                        size="lg"
                         disabled={savingCheckout || savingState || attachingCustomer || sale.procurement_deficit === true}
                         onClick={submitReview}
-                        className="inline-flex items-center justify-center gap-2 rounded-field bg-primary px-4 py-2.5 text-sm font-semibold text-primary-fg transition-soft hover:bg-primary-hover disabled:opacity-50"
                     >
                         {(savingCheckout || savingState) && <Spinner size="sm" />}
                         {t('pos.reviewOrder')} <span aria-hidden="true">{direction === 'rtl' ? '←' : '→'}</span>
-                    </button>
+                    </Button>
                 </div>
             </div>
         </div>

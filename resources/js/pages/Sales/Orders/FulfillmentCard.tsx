@@ -110,7 +110,7 @@ export default function FulfillmentCard({ orderId, data }: { orderId: number; da
             <SandboxFulfillmentBadge />
             <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                    <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">{k('title')}</h2>
+                    <h2 className="font-semibold text-base text-ink">{k('title')}</h2>
                     <p className="mt-1 flex flex-wrap items-center gap-2 text-sm">
                         <span className="font-medium text-ink">{k(`state.${data.state}`)}</span>
                         {data.delivery_state !== 'not_delivered' && <span className="text-ink-muted">· {k(`delivery.${data.delivery_state}`)}</span>}
@@ -126,7 +126,7 @@ export default function FulfillmentCard({ orderId, data }: { orderId: number; da
 
             <div className="mt-4 overflow-x-auto rounded-field border border-line">
                 <table className="w-full min-w-[520px] text-start text-sm">
-                    <thead className="bg-raised text-xs uppercase tracking-wide text-ink-faint">
+                    <thead className="bg-raised text-[13px] text-ink-muted font-medium">
                         <tr>
                             <th className="px-3 py-2 text-start font-medium">{k('article')}</th>
                             <th className="px-3 py-2 text-end font-medium">{k('ordered')}</th>
@@ -294,7 +294,7 @@ function Quantities({ lines, value, onChange, errors }: { lines: Line[]; value: 
 
     return (
         <fieldset>
-            <legend className="mb-1.5 text-xs font-medium uppercase tracking-wide text-ink-faint">{k('quantities')}</legend>
+            <legend className="mb-1.5 text-[13px] font-medium text-ink-muted">{k('quantities')}</legend>
             <div className="divide-y divide-line rounded-field border border-line">
                 {lines.map((line) => (
                     <label key={line.line_id} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
@@ -316,7 +316,7 @@ function Quantities({ lines, value, onChange, errors }: { lines: Line[]; value: 
 function Field({ label, error, children }: { label: string; error?: string; children: ReactNode }) {
     return (
         <label className="block min-w-0 text-sm">
-            <span className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-ink-faint">{label}</span>
+            <span className="mb-1.5 block text-[13px] font-medium text-ink-muted">{label}</span>
             {children}
             {error && <span className="mt-1 block text-xs text-danger">{error}</span>}
         </label>
@@ -595,7 +595,7 @@ function ShareDialog({ base, shipment, onClose }: { base: string; shipment: Ship
                             ))}
                         </div>
                         <fieldset>
-                            <legend className="mb-1.5 text-xs font-medium uppercase tracking-wide text-ink-faint">{k('shareProofs')}</legend>
+                            <legend className="mb-1.5 text-[13px] font-medium text-ink-muted">{k('shareProofs')}</legend>
                             {preview.proofs.length === 0 ? <p className="text-xs text-ink-muted">{k('shareNoProof')}</p> : preview.proofs.map((proof) => (
                                 <label key={proof.id} className="flex items-center gap-2 text-sm">
                                     <input type="checkbox" checked={proofs?.includes(proof.id) ?? false}
@@ -612,7 +612,7 @@ function ShareDialog({ base, shipment, onClose }: { base: string; shipment: Ship
                                     <input type="email" value={email} onChange={(event) => { setEmail(event.target.value); setResend(false); }} className="control-input w-full" maxLength={254} />
                                 </Field>
                                 <div>
-                                    <span className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-ink-faint">{k('sharePreview')}</span>
+                                    <span className="mb-1.5 block text-[13px] font-medium text-ink-muted">{k('sharePreview')}</span>
                                     <p className="mb-1 text-sm font-medium text-ink">{preview.email.subject}</p>
                                     <iframe title={k('sharePreview')} sandbox="" srcDoc={preview.email.html} className="h-56 w-full rounded-field border border-line bg-white" />
                                 </div>

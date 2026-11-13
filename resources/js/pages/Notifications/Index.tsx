@@ -16,7 +16,7 @@ export default function NotificationIndex({ notifications, filters, categories, 
     const apply = (patch: Partial<Props['filters']>) => router.get('/notifications', { ...filters, ...patch }, { preserveState: true, replace: true });
     const mark = (item: AppNotification, read: boolean) => router.patch(`/notifications/${item.id}/${read ? 'read' : 'unread'}`, {}, { preserveScroll: true });
 
-    return <ApplicationShell wide><Head title={t('notifications.title')} /><PageHeader title={t('notifications.title')} description={t('notifications.description')} />
+    return <ApplicationShell width="reading"><Head title={t('notifications.title')} /><PageHeader title={t('notifications.title')} description={t('notifications.description')} />
         <div className="mb-5 flex flex-wrap items-center gap-2 rounded-card border border-line bg-surface p-4 shadow-soft">
             {['all', 'unread', 'read'].map((status) => <button key={status} type="button" onClick={() => apply({ status })} className={`rounded-field px-3 py-2 text-sm font-medium ${filters.status === status ? 'bg-primary text-primary-fg' : 'bg-raised text-ink-muted'}`}>{status === 'all' ? t('notifications.all') : status === 'unread' ? t('notifications.unread') : t('notifications.read')}</button>)}
             <select value={filters.category} onChange={(event) => apply({ category: event.target.value })} className="control-select"><option value="">{t('notifications.allCategories')}</option>{categories.map((category) => <option key={category} value={category}>{categoryLabels[category] ?? category}</option>)}</select>

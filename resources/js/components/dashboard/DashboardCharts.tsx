@@ -14,8 +14,10 @@ import {
     type TooltipItem,
 } from "chart.js";
 import { Bar, Doughnut, Line } from "react-chartjs-2";
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useI18n } from "@/i18n";
+import { EmptyWell, PanelTitle, PictoBars, PictoBox, PictoCubes, type PanelTone } from "@/components/ui/Panel";
+import { IconPackage, IconTrending } from "@/layouts/navigation";
 
 ChartJS.register(
     CategoryScale,
@@ -30,14 +32,49 @@ ChartJS.register(
 );
 
 export const chartColors = {
-    sales: "#254536",
-    collections: "#4f7c65",
-    outgoing: "#b15f4b",
-    unpaid: "#b15f4b",
-    partial: "#d09a47",
-    paid: "#4f7c65",
-    muted: "#d8d8ce",
+    sales: "#117c79",
+    collections: "#b06f1c",
+    outgoing: "#b4483c",
+    unpaid: "#b4483c",
+    partial: "#c98a2e",
+    paid: "#2c7a4b",
+    muted: "#e7e7e2",
+    salesFill: "rgba(17,124,121,.12)",
+    collectionsFill: "rgba(176,111,28,.08)",
 };
+
+// Tuned for the graphite surface (#161a1b): every series keeps >=3:1 non-text contrast.
+const darkChartColors: typeof chartColors = {
+    sales: "#5cc0b8",
+    collections: "#e8a65a",
+    outgoing: "#ec9286",
+    unpaid: "#ec9286",
+    partial: "#e8a65a",
+    paid: "#79c99a",
+    muted: "#2b3234",
+    salesFill: "rgba(92,192,184,.14)",
+    collectionsFill: "rgba(232,166,90,.08)",
+};
+
+function useIsDarkTheme() {
+    const read = () => typeof document !== "undefined" && document.documentElement.dataset.theme === "dark";
+    const [dark, setDark] = useState(read);
+    useEffect(() => {
+        const observer = new MutationObserver(() => setDark(read()));
+        observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+        return () => observer.disconnect();
+    }, []);
+    return dark;
+}
+
+/** Theme-aware series colors; also retunes Chart.js tick/grid defaults. */
+export function useChartPalette() {
+    const dark = useIsDarkTheme();
+    ChartJS.defaults.color = dark ? "#aab4b2" : "#515b5b";
+    ChartJS.defaults.borderColor = dark ? "#252b2c" : "#ecece7";
+    ChartJS.defaults.font.family = document.documentElement.dir === "rtl" ? "'IBM Plex Sans Arabic', 'Plus Jakarta Sans', sans-serif" : "'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif";
+    return dark ? darkChartColors : chartColors;
+}
 
 type TrendPoint = {
     date?: string;
@@ -64,8 +101,9 @@ const baseOptions = (locale: string): ChartOptions<"line"> => ({
     interaction: { mode: "index", intersect: false },
     plugins: {
         legend: {
-            position: "bottom",
-            labels: { usePointStyle: true, boxWidth: 8, padding: 18 },
+            position: "top",
+            align: "end",
+            labels: { usePointStyle: true, pointStyle: "circle", boxWidth: 8, boxHeight: 8, padding: 16 },
         },
         tooltip: {
             callbacks: {
@@ -103,6 +141,11 @@ export function ChartPanel({
     children,
     empty = false,
     emptyLabel,
+    emptyHelp,
+    emptyIcon,
+    icon,
+    tone = "teal",
+    glass = false,
     className = "",
 }: {
     title: string;
@@ -110,26 +153,27 @@ export function ChartPanel({
     children: ReactNode;
     empty?: boolean;
     emptyLabel?: string;
+    emptyHelp?: string;
+    emptyIcon?: ReactNode;
+    icon?: ReactNode;
+    tone?: PanelTone;
+    /** Medium Liquid Glass (dashboard); default solid surface for dense finance pages. */
+    glass?: boolean | "soft";
     className?: string;
 }) {
     const { t } = useI18n();
     return (
-        <section
-            className={`rounded-card border border-line bg-surface p-5 shadow-card ${className}`}
-            aria-label={title}
-        >
-            <div className="mb-4">
-                <h2 className="font-semibold text-ink">{title}</h2>
-                {description && (
-                    <p className="mt-1 text-[13px] text-ink-muted">
-                        {description}
-                    </p>
-                )}
+        <section className={`${glass === "soft" ? "surface-glass glass-soft" : glass ? "surface-glass" : "surface-card"} flex flex-col p-4 sm:p-5 ${className}`} aria-label={title}>
+            <div className="mb-3.5">
+                <PanelTitle icon={icon} tone={tone} title={title} description={description} />
             </div>
             {empty ? (
-                <div className="grid h-64 place-items-center rounded-field bg-raised text-sm text-ink-faint">
-                    {emptyLabel ?? t("dashboardCharts.empty")}
-                </div>
+                <EmptyWell
+                    className="min-h-40 flex-1"
+                    icon={emptyIcon ?? <PictoBars />}
+                    title={emptyLabel ?? t("dashboardCharts.empty")}
+                    description={emptyHelp ?? t("dashboardCharts.emptyHelp")}
+                />
             ) : (
                 children
             )}
@@ -137,8 +181,18 @@ export function ChartPanel({
     );
 }
 
-export function SalesCollectionsChart({ points }: { points: TrendPoint[] }) {
+/** Crown glyph for ranking panels (16px tile icon). */
+function IconCrown() {
+    return (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+            <path d="m3 8 4.5 4L12 5l4.5 7L21 8l-2 11H5L3 8Z" />
+        </svg>
+    );
+}
+
+export function SalesCollectionsChart({ points, compact = false }: { points: TrendPoint[]; compact?: boolean }) {
     const { locale, t } = useI18n();
+    const colors = useChartPalette();
     const intlLocale = locale === "ar" ? "ar-MA" : "fr-FR";
     const empty = points.every(
         (point) => Number(point.sales) === 0 && Number(point.collections) === 0,
@@ -149,8 +203,11 @@ export function SalesCollectionsChart({ points }: { points: TrendPoint[] }) {
             description={t("finance.salesCollectionsSemantics")}
             empty={empty}
             emptyLabel={t("finance.noSalesCollections")}
+            emptyHelp={t("dashboardCharts.salesEmptyHelp")}
+            icon={<IconTrending />}
+            glass={compact}
         >
-            <div className="h-72 sm:h-80">
+            <div className={compact ? "h-56 xl:h-[13.5rem]" : "h-72 sm:h-80"}>
                 <Line
                     aria-label={t("finance.salesCollectionsTrend")}
                     data={{
@@ -161,21 +218,28 @@ export function SalesCollectionsChart({ points }: { points: TrendPoint[] }) {
                                 data: points.map((point) =>
                                     Number(point.sales),
                                 ),
-                                borderColor: chartColors.sales,
-                                backgroundColor: "rgba(37,69,54,.10)",
+                                borderColor: colors.sales,
+                                backgroundColor: colors.salesFill,
                                 fill: true,
-                                tension: 0.3,
-                                pointRadius: 2,
+                                tension: 0.42,
+                                borderWidth: 2.5,
+                                pointRadius: 0,
+                                pointHoverRadius: 5,
+                                pointBackgroundColor: colors.sales,
                             },
                             {
                                 label: t("finance.netCollected"),
                                 data: points.map((point) =>
                                     Number(point.collections),
                                 ),
-                                borderColor: chartColors.collections,
-                                backgroundColor: "rgba(63,122,86,.08)",
-                                tension: 0.3,
-                                pointRadius: 2,
+                                borderColor: colors.collections,
+                                backgroundColor: colors.collectionsFill,
+                                fill: true,
+                                tension: 0.42,
+                                borderWidth: 2.5,
+                                pointRadius: 0,
+                                pointHoverRadius: 5,
+                                pointBackgroundColor: colors.collections,
                             },
                         ],
                     }}
@@ -188,10 +252,13 @@ export function SalesCollectionsChart({ points }: { points: TrendPoint[] }) {
 
 export function OrderStatesChart({
     states,
+    compact = false,
 }: {
     states: { paid: number; partially_paid: number; unpaid: number };
+    compact?: boolean;
 }) {
     const { t } = useI18n();
+    const colors = useChartPalette();
     const values = [states.paid, states.partially_paid, states.unpaid];
     return (
         <ChartPanel
@@ -199,8 +266,12 @@ export function OrderStatesChart({
             description={t("finance.confirmedOrdersPeriod")}
             empty={values.every((value) => value === 0)}
             emptyLabel={t("finance.noConfirmedOrders")}
+            emptyHelp={t("dashboardCharts.ordersEmptyHelp")}
+            emptyIcon={<PictoBox />}
+            icon={<IconPackage />}
+            glass={compact ? "soft" : false}
         >
-            <div className="mx-auto h-64 max-w-sm">
+            <div className={compact ? "mx-auto h-52 w-full max-w-sm xl:h-[13.5rem]" : "mx-auto h-64 max-w-sm"}>
                 <Doughnut
                     aria-label={t("finance.orderState")}
                     data={{
@@ -213,9 +284,9 @@ export function OrderStatesChart({
                             {
                                 data: values,
                                 backgroundColor: [
-                                    chartColors.paid,
-                                    chartColors.partial,
-                                    chartColors.unpaid,
+                                    colors.paid,
+                                    colors.partial,
+                                    colors.unpaid,
                                 ],
                                 borderWidth: 0,
                             },
@@ -249,13 +320,18 @@ export function RankedMoneyChart({
     description,
     points,
     emptyLabel,
+    emptyHelp,
+    compact = false,
 }: {
     title: string;
     description?: string;
     points: RankedPoint[];
     emptyLabel?: string;
+    emptyHelp?: string;
+    compact?: boolean;
 }) {
     const { locale, t } = useI18n();
+    const colors = useChartPalette();
     const intlLocale = locale === "ar" ? "ar-MA" : "fr-FR";
     return (
         <ChartPanel
@@ -266,8 +342,12 @@ export function RankedMoneyChart({
                 points.every((point) => Number(point.value) === 0)
             }
             emptyLabel={emptyLabel}
+            emptyHelp={emptyHelp}
+            emptyIcon={<PictoCubes />}
+            icon={<IconCrown />}
+            glass={compact ? "soft" : false}
         >
-            <div className="h-64 sm:h-72">
+            <div className={compact ? "h-52 xl:h-[13.5rem]" : "h-64 sm:h-72"}>
                 <Bar
                     aria-label={title}
                     data={{
@@ -278,7 +358,7 @@ export function RankedMoneyChart({
                                 data: points.map((point) =>
                                     Number(point.value),
                                 ),
-                                backgroundColor: chartColors.sales,
+                                backgroundColor: colors.sales,
                                 borderRadius: 5,
                             },
                         ],
@@ -314,6 +394,7 @@ export function RankedMoneyChart({
 
 export function CashFlowChart({ points }: { points: FlowPoint[] }) {
     const { locale, t } = useI18n();
+    const colors = useChartPalette();
     const intlLocale = locale === "ar" ? "ar-MA" : "fr-FR";
     const empty = points.every(
         (point) => Number(point.incoming) === 0 && Number(point.outgoing) === 0,
@@ -336,7 +417,7 @@ export function CashFlowChart({ points }: { points: FlowPoint[] }) {
                                 data: points.map((point) =>
                                     Number(point.incoming),
                                 ),
-                                backgroundColor: chartColors.paid,
+                                backgroundColor: colors.paid,
                                 borderRadius: 4,
                             },
                             {
@@ -344,7 +425,7 @@ export function CashFlowChart({ points }: { points: FlowPoint[] }) {
                                 data: points.map((point) =>
                                     Number(point.outgoing),
                                 ),
-                                backgroundColor: chartColors.outgoing,
+                                backgroundColor: colors.outgoing,
                                 borderRadius: 4,
                             },
                         ],

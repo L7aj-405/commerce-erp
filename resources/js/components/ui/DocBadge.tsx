@@ -1,19 +1,16 @@
 import type { ReactNode } from 'react';
 import type { BadgeTone } from '@/utils/labels';
+import { Badge, type StatusVariant } from './StatusBadge';
 
-const tones: Record<BadgeTone, string> = {
-    neutral: 'bg-sage text-ink-muted',
-    positive: 'bg-success-soft text-success',
-    warning: 'bg-warning-soft text-warning',
-    danger: 'bg-danger-soft text-danger',
-    info: 'bg-sage-deep text-ink',
+const tones: Record<BadgeTone, StatusVariant> = {
+    neutral: 'neutral',
+    positive: 'success',
+    warning: 'warning',
+    danger: 'danger',
+    info: 'info',
 };
 
-/** Subtle, consistent status pill for the Sales / Invoice UI. */
+/** Document status pill (Sales / Invoice UI) — same visual language as StatusBadge. */
 export default function DocBadge({ tone = 'neutral', children }: { tone?: BadgeTone; children: ReactNode }) {
-    return (
-        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${tones[tone]}`}>
-            {children}
-        </span>
-    );
+    return <Badge variant={tones[tone]}>{children}</Badge>;
 }

@@ -49,7 +49,7 @@ export default function ContactForm({ contact, linkedOptions }: Props) {
     };
 
     return (
-        <SalesLayout>
+        <SalesLayout width="reading">
             <Head title={contact ? t('contacts.edit') : t('contacts.new')} />
             <PageHeader
                 title={contact ? t('contacts.edit') : t('contacts.new')}

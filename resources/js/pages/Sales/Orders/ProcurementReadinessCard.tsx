@@ -80,7 +80,7 @@ export default function ProcurementReadinessCard({ orderId, plan }: { orderId: n
     if (summary.state === 'covered') {
         return (
             <section className="mb-6 rounded-card border border-line bg-surface p-5">
-                <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">{k('title')}</h2>
+                <h2 className="font-semibold text-base text-ink">{k('title')}</h2>
                 <p className="mt-2 text-sm text-success">{k('covered')}</p>
             </section>
         );
@@ -103,7 +103,7 @@ export default function ProcurementReadinessCard({ orderId, plan }: { orderId: n
 
     return (
         <section className={`mb-6 rounded-card border bg-surface p-5 ${tone}`}>
-            <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">{k('title')}</h2>
+            <h2 className="font-semibold text-base text-ink">{k('title')}</h2>
             <p className={`mt-2 text-sm font-medium ${summary.state === 'received' ? 'text-success' : settled ? 'text-ink' : 'text-warning'}`}>{headline}</p>
 
             <ul className="mt-3 space-y-2">

@@ -1,23 +1,85 @@
-import { BrandLockup, BrandMark } from '@/components/ui/brand';
+import { BrandLockup, PRODUCT_NAME } from '@/components/ui/brand';
 import NotificationBell from '@/components/notifications/NotificationBell';
 import SandboxBanner from '@/components/SandboxBanner';
+import CommandPalette from '@/components/shell/CommandPalette';
 import { useToast } from '@/components/ui/toast';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { LocaleSwitcher, useI18n } from '@/i18n';
 import type { SharedPageProps } from '@/types/app';
 import { Link, router, usePage } from '@inertiajs/react';
-import { useEffect, useState } from 'react';
+import { Dropdown, MenuLink } from '@/components/ui/Menu';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { PropsWithChildren, ReactNode } from 'react';
+import {
+    buildNavGroups,
+    buildQuickActions,
+    DisclosureChevron,
+    firstNavItem,
+    hasPermission as tenantHasPermission,
+    IconChevronDown,
+    IconClose,
+    IconContact,
+    IconCart,
+    IconMenu,
+    IconMoon,
+    IconMore,
+    IconPackage,
+    IconPlus,
+    IconRegister,
+    IconSearch,
+    IconStore,
+    IconSun,
+    isNavSection,
+    matchActiveNav,
+    visibleNavGroups,
+} from './navigation';
+import type { NavEntry, NavGroup, NavItem } from './navigation';
 
-type NavItem = { href: string; label: string; permission?: string | string[]; needsStore?: boolean; icon: ReactNode };
-type NavSection = { key: string; label: string; icon: ReactNode; items: NavItem[] };
-type NavEntry = NavItem | NavSection;
-type NavGroup = { key: string; label: string; icon: ReactNode; items: NavEntry[] };
+const HOVER_OPEN_DELAY = 140;
+const HOVER_CLOSE_DELAY = 260;
 
-const isNavSection = (entry: NavEntry): entry is NavSection => 'items' in entry;
+export type WorkspaceWidth = 'full' | 'reading';
 
-const SIDEBAR_KEY = 'shell.sidebar.collapsed';
+/**
+ * Workspace width system.
+ * - `full` (default): data workspaces (index, detail, dashboards, reports) use all
+ *   the width beside the rail, with responsive gutters.
+ * - `reading`: settings, feeds and long single-column forms keep a 1280px measure.
+ * Legacy `wide` / `fluid` props are accepted and mean `full`.
+ */
+export default function ApplicationShell({
+    children,
+    width = 'full',
+    flush = false,
+}: PropsWithChildren<{ width?: WorkspaceWidth; wide?: boolean; fluid?: boolean; flush?: boolean }>) {
+    const widthClass = width === 'reading' ? 'max-w-7xl' : 'max-w-none';
+    const [paletteOpen, setPaletteOpen] = useState(false);
 
-export default function ApplicationShell({ children, wide = false, flush = false }: PropsWithChildren<{ wide?: boolean; flush?: boolean }>) {
+    // Header centering: equal side tracks sized to the wider of brand/controls, applied
+    // only from lg up and only while the centred track keeps a usable width (else the
+    // tabs take the remaining space and collapse into More — never overlap).
+    const headerRowRef = useRef<HTMLDivElement | null>(null);
+    const headerStartRef = useRef<HTMLDivElement | null>(null);
+    const headerEndRef = useRef<HTMLDivElement | null>(null);
+    const [sideWidth, setSideWidth] = useState<number | null>(null);
+    useLayoutEffect(() => {
+        const row = headerRowRef.current;
+        if (!row) return;
+        const measure = () => {
+            const start = headerStartRef.current?.offsetWidth ?? 0;
+            const end = headerEndRef.current?.offsetWidth ?? 0;
+            if (window.innerWidth < 1024) return setSideWidth(null);
+            const styles = getComputedStyle(row);
+            const inner = row.clientWidth - parseFloat(styles.paddingLeft) - parseFloat(styles.paddingRight);
+            const side = Math.ceil(Math.max(start, end));
+            const gap = parseFloat(styles.columnGap) || 12;
+            setSideWidth(inner - side * 2 - gap * 2 >= 320 ? side : null);
+        };
+        measure();
+        const observer = new ResizeObserver(measure);
+        [row, headerStartRef.current, headerEndRef.current].forEach((element) => element && observer.observe(element));
+        return () => observer.disconnect();
+    }, []);
     const page = usePage<SharedPageProps & { sandbox?: { active: boolean } }>();
     const { auth, tenant, flash, notifications } = page.props;
     const { direction, t } = useI18n();
@@ -32,644 +94,830 @@ export default function ApplicationShell({ children, wide = false, flush = false
         }
     }, [flash?.success, toast]);
 
-    const [collapsed, setCollapsed] = useState(false);
-    useEffect(() => {
-        try {
-            setCollapsed(window.localStorage.getItem(SIDEBAR_KEY) === '1');
-        } catch {
-            /* storage unavailable */
-        }
-    }, []);
-    const toggleCollapsed = () => {
-        setCollapsed((value) => {
-            const next = !value;
-            try {
-                window.localStorage.setItem(SIDEBAR_KEY, next ? '1' : '0');
-            } catch {
-                /* storage unavailable */
-            }
-            return next;
+    const can = (permission?: string | string[]) => tenantHasPermission(tenant, permission);
+    const groups = useMemo(() => visibleNavGroups(buildNavGroups(t, tenant), tenant), [t, tenant]);
+    const activeMatch = matchActiveNav(groups, currentPath);
+    const activeGroup = groups.find((group) => group.key === activeMatch?.groupKey);
+
+    /* ---------------- Navigation drawer ---------------- */
+    // `hover` = opened from the edge strip (closes when the pointer leaves);
+    // `pinned` = opened explicitly by click/keyboard (closes via Esc, backdrop or close button).
+    const [drawer, setDrawer] = useState<'closed' | 'hover' | 'pinned'>('closed');
+    const launcherRef = useRef<HTMLButtonElement | null>(null);
+    const hoverTimer = useRef<number | undefined>(undefined);
+    const canHover = useMediaQuery('(hover: hover) and (pointer: fine) and (min-width: 1024px)');
+
+    const clearHoverTimer = () => window.clearTimeout(hoverTimer.current);
+    const openPinned = (opener?: HTMLButtonElement | null) => {
+        clearHoverTimer();
+        if (opener) launcherRef.current = opener;
+        setDrawer('pinned');
+    };
+    const closeDrawer = useCallback(() => {
+        window.clearTimeout(hoverTimer.current);
+        setDrawer((state) => {
+            if (state === 'pinned') window.setTimeout(() => launcherRef.current?.focus(), 0);
+            return 'closed';
         });
+    }, []);
+
+    useEffect(() => {
+        setDrawer('closed');
+        setPaletteOpen(false);
+    }, [currentPath]);
+
+    useEffect(() => () => window.clearTimeout(hoverTimer.current), []);
+
+    useEffect(() => {
+        const onKey = (event: KeyboardEvent) => {
+            if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+                event.preventDefault();
+                setDrawer('closed');
+                setPaletteOpen((value) => !value);
+            }
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    const hoverOpen = () => {
+        clearHoverTimer();
+        hoverTimer.current = window.setTimeout(() => setDrawer('hover'), HOVER_OPEN_DELAY);
     };
 
-    // Mobile navigation drawer (the desktop sidebar is fixed/always visible from `lg:` up).
-    const [navOpen, setNavOpen] = useState(false);
-    useEffect(() => {
-        setNavOpen(false);
-    }, [currentPath]);
-    useEffect(() => {
-        if (!navOpen) return;
-        const previousOverflow = document.documentElement.style.overflow;
-        document.documentElement.style.overflow = 'hidden';
-        const handler = (event: KeyboardEvent) => {
-            if (event.key === 'Escape') setNavOpen(false);
-        };
-        window.addEventListener('keydown', handler);
-        return () => {
-            document.documentElement.style.overflow = previousOverflow;
-            window.removeEventListener('keydown', handler);
-        };
-    }, [navOpen]);
-
-    const groups: NavGroup[] = [
-        {
-            key: 'dashboard',
-            label: t('nav.dashboard'),
-            icon: <IconDashboard />,
-            items: [
-                { href: '/platform', label: t('nav.dashboard'), icon: <IconHome /> },
-                { href: '/work', label: t('nav.myWork'), permission: 'follow_ups.view', icon: <IconChecklist /> },
-            ],
-        },
-        {
-            key: 'sales',
-            label: t('nav.sales'),
-            icon: <IconShoppingBag />,
-            items: [
-                { href: '/pos', label: t('nav.pos'), permission: 'pos.access', needsStore: true, icon: <IconRegister /> },
-                { href: '/sales/orders', label: t('nav.orders'), permission: 'sales_orders.view', needsStore: true, icon: <IconClipboard /> },
-                { href: '/quotations', label: t('nav.quotations'), permission: 'quotations.view', needsStore: true, icon: <IconFileText /> },
-                { href: '/invoices', label: t('nav.invoices'), permission: 'invoices.view', needsStore: true, icon: <IconInvoice /> },
-                { href: '/delivery-notes', label: t('nav.deliveryNotes'), permission: 'delivery_notes.view', needsStore: true, icon: <IconTruck /> },
-                { href: '/sales/returns', label: t('nav.returns'), permission: 'sales_returns.view', needsStore: true, icon: <IconRotateBack /> },
-                { href: '/my-commissions', label: t('nav.myCommissions'), permission: 'commissions.own.view', icon: <IconPercent /> },
-            ],
-        },
-        {
-            key: 'catalog-stock',
-            label: t('nav.catalog'),
-            icon: <IconPackage />,
-            items: [
-                { href: '/catalog/products', label: t('nav.products'), permission: 'products.view', icon: <IconPackage /> },
-                { href: '/catalog/categories', label: t('nav.categories'), permission: 'categories.manage', icon: <IconFolder /> },
-                { href: '/catalog/brands', label: t('nav.brands'), permission: 'brands.manage', icon: <IconTag /> },
-                { href: '/catalog/products/import', label: t('nav.productImport'), permission: 'products.import', icon: <IconImport /> },
-                { href: '/catalog/purchase-prices', label: t('nav.purchasePrices'), permission: 'product_cost.view', icon: <IconBanknote /> },
-                { href: '/catalog/non-stock-items', label: t('nav.nonStockItems'), permission: 'quotations.view', icon: <IconAlertBox /> },
-            ],
-        },
-        {
-            key: 'inventory',
-            label: t('nav.inventory'),
-            icon: <IconBoxes />,
-            items: [
-                { href: '/inventory/stock', label: t('nav.stockState'), permission: 'inventory.view', icon: <IconWarehouse /> },
-                { href: '/inventory/movements', label: t('nav.stockMovements'), permission: 'inventory.view', icon: <IconArrows /> },
-                { href: '/inventory/transfers', label: t('nav.transfers'), permission: 'inventory.view', icon: <IconTransfer /> },
-                { href: '/inventory/transfer-requests', label: t('nav.transferRequests'), permission: 'inventory.transfer_requests.view', icon: <IconRoute /> },
-                { href: '/inventory/warehouses', label: t('nav.warehouses'), permission: 'warehouses.view', icon: <IconPin /> },
-            ],
-        },
-        {
-            key: 'purchasing',
-            label: t('nav.purchasing'),
-            icon: <IconCart />,
-            items: [
-                { href: '/procurement', label: t('nav.procurement'), permission: 'procurement.view', icon: <IconCart /> },
-                { href: '/procurement/purchase-orders', label: t('nav.purchaseOrders'), permission: 'procurement.view', icon: <IconClipboard /> },
-                { href: '/procurement/supplier-requests', label: t('nav.supplierRequests'), permission: 'procurement.view', needsStore: true, icon: <IconChecklist /> },
-                { href: '/procurement/out-of-stock-articles', label: t('nav.catalogTasks'), permission: 'procurement.view', icon: <IconAlertBox /> },
-                { href: '/procurement/suppliers', label: t('nav.suppliers'), permission: 'suppliers.view', icon: <IconBuilding /> },
-            ],
-        },
-        {
-            key: 'finance',
-            label: t('nav.finance'),
-            icon: <IconChart />,
-            // Deliberately no `needsStore`: Finance reporting works across the
-            // whole organization without the viewer's active store switcher.
-            items: [
-                { href: '/finance', label: t('nav.overview'), permission: 'finance.view', icon: <IconChart /> },
-                {
-                    key: 'finance-sales-cash',
-                    label: t('nav.salesCollections'),
-                    icon: <IconTrending />,
-                    items: [
-                        { href: '/finance/ventes', label: t('nav.sales'), permission: 'finance.view', icon: <IconShoppingBag /> },
-                        { href: '/finance/ca-encaisse', label: t('nav.cashRevenue'), permission: 'finance.view', icon: <IconBanknote /> },
-                        { href: '/finance/creances', label: t('nav.receivables'), permission: 'finance.view', icon: <IconClockCoins /> },
-                    ],
-                },
-                {
-                    href: '/finance/situation-fin-de-mois',
-                    label: t('nav.monthEnd'),
-                    permission: 'finance.monthly_situation.view',
-                    icon: <IconCalendarChart />,
-                },
-                {
-                    key: 'finance-commissions',
-                    label: t('nav.commissions'),
-                    icon: <IconPercent />,
-                    items: [
-                        { href: '/finance/commissions', label: t('nav.commissionDashboard'), permission: 'commissions.ledger.view', icon: <IconChart /> },
-                        { href: '/finance/commissions/ledger', label: t('nav.ledger'), permission: 'commissions.ledger.view', icon: <IconList /> },
-                        { href: '/finance/commissions/rules', label: t('nav.rules'), permission: 'commissions.rules.view', icon: <IconSettings /> },
-                    ],
-                },
-                { href: '/finance/facturation', label: t('nav.invoices'), permission: 'finance.view', icon: <IconInvoice /> },
-                {
-                    key: 'finance-treasury',
-                    label: t('nav.treasury'),
-                    icon: <IconWallet />,
-                    items: [
-                        { href: '/finance/encaissements', label: t('nav.collections'), permission: 'finance.view', icon: <IconCoinsIn /> },
-                        { href: '/payments', label: t('nav.payments'), permission: 'payments.view', needsStore: true, icon: <IconWallet /> },
-                        { href: '/financial-accounts', label: t('nav.financialAccounts'), permission: 'financial_accounts.view', icon: <IconBank /> },
-                        { href: '/finance/journal', label: t('nav.journal'), permission: 'finance.view', icon: <IconList /> },
-                    ],
-                },
-            ],
-        },
-        {
-            key: 'customers',
-            label: t('nav.customers'),
-            icon: <IconUsers />,
-            items: [
-                { href: '/sales/customers', label: t('nav.customers'), permission: 'customers.view', icon: <IconUsers /> },
-                { href: '/contacts', label: t('nav.contacts'), permission: 'contacts.view', icon: <IconContact /> },
-            ],
-        },
-        {
-            key: 'integrations',
-            label: t('nav.integrations'),
-            icon: <IconPlug />,
-            items: [
-                { href: '/integrations/woocommerce', label: 'WooCommerce', permission: 'integrations.view', icon: <IconPlug /> },
-                {
-                    href: '/integrations/woocommerce/stock-tasks',
-                    label: t('nav.wooStock'),
-                    permission: 'integrations.woocommerce.stock_tasks.view',
-                    icon: <IconSync />,
-                },
-            ],
-        },
-        {
-            key: 'administration',
-            label: t('nav.administration'),
-            icon: <IconShield />,
-            items: [
-                { href: '/activity', label: t('nav.activity'), permission: 'audit.view', icon: <IconList /> },
-                { href: '/system-health', label: t('nav.systemOperations'), permission: 'system.health.view', icon: <IconShield /> },
-                ...(tenant.organization
-                    ? [
-                          {
-                              href: `/organizations/${tenant.organization.id}/users-access`,
-                              label: t('common.usersAccess'),
-                              permission: 'members.view',
-                              icon: <IconUsers />,
-                          },
-                      ]
-                    : []),
-            ],
-        },
-        {
-            key: 'settings',
-            label: t('nav.settings'),
-            icon: <IconSettings />,
-            items: [
-                ...(tenant.organization
-                    ? [
-                          {
-                              href: '/document-profile',
-                              label: t('nav.company'),
-                              permission: ['settings.view', 'settings.update'],
-                              icon: <IconBuilding />,
-                          },
-                          {
-                              href: '/document-profile/studio',
-                              label: t('nav.pdfStudio'),
-                              permission: ['settings.view', 'settings.update'],
-                              icon: <IconFileText />,
-                          },
-                      ]
-                    : []),
-                { href: '/settings/stores', label: t('nav.stores'), permission: 'stores.view', icon: <IconPin /> },
-                { href: '/quotation-settings', label: t('nav.quotationSettings'), permission: ['settings.view', 'settings.update'], icon: <IconFileText /> },
-                { href: '/document-stamp', label: t('nav.companyStamp'), permission: ['settings.view', 'settings.update'], icon: <IconStamp /> },
-                { href: '/return-policy', label: t('nav.returnPolicy'), permission: ['settings.view', 'settings.update'], icon: <IconRotateBack /> },
-                { href: '/email-settings', label: t('nav.email'), permission: ['settings.view', 'settings.update'], icon: <IconMail /> },
-                { href: '/organization-backups', label: t('nav.backups'), permission: 'organization_backups.view', icon: <IconShield /> },
-                { href: '/settings/data-reset', label: t('nav.dataReset'), permission: 'system.data_reset', icon: <IconTrash /> },
-                { href: '/settings/ai-mcp', label: t('nav.aiMcp'), icon: <IconPlug /> },
-                { href: '/account/notifications', label: t('common.notifications'), icon: <IconBell /> },
-                { href: '/catalog/tax-rates', label: t('nav.taxes'), permission: 'tax_rates.view', icon: <IconPercent /> },
-            ],
-        },
-    ];
-
-    const hasPermission = (permission?: string | string[]) =>
-        !permission || (Array.isArray(permission) ? permission.some((p) => tenant.permissions.includes(p)) : tenant.permissions.includes(permission));
-    const allowed = (item: NavItem) => hasPermission(item.permission) && (!item.needsStore || tenant.store !== null);
-    const visibleGroups: NavGroup[] = groups
-        .map((group): NavGroup => {
-            const items: NavEntry[] = [];
-            group.items.forEach((entry) => {
-                if (!isNavSection(entry)) {
-                    if (allowed(entry)) items.push(entry);
-                    return;
-                }
-
-                const visibleItems = entry.items.filter(allowed);
-                if (visibleItems.length > 0) items.push({ ...entry, items: visibleItems });
-            });
-
-            return { ...group, items };
-        })
-        .filter((group) => group.items.length > 0);
-    const activeCandidates: { groupKey: string; sectionKey: string | null; item: NavItem }[] = [];
-    visibleGroups.forEach((group) => {
-        group.items.forEach((entry) => {
-            if (isNavSection(entry)) {
-                entry.items.forEach((item) => activeCandidates.push({ groupKey: group.key, sectionKey: entry.key, item }));
-            } else {
-                activeCandidates.push({ groupKey: group.key, sectionKey: null, item: entry });
-            }
-        });
-    });
-    const activeMatch = activeCandidates
-        .filter(({ item }) => currentPath === item.href || currentPath.startsWith(`${item.href}/`))
-        .sort((a, b) => b.item.href.length - a.item.href.length)[0];
-    const activeHref = activeMatch?.item.href;
-    const activeGroupKey = activeMatch?.groupKey;
-    const activeSectionKey = activeMatch?.sectionKey;
-    const [openGroup, setOpenGroup] = useState<string>('');
-    const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
-
-    useEffect(() => {
-        if (activeGroupKey) {
-            setOpenGroup(activeGroupKey);
-        } else if (visibleGroups[0]) {
-            setOpenGroup(visibleGroups[0].key);
-        }
-        // Keep the active route's parent open after Inertia navigation, but do
-        // not re-run this after local accordion clicks; otherwise manual opens
-        // are immediately overwritten by the still-active route group.
-    }, [currentPath, activeGroupKey]);
-
-    useEffect(() => {
-        if (!activeSectionKey) return;
-        setOpenSections((current) => ({ ...current, [activeSectionKey]: true }));
-    }, [currentPath, activeSectionKey]);
-
-    const orgStoreSwitcher = (
-        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-            <select
-                aria-label={t('common.organization')}
-                value={tenant.organization?.id ?? ''}
-                onChange={(event) => event.target.value && router.post(`/context/organizations/${event.target.value}`)}
-                className="h-11 max-w-full flex-1 rounded-field border border-line-strong bg-surface px-3 text-sm font-medium text-ink transition-soft focus:border-primary focus:outline-none sm:h-auto sm:max-w-56 sm:flex-none sm:py-2"
-            >
-                <option value="">{t('common.organization')}</option>
-                {tenant.organizations.map((item) => (
-                    <option key={item.id} value={item.id}>
-                        {item.name}
-                    </option>
-                ))}
-            </select>
-            <select
-                aria-label={t('shell.storeContext')}
-                title={t('shell.storeContext')}
-                value={tenant.store?.id ?? ''}
-                onChange={(event) => event.target.value && router.post(`/context/stores/${event.target.value}`)}
-                disabled={!tenant.organization}
-                className="h-11 max-w-full flex-1 rounded-field border border-line-strong bg-surface px-3 text-sm text-ink transition-soft focus:border-primary focus:outline-none disabled:opacity-50 sm:h-auto sm:max-w-56 sm:flex-none sm:py-2"
-            >
-                <option value="">{t('shell.storeContext')}</option>
-                {tenant.stores.map((item) => (
-                    <option key={item.id} value={item.id}>
-                        {item.name} · {item.code}
-                    </option>
-                ))}
-            </select>
-        </div>
-    );
-
-    const navigation = (dense: boolean, scope: 'desktop' | 'mobile') => (
-        <nav className={dense ? 'space-y-1.5' : 'space-y-1'}>
-            {visibleGroups.map((group) => {
-                const open = openGroup === group.key;
-                const groupActive = activeGroupKey === group.key;
-                const firstEntry = group.items[0]!;
-                const firstItem = isNavSection(firstEntry) ? firstEntry.items[0] : firstEntry;
-
-                if (dense) {
-                    return (
-                        <Link
-                            key={group.key}
-                            href={firstItem.href}
-                            title={group.label}
-                            aria-current={groupActive ? 'page' : undefined}
-                            className={`relative flex size-10 items-center justify-center rounded-field transition-soft ${
-                                groupActive ? 'bg-sage text-primary' : 'text-ink-faint hover:bg-sage/70 hover:text-ink'
-                            }`}
-                        >
-                            {groupActive && <span className="absolute start-0 top-2 bottom-2 w-0.5 rounded-full bg-primary" />}
-                            {group.icon}
-                        </Link>
-                    );
-                }
-
-                return (
-                    <div key={group.key}>
-                        <button
-                            type="button"
-                            onClick={() => setOpenGroup(open ? '' : group.key)}
-                            aria-expanded={open}
-                            aria-controls={`${scope}-sidebar-group-${group.key}`}
-                            className={`group flex w-full items-center gap-2.5 rounded-field px-3 py-2.5 text-start text-sm transition-soft ${
-                                groupActive || open ? 'bg-sage/80 font-medium text-ink' : 'text-ink-muted hover:bg-sage/60 hover:text-ink'
-                            }`}
-                        >
-                            <span className={groupActive || open ? 'text-primary' : 'text-ink-faint group-hover:text-ink-muted'}>{group.icon}</span>
-                            <span className="min-w-0 flex-1 truncate">{group.label}</span>
-                            <DisclosureChevron open={open} direction={direction} />
-                        </button>
-                        {open && (
-                            <div id={`${scope}-sidebar-group-${group.key}`} className="mt-1 ms-5 space-y-0.5 border-s border-line/80 ps-3">
-                                {group.items.map((entry) => {
-                                    if (isNavSection(entry)) {
-                                        const sectionOpen = openSections[entry.key] ?? false;
-                                        const sectionActive = activeSectionKey === entry.key;
-
-                                        return (
-                                            <div key={entry.key}>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setOpenSections((current) => ({ ...current, [entry.key]: !sectionOpen }))}
-                                                    aria-expanded={sectionOpen}
-                                                    aria-controls={`${scope}-sidebar-section-${entry.key}`}
-                                                    className={`group flex min-h-10 w-full items-center gap-2 rounded-field px-3 py-2 text-start text-[13px] transition-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${
-                                                        sectionActive || sectionOpen
-                                                            ? 'bg-sage/60 font-medium text-ink'
-                                                            : 'text-ink-muted hover:bg-sage/60 hover:text-ink'
-                                                    }`}
-                                                >
-                                                    <span className={sectionActive || sectionOpen ? 'text-primary' : 'text-ink-faint group-hover:text-ink-muted'}>{entry.icon}</span>
-                                                    <span className="min-w-0 flex-1 truncate">{entry.label}</span>
-                                                    <DisclosureChevron open={sectionOpen} direction={direction} />
-                                                </button>
-                                                {sectionOpen && (
-                                                    <div id={`${scope}-sidebar-section-${entry.key}`} className="mt-0.5 ms-4 space-y-0.5 border-s border-line/70 ps-2">
-                                                        {entry.items.map((item) => {
-                                                            const active = activeHref === item.href;
-                                                            return (
-                                                                <Link
-                                                                    key={item.href}
-                                                                    href={item.href}
-                                                                    aria-current={active ? 'page' : undefined}
-                                                                    className={`group relative flex min-h-10 items-center gap-2 rounded-field px-3 py-2 text-[13px] transition-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${
-                                                                        active
-                                                                            ? 'bg-sage font-medium text-ink'
-                                                                            : 'text-ink-muted hover:bg-sage/60 hover:text-ink'
-                                                                    }`}
-                                                                >
-                                                                    {active && <span className="absolute start-0 top-2 bottom-2 w-0.5 rounded-full bg-primary" />}
-                                                                    <span className={active ? 'text-primary' : 'text-ink-faint group-hover:text-ink-muted'}>{item.icon}</span>
-                                                                    <span className="min-w-0 truncate">{item.label}</span>
-                                                                </Link>
-                                                            );
-                                                        })}
-                                                    </div>
-                                                )}
-                                            </div>
-                                        );
-                                    }
-
-                                    const item = entry;
-                                    const active = activeHref === item.href;
-                                    return (
-                                        <Link
-                                            key={item.href}
-                                            href={item.href}
-                                            aria-current={active ? 'page' : undefined}
-                                            className={`group relative flex min-h-10 items-center gap-2 rounded-field px-3 py-2 text-[13px] transition-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${
-                                                active
-                                                    ? 'bg-sage font-medium text-ink'
-                                                    : 'text-ink-muted hover:bg-sage/60 hover:text-ink'
-                                            }`}
-                                        >
-                                            {active && <span className="absolute start-0 top-2 bottom-2 w-0.5 rounded-full bg-primary" />}
-                                            <span className={active ? 'text-primary' : 'text-ink-faint group-hover:text-ink-muted'}>{item.icon}</span>
-                                            <span className="min-w-0 truncate">{item.label}</span>
-                                        </Link>
-                                    );
-                                })}
-                            </div>
-                        )}
-                    </div>
-                );
-            })}
-        </nav>
-    );
-
     return (
-        <div className={`bg-canvas text-ink ${flush ? 'h-dvh overflow-hidden' : 'min-h-dvh'}`}>
-            {/* Desktop sidebar */}
-            <aside
-                className={`fixed inset-y-0 start-0 z-20 hidden flex-col border-e border-line bg-surface lg:flex ${
-                    collapsed ? 'w-16' : 'w-72'
-                } transition-[width] duration-200`}
+        <div className={`app-canvas text-ink ${flush ? 'h-dvh overflow-hidden' : 'min-h-dvh'}`}>
+            <a
+                href="#erp-main"
+                className="sr-only z-[60] rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-fg focus:not-sr-only focus:fixed focus:top-3 focus:start-3"
             >
-                <div className={`flex h-14 items-center border-b border-line ${collapsed ? 'justify-center px-0' : 'px-4'}`}>
-                    <Link href="/platform" className="rounded-lg">
-                        {collapsed ? <BrandMark /> : <BrandLockup />}
-                    </Link>
-                </div>
-                <div className={`flex-1 overflow-y-auto py-4 ${collapsed ? 'px-3' : 'px-3'}`}>{navigation(collapsed, 'desktop')}</div>
-                <div className="border-t border-line p-3">
-                    <button
-                        type="button"
-                        onClick={toggleCollapsed}
-                        className="flex w-full items-center justify-center gap-2 rounded-field px-3 py-2 text-[13px] text-ink-muted transition-soft hover:bg-sage hover:text-ink"
-                        aria-label={collapsed ? t('common.expandMenu') : t('common.collapseMenu')}
-                    >
-                        <span className={`transition-transform ${collapsed ? 'rotate-180' : ''}`}>
-                            <span className="directional-icon"><IconCollapse direction={direction} /></span>
-                        </span>
-                        {!collapsed && <span>{t('common.collapse')}</span>}
-                    </button>
-                </div>
-            </aside>
+                {t('shell.skipToContent')}
+            </a>
+            {/* Edge hover strip (12px) — independent of the rail, which starts 20px in. */}
+            {canHover && drawer === 'closed' && (
+                <div aria-hidden="true" className="fixed inset-y-0 start-0 z-40 w-3" onMouseEnter={hoverOpen} onMouseLeave={clearHoverTimer} />
+            )}
 
-            <div className={`${collapsed ? 'lg:ps-16' : 'lg:ps-72'} ${flush ? 'flex h-dvh flex-col' : ''}`}>
+            {/* Discoverable reveal handle on the true screen edge, centred at 50vh.
+                Hover (pointer devices) previews the drawer; click / tap / Enter pins it open. */}
+            {/* Stays mounted while the drawer is open (hidden, inert) so focus can return to it on close. */}
+            {(
+                <button
+                    type="button"
+                    onClick={(event) => openPinned(event.currentTarget)}
+                    onMouseEnter={canHover ? hoverOpen : undefined}
+                    onMouseLeave={canHover ? clearHoverTimer : undefined}
+                    aria-label={t('shell.openNavigation')}
+                    aria-controls="erp-nav-drawer"
+                    aria-expanded={drawer !== 'closed'}
+                    aria-hidden={drawer !== 'closed' || undefined}
+                    tabIndex={drawer !== 'closed' ? -1 : undefined}
+                    className={`edge-handle fixed start-0 top-1/2 z-[41] flex h-[55px] w-[11px] cursor-pointer items-center justify-center rounded-e-[10px] bg-[linear-gradient(#b9ddd5,#248a7d,#b9ddd5)] text-white opacity-60 shadow-[0_2px_8px_rgb(0_93_86/0.25)] transition-[width,opacity] hover:w-4 hover:opacity-100 focus-visible:w-4 focus-visible:opacity-100 dark:bg-[linear-gradient(#1e4a45,#3fb8ab,#1e4a45)] ${
+                        drawer !== 'closed' ? 'pointer-events-none opacity-0' : ''
+                    }`}
+                >
+                    <svg aria-hidden="true" className="directional-icon rtl:rotate-180" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="m9 6 6 6-6 6" />
+                    </svg>
+                </button>
+            )}
+
+            <IconRail groups={groups} activeGroupKey={activeMatch?.groupKey} />
+            <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} groups={groups} />
+
+            <NavDrawer
+                open={drawer !== 'closed'}
+                mode={drawer}
+                groups={groups}
+                activeHref={activeMatch?.item.href}
+                activeGroupKey={activeMatch?.groupKey}
+                activeSectionKey={activeMatch?.sectionKey ?? null}
+                direction={direction}
+                onClose={closeDrawer}
+                onPointerEnter={clearHoverTimer}
+                onPointerLeave={() => {
+                    if (drawer !== 'hover') return;
+                    clearHoverTimer();
+                    hoverTimer.current = window.setTimeout(() => setDrawer('closed'), HOVER_CLOSE_DELAY);
+                }}
+                onPin={() => setDrawer('pinned')}
+                contextSwitcher={<ContextSelects />}
+            />
+
+            <div className={`lg:ps-[5.625rem] ${flush ? 'flex h-dvh flex-col' : ''}`}>
                 <SandboxBanner />
-                <header className={`z-10 border-b border-line bg-canvas/85 px-3 py-2.5 backdrop-blur sm:px-6 ${flush ? 'shrink-0' : page.props.sandbox?.active ? '' : 'sticky top-0'}`}>
-                    {hasPermission('sandbox.access') && <Link href="/test-mode" className="text-sm underline">Mode test</Link>}
-                    <div className={`mx-auto flex items-center justify-between gap-2 sm:gap-4 ${wide ? 'max-w-[1700px]' : 'max-w-7xl'}`}>
-                        {/* Mobile menu trigger */}
-                        <button
-                            type="button"
-                            onClick={() => setNavOpen(true)}
-                            aria-label={t('common.openMenu')}
-                            aria-expanded={navOpen}
-                            className="flex size-11 shrink-0 items-center justify-center rounded-field border border-line-strong bg-surface text-ink transition-soft hover:bg-sage lg:hidden"
-                        >
-                            <IconMenu />
-                        </button>
-
-                        {/* Org/store switcher — stays in the header from `sm:` up; folded into the drawer below that */}
-                        <div className="hidden min-w-0 flex-1 sm:flex">{orgStoreSwitcher}</div>
-                        <div className="min-w-0 flex-1 sm:hidden" />
-
-                        <NotificationBell initial={notifications ?? { unread_count: 0, recent: [], poll_seconds: 20, preferences: { sound_enabled: false, sound_volume: 0.5, disabled_categories: [] } }} />
-
-                        {/* Profile menu */}
-                        <details className="relative shrink-0">
-                            <summary className="flex cursor-pointer list-none items-center gap-2 rounded-field px-1.5 py-1.5 transition-soft hover:bg-sage sm:px-2">
-                                <span className="grid size-9 shrink-0 place-items-center rounded-full bg-primary text-[13px] font-semibold text-primary-fg sm:size-8">
-                                    {(auth.user?.name ?? '?').trim().charAt(0).toUpperCase()}
-                                </span>
-                                <span className="hidden text-start sm:block">
-                                    <span className="block text-[13px] font-medium leading-tight text-ink">{auth.user?.name}</span>
-                                    <span className="block text-[11px] leading-tight text-ink-muted">{auth.user?.email}</span>
-                                </span>
-                            </summary>
-                            <div className="absolute end-0 top-12 z-30 w-60 max-w-[calc(100vw-1.5rem)] rounded-card border border-line bg-surface p-1.5 shadow-pop">
-                                <div className="px-3 py-2">
-                                    <p className="text-[13px] font-medium text-ink">{auth.user?.name}</p>
-                                    <p className="truncate text-[12px] text-ink-muted">{auth.user?.email}</p>
-                                </div>
-
-                                {/* Personal account — the current user's own profile/security, never
-                                    organization administration (kept in its own group below). */}
-                                <Link
-                                    href="/account/profile"
-                                    className="block rounded-field px-3 py-2.5 text-[13px] text-ink-muted transition-soft hover:bg-sage hover:text-ink"
-                                >
-                                    {t('common.profile')}
-                                </Link>
-                                <Link
-                                    href="/security"
-                                    className="block rounded-field px-3 py-2.5 text-[13px] text-ink-muted transition-soft hover:bg-sage hover:text-ink"
-                                >
-                                    {t('common.security')}
-                                </Link>
-                                <Link
-                                    href="/account/notifications"
-                                    className="block rounded-field px-3 py-2.5 text-[13px] text-ink-muted transition-soft hover:bg-sage hover:text-ink"
-                                >
-                                    {t('common.notifications')}
-                                </Link>
-
-                                {(tenant.organization && tenant.permissions.includes('members.view')) ||
-                                hasPermission(['settings.view', 'settings.update']) ? (
-                                    <div className="my-1 border-t border-line" />
-                                ) : null}
-
-                                {tenant.organization && tenant.permissions.includes('members.view') && (
-                                    <Link
-                                        href={`/organizations/${tenant.organization.id}/users-access`}
-                                        className="block rounded-field px-3 py-2.5 text-[13px] text-ink-muted transition-soft hover:bg-sage hover:text-ink"
-                                    >
-                                        {t('common.usersAccess')}
-                                    </Link>
-                                )}
-                                {hasPermission(['settings.view', 'settings.update']) && (
-                                    <Link
-                                        href="/document-profile"
-                                        className="block rounded-field px-3 py-2.5 text-[13px] text-ink-muted transition-soft hover:bg-sage hover:text-ink"
-                                    >
-                                        {t('common.organizationSettings')}
-                                    </Link>
-                                )}
-                                <div className="my-1 border-t border-line" />
-                                <LocaleSwitcher />
-                                <div className="my-1 border-t border-line" />
+                {/* Three-region header: brand (start) · contextual navigation (centered) · user controls (end).
+                    It spans the full viewport above the rail column; the side groups are measured and
+                    given equal tracks so the navigation is centered on the header, not on leftover space. */}
+                <header
+                    className={`z-30 px-2 pt-2 sm:px-3.5 lg:-ms-[5.625rem] ${flush ? 'shrink-0' : page.props.sandbox?.active ? '' : 'sticky top-0'}`}
+                >
+                    <div ref={headerRowRef} className="glass-nav flex flex-wrap items-center gap-x-3 gap-y-1 rounded-[19px] px-2.5 py-1.5 sm:px-4 lg:h-12 lg:flex-nowrap lg:py-0 lg:ps-6 lg:pe-3">
+                        <div className="flex shrink-0 items-center" style={sideWidth ? { width: sideWidth } : undefined}>
+                            <div ref={headerStartRef} className="flex w-max items-center gap-2">
                                 <button
                                     type="button"
-                                    onClick={() => router.post('/logout')}
-                                    className="block w-full rounded-field px-3 py-2.5 text-start text-[13px] text-danger transition-soft hover:bg-danger-soft"
+                                    onClick={(event) => openPinned(event.currentTarget)}
+                                    aria-label={t('shell.openNavigation')}
+                                    aria-expanded={drawer !== 'closed'}
+                                    aria-controls="erp-nav-drawer"
+                                    className="glass-pill flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-full text-ink transition-soft hover:text-accent sm:size-10 lg:hidden"
                                 >
-                                    {t('common.logout')}
+                                    <IconMenu />
                                 </button>
+                                <Link href="/platform" aria-label={`${PRODUCT_NAME} — ${t('nav.dashboard')}`} className="rounded-lg focus-visible:outline-offset-4">
+                                    <BrandLockup size={34} className="[&>span:last-child]:hidden sm:[&>span:last-child]:block" />
+                                </Link>
                             </div>
-                        </details>
+                        </div>
+
+                        {/* Contextual navigation: its own row below lg, centered track from lg up. */}
+                        <div className="order-last flex w-full min-w-0 justify-center lg:order-none lg:w-auto lg:flex-1">
+                            {activeGroup && activeGroup.items.length > 1 ? (
+                                <ModuleTabs key={activeGroup.key} group={activeGroup} activeHref={activeMatch?.item.href} activeSectionKey={activeMatch?.sectionKey ?? null} />
+                            ) : activeGroup ? (
+                                <p className="hidden items-center gap-2 text-sm font-semibold text-ink lg:flex">
+                                    <span aria-hidden="true" className="text-accent [&>svg]:size-[18px]">
+                                        {activeGroup.icon}
+                                    </span>
+                                    {activeGroup.label}
+                                </p>
+                            ) : null}
+                        </div>
+
+                        <div className="ms-auto flex shrink-0 items-center justify-end lg:ms-0" style={sideWidth ? { width: sideWidth } : undefined}>
+                            <div ref={headerEndRef} className="flex w-max items-center gap-1 sm:gap-2">
+                                <SearchTrigger onOpen={() => setPaletteOpen(true)} />
+                                <ContextMenu />
+                                <QuickCreateMenu />
+                                <ThemeToggle />
+                                <NotificationBell
+                                    initial={
+                                        notifications ?? {
+                                            unread_count: 0,
+                                            recent: [],
+                                            poll_seconds: 20,
+                                            preferences: { sound_enabled: false, sound_volume: 0.5, disabled_categories: [] },
+                                        }
+                                    }
+                                />
+                                <ProfileMenu
+                                    userName={auth.user?.name}
+                                    userEmail={auth.user?.email}
+                                    showSandbox={can('sandbox.access')}
+                                    showUsers={!!tenant.organization && can('members.view')}
+                                    showSettings={can(['settings.view', 'settings.update'])}
+                                    organizationId={tenant.organization?.id}
+                                />
+                            </div>
+                        </div>
                     </div>
                 </header>
 
-                {/* Mobile navigation drawer */}
-                {navOpen && (
-                    <div className="fixed inset-0 z-40 flex rtl:flex-row-reverse lg:hidden" dir={direction}>
-                        <button type="button" className="flex-1 bg-ink/40" onClick={() => setNavOpen(false)} aria-label={t('common.closeMenu')} />
-                        <aside className="flex h-full w-[88vw] max-w-96 flex-col bg-surface shadow-pop">
-                            <div className="flex h-14 shrink-0 items-center justify-between border-b border-line px-4">
-                                <BrandLockup />
-                                <button
-                                    type="button"
-                                    onClick={() => setNavOpen(false)}
-                                    aria-label={t('common.closeMenu')}
-                                    className="flex size-10 items-center justify-center rounded-field text-ink-muted transition-soft hover:bg-sage hover:text-ink"
-                                >
-                                    <IconClose />
-                                </button>
-                            </div>
-                            <div className="shrink-0 border-b border-line p-3 sm:hidden">{orgStoreSwitcher}</div>
-                            <div className="min-h-0 flex-1 overflow-y-auto px-3 py-4">{navigation(false, 'mobile')}</div>
-                        </aside>
-                    </div>
-                )}
-
                 {flush ? (
-                    <main className="min-h-0 flex-1 overflow-hidden">{children}</main>
+                    <main id="erp-main" tabIndex={-1} className="min-h-0 flex-1 overflow-hidden focus:outline-none">{children}</main>
                 ) : (
-                    <main className={`mx-auto min-w-0 px-4 py-5 sm:px-6 sm:py-8 lg:px-8 ${wide ? 'max-w-[1700px]' : 'max-w-7xl'}`}>
-                        {children}
-                    </main>
+                    <main id="erp-main" tabIndex={-1} className={`mx-auto min-w-0 px-4 py-5 focus:outline-none sm:px-6 lg:px-7 lg:pt-[18px] lg:pb-12 min-[2000px]:pe-9 ${widthClass}`}>{children}</main>
                 )}
             </div>
         </div>
     );
 }
 
-/* --- icons (16px, currentColor) --- */
-const s = { width: 16, height: 16, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.7, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
-function IconDashboard() { return <svg {...s}><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" /></svg>; }
-function IconHome() { return <svg {...s}><path d="M4 11 12 4l8 7M6 10v10h12V10" /></svg>; }
-function IconRegister() { return <svg {...s}><rect x="3" y="4" width="18" height="13" rx="2" /><path d="M3 9h18M8 21h8M12 17v4" /></svg>; }
-function IconShoppingBag() { return <svg {...s}><path d="M6 8h12l-1 13H7L6 8Z" /><path d="M9 8a3 3 0 0 1 6 0" /></svg>; }
-function IconClipboard() { return <svg {...s}><path d="M8 4h8l1 3H7l1-3Z" /><path d="M7 6H5v15h14V6h-2M8 12h8M8 16h6" /></svg>; }
-function IconFileText() { return <svg {...s}><path d="M7 3h7l5 5v13H7V3Z" /><path d="M14 3v5h5M10 13h6M10 17h6" /></svg>; }
-function IconTruck() { return <svg {...s}><path d="M3 6h11v10H3V6ZM14 10h4l3 3v3h-7v-6Z" /><circle cx="7" cy="18" r="2" /><circle cx="18" cy="18" r="2" /></svg>; }
-function IconRotateBack() { return <svg {...s}><path d="M9 7H4v-5M4 7a9 9 0 1 1 3 6.7" /></svg>; }
-function IconPackage() { return <svg {...s}><path d="M12 3 4 7v10l8 4 8-4V7l-8-4Z" /><path d="M4 7l8 4 8-4M12 11v10" /></svg>; }
-function IconTag() { return <svg {...s}><path d="M4 4h8l8 8-8 8-8-8V4Z" /><circle cx="8.5" cy="8.5" r="1.3" /></svg>; }
-function IconImport() { return <svg {...s}><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 21h14" /></svg>; }
-function IconAlertBox() { return <svg {...s}><path d="M12 3 4 7v10l8 4 8-4V7l-8-4Z" /><path d="M12 8v5M12 16h.01" /></svg>; }
-function IconBoxes() { return <svg {...s}><path d="M7 3h7l4 4v7l-7 4-7-4V7l3-4Z" /><path d="M4 7l7 4 7-4M11 11v7M14 3l-7 4" /></svg>; }
-function IconWarehouse() { return <svg {...s}><path d="M3 10 12 4l9 6v10H3V10Z" /><path d="M7 20v-7h10v7M7 13h10M10 16h4" /></svg>; }
-function IconPin() { return <svg {...s}><path d="M12 21s7-5.2 7-11a7 7 0 1 0-14 0c0 5.8 7 11 7 11Z" /><circle cx="12" cy="10" r="2.4" /></svg>; }
-function IconTransfer() { return <svg {...s}><path d="M4 8h13l-3-3M20 16H7l3 3" /></svg>; }
-function IconArrows() { return <svg {...s}><path d="M7 7h13l-3-3M17 17H4l3 3M5 12h14" /></svg>; }
-function IconRoute() { return <svg {...s}><circle cx="6" cy="6" r="2" /><circle cx="18" cy="18" r="2" /><path d="M8 6h4a4 4 0 0 1 0 8h-1a4 4 0 0 0 0 8h7" /></svg>; }
-function IconList() { return <svg {...s}><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01" /></svg>; }
-function IconCart() { return <svg {...s}><path d="M4 4h2l2 11h10l2-8H7" /><circle cx="10" cy="20" r="1.5" /><circle cx="17" cy="20" r="1.5" /></svg>; }
-function IconUsers() { return <svg {...s}><circle cx="9" cy="8" r="3" /><path d="M3 20c0-3.3 2.7-5 6-5s6 1.7 6 5M16 6.5a3 3 0 0 1 0 5.5M21 20c0-2.6-1.5-4.2-3.5-4.7" /></svg>; }
-function IconContact() { return <svg {...s}><rect x="4" y="3" width="16" height="18" rx="2" /><circle cx="12" cy="9" r="2.5" /><path d="M8 17c.5-2.2 2-3.5 4-3.5s3.5 1.3 4 3.5M2 7h4M2 12h4M2 17h4" /></svg>; }
-function IconChart() { return <svg {...s}><path d="M4 19V5M4 19h16" /><path d="M8 15v-4M12 15V8M16 15v-7" /></svg>; }
-function IconTrending() { return <svg {...s}><path d="M4 17 9 12l4 4 7-8" /><path d="M15 8h5v5" /></svg>; }
-function IconBanknote() { return <svg {...s}><rect x="3" y="6" width="18" height="12" rx="2" /><circle cx="12" cy="12" r="3" /><path d="M6 9h.01M18 15h.01" /></svg>; }
-function IconClockCoins() { return <svg {...s}><circle cx="9" cy="10" r="5" /><path d="M9 7v3l2 2M15 14c3 0 5 1.2 5 2.7s-2 2.7-5 2.7-5-1.2-5-2.7" /></svg>; }
-function IconCalendarChart() { return <svg {...s}><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M7 3v4M17 3v4M3 10h18M7 17l3-3 3 2 4-4" /></svg>; }
-function IconCoinsIn() { return <svg {...s}><ellipse cx="12" cy="17" rx="7" ry="3" /><path d="M5 17v3c0 1.7 3.1 3 7 3s7-1.3 7-3v-3M12 3v9M8 8l4 4 4-4" /></svg>; }
-function IconInvoice() { return <svg {...s}><path d="M6 3h12v18l-3-2-3 2-3-2-3 2V3Z" /><path d="M9 8h6M9 12h6" /></svg>; }
-function IconWallet() { return <svg {...s}><path d="M4 7a2 2 0 0 1 2-2h11v4M4 7v10a2 2 0 0 0 2 2h13V9H6a2 2 0 0 1-2-2Z" /><circle cx="16" cy="14" r="1.3" /></svg>; }
-function IconBank() { return <svg {...s}><path d="M4 10h16L12 4 4 10ZM6 10v8M10 10v8M14 10v8M18 10v8M4 20h16" /></svg>; }
-function IconBuilding() { return <svg {...s}><path d="M5 21V5a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v16M9 8h.01M12 8h.01M9 12h.01M12 12h.01M9 16h.01M12 16h.01M17 21V10h2a2 2 0 0 1 2 2v9" /></svg>; }
-function IconPlug() { return <svg {...s}><path d="M9 2v6M15 2v6M7 8h10v3a5 5 0 0 1-10 0V8ZM12 16v6" /></svg>; }
-function IconSync() { return <svg {...s}><path d="M4 12a8 8 0 0 1 13.7-5.7L20 8M20 4v4h-4M20 12a8 8 0 0 1-13.7 5.7L4 16M4 20v-4h4" /></svg>; }
-function IconShield() { return <svg {...s}><path d="M12 3 5 6v5c0 4.5 2.8 8 7 10 4.2-2 7-5.5 7-10V6l-7-3Z" /></svg>; }
-function IconChecklist() { return <svg {...s}><path d="M9 6h11M9 12h11M9 18h11" /><path d="m3.5 6 1.5 1.5L7.5 5M3.5 12l1.5 1.5L7.5 11M3.5 18l1.5 1.5L7.5 17" /></svg>; }
-function IconSettings() { return <svg {...s}><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z" /><path d="M3 12h2M19 12h2M12 3v2M12 19v2M5.6 5.6 7 7M17 17l1.4 1.4M18.4 5.6 17 7M7 17l-1.4 1.4" /></svg>; }
-function IconTrash() { return <svg {...s}><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5" /></svg>; }
-function IconFolder() { return <svg {...s}><path d="M3 6h7l2 3h9v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6Z" /></svg>; }
-function IconPercent() { return <svg {...s}><path d="M19 5 5 19" /><circle cx="7" cy="7" r="2" /><circle cx="17" cy="17" r="2" /></svg>; }
-function IconMail() { return <svg {...s}><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m4 7 8 6 8-6" /></svg>; }
-function IconBell() { return <svg {...s}><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" /></svg>; }
-function IconStamp() { return <svg {...s}><circle cx="12" cy="8" r="5" /><path d="M9 8h6M9 6.5h6M9 9.5h4M6 21h12l-1.5-5h-9L6 21Z" /></svg>; }
-function DisclosureChevron({ open, direction }: { open: boolean; direction: 'ltr' | 'rtl' }) {
-    const path = open ? 'm5 9 7 7 7-7' : direction === 'rtl' ? 'm15 5-7 7 7 7' : 'm9 5 7 7-7 7';
-    return <span className="directional-icon shrink-0 text-ink-faint"><svg {...s} width={14} height={14}><path d={path} /></svg></span>;
+/* ====================================================================== */
+/* Icon rail                                                              */
+/* ====================================================================== */
+
+function IconRail({ groups, activeGroupKey }: { groups: NavGroup[]; activeGroupKey?: string }) {
+    const { t } = useI18n();
+    // Floating pill: height follows its content (never full height), centred on the viewport.
+    // Opening the full drawer is done from the screen-edge handle / header search, never by hovering icons.
+    return (
+        <aside
+            aria-label={t('shell.mainNavigation')}
+            className="glass-nav fixed start-5 top-1/2 z-30 hidden h-max max-h-[calc(100dvh-8rem)] w-[57px] -translate-y-1/2 flex-col items-center rounded-[25px] py-2.5 lg:flex"
+        >
+            <nav className="flex min-h-0 w-full flex-col items-center gap-2 overflow-y-auto px-[9px] [scrollbar-width:none]">
+                {groups.map((group) => {
+                    const active = group.key === activeGroupKey;
+                    return (
+                        <Link
+                            key={group.key}
+                            href={firstNavItem(group).href}
+                            aria-label={group.label}
+                            aria-current={active ? 'page' : undefined}
+                            className={`group relative flex h-[39px] w-[38px] shrink-0 items-center justify-center rounded-[13px] transition-soft [&>svg]:size-[18px] ${
+                                active
+                                    ? 'btn-gradient text-primary-fg shadow-[0_6px_12px_rgb(0_117_103/0.2)]'
+                                    : 'text-ink-muted hover:bg-accent-soft hover:text-accent'
+                            }`}
+                        >
+                            {group.icon}
+                            <RailTooltip label={group.label} />
+                        </Link>
+                    );
+                })}
+            </nav>
+        </aside>
+    );
 }
-function IconCollapse({ direction }: { direction: 'ltr' | 'rtl' }) { return <svg {...s}><path d={direction === 'rtl' ? 'M10 6l6 6-6 6' : 'M14 6 8 12l6 6'} /></svg>; }
-function IconMenu() { return <svg {...s}><path d="M4 6h16M4 12h16M4 18h16" /></svg>; }
-function IconClose() { return <svg {...s}><path d="M6 6l12 12M18 6 6 18" /></svg>; }
+
+function RailTooltip({ label }: { label: string }) {
+    // Visual only — the parent already carries the accessible name.
+    return (
+        <span
+            aria-hidden="true"
+            className="pointer-events-none fixed z-50 whitespace-nowrap rounded-lg bg-ink px-2.5 py-1.5 text-[13px] font-semibold text-surface opacity-0 shadow-pop transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100"
+            style={{ insetInlineStart: '5rem' }}
+        >
+            {label}
+        </span>
+    );
+}
+
+/* ====================================================================== */
+/* Full navigation drawer                                                 */
+/* ====================================================================== */
+
+function NavDrawer({
+    open,
+    mode,
+    groups,
+    activeHref,
+    activeGroupKey,
+    activeSectionKey,
+    direction,
+    onClose,
+    onPointerEnter,
+    onPointerLeave,
+    onPin,
+    contextSwitcher,
+}: {
+    open: boolean;
+    mode: 'closed' | 'hover' | 'pinned';
+    groups: NavGroup[];
+    activeHref?: string;
+    activeGroupKey?: string;
+    activeSectionKey: string | null;
+    direction: 'ltr' | 'rtl';
+    onClose: () => void;
+    onPointerEnter: () => void;
+    onPointerLeave: () => void;
+    onPin: () => void;
+    contextSwitcher: ReactNode;
+}) {
+    const { t } = useI18n();
+    const panelRef = useRef<HTMLDivElement | null>(null);
+    const searchRef = useRef<HTMLInputElement | null>(null);
+    const [query, setQuery] = useState('');
+    const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
+    const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
+
+    useEffect(() => {
+        if (!open) {
+            setQuery('');
+            return;
+        }
+        setOpenGroups((current) => (activeGroupKey ? { ...current, [activeGroupKey]: true } : current));
+        if (activeSectionKey) setOpenSections((current) => ({ ...current, [activeSectionKey]: true }));
+        if (mode === 'pinned') searchRef.current?.focus();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [open, mode === 'pinned']);
+
+    // Esc to close, Tab kept inside the drawer, page scroll locked while pinned.
+    useEffect(() => {
+        if (!open) return;
+        const previousOverflow = document.documentElement.style.overflow;
+        if (mode === 'pinned') document.documentElement.style.overflow = 'hidden';
+        const handler = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') {
+                onClose();
+                return;
+            }
+            if (event.key !== 'Tab' || !panelRef.current) return;
+            const focusable = panelRef.current.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), input, select:not([disabled])');
+            if (focusable.length === 0) return;
+            const first = focusable[0]!;
+            const last = focusable[focusable.length - 1]!;
+            if (!panelRef.current.contains(document.activeElement)) {
+                event.preventDefault();
+                first.focus();
+            } else if (event.shiftKey && document.activeElement === first) {
+                event.preventDefault();
+                last.focus();
+            } else if (!event.shiftKey && document.activeElement === last) {
+                event.preventDefault();
+                first.focus();
+            }
+        };
+        window.addEventListener('keydown', handler);
+        return () => {
+            document.documentElement.style.overflow = previousOverflow;
+            window.removeEventListener('keydown', handler);
+        };
+    }, [open, mode, onClose]);
+
+    const normalized = query.trim().toLocaleLowerCase();
+    const searchResults = useMemo(() => {
+        if (!normalized) return null;
+        return groups
+            .map((group) => {
+                const items: NavItem[] = [];
+                group.items.forEach((entry) => {
+                    const candidates = isNavSection(entry) ? entry.items : [entry];
+                    candidates.forEach((item) => {
+                        const haystack = `${group.label} ${isNavSection(entry) ? entry.label : ''} ${item.label}`.toLocaleLowerCase();
+                        if (haystack.includes(normalized)) items.push(item);
+                    });
+                });
+                return { group, items };
+            })
+            .filter((result) => result.items.length > 0);
+    }, [groups, normalized]);
+
+    const itemLink = (item: NavItem) => {
+        const active = activeHref === item.href;
+        return (
+            <Link
+                key={item.href}
+                href={item.href}
+                aria-current={active ? 'page' : undefined}
+                className={`group relative flex min-h-10 items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-soft ${
+                    active ? 'bg-accent-soft font-semibold text-accent' : 'text-ink-muted hover:bg-sage hover:text-ink'
+                }`}
+            >
+                <span aria-hidden="true" className={active ? 'text-accent' : 'text-ink-faint group-hover:text-ink-muted'}>
+                    {item.icon}
+                </span>
+                <span className="min-w-0 truncate">{item.label}</span>
+            </Link>
+        );
+    };
+
+    return (
+        <>
+            {open && (
+                <button
+                    type="button"
+                    tabIndex={-1}
+                    aria-label={t('common.closeMenu')}
+                    onClick={onClose}
+                    className={`animate-overlay-in fixed inset-0 z-40 cursor-default ${mode === 'pinned' ? 'glass-scrim' : 'bg-transparent'}`}
+                />
+            )}
+            <div
+                id="erp-nav-drawer"
+                ref={panelRef}
+                role="dialog"
+                aria-modal={mode === 'pinned' ? true : undefined}
+                aria-label={t('shell.mainNavigation')}
+                hidden={!open}
+                onMouseEnter={onPointerEnter}
+                onMouseLeave={onPointerLeave}
+                onFocus={() => mode === 'hover' && onPin()}
+                className="animate-drawer-in fixed inset-y-0 start-0 z-50 flex w-[88vw] max-w-[22rem] flex-col glass-popover border-y-0 border-s-0 lg:inset-y-3 lg:start-3 lg:rounded-panel lg:border"
+            >
+                <div className="flex h-16 shrink-0 items-center justify-between border-b border-line px-4">
+                    <Link href="/platform" className="rounded-lg">
+                        <BrandLockup />
+                    </Link>
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        aria-label={t('common.closeMenu')}
+                        className="flex size-10 cursor-pointer items-center justify-center rounded-lg text-ink-muted transition-soft hover:bg-sage hover:text-ink"
+                    >
+                        <IconClose />
+                    </button>
+                </div>
+
+                <div className="shrink-0 space-y-3 border-b border-line p-3">
+                    <label className="relative block">
+                        <span className="sr-only">{t('shell.searchNavigation')}</span>
+                        <span aria-hidden="true" className="pointer-events-none absolute inset-y-0 start-3 flex items-center text-ink-faint">
+                            <IconSearch />
+                        </span>
+                        <input
+                            ref={searchRef}
+                            type="search"
+                            value={query}
+                            onChange={(event) => setQuery(event.target.value)}
+                            placeholder={t('shell.searchNavigation')}
+                            className="control-input h-11 rounded-xl bg-raised ps-9"
+                        />
+                    </label>
+                    <div className="sm:hidden">{contextSwitcher}</div>
+                </div>
+
+                <nav className="min-h-0 flex-1 overflow-y-auto px-3 py-3" aria-label={t('shell.mainNavigation')}>
+                    {searchResults ? (
+                        searchResults.length === 0 ? (
+                            <p className="px-3 py-6 text-center text-sm text-ink-muted">{t('shell.noNavResults')}</p>
+                        ) : (
+                            <div className="space-y-4">
+                                {searchResults.map(({ group, items }) => (
+                                    <div key={group.key}>
+                                        <p className="px-3 pb-1 text-[13px] font-medium text-ink-faint">{group.label}</p>
+                                        <div className="space-y-0.5">{items.map((item) => itemLink(item))}</div>
+                                    </div>
+                                ))}
+                            </div>
+                        )
+                    ) : (
+                        <ul className="space-y-1">
+                            {groups.map((group) => {
+                                const expanded = openGroups[group.key] ?? false;
+                                const groupActive = activeGroupKey === group.key;
+                                return (
+                                    <li key={group.key}>
+                                        <button
+                                            type="button"
+                                            onClick={() => setOpenGroups((current) => ({ ...current, [group.key]: !expanded }))}
+                                            aria-expanded={expanded}
+                                            aria-controls={`drawer-group-${group.key}`}
+                                            className={`group flex min-h-11 w-full cursor-pointer items-center gap-3 rounded-lg px-3 py-2 text-start text-[15px] transition-soft ${
+                                                groupActive ? 'font-semibold text-ink' : 'font-medium text-ink-muted hover:bg-sage hover:text-ink'
+                                            }`}
+                                        >
+                                            <span aria-hidden="true" className={`[&>svg]:size-[18px] ${groupActive ? 'text-accent' : 'text-ink-faint group-hover:text-ink-muted'}`}>
+                                                {group.icon}
+                                            </span>
+                                            <span className="min-w-0 flex-1 truncate">{group.label}</span>
+                                            <DisclosureChevron open={expanded} direction={direction} />
+                                        </button>
+                                        {expanded && (
+                                            <div id={`drawer-group-${group.key}`} className="mt-0.5 mb-1 ms-[1.3rem] space-y-0.5 border-s border-line ps-2">
+                                                {group.items.map((entry) => {
+                                                    if (!isNavSection(entry)) return itemLink(entry);
+                                                    const sectionOpen = openSections[entry.key] ?? false;
+                                                    return (
+                                                        <div key={entry.key}>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setOpenSections((current) => ({ ...current, [entry.key]: !sectionOpen }))}
+                                                                aria-expanded={sectionOpen}
+                                                                aria-controls={`drawer-section-${entry.key}`}
+                                                                className={`group flex min-h-10 w-full cursor-pointer items-center gap-2.5 rounded-lg px-3 py-2 text-start text-sm transition-soft ${
+                                                                    activeSectionKey === entry.key ? 'font-semibold text-ink' : 'text-ink-muted hover:bg-sage hover:text-ink'
+                                                                }`}
+                                                            >
+                                                                <span aria-hidden="true" className="text-ink-faint">
+                                                                    {entry.icon}
+                                                                </span>
+                                                                <span className="min-w-0 flex-1 truncate">{entry.label}</span>
+                                                                <DisclosureChevron open={sectionOpen} direction={direction} />
+                                                            </button>
+                                                            {sectionOpen && (
+                                                                <div id={`drawer-section-${entry.key}`} className="ms-4 space-y-0.5 border-s border-line ps-2">
+                                                                    {entry.items.map((item) => itemLink(item))}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
+                                    </li>
+                                );
+                            })}
+                        </ul>
+                    )}
+                </nav>
+            </div>
+        </>
+    );
+}
+
+/* ====================================================================== */
+/* Contextual header tabs with grouped dropdowns + responsive overflow     */
+/* ====================================================================== */
+
+function ModuleTabs({ group, activeHref, activeSectionKey }: { group: NavGroup; activeHref?: string; activeSectionKey: string | null }) {
+    const { t } = useI18n();
+    const containerRef = useRef<HTMLDivElement | null>(null);
+    const measureRef = useRef<HTMLDivElement | null>(null);
+    const [visibleCount, setVisibleCount] = useState(group.items.length);
+
+    const recompute = useCallback(() => {
+        const container = containerRef.current;
+        const measure = measureRef.current;
+        if (!container || !measure) return;
+        const widths = Array.from(measure.children).map((child) => (child as HTMLElement).offsetWidth + 4);
+        const moreWidth = widths.pop() ?? 96; // last measured child is the More button
+        const available = container.clientWidth;
+        const total = widths.reduce((sum, width) => sum + width, 0);
+        if (total <= available) {
+            setVisibleCount(widths.length);
+            return;
+        }
+        let used = moreWidth;
+        let count = 0;
+        for (const width of widths) {
+            if (used + width > available) break;
+            used += width;
+            count += 1;
+        }
+        setVisibleCount(count);
+    }, []);
+
+    useLayoutEffect(() => {
+        recompute();
+        const observer = new ResizeObserver(recompute);
+        if (containerRef.current) observer.observe(containerRef.current);
+        void document.fonts?.ready.then(recompute);
+        return () => observer.disconnect();
+    }, [recompute, group]);
+
+    const visible = group.items.slice(0, visibleCount);
+    const overflow = group.items.slice(visibleCount);
+    const overflowActive = overflow.some((entry) => entryContains(entry, activeHref));
+
+    return (
+        <nav aria-label={t('shell.moduleNavigation')} ref={containerRef} className="relative w-full min-w-0">
+            {/* Measuring row mirrors the real tab widths. The zero-size clipping wrapper keeps
+                it from widening the page (it caused horizontal scroll before). */}
+            <div aria-hidden="true" className="pointer-events-none invisible absolute top-0 start-0 size-0 overflow-hidden">
+                <div ref={measureRef} className="flex w-max gap-1 whitespace-nowrap [&>*]:shrink-0">
+                    {group.items.map((entry) => (
+                        <span key={entryKey(entry)} className={tabClass(false)}>
+                            {entry.label}
+                            {isNavSection(entry) && <IconChevronDown />}
+                        </span>
+                    ))}
+                    <span className={tabClass(false)}>
+                        <IconMore />
+                        {t('shell.more')}
+                        <IconChevronDown />
+                    </span>
+                </div>
+            </div>
+
+            <ul className="flex items-center gap-0.5 lg:justify-center">
+                {visible.map((entry) => (
+                    <li key={entryKey(entry)} className="shrink-0">
+                        {isNavSection(entry) ? (
+                            <Dropdown
+                                label={entry.label}
+                                active={activeSectionKey === entry.key}
+                                buttonClassName={tabClass(activeSectionKey === entry.key)}
+                            >
+                                {entry.items.map((item) => (
+                                    <MenuLink key={item.href} href={item.href} active={activeHref === item.href} icon={item.icon}>
+                                        {item.label}
+                                    </MenuLink>
+                                ))}
+                            </Dropdown>
+                        ) : (
+                            <Link href={entry.href} aria-current={activeHref === entry.href ? 'page' : undefined} className={tabClass(activeHref === entry.href)}>
+                                {entry.label}
+                            </Link>
+                        )}
+                    </li>
+                ))}
+                {overflow.length > 0 && (
+                    <li className="shrink-0">
+                        <Dropdown
+                            label={t('shell.more')}
+                            icon={<IconMore />}
+                            active={overflowActive}
+                            buttonClassName={tabClass(overflowActive)}
+                            align="end"
+                        >
+                            {overflow.map((entry) =>
+                                isNavSection(entry) ? (
+                                    <div key={entry.key} role="group" aria-label={entry.label} className="py-1">
+                                        <p className="px-3 pt-1 pb-1 text-[13px] font-medium text-ink-faint">{entry.label}</p>
+                                        {entry.items.map((item) => (
+                                            <MenuLink key={item.href} href={item.href} active={activeHref === item.href} icon={item.icon}>
+                                                {item.label}
+                                            </MenuLink>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <MenuLink key={entry.href} href={entry.href} active={activeHref === entry.href} icon={entry.icon}>
+                                        {entry.label}
+                                    </MenuLink>
+                                ),
+                            )}
+                        </Dropdown>
+                    </li>
+                )}
+            </ul>
+        </nav>
+    );
+}
+
+const entryKey = (entry: NavEntry) => (isNavSection(entry) ? entry.key : entry.href);
+const entryContains = (entry: NavEntry, href?: string) => (isNavSection(entry) ? entry.items.some((item) => item.href === href) : entry.href === href);
+
+function tabClass(active: boolean) {
+    // Editorial tabs: quiet text, a petrol underline marks the current page/section.
+    return `relative inline-flex min-h-10 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-lg px-3 text-[15px] tracking-[-0.01em] xl:text-base transition-soft after:pointer-events-none after:absolute after:inset-x-3 after:bottom-0 after:h-[3px] after:rounded-full after:transition-soft lg:min-h-12 lg:rounded-none lg:px-3.5 ${
+        active
+            ? 'font-bold text-ink after:bg-primary'
+            : 'font-medium text-ink-muted after:bg-transparent hover:text-ink hover:after:bg-line-strong data-[active]:text-ink'
+    }`;
+}
+
+/* ====================================================================== */
+/* Header controls                                                        */
+/* ====================================================================== */
+
+const iconButton =
+    'glass-pill relative flex size-9 cursor-pointer items-center justify-center rounded-full text-ink-muted transition-soft hover:text-ink sm:size-10 [&>svg]:size-[18px]';
+
+function ContextSelects() {
+    const { t } = useI18n();
+    const { tenant } = usePage<SharedPageProps>().props;
+    return (
+        <div className="grid gap-3">
+            <label className="block">
+                <span className="mb-1 block text-xs font-semibold text-ink-muted">{t('common.organization')}</span>
+                <select
+                    value={tenant.organization?.id ?? ''}
+                    onChange={(event) => event.target.value && router.post(`/context/organizations/${event.target.value}`)}
+                    className="control-select"
+                >
+                    <option value="">{t('common.organization')}</option>
+                    {tenant.organizations.map((item) => (
+                        <option key={item.id} value={item.id}>
+                            {item.name}
+                        </option>
+                    ))}
+                </select>
+            </label>
+            <label className="block">
+                <span className="mb-1 block text-xs font-semibold text-ink-muted">{t('shell.storeContext')}</span>
+                <select
+                    value={tenant.store?.id ?? ''}
+                    onChange={(event) => event.target.value && router.post(`/context/stores/${event.target.value}`)}
+                    disabled={!tenant.organization}
+                    className="control-select"
+                >
+                    <option value="">{t('shell.storeContext')}</option>
+                    {tenant.stores.map((item) => (
+                        <option key={item.id} value={item.id}>
+                            {item.name} · {item.code}
+                        </option>
+                    ))}
+                </select>
+            </label>
+        </div>
+    );
+}
+
+/** Header search pill → opens the centered global command palette (also Ctrl/⌘+K). */
+function SearchTrigger({ onOpen }: { onOpen: () => void }) {
+    const { t } = useI18n();
+    const mac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
+    return (
+        <button
+            type="button"
+            onClick={onOpen}
+            aria-label={t('palette.title')}
+            title={`${t('palette.title')} (${mac ? '⌘' : 'Ctrl'} K)`}
+            aria-haspopup="dialog"
+            aria-keyshortcuts="Control+K Meta+K"
+            className="glass-pill flex size-9 shrink-0 cursor-pointer items-center justify-center gap-2.5 rounded-full text-sm text-ink-muted transition-soft hover:text-ink sm:size-10 xl:w-auto xl:min-w-[11.5rem] xl:ps-3 xl:pe-1.5 [&>svg]:size-[18px]"
+        >
+            <IconSearch />
+            <span className="hidden flex-1 text-start text-[13px] xl:inline">{t('palette.trigger')}</span>
+            <kbd className="hidden rounded-md border border-line bg-raised px-1.5 py-0.5 font-sans text-[11px] font-medium text-ink-muted xl:inline">{mac ? '⌘ K' : 'Ctrl K'}</kbd>
+        </button>
+    );
+}
+
+/** Organization/store context — compact trigger showing the active store, selects inside. */
+function ContextMenu() {
+    const { t } = useI18n();
+    const { tenant } = usePage<SharedPageProps>().props;
+    const summary = tenant.store?.name ?? tenant.organization?.name ?? t('shell.storeContext');
+    return (
+        <div className="hidden sm:block">
+            <Dropdown
+                label={t('shell.context')}
+                icon={
+                    <span className="flex min-w-0 items-center gap-2">
+                        <IconStore />
+                        <span className="hidden max-w-40 truncate text-[13px] font-semibold text-ink xl:inline">{summary}</span>
+                    </span>
+                }
+                hideLabel
+                align="end"
+                width="w-72"
+                buttonClassName="glass-pill flex min-h-10 min-w-10 cursor-pointer items-center justify-center gap-2 rounded-full px-2.5 text-ink-muted transition-soft hover:text-ink xl:px-3 [&_svg]:size-[17px]"
+            >
+                <div className="p-2">
+                    <p className="mb-3 text-sm font-semibold text-ink">{t('shell.context')}</p>
+                    <ContextSelects />
+                </div>
+            </Dropdown>
+        </div>
+    );
+}
+
+/** Quick create — only real, permitted workflows. */
+function QuickCreateMenu() {
+    const { t } = useI18n();
+    const { tenant } = usePage<SharedPageProps>().props;
+    const actions = buildQuickActions(t, tenant);
+
+    if (actions.length === 0) return null;
+
+    return (
+        <Dropdown
+            label={t('shell.create')}
+            icon={<IconPlus />}
+            align="end"
+            width="w-60"
+            buttonClassName="btn-gradient flex min-h-9 cursor-pointer items-center gap-1 rounded-full px-2.5 text-sm font-semibold text-primary-fg transition-soft hover:bg-primary-hover sm:min-h-10 md:gap-1.5 md:px-4 [&_span]:hidden md:[&_span]:inline"
+        >
+            {actions.map((action) => (
+                <MenuLink key={action.href} href={action.href} icon={action.icon}>
+                    {action.label}
+                </MenuLink>
+            ))}
+        </Dropdown>
+    );
+}
+
+function ThemeToggle() {
+    const { t } = useI18n();
+    const [dark, setDark] = useState(false);
+    useEffect(() => {
+        setDark(document.documentElement.dataset.theme === 'dark');
+    }, []);
+    const toggle = () => {
+        const next = !dark;
+        setDark(next);
+        if (next) document.documentElement.dataset.theme = 'dark';
+        else delete document.documentElement.dataset.theme;
+        try {
+            window.localStorage.setItem('erp.theme', next ? 'dark' : 'light');
+        } catch {
+            /* storage unavailable */
+        }
+    };
+    const label = dark ? t('shell.themeLight') : t('shell.themeDark');
+    return (
+        <button type="button" onClick={toggle} aria-label={label} title={label} aria-pressed={dark} className={iconButton}>
+            {dark ? <IconSun /> : <IconMoon />}
+        </button>
+    );
+}
+
+function ProfileMenu({
+    userName,
+    userEmail,
+    showSandbox,
+    showUsers,
+    showSettings,
+    organizationId,
+}: {
+    userName?: string;
+    userEmail?: string;
+    showSandbox: boolean;
+    showUsers: boolean;
+    showSettings: boolean;
+    organizationId?: number | string;
+}) {
+    const { t } = useI18n();
+    const initial = (userName ?? '?').trim().charAt(0).toUpperCase();
+    return (
+        <Dropdown
+            label={userName ?? t('common.profile')}
+            icon={
+                <span aria-hidden="true" className="grid size-8 place-items-center rounded-full bg-ink text-[13px] font-semibold text-surface">
+                    {initial}
+                </span>
+            }
+            hideLabel
+            align="end"
+            width="w-64"
+            buttonClassName="glass-pill flex cursor-pointer items-center rounded-full p-1 transition-soft hover:ring-2 hover:ring-accent/30"
+        >
+            <div className="px-3 py-2">
+                <p className="text-sm font-semibold text-ink">{userName}</p>
+                <p className="truncate text-[13px] text-ink-muted">{userEmail}</p>
+            </div>
+            <MenuLink href="/account/profile">{t('common.profile')}</MenuLink>
+            <MenuLink href="/security">{t('common.security')}</MenuLink>
+            <MenuLink href="/account/notifications">{t('common.notifications')}</MenuLink>
+            {(showUsers || showSettings || showSandbox) && <div className="my-1 border-t border-line" />}
+            {showUsers && organizationId !== undefined && <MenuLink href={`/organizations/${organizationId}/users-access`}>{t('common.usersAccess')}</MenuLink>}
+            {showSettings && <MenuLink href="/document-profile">{t('common.organizationSettings')}</MenuLink>}
+            {showSandbox && <MenuLink href="/test-mode">Mode test</MenuLink>}
+            <div className="my-1 border-t border-line" />
+            <LocaleSwitcher />
+            <div className="my-1 border-t border-line" />
+            <button
+                type="button"
+                onClick={() => router.post('/logout')}
+                className="block min-h-10 w-full cursor-pointer rounded-lg px-3 py-2 text-start text-sm font-medium text-danger transition-soft hover:bg-danger-soft"
+            >
+                {t('common.logout')}
+            </button>
+        </Dropdown>
+    );
+}

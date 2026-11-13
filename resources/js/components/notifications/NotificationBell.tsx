@@ -46,7 +46,7 @@ export default function NotificationBell({ initial }: { initial: NotificationSum
     };
 
     return <details className="relative shrink-0" dir={direction}>
-        <summary aria-label={t('notifications.title')} className="relative flex size-10 cursor-pointer list-none items-center justify-center rounded-field text-ink-muted transition-soft hover:bg-sage hover:text-ink">
+        <summary aria-label={t('notifications.title')} className="relative flex size-9 cursor-pointer list-none items-center justify-center rounded-full text-ink-muted sm:size-10 transition-soft hover:bg-sage hover:text-ink">
             <BellIcon />
             {summary.unread_count > 0 && <span className="absolute -top-1 -end-1 min-w-5 rounded-full bg-danger px-1.5 py-0.5 text-center text-[10px] font-bold leading-4 text-white">{summary.unread_count > 99 ? '99+' : summary.unread_count}</span>}
         </summary>

@@ -109,10 +109,12 @@ final class ExecutiveDashboardService
     /** @return array<int,array{date:string,label:string,sales:string,collections:string}> */
     private function salesVsCollections(Organization $organization, FinancePeriod $period, ?Store $store): array
     {
+        // Production dashboard: Test orders / credit notes share these tables (sandbox_id NOT NULL).
+        // Payments and refunds need no filter — Test ledgers live in separate sandbox_* tables.
         $sales = $this->dailyTotals('sales_orders', 'sale_date', 'total_incl_tax', $organization, $period, $store,
-            fn (Builder $query) => $query->where('status', SalesOrderStatus::Confirmed->value));
+            fn (Builder $query) => $query->whereNull('sales_orders.sandbox_id')->where('status', SalesOrderStatus::Confirmed->value));
         $credits = $this->dailyTotals('credit_notes', 'credit_note_date', 'total_incl_tax', $organization, $period, $store,
-            fn (Builder $query) => $query->where('status', 'issued'));
+            fn (Builder $query) => $query->whereNull('credit_notes.sandbox_id')->where('status', 'issued'));
         $collections = $this->dailyTotals('payments', 'payment_date', 'amount', $organization, $period, $store,
             fn (Builder $query) => $query->where('status', PaymentStatus::Posted->value));
         $refunds = $this->dailyTotals('payment_refunds', 'refund_date', 'amount', $organization, $period, $store,

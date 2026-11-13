@@ -240,7 +240,7 @@ export default function DataReset({ organization, categories, warehouses, select
     };
 
     return (
-        <ApplicationShell wide>
+        <ApplicationShell width="reading">
             <Head title={t('dataReset.title')} />
             <PageHeader title={t('dataReset.title')} description={t('dataReset.description')} />
 

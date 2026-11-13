@@ -59,7 +59,7 @@ export default function UsersAccessIndex({ organization, memberships, roles, inv
     const selectableRoles = roles.filter((role) => role.slug !== 'owner');
 
     return (
-        <ApplicationShell>
+        <ApplicationShell width="reading">
             <Head title={t('usersAccess.title')} />
             <PageHeader title={t('usersAccess.title')} description={t('usersAccess.help').replace('{organization}', organization.name)} />
 

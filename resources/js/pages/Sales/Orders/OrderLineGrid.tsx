@@ -193,7 +193,7 @@ export default function OrderLineGrid({ orderId, currency, lines, searchUrl, tax
             <div className="hidden overflow-x-auto md:block">
                 <table className="w-full min-w-[820px] border-collapse text-sm">
                     <thead>
-                        <tr className="border-b border-line-strong text-left text-xs uppercase tracking-wide text-ink-muted [&>th]:px-2 [&>th]:py-2 [&>th]:font-medium">
+                        <tr className="border-b border-line-strong text-left text-[13px] text-ink-muted [&>th]:px-2 [&>th]:py-2 [&>th]:font-medium font-medium">
                             <th>{t('orders.edit.item')}</th>
                             <th className="w-16 text-right">{t('common.quantityShort')}</th>
                             <th className="w-44">{t('orders.show.unitPriceExclTax')}</th>

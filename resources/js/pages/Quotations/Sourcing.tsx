@@ -745,7 +745,7 @@ export function SupplierRequestDialog({
                 />
 
                 <div>
-                    <label className="block text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                    <label className="block text-[13px] font-medium text-ink-muted">
                         {t("supplierReco.otherSuppliers")}
                     </label>
                     <input
@@ -1014,7 +1014,7 @@ export function IssueSourcingDialog({
             <div className="overflow-x-auto px-4 py-4 sm:px-6">
                 <table className="w-full min-w-[560px] text-sm">
                     <thead>
-                        <tr className="border-b border-line text-left text-xs uppercase tracking-wide text-ink-muted [&>th]:px-2 [&>th]:py-1.5 [&>th]:font-medium">
+                        <tr className="border-b border-line text-left text-[13px] text-ink-muted [&>th]:px-2 [&>th]:py-1.5 [&>th]:font-medium font-medium">
                             <th>{t("sourcing.article")}</th>
                             <th className="text-end">
                                 {t("sourcing.requested")}

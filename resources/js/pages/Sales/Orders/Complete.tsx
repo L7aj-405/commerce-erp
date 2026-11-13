@@ -167,7 +167,7 @@ export default function CompletePosOrder({ order, paymentSummary, searchUrl, sub
                 </header>
 
                 <section className="rounded-card border border-line bg-surface p-5">
-                    <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">{t('orders.complete.existing')}</h2>
+                    <h2 className="font-semibold text-base text-ink">{t('orders.complete.existing')}</h2>
                     <ul className="mt-3 divide-y divide-line text-sm">
                         {order.lines.map((line) => (
                             <li key={line.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
@@ -225,7 +225,7 @@ export default function CompletePosOrder({ order, paymentSummary, searchUrl, sub
                                     className={`flex flex-wrap items-center justify-between gap-3 px-3 py-2.5 ${activeResult === index ? 'bg-raised' : ''}`}
                                 >
                                     <div className="min-w-0 flex-1">
-                                        <p className="text-xs font-semibold uppercase tracking-wide text-ink-faint">{code}{variant.sku && variant.sku !== code ? ` · SKU ${variant.sku}` : ''}</p>
+                                        <p className="text-[13px] font-medium text-ink-muted">{code}{variant.sku && variant.sku !== code ? ` · SKU ${variant.sku}` : ''}</p>
                                         <p className="truncate text-sm font-medium text-ink">{variant.product_name}{variant.variant_name ? ` — ${variant.variant_name}` : ''}</p>
                                         <p className="text-xs text-ink-muted">{t('orders.complete.localStock').replace('{stock}', formatQuantity(variant.local_stock_available))}{variant.config_missing ? ` · ${t('orders.complete.configMissing')}` : ''}</p>
                                     </div>

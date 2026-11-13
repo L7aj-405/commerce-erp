@@ -190,7 +190,7 @@ export default function ReturnCreate({
                             </button>
                         </div>
                         <table className="w-full text-sm">
-                            <thead className="bg-raised text-start text-xs uppercase text-ink-muted">
+                            <thead className="bg-raised text-start text-[13px] text-ink-muted font-medium">
                                 <tr>
                                     {[
                                         "item",

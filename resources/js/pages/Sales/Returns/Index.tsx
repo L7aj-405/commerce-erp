@@ -1,14 +1,18 @@
-import { useDebouncedValue } from "@/components/pos/useDebouncedValue";
-import SandboxReturnsBadge from "@/components/SandboxReturnsBadge";
-import EmptyState from "@/components/ui/EmptyState";
-import PageHeader from "@/components/ui/PageHeader";
-import Pagination from "@/components/ui/Pagination";
-import SearchInput from "@/components/ui/SearchInput";
-import SalesLayout from "@/layouts/SalesLayout";
-import { useI18n } from "@/i18n";
-import { formatDateTime as formatDate, formatMoney } from "@/utils/format";
-import { Head, Link } from "@inertiajs/react";
-import { useEffect, useRef, useState } from "react";
+import { useDebouncedValue } from '@/components/pos/useDebouncedValue';
+import SandboxReturnsBadge from '@/components/SandboxReturnsBadge';
+import { FilterSearch } from '@/components/ui/AdvancedFilterBar';
+import { ButtonLink } from '@/components/ui/Button';
+import DocBadge from '@/components/ui/DocBadge';
+import EmptyState from '@/components/ui/EmptyState';
+import PageHeader from '@/components/ui/PageHeader';
+import { rowLink, TablePager, TableShell } from '@/components/ui/TableShell';
+import { useI18n } from '@/i18n';
+import SalesLayout from '@/layouts/SalesLayout';
+import type { SharedPageProps } from '@/types/app';
+import type { BadgeTone } from '@/utils/labels';
+import { formatDateTime as formatDate, formatMoney } from '@/utils/format';
+import { Head, Link, usePage } from '@inertiajs/react';
+import { useEffect, useRef, useState } from 'react';
 
 type LinkData = { url: string | null; label: string; active: boolean };
 type Result = {
@@ -27,280 +31,204 @@ type ReturnRow = {
     status: string;
     total_incl_tax: string;
     currency_code: string;
-    sales_order: { order_number: string; customer_name: string | null };
+    sales_order: { id: number; order_number: string; customer_name: string | null };
 };
 type Props = {
-    returns: { data: ReturnRow[]; links: LinkData[] };
+    returns: { data: ReturnRow[]; links: LinkData[]; from?: number | null; to?: number | null; total?: number };
     searchUrl: string;
 };
 
+const statusTone: Record<string, BadgeTone> = { draft: 'warning', received: 'positive', cancelled: 'danger' };
+
 export default function ReturnsIndex({ returns, searchUrl }: Props) {
     const { t } = useI18n();
-    const [query, setQuery] = useState("");
+    const { tenant } = usePage<SharedPageProps>().props;
+    const canViewOrders = tenant.permissions.includes('sales_orders.view');
+    const [query, setQuery] = useState('');
     const debounced = useDebouncedValue(query.trim(), 250);
     const [rows, setRows] = useState<Result[]>([]);
-    const [loading, setLoading] = useState(false);
+    const [lookup, setLookup] = useState<'idle' | 'loading' | 'error' | 'done'>('idle');
     const abort = useRef<AbortController | null>(null);
 
+    // Eligible-order lookup for starting a return (GET returns.search). It is not a
+    // filter of the history list below — that list has no server-side filters.
     useEffect(() => {
         abort.current?.abort();
         if (!debounced) {
             setRows([]);
-            setLoading(false);
+            setLookup('idle');
             return;
         }
         const controller = new AbortController();
         abort.current = controller;
-        setLoading(true);
-        fetch(`${searchUrl}?search=${encodeURIComponent(debounced)}`, {
-            headers: { Accept: "application/json" },
-            signal: controller.signal,
-        })
-            .then((response) =>
-                response.ok ? response.json() : Promise.reject(),
-            )
-            .then((payload) => setRows(payload.data ?? []))
-            .catch(() => {
-                if (!controller.signal.aborted) setRows([]);
+        setLookup('loading');
+        fetch(`${searchUrl}?search=${encodeURIComponent(debounced)}`, { headers: { Accept: 'application/json' }, signal: controller.signal })
+            .then((response) => (response.ok ? response.json() : Promise.reject(new Error(String(response.status)))))
+            .then((payload) => {
+                setRows(payload.data ?? []);
+                setLookup('done');
             })
-            .finally(() => {
-                if (!controller.signal.aborted) setLoading(false);
+            .catch(() => {
+                if (!controller.signal.aborted) {
+                    setRows([]);
+                    setLookup('error');
+                }
             });
-
         return () => controller.abort();
     }, [debounced, searchUrl]);
 
+    const statusLabel = (status: string) =>
+        ({ draft: t('returns.draft'), received: t('returns.received'), cancelled: t('returns.cancelled') })[status] ?? status.replaceAll('_', ' ');
+    const customer = (row: ReturnRow) => row.sales_order.customer_name || t('common.counterCustomer');
+    const orderRef = (row: ReturnRow) =>
+        canViewOrders ? (
+            <Link href={`/sales/orders/${row.sales_order.id}`} className="font-medium text-ink underline-offset-2 hover:text-accent hover:underline">
+                <bdi>{row.sales_order.order_number}</bdi>
+            </Link>
+        ) : (
+            <bdi className="font-medium text-ink">{row.sales_order.order_number}</bdi>
+        );
+
     return (
         <SalesLayout>
-            <Head title={t("returns.title")} />
+            <Head title={t('returns.title')} />
             <SandboxReturnsBadge kind="return" />
-            <PageHeader
-                title={t("returns.title")}
-                description={t("returns.description")}
-            />
+            <PageHeader title={t('returns.title')} description={t('returns.description')} />
 
-            <section className="mb-6 rounded-card border border-line bg-surface p-4 shadow-soft">
-                <SearchInput
-                    value={query}
-                    onChange={setQuery}
-                    searching={loading}
-                    placeholder={t("returns.search")}
-                />
-                <div className="mt-3 divide-y divide-line">
-                    {!query.trim() && (
-                        <p className="py-4 text-sm text-ink-muted">
-                            {t("returns.searchHelp")}
-                        </p>
-                    )}
-                    {query.trim() && !loading && rows.length === 0 && (
-                        <p className="py-4 text-sm text-ink-muted">
-                            {t("returns.noSale")}
-                        </p>
-                    )}
-                    {rows.map((row) => (
-                        <div
-                            key={row.id}
-                            className="flex flex-wrap items-center justify-between gap-3 py-3"
-                        >
-                            <div className="min-w-0">
-                                <p className="font-semibold text-ink">
-                                    <bdi>{row.order_number}</bdi> ·{" "}
-                                    {row.customer_name ||
-                                        t("common.counterCustomer")}
-                                </p>
-                                <p className="text-xs text-ink-muted">
-                                    {t("returns.invoiceDelivered")
-                                        .replace(
-                                            "{invoice}",
-                                            row.invoice_numbers.join(", ") ||
-                                                "—",
-                                        )
-                                        .replace(
-                                            "{date}",
-                                            formatDate(row.fulfilled_at),
-                                        )}
-                                </p>
-                                <p
-                                    className={`mt-1 inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${row.eligible ? "bg-success-soft text-success" : "bg-danger-soft text-danger"}`}
-                                >
-                                    {row.eligible
-                                        ? t("returns.authorized")
-                                        : row.returns_enabled
-                                          ? t("returns.deadlineExceeded")
-                                          : t("returns.disabled")}{" "}
-                                    ·{" "}
-                                    {t("returns.until").replace(
-                                        "{date}",
-                                        row.deadline
-                                            ? formatDate(row.deadline)
-                                            : "—",
-                                    )}
-                                </p>
+            <div className="grid items-start gap-4 2xl:grid-cols-[minmax(22rem,30rem)_minmax(0,1fr)]">
+                {/* Start a return from a delivered sale */}
+                <section aria-labelledby="return-start" className="surface-card p-4 sm:p-5">
+                    <h2 id="return-start" className="text-base font-semibold text-ink">
+                        {t('returns.startTitle')}
+                    </h2>
+                    <p className="mt-0.5 mb-3 text-sm text-ink-muted">{t('returns.searchHelp')}</p>
+                    <FilterSearch value={query} onChange={setQuery} loading={lookup === 'loading'} label={t('returns.search')} placeholder={t('returns.search')} />
+                    <div className="mt-2 divide-y divide-line" aria-live="polite">
+                        {lookup === 'done' && rows.length === 0 && <p className="py-4 text-sm text-ink-muted">{t('returns.noSale')}</p>}
+                        {lookup === 'error' && (
+                            <p className="mt-2 rounded-field bg-danger-soft px-3 py-2 text-sm text-danger" role="alert">
+                                {t('returns.lookupError')}
+                            </p>
+                        )}
+                        {rows.map((row) => (
+                            <div key={row.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
+                                <div className="min-w-0">
+                                    <p className="font-semibold text-ink">
+                                        <bdi>{row.order_number}</bdi> · {row.customer_name || t('common.counterCustomer')}
+                                    </p>
+                                    <p className="text-[13px] text-ink-muted">
+                                        {t('returns.invoiceDelivered')
+                                            .replace('{invoice}', row.invoice_numbers.join(', ') || '—')
+                                            .replace('{date}', formatDate(row.fulfilled_at))}
+                                    </p>
+                                    <div className="mt-1.5">
+                                        <DocBadge tone={row.eligible ? 'positive' : 'danger'}>
+                                            {row.eligible ? t('returns.authorized') : row.returns_enabled ? t('returns.deadlineExceeded') : t('returns.disabled')} ·{' '}
+                                            {t('returns.until').replace('{date}', row.deadline ? formatDate(row.deadline) : '—')}
+                                        </DocBadge>
+                                    </div>
+                                </div>
+                                <ButtonLink href={`/sales/orders/${row.id}/returns/create`} size="sm" variant="secondary">
+                                    {t('returns.create')}
+                                </ButtonLink>
                             </div>
-                            <Link
-                                href={`/sales/orders/${row.id}/returns/create`}
-                                className="rounded-field border border-line-strong px-3 py-2 text-sm font-medium text-ink transition-soft hover:bg-sage"
-                            >
-                                {t("returns.create")}
-                            </Link>
-                        </div>
-                    ))}
-                </div>
-            </section>
-
-            <section>
-                <div className="mb-3 flex items-center justify-between gap-3">
-                    <div>
-                        <h2 className="font-semibold text-ink">
-                            {t("returns.history")}
-                        </h2>
-                        <p className="text-sm text-ink-muted">
-                            {t("returns.historyHelp")}
-                        </p>
+                        ))}
                     </div>
-                </div>
+                </section>
 
-                {returns.data.length === 0 ? (
-                    <EmptyState
-                        title={t("returns.empty")}
-                        description={t("returns.emptyHelp")}
-                    />
-                ) : (
-                    <>
-                        <div className="hidden overflow-hidden rounded-card border border-line bg-surface shadow-soft md:block">
-                            <table className="w-full text-start text-sm">
-                                <thead className="bg-raised text-[11px] uppercase tracking-wide text-ink-faint">
-                                    <tr>
-                                        <th className="px-4 py-3">
-                                            {t("returns.number")}
-                                        </th>
-                                        <th className="px-4 py-3">
-                                            {t("returns.orderCustomer")}
-                                        </th>
-                                        <th className="px-4 py-3">
-                                            {t("common.status")}
-                                        </th>
-                                        <th className="px-4 py-3 text-end">
-                                            {t("returns.returnedAmount")}
-                                        </th>
-                                        <th className="px-4 py-3 text-right">
-                                            <span className="sr-only">
-                                                Actions
-                                            </span>
-                                        </th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-line">
-                                    {returns.data.map((row) => (
-                                        <tr
-                                            key={row.id}
-                                            className="transition-soft hover:bg-raised/70"
-                                        >
-                                            <td className="px-4 py-3 font-semibold text-ink">
-                                                {row.return_number}
-                                            </td>
+                {/* History */}
+                <div className="min-w-0">
+                    <div className="mb-3">
+                        <h2 className="text-base font-semibold text-ink">{t('returns.history')}</h2>
+                        <p className="text-sm text-ink-muted">{t('returns.historyHelp')}</p>
+                    </div>
+
+                    <TableShell
+                        label={t('returns.history')}
+                        state={returns.data.length === 0 ? 'empty' : 'ready'}
+                        emptyTitle={t('returns.empty')}
+                        emptyDescription={t('returns.emptyHelp')}
+                        className="hidden lg:block"
+                        footer={returns.data.length === 0 ? undefined : <TablePager links={returns.links} from={returns.from} to={returns.to} total={returns.total} />}
+                    >
+                        <table className="erp-table min-w-[680px] text-sm">
+                            <thead>
+                                <tr>
+                                    <th className="px-4 py-2.5">{t('returns.number')}</th>
+                                    <th className="px-4 py-2.5">{t('returns.orderCustomer')}</th>
+                                    <th className="px-4 py-2.5">{t('common.status')}</th>
+                                    <th className="num px-4 py-2.5">{t('returns.returnedAmount')}</th>
+                                    <th className="px-4 py-2.5">
+                                        <span className="sr-only">{t('common.actions')}</span>
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {returns.data.map((row) => {
+                                    const link = rowLink(`/sales/returns/${row.id}`);
+                                    return (
+                                        <tr key={row.id} onClick={link.onClick} className={link.className}>
                                             <td className="px-4 py-3">
-                                                <p className="font-medium text-ink">
-                                                    {
-                                                        row.sales_order
-                                                            .order_number
-                                                    }
-                                                </p>
-                                                <p className="text-xs text-ink-faint">
-                                                    {row.sales_order
-                                                        .customer_name ||
-                                                        t(
-                                                            "common.counterCustomer",
-                                                        )}
-                                                </p>
-                                            </td>
-                                            <td className="px-4 py-3">
-                                                <ReturnStatus
-                                                    status={row.status}
-                                                />
-                                            </td>
-                                            <td className="px-4 py-3 text-end font-semibold tabular-nums text-ink">
-                                                {formatMoney(
-                                                    row.total_incl_tax,
-                                                    row.currency_code,
-                                                )}
-                                            </td>
-                                            <td className="px-4 py-3 text-end">
-                                                <Link
-                                                    href={`/sales/returns/${row.id}`}
-                                                    className="rounded-field px-3 py-2 text-sm font-medium text-ink transition-soft hover:bg-sage"
-                                                >
-                                                    {t("common.open")}
+                                                <Link href={`/sales/returns/${row.id}`} className="font-semibold text-ink hover:text-accent hover:underline">
+                                                    <bdi>{row.return_number}</bdi>
                                                 </Link>
                                             </td>
+                                            <td className="px-4 py-3">
+                                                {orderRef(row)}
+                                                <span className="block text-[13px] text-ink-muted">{customer(row)}</span>
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <DocBadge tone={statusTone[row.status] ?? 'neutral'}>{statusLabel(row.status)}</DocBadge>
+                                            </td>
+                                            <td className="num px-4 py-3 font-semibold text-ink" dir="ltr">
+                                                {formatMoney(row.total_incl_tax, row.currency_code)}
+                                            </td>
+                                            <td className="px-4 py-3 text-end">
+                                                <ButtonLink href={`/sales/returns/${row.id}`} size="sm" variant="outline">
+                                                    {t('common.open')}
+                                                    <span className="sr-only"> {row.return_number}</span>
+                                                </ButtonLink>
+                                            </td>
                                         </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </TableShell>
 
-                        <div className="grid gap-3 md:hidden">
-                            {returns.data.map((row) => (
-                                <Link
-                                    key={row.id}
-                                    href={`/sales/returns/${row.id}`}
-                                    className="rounded-card border border-line bg-surface p-4 shadow-soft"
-                                >
-                                    <div className="flex items-start justify-between gap-3">
-                                        <div>
-                                            <p className="font-semibold text-ink">
-                                                {row.return_number}
-                                            </p>
-                                            <p className="text-sm text-ink-muted">
-                                                <bdi>
-                                                    {
-                                                        row.sales_order
-                                                            .order_number
-                                                    }
-                                                </bdi>{" "}
-                                                ·{" "}
-                                                {row.sales_order
-                                                    .customer_name ||
-                                                    t("common.counterCustomer")}
-                                            </p>
+                    <div className="lg:hidden">
+                        {returns.data.length === 0 ? (
+                            <EmptyState compact title={t('returns.empty')} description={t('returns.emptyHelp')} />
+                        ) : (
+                            <ul className="grid gap-3 sm:grid-cols-2">
+                                {returns.data.map((row) => (
+                                    <li key={row.id} className="surface-card flex flex-col p-4">
+                                        <div className="flex items-start justify-between gap-3">
+                                            <div className="min-w-0">
+                                                <Link href={`/sales/returns/${row.id}`} className="block truncate text-base font-semibold text-ink hover:underline">
+                                                    <bdi>{row.return_number}</bdi>
+                                                </Link>
+                                                <p className="truncate text-[13px] text-ink-muted">
+                                                    {orderRef(row)} · {customer(row)}
+                                                </p>
+                                            </div>
+                                            <DocBadge tone={statusTone[row.status] ?? 'neutral'}>{statusLabel(row.status)}</DocBadge>
                                         </div>
-                                        <ReturnStatus status={row.status} />
-                                    </div>
-                                    <p className="mt-3 text-end font-semibold tabular-nums text-ink">
-                                        {formatMoney(
-                                            row.total_incl_tax,
-                                            row.currency_code,
-                                        )}
-                                    </p>
-                                </Link>
-                            ))}
+                                        <p className="metric-value mt-3 text-end text-base font-semibold text-ink">{formatMoney(row.total_incl_tax, row.currency_code)}</p>
+                                        <ButtonLink href={`/sales/returns/${row.id}`} size="sm" variant="outline" className="mt-3 w-full">
+                                            {t('common.open')}
+                                            <span className="sr-only"> {row.return_number}</span>
+                                        </ButtonLink>
+                                    </li>
+                                ))}
+                            </ul>
+                        )}
+                        <div className="mt-4">
+                            <TablePager links={returns.links} from={returns.from} to={returns.to} total={returns.total} />
                         </div>
-                        <Pagination links={returns.links} />
-                    </>
-                )}
-            </section>
+                    </div>
+                </div>
+            </div>
         </SalesLayout>
-    );
-}
-
-function ReturnStatus({ status }: { status: string }) {
-    const { t } = useI18n();
-    const styles: Record<string, string> = {
-        draft: "bg-warning-soft text-warning",
-        received: "bg-success-soft text-success",
-        cancelled: "bg-danger-soft text-danger",
-    };
-
-    const labels: Record<string, string> = {
-        draft: t("returns.draft"),
-        received: t("returns.received"),
-        cancelled: t("returns.cancelled"),
-    };
-    return (
-        <span
-            className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${styles[status] ?? "bg-raised text-ink-muted"}`}
-        >
-            {labels[status] ?? status.replaceAll("_", " ")}
-        </span>
     );
 }

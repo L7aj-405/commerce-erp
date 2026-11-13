@@ -128,7 +128,7 @@ export default function EditOrder({ order, taxRates, lineSearchUrl, customerSear
             <form onSubmit={saveHeader} className="mb-6 rounded-card border border-line bg-surface p-5">
                 <div className="grid gap-4 md:grid-cols-3">
                     <label className="block text-sm">
-                        <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-ink-muted">{t('common.customer')}</span>
+                        <span className="mb-1 block text-[13px] font-medium text-ink-muted">{t('common.customer')}</span>
                         <CustomerPicker
                             searchUrl={customerSearchUrl}
                             disabled={!isEditable}
@@ -140,7 +140,7 @@ export default function EditOrder({ order, taxRates, lineSearchUrl, customerSear
                         />
                     </label>
                     <label className="block text-sm">
-                        <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-ink-muted">{t('orders.edit.saleDate')}</span>
+                        <span className="mb-1 block text-[13px] font-medium text-ink-muted">{t('orders.edit.saleDate')}</span>
                         <input
                             type="date"
                             disabled={!isEditable}
@@ -151,7 +151,7 @@ export default function EditOrder({ order, taxRates, lineSearchUrl, customerSear
                     </label>
                     <div className="flex items-end text-xs text-ink-faint">{t('orders.edit.currency')} : <bdi>{order.currency_code}</bdi></div>
                     <label className="block text-sm">
-                        <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-ink-muted">{t('orders.show.salesperson')}</span>
+                        <span className="mb-1 block text-[13px] font-medium text-ink-muted">{t('orders.show.salesperson')}</span>
                         {can.assignSalesperson && !correction ? (
                             <select
                                 disabled={!isEditable}
@@ -169,7 +169,7 @@ export default function EditOrder({ order, taxRates, lineSearchUrl, customerSear
                         )}
                     </label>
                     <label className="block text-sm md:col-span-3">
-                        <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-ink-muted">{t('common.notes')}</span>
+                        <span className="mb-1 block text-[13px] font-medium text-ink-muted">{t('common.notes')}</span>
                         <textarea
                             disabled={!isEditable}
                             value={header.data.notes}
@@ -191,7 +191,7 @@ export default function EditOrder({ order, taxRates, lineSearchUrl, customerSear
 
             {/* ARTICLES */}
             <section className="mb-6 rounded-card border border-line bg-surface p-5">
-                <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-ink-muted">{t('orders.edit.items')}</h2>
+                <h2 className="mb-3 font-semibold text-base text-ink">{t('orders.edit.items')}</h2>
                 {isEditable ? (
                     <OrderLineGrid
                         orderId={order.id}
@@ -253,7 +253,7 @@ function ReadOnlyLines({ lines, currency }: { lines: OLine[]; currency: string }
         <div className="overflow-x-auto">
             <table className="w-full min-w-[640px] border-collapse text-sm">
                 <thead>
-                    <tr className="border-b border-line-strong text-left text-xs uppercase tracking-wide text-ink-muted [&>th]:px-2 [&>th]:py-2 [&>th]:font-medium">
+                    <tr className="border-b border-line-strong text-left text-[13px] text-ink-muted [&>th]:px-2 [&>th]:py-2 [&>th]:font-medium font-medium">
                         <th>{t('orders.edit.item')}</th>
                         <th className="text-right">{t('common.quantityShort')}</th>
                         <th className="text-right">{t('orders.show.unitPriceExclTax')}</th>

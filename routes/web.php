@@ -224,6 +224,10 @@ Route::middleware('auth')->group(function () {
 // registered, still-unverified accounts are actually gated by it).
 Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () {
     Route::get('/platform', PlatformController::class)->name('platform.index');
+    // Design-system gallery for UI QA. Registered only in local; static demo props, no data access.
+    if (app()->isLocal()) {
+        Route::get('/dev/ui', fn () => Inertia::render('Dev/UiGallery'))->name('dev.ui');
+    }
     Route::get('/activity', ActivityAuditController::class)->name('activity.index');
     Route::get('/system-health', SystemHealthController::class)->name('system-health.index');
     Route::get('/notifications', [NotificationController::class, 'index'])->name('notifications.index');
