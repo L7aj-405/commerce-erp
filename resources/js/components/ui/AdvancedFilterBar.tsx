@@ -1,5 +1,6 @@
 import { useFloatingPanel } from '@/hooks/useFloatingPanel';
 import { useI18n } from '@/i18n';
+import DatePicker from './DatePicker';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent, ReactNode } from 'react';
 import { createPortal } from 'react-dom';
@@ -409,78 +410,72 @@ export function ChoiceFilter<M extends boolean = false>({
     );
 }
 
-/** Single-day filter (backend filters on one exact date). Native picker for mobile. */
+/** Single-day filter (backend filters on one exact date), using the shared calendar popover. */
 export function DateFilter({ label, value, onChange }: { label: string; value?: string | null; onChange: (value: string | undefined) => void }) {
-    const id = useId();
+    const labelId = useId();
     const hasValue = Boolean(value);
     return (
         <div
-            className={`flex h-10 min-w-0 items-center gap-1.5 rounded-field border ps-3 pe-1.5 text-sm transition-soft focus-within:border-primary focus-within:ring-3 focus-within:ring-primary/15 lg:w-auto ${
+            className={`flex h-10 min-w-0 items-center gap-1 rounded-field border ps-3 pe-1 text-sm transition-soft focus-within:border-primary focus-within:ring-3 focus-within:ring-primary/15 ${
                 hasValue ? 'border-accent/35 bg-accent-soft' : 'border-line-strong bg-surface'
             }`}
         >
-            <label htmlFor={id} className="shrink-0 text-ink-muted">
+            <span id={labelId} className="shrink-0 text-ink-muted">
                 {label}
-            </label>
-            <input
-                id={id}
-                type="date"
-                value={value ?? ''}
-                onChange={(event) => onChange(event.target.value || undefined)}
-                className="h-8 w-full min-w-0 border-0 bg-transparent px-1 text-sm font-medium text-ink focus:outline-none lg:w-[8.75rem]"
-            />
+            </span>
+            <DatePicker variant="bare" className="min-w-[8.5rem] flex-1" value={value ?? ''} onChange={(next) => onChange(next || undefined)} aria-labelledby={labelId} />
         </div>
     );
 }
 
-/** Native date inputs (best mobile pickers) joined into one compact range control. */
+/** From/to date pair joined into one compact control; each end opens the shared calendar. */
 export function DateRangeFilter({
     label,
     from,
     to,
     onChange,
-    type = 'date',
 }: {
     label: string;
     from?: string | null;
     to?: string | null;
     onChange: (range: { from?: string; to?: string }) => void;
-    type?: 'date' | 'month';
 }) {
     const { t } = useI18n();
+    const labelId = useId();
     const hasValue = Boolean(from || to);
     return (
-        <fieldset
-            className={`flex h-10 min-w-0 items-center gap-1 rounded-field border px-2.5 text-sm ${hasValue ? 'border-accent/35 bg-accent-soft' : 'border-line-strong bg-surface'}`}
+        <div
+            role="group"
+            aria-labelledby={labelId}
+            className={`flex min-h-10 min-w-0 flex-wrap items-center gap-x-1 rounded-field border ps-3 pe-1 text-sm transition-soft focus-within:border-primary focus-within:ring-3 focus-within:ring-primary/15 ${
+                hasValue ? 'border-accent/35 bg-accent-soft' : 'border-line-strong bg-surface'
+            }`}
         >
-            <legend className="sr-only">{label}</legend>
-            <span aria-hidden="true" className="me-1 shrink-0 text-ink-muted">
+            <span id={labelId} className="me-1 shrink-0 text-ink-muted">
                 {label}
             </span>
-            <label className="flex min-w-0 items-center">
-                <span className="sr-only">{t('filters.from')}</span>
-                <input
-                    type={type}
-                    value={from ?? ''}
-                    max={to ?? undefined}
-                    onChange={(event) => onChange({ from: event.target.value || undefined, to: to ?? undefined })}
-                    className="h-8 w-full min-w-0 border-0 bg-transparent px-1 text-sm text-ink focus:outline-none"
-                />
-            </label>
+            <DatePicker
+                variant="bare"
+                className="min-w-[9.5rem] flex-1"
+                value={from ?? ''}
+                max={to ?? undefined}
+                placeholder={t('filters.from')}
+                aria-label={`${label} — ${t('filters.from')}`}
+                onChange={(next) => onChange({ from: next || undefined, to: to ?? undefined })}
+            />
             <span aria-hidden="true" className="text-ink-faint">
                 –
             </span>
-            <label className="flex min-w-0 items-center">
-                <span className="sr-only">{t('filters.to')}</span>
-                <input
-                    type={type}
-                    value={to ?? ''}
-                    min={from ?? undefined}
-                    onChange={(event) => onChange({ from: from ?? undefined, to: event.target.value || undefined })}
-                    className="h-8 w-full min-w-0 border-0 bg-transparent px-1 text-sm text-ink focus:outline-none"
-                />
-            </label>
-        </fieldset>
+            <DatePicker
+                variant="bare"
+                className="min-w-[9.5rem] flex-1"
+                value={to ?? ''}
+                min={from ?? undefined}
+                placeholder={t('filters.to')}
+                aria-label={`${label} — ${t('filters.to')}`}
+                onChange={(next) => onChange({ from: from ?? undefined, to: next || undefined })}
+            />
+        </div>
     );
 }
 

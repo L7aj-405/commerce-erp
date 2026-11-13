@@ -1,4 +1,5 @@
 import CommissionTabs from '@/components/finance/CommissionTabs';
+import DatePicker from '@/components/ui/DatePicker';
 import { useFreshAuth } from '@/components/auth/FreshAuthProvider';
 import { useCommissionLabels } from '@/components/finance/CommissionFilters';
 import { Button } from '@/components/ui/Button';
@@ -65,8 +66,8 @@ export default function CommissionLedger({ organization, entries, filters, store
 
         <section className="mb-5 rounded-card border border-line bg-surface p-4">
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-7">
-                <Field label={t('activity.from')}><input type="date" className={input} value={local.from} onChange={(e) => setLocal({ ...local, from: e.target.value })} /></Field>
-                <Field label={t('activity.to')}><input type="date" className={input} value={local.to} onChange={(e) => setLocal({ ...local, to: e.target.value })} /></Field>
+                <Field label={t('activity.from')}><DatePicker aria-label={t('activity.from')} value={local.from} max={local.to || undefined} onChange={(value) => setLocal({ ...local, from: value })} /></Field>
+                <Field label={t('activity.to')}><DatePicker aria-label={t('activity.to')} value={local.to} min={local.from || undefined} onChange={(value) => setLocal({ ...local, to: value })} /></Field>
                 <Field label={t('commissions.salesperson')}><select className="control-select" value={local.salesperson_id} onChange={(e) => setLocal({ ...local, salesperson_id: e.target.value })}><option value="">{t('commissions.all')}</option>{salespeople.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></Field>
                 <Field label={t('commissions.store')}><select className="control-select" value={local.store_id} onChange={(e) => setLocal({ ...local, store_id: e.target.value })}><option value="">{t('commissions.all')}</option>{stores.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></Field>
                 <Field label={t('commissions.status')}><select className="control-select" value={local.status} onChange={(e) => setLocal({ ...local, status: e.target.value })}><option value="">{t('commissions.all')}</option>{Object.entries(statuses).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></Field>

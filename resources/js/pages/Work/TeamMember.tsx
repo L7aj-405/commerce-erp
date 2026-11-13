@@ -1,3 +1,4 @@
+import DatePicker from '@/components/ui/DatePicker';
 import AttentionList from '@/components/attention/AttentionList';
 import type { AttentionItem, AttentionOwner } from '@/components/attention/types';
 import FollowUpList from '@/components/followups/FollowUpList';
@@ -74,11 +75,11 @@ export default function WorkTeamMember({ member, tab, filters, followUps, attent
                 </select>
                 <label className="flex items-center gap-2 text-sm text-ink-muted">
                     {t('team.dateFrom')}
-                    <input type="date" value={filters.date_from ?? ''} onChange={(e) => visit({ date_from: e.target.value || undefined })} className={fieldClass} />
+                    <DatePicker className="w-44" value={filters.date_from ?? ''} onChange={(value) => visit({ date_from: value || undefined })} />
                 </label>
                 <label className="flex items-center gap-2 text-sm text-ink-muted">
                     {t('team.dateTo')}
-                    <input type="date" value={filters.date_to ?? ''} min={filters.date_from} onChange={(e) => visit({ date_to: e.target.value || undefined })} className={fieldClass} />
+                    <DatePicker className="w-44" value={filters.date_to ?? ''} min={filters.date_from} onChange={(value) => visit({ date_to: value || undefined })} />
                 </label>
                 {attention !== null && (
                     <>

@@ -26,7 +26,7 @@ export default function SupplierRelationTable({
     return (
         <div className="overflow-x-auto rounded-xl border border-line bg-surface">
             <table className="erp-table w-full min-w-[900px] text-start text-sm">
-                <thead className="border-b border-line bg-raised text-xs uppercase tracking-wide text-ink-faint">
+                <thead>
                     <tr>
                         <th className="px-3 py-2 font-medium">{side === 'variant' ? t('supplierCatalog.supplier') : t('supplierCatalog.product')}</th>
                         <th className="px-3 py-2 font-medium">{t('supplierCatalog.supplierSku')}</th>

@@ -69,7 +69,7 @@ export default function SystemHealthIndex({ snapshot: initial, pollSeconds }: Pr
 
 function HealthCard({ title, check }: { title: string; check: Check }) {
     const entries = healthEntries(check.data ?? {}).slice(0, 8);
-    return <article className="rounded-card border border-line bg-surface p-4 shadow-soft"><div className="flex items-start justify-between gap-3"><h2 className="font-semibold text-ink">{title}</h2><StatusBadge status={check.status} /></div><p className="mt-2 min-h-10 text-sm text-ink-muted">{check.message}</p>{entries.length > 0 && <dl className="mt-3 space-y-1 border-t border-line pt-3">{entries.map(([key, value]) => <div key={key} className="flex justify-between gap-3 text-xs"><dt className="text-ink-faint">{key.replaceAll('_', ' ')}</dt><dd className="max-w-[55%] truncate text-right font-medium text-ink">{formatValue(key, value)}</dd></div>)}</dl>}</article>;
+    return <article className="rounded-card border border-line bg-surface p-4 shadow-soft"><div className="flex items-start justify-between gap-3"><h2 className="font-semibold text-ink">{title}</h2><StatusBadge status={check.status} /></div><p className="mt-2 min-h-10 text-sm text-ink-muted">{check.message}</p>{entries.length > 0 && <dl className="mt-3 space-y-1 border-t border-line pt-3">{entries.map(([key, value]) => <div key={key} className="flex justify-between gap-3 text-xs"><dt className="text-ink-faint">{key.replaceAll('_', ' ')}</dt><dd className="max-w-[55%] truncate text-end font-medium text-ink">{formatValue(key, value)}</dd></div>)}</dl>}</article>;
 }
 function StatusBadge({ status, large = false }: { status: Status; large?: boolean }) {
     const { t } = useI18n();

@@ -1,15 +1,17 @@
 import SandboxProcurementBadge from '@/components/SandboxProcurementBadge';
-import PageHeader from '@/components/ui/PageHeader';
-import Pagination from '@/components/ui/Pagination';
-import SearchInput from '@/components/ui/SearchInput';
+import { AdvancedFilterBar, ChoiceFilter, FilterSearch } from '@/components/ui/AdvancedFilterBar';
+import type { FilterChip } from '@/components/ui/AdvancedFilterBar';
+import { Button, ButtonLink } from '@/components/ui/Button';
 import EmptyState from '@/components/ui/EmptyState';
+import PageHeader from '@/components/ui/PageHeader';
 import StatusBadge from '@/components/ui/StatusBadge';
+import { TablePager, TableShell } from '@/components/ui/TableShell';
+import { useQueryFilters } from '@/hooks/useQueryFilters';
 import { useI18n } from '@/i18n';
 import type { TranslationKey } from '@/i18n/translations';
 import ProcurementLayout from '@/layouts/ProcurementLayout';
 import { formatDate, formatQuantity } from '@/utils/format';
-import { Head, Link, router } from '@inertiajs/react';
-import { useEffect, useState } from 'react';
+import { Head, Link } from '@inertiajs/react';
 
 type Row = {
     id: number;
@@ -27,7 +29,7 @@ type Row = {
 };
 type LinkData = { url: string | null; label: string; active: boolean };
 type Props = {
-    procurements: { data: Row[]; links: LinkData[] };
+    procurements: { data: Row[]; links: LinkData[]; from?: number | null; to?: number | null; total?: number };
     filters: { search?: string; status?: string };
     can: { manage: boolean; receive: boolean; suppliers: boolean };
 };
@@ -42,27 +44,28 @@ const STATUS_ORDER = [
     'cancelled',
     'unavailable',
 ] as const;
+
 export default function ProcurementIndex({ procurements, filters, can }: Props) {
     const { t } = useI18n();
     const statusLabel = (status: string) => t(`procurement.status.${status}` as TranslationKey);
-    const [search, setSearch] = useState(filters.search ?? '');
-    const [searching, setSearching] = useState(false);
+    // Exactly the params ProcurementController@index validates.
+    const f = useQueryFilters('/procurement', filters, { keys: ['search', 'status'] });
 
-    const visit = (next: Record<string, string | undefined>) =>
-        router.get('/procurement', next, {
-            preserveState: true,
-            preserveScroll: true,
-            replace: true,
-            onStart: () => setSearching(true),
-            onFinish: () => setSearching(false),
-        });
+    const chips: FilterChip[] = [];
+    if (filters.search) chips.push({ key: 'search', label: t('filters.search'), value: filters.search, onRemove: () => f.remove('search') });
+    if (filters.status) chips.push({ key: 'status', label: t('common.status'), value: statusLabel(filters.status), onRemove: () => f.remove('status') });
 
-    useEffect(() => {
-        if (search === (filters.search ?? '')) return;
-        const timer = window.setTimeout(() => visit({ search: search || undefined, status: filters.status, page: undefined }), 280);
-        return () => window.clearTimeout(timer);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [search]);
+    const filtered = f.activeCount > 0;
+    const emptyTitle = filtered ? t('filters.noMatch') : t('procurement.empty');
+    const emptyDescription = filtered ? t('filters.noMatchHelp') : t('procurement.description');
+    const emptyAction = filtered ? (
+        <Button variant="secondary" onClick={f.reset}>
+            {t('filters.reset')}
+        </Button>
+    ) : undefined;
+    const pager = <TablePager links={procurements.links} from={procurements.from} to={procurements.to} total={procurements.total} />;
+    const receipt = (row: Row) =>
+        row.received_at ? `${t('procurement.receivedOn')} ${formatDate(row.received_at)}` : row.expected_at ? formatDate(row.expected_at) : '—';
 
     return (
         <ProcurementLayout>
@@ -72,90 +75,109 @@ export default function ProcurementIndex({ procurements, filters, can }: Props) 
                 description={t('procurement.description')}
                 actions={
                     can.suppliers ? (
-                        <Link
-                            href="/procurement/suppliers"
-                            className="inline-flex min-h-10 items-center rounded-field border border-line-strong bg-surface px-4 text-sm text-ink hover:bg-raised"
-                        >
+                        <ButtonLink href="/procurement/suppliers" variant="secondary">
                             {t('procurement.suppliers')}
-                        </Link>
+                        </ButtonLink>
                     ) : undefined
                 }
             />
             <SandboxProcurementBadge />
 
-            <div className="mb-6 flex flex-wrap items-center gap-2">
-                <SearchInput value={search} onChange={setSearch} searching={searching} placeholder={t('procurement.searchPlaceholder')} />
-                <select
-                    value={filters.status ?? ''}
-                    onChange={(e) => visit({ search: filters.search, status: e.target.value || undefined, page: undefined })}
-                    className="control-select"
+            <div className="mb-4">
+                <AdvancedFilterBar
+                    label={t('procurement.title')}
+                    search={
+                        <FilterSearch
+                            value={f.search}
+                            onChange={f.setSearch}
+                            loading={f.searching}
+                            label={t('common.search')}
+                            placeholder={t('procurement.searchPlaceholder')}
+                        />
+                    }
+                    chips={chips}
+                    activeCount={f.activeCount}
+                    loading={f.loading && !f.searching}
+                    onReset={f.reset}
                 >
-                    <option value="">{t('common.allStatuses')}</option>
-                    {STATUS_ORDER.map((s) => (
-                        <option key={s} value={s}>
-                            {statusLabel(s)}
-                        </option>
-                    ))}
-                </select>
+                    <ChoiceFilter
+                        label={t('common.status')}
+                        allLabel={t('common.allStatuses')}
+                        options={STATUS_ORDER.map((status) => ({ value: status, label: statusLabel(status) }))}
+                        value={filters.status}
+                        onChange={(value) => f.set('status', value)}
+                    />
+                </AdvancedFilterBar>
             </div>
 
-            {procurements.data.length === 0 ? (
-                <EmptyState title={t('procurement.empty')} description={t('procurement.description')} />
-            ) : (
-                <>
-                    {/* Desktop/tablet: table */}
-                    <div className="hidden overflow-x-auto rounded-card border border-line bg-surface md:block">
-                        <table className="erp-table w-full min-w-[900px] text-start text-sm">
-                            <thead className="border-b border-line bg-raised text-xs uppercase tracking-wide text-ink-muted">
-                                <tr>
-                                    <th className="px-4 py-3 font-medium">N°</th>
-                                    <th className="px-4 py-3 font-medium">{t('procurement.customerOrder')}</th>
-                                    <th className="px-4 py-3 font-medium">{t('procurement.supplier')}</th><th className="px-4 py-3 font-medium">{t('procurement.item')}</th>
-                                    <th className="px-4 py-3 text-end font-medium">{t('inventory.quantity')}</th><th className="px-4 py-3 font-medium">{t('common.status')}</th>
-                                    <th className="px-4 py-3 font-medium">{t('procurement.orderedOn')}</th><th className="px-4 py-3 font-medium">{t('procurement.expectedReceipt')}</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100">
-                                {procurements.data.map((row) => (
-                                    <tr key={row.id}>
-                                        <td className="px-4 py-3 font-medium text-slate-900">{row.procurement_number}</td>
-                                        <td className="px-4 py-3">
-                                            {row.sales_order ? (
-                                                <Link href={`/sales/orders/${row.sales_order.id}`} className="text-slate-900 underline">
-                                                    {row.sales_order.order_number}
-                                                </Link>
-                                            ) : (
-                                                '—'
-                                            )}
-                                        </td>
-                                        <td className="px-4 py-3 text-slate-600">{row.supplier?.name ?? '—'}</td>
-                                        <td className="px-4 py-3 text-slate-600">{row.product || '—'}</td>
-                                        <td className="px-4 py-3 text-end tabular-nums">{formatQuantity(row.quantity)}</td>
-                                        <td className="px-4 py-3">
-                                            <StatusBadge status={row.status}>{statusLabel(row.status)}</StatusBadge>
-                                        </td>
-                                        <td className="px-4 py-3 text-slate-600">{row.ordered_at ? formatDate(row.ordered_at) : '—'}</td>
-                                        <td className="px-4 py-3 text-slate-600">
-                                            {row.received_at
-                                                ? `${t('procurement.receivedOn')} ${formatDate(row.received_at)}`
-                                                : row.expected_at
-                                                  ? formatDate(row.expected_at)
-                                                  : '—'}
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-
-                    {/* Mobile: stacked cards */}
-                    <ul className="space-y-3 md:hidden">
+            <TableShell
+                label={t('procurement.title')}
+                state={procurements.data.length === 0 ? 'empty' : 'ready'}
+                busy={f.loading}
+                emptyTitle={emptyTitle}
+                emptyDescription={emptyDescription}
+                emptyAction={emptyAction}
+                className="hidden md:block"
+                footer={procurements.data.length === 0 ? undefined : pager}
+            >
+                <table className="erp-table min-w-[900px] text-sm">
+                    <thead>
+                        <tr>
+                            <th className="px-4 py-3">{t('common.reference')}</th>
+                            <th className="px-4 py-3">{t('procurement.customerOrder')}</th>
+                            <th className="px-4 py-3">{t('procurement.supplier')}</th>
+                            <th className="px-4 py-3">{t('procurement.item')}</th>
+                            <th className="num px-4 py-3">{t('inventory.quantity')}</th>
+                            <th className="px-4 py-3">{t('common.status')}</th>
+                            <th className="px-4 py-3">{t('procurement.orderedOn')}</th>
+                            <th className="px-4 py-3">{t('procurement.expectedReceipt')}</th>
+                        </tr>
+                    </thead>
+                    <tbody>
                         {procurements.data.map((row) => (
-                            <li key={row.id} className="rounded-xl border border-slate-200 bg-white p-4">
+                            <tr key={row.id}>
+                                <td className="px-4 py-3 font-semibold text-ink">
+                                    <bdi>{row.procurement_number}</bdi>
+                                </td>
+                                <td className="px-4 py-3">
+                                    {row.sales_order ? (
+                                        <Link href={`/sales/orders/${row.sales_order.id}`} className="font-medium text-ink hover:text-accent hover:underline">
+                                            <bdi>{row.sales_order.order_number}</bdi>
+                                        </Link>
+                                    ) : (
+                                        '—'
+                                    )}
+                                </td>
+                                <td className="px-4 py-3 text-ink-muted">{row.supplier?.name ?? '—'}</td>
+                                <td className="px-4 py-3 text-ink-muted">{row.product || '—'}</td>
+                                <td className="num px-4 py-3">{formatQuantity(row.quantity)}</td>
+                                <td className="px-4 py-3">
+                                    <StatusBadge status={row.status}>{statusLabel(row.status)}</StatusBadge>
+                                </td>
+                                <td className="px-4 py-3 whitespace-nowrap text-ink-muted tabular-nums">{row.ordered_at ? formatDate(row.ordered_at) : '—'}</td>
+                                <td className="px-4 py-3 whitespace-nowrap text-ink-muted tabular-nums">{receipt(row)}</td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </TableShell>
+
+            {/* Mobile: stacked cards (filter bar above is shared). */}
+            {procurements.data.length === 0 ? (
+                <div className="md:hidden">
+                    <EmptyState compact title={emptyTitle} description={emptyDescription} actions={emptyAction} />
+                </div>
+            ) : (
+                <div className="space-y-3 md:hidden" aria-busy={f.loading || undefined}>
+                    <ul className={`space-y-3 transition-opacity ${f.loading ? 'opacity-55' : ''}`}>
+                        {procurements.data.map((row) => (
+                            <li key={row.id} className="surface-card p-4">
                                 <div className="flex items-start justify-between gap-3">
                                     <div className="min-w-0">
-                                        <p className="truncate text-sm font-semibold text-slate-900">{row.procurement_number}</p>
-                                        <p className="truncate text-[13px] text-slate-500">{row.product || '—'}</p>
+                                        <p className="truncate text-sm font-semibold text-ink">
+                                            <bdi>{row.procurement_number}</bdi>
+                                        </p>
+                                        <p className="truncate text-[13px] text-ink-muted">{row.product || '—'}</p>
                                     </div>
                                     <StatusBadge status={row.status}>{statusLabel(row.status)}</StatusBadge>
                                 </div>
@@ -164,8 +186,8 @@ export default function ProcurementIndex({ procurements, filters, can }: Props) 
                                         <dt className="text-ink-faint">{t('procurement.customerOrder')}</dt>
                                         <dd className="truncate">
                                             {row.sales_order ? (
-                                                <Link href={`/sales/orders/${row.sales_order.id}`} className="text-slate-900 underline">
-                                                    {row.sales_order.order_number}
+                                                <Link href={`/sales/orders/${row.sales_order.id}`} className="font-medium text-ink underline">
+                                                    <bdi>{row.sales_order.order_number}</bdi>
                                                 </Link>
                                             ) : (
                                                 '—'
@@ -174,30 +196,25 @@ export default function ProcurementIndex({ procurements, filters, can }: Props) 
                                     </div>
                                     <div className="min-w-0">
                                         <dt className="text-ink-faint">{t('procurement.supplier')}</dt>
-                                        <dd className="truncate text-slate-600">{row.supplier?.name ?? '—'}</dd>
+                                        <dd className="truncate text-ink-muted">{row.supplier?.name ?? '—'}</dd>
                                     </div>
                                     <div className="min-w-0">
                                         <dt className="text-ink-faint">{t('inventory.quantity')}</dt>
-                                        <dd className="tabular-nums text-slate-600">{formatQuantity(row.quantity)}</dd>
+                                        <dd className="tabular-nums text-ink-muted">{formatQuantity(row.quantity)}</dd>
                                     </div>
                                     <div className="min-w-0">
                                         <dt className="text-ink-faint">{row.received_at ? t('procurement.receivedOn') : t('procurement.expectedReceipt')}</dt>
-                                        <dd className="text-slate-600">
-                                            {row.received_at
-                                                ? formatDate(row.received_at)
-                                                : row.expected_at
-                                                  ? formatDate(row.expected_at)
-                                                  : '—'}
+                                        <dd className="text-ink-muted">
+                                            {row.received_at ? formatDate(row.received_at) : row.expected_at ? formatDate(row.expected_at) : '—'}
                                         </dd>
                                     </div>
                                 </dl>
                             </li>
                         ))}
                     </ul>
-                </>
+                    {pager}
+                </div>
             )}
-
-            <Pagination links={procurements.links} />
         </ProcurementLayout>
     );
 }

@@ -38,6 +38,14 @@ Pages that only received source inspection are **not** claimed as visually check
 
 ## 2. Executive summary
 
+> **Pass 2 (2026-11-13):** the P1 items X1 and X2 are resolved, X6 is implemented, and every native date input now uses the shared DatePicker (X4). Execution status per page lives in `ERP_UI_MIGRATION_TRACKER.md`. The bullets below describe the state at the first audit.
+
+> **Batch 2 (2026-11-13):** the Sales/Documents pages are migrated (tracker §7). New P2 finding: out-of-scope records show Laravel's unstyled default 404 page.
+
+> **Batch 3 (2026-11-13):** Catalogue and Inventory are migrated (tracker §8). This closes audit X7 for NonStockItems; OrganizationBackups and Sandbox are still open. The ProductCosts legacy filter bar and pagination are replaced.
+
+> **Batch 4 (2026-11-13):** Procurement is migrated (tracker §9). The Articles hors stock dark-mode P1 is browser-verified fixed, and every hard-coded palette class in Procurement is tokenised (99 removed, 0 remaining).
+
 - **Migration coverage:** 12 of 108 rendered pages use `AdvancedFilterBar` and 13 use `TableShell`. These are the Sales, Catalogue and Inventory index pages plus My Commissions. About 30 more carry the V1.0 token sweep (Partial).
 - **No P0 defect was found** on any page opened in the browser. Every page loads, and its main actions are reachable.
 - **P1, dark-mode illegible controls (5 files, browser-confirmed on 2 of them).** `bg-ink … text-white` and `bg-slate-900 text-white` invert in dark mode: `ink`/`slate-900` become near-white, so the label turns white on white.
@@ -191,12 +199,12 @@ Columns: **Page** (component · route) · **Module** · **Current state** · **I
 
 | # | Finding | Scope | Priority | Fix |
 | --- | --- | --- | --- | --- |
-| X1 | `bg-ink`/`bg-slate-900` + `text-white` buttons invert in dark mode | Activity, Payments, Procurement › Articles hors stock (2), WooCommerce Stock, `components/pos/primitives.tsx` | P1 | `Button variant="primary"` or `bg-primary text-primary-fg` |
-| X2 | Native `window.confirm` | 6 calls in Products/Show, Contacts/Show, Pos/Index (2), UsersAccess (2) | P1 | Shared `Dialog` confirm with a destructive tone |
+| X1 | `bg-ink`/`bg-slate-900` + `text-white` buttons invert in dark mode | Activity, Payments, Procurement › Articles hors stock (2), WooCommerce Stock, `components/pos/primitives.tsx` | ~~P1~~ **Resolved (pass 2)** | All six now use `bg-primary text-primary-fg`. Browser-verified on Activity (dark). |
+| X2 | Native `window.confirm` | 8 calls: Products/Show, Contacts/Show, Pos/Index (2), UsersAccess (2), plus FulfillmentCard (remove proof) and RoleEditor (delete role), which the first pass missed | ~~P1~~ **Resolved (pass 2)** | `useConfirm()` (`components/ui/ConfirmDialog.tsx`). Browser-verified on Products/Show. |
 | X3 | Legacy `<Pagination>` (big teal page-number buttons) | 30 pages | P2 | `TablePager` (paginator already exposes from/to/total) |
-| X4 | Native `date`/`month` inputs | 32 occurrences on 18 pages | P2 | Reuse `MonthPicker`; add a shared DateField/DateRange (next shared-control slice) |
+| X4 | Native `date`/`month` inputs | 32 occurrences on 18 pages (the full count was ~40 `date` + 1 `month`) | **Resolved (pass 2)** | Shared `DatePicker`/`DateField`, plus `MonthPicker` for Finance. `time` and `datetime-local` stay native as documented exceptions (see the tracker). |
 | X5 | Hard-coded palettes relying on the dark-mode slate remap | ~10 pages | P2 (P1 where X1 applies) | Token sweep per module (same script as Catalogue/Inventory) |
-| X6 | Physical `left/right` classes | CommissionDashboard (25), MonthlySituation (13), Invoices/Quotations paper (intentional), others | P1 on CommissionDashboard / MonthlySituation | Logical utilities (`text-start`, `ms-*`, `ps-*`) |
+| X6 | Physical `left/right` classes | CommissionDashboard (25), MonthlySituation (13), Invoices/Quotations paper (intentional), others | ~~P1~~ **Implemented (pass 2)** | Converted to `text-start`/`text-end`/`ms-*` on those two files, CommissionSalesperson, RecurringObligations, UsersAccess and SystemHealth. The table rows still need a browser check with commission data. |
 | X7 | Wrong layout context | NonStockItems (SalesLayout under Catalogue), OrganizationBackups (SalesLayout), Sandbox (none) | P2 | Correct layout component; no route change |
 | X8 | Fixed this pass | `th` default centring (base rule); RTL `.num` alignment; RTL popover offset in `useFloatingPanel` | — | Done |
 

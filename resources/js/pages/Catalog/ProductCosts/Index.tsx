@@ -1,9 +1,9 @@
 import { Button, DownloadLink } from "@/components/ui/Button";
 import EmptyState from "@/components/ui/EmptyState";
-import FilterSelect from "@/components/ui/FilterSelect";
+import { AdvancedFilterBar, ChoiceFilter, FilterSearch } from "@/components/ui/AdvancedFilterBar";
+import type { FilterChip } from "@/components/ui/AdvancedFilterBar";
 import PageHeader from "@/components/ui/PageHeader";
-import Pagination from "@/components/ui/Pagination";
-import SearchInput from "@/components/ui/SearchInput";
+import { TablePager } from "@/components/ui/TableShell";
 import { useI18n } from "@/i18n";
 import CatalogLayout from "@/layouts/CatalogLayout";
 import { formatMoney, formatQuantity } from "@/utils/format";
@@ -32,6 +32,8 @@ type Props = {
     variants: {
         data: Variant[];
         links: { url: string | null; label: string; active: boolean }[];
+        from?: number | null;
+        to?: number | null;
         total: number;
     };
     filters: {
@@ -98,6 +100,56 @@ export default function ProductCostIndex({
         );
         return `/catalog/purchase-prices/export?${params.toString()}`;
     }, [filters, search]);
+    const apply = (patch: Record<string, string | number | undefined>) =>
+        visit({ ...filters, search: search || undefined, ...patch, page: undefined });
+    const stockOptions = [
+        { value: "all", label: t("productCosts.allStocks") },
+        { value: "in_stock", label: t("productCosts.inStock") },
+        { value: "out_of_stock", label: t("productCosts.outOfStock") },
+    ];
+    const costOptions = [
+        { value: "all", label: t("productCosts.allPrices") },
+        { value: "missing", label: t("productCosts.missingPrice") },
+        { value: "present", label: t("productCosts.presentPrice") },
+    ];
+    const optionLabel = (options: { value: string; label: string }[], value: string, fallback: string) =>
+        options.find((option) => option.value === value)?.label ?? fallback;
+    // Defaults (in stock + missing price) are the page's working view, so only
+    // departures from them become chips; "Réinitialiser" returns to them.
+    const chips: FilterChip[] = [];
+    if (filters.stock !== "in_stock") {
+        chips.push({
+            key: "stock",
+            label: t("productCosts.stock"),
+            value: optionLabel(stockOptions, filters.stock, t("productCosts.allStocks")),
+            onRemove: () => apply({ stock: "in_stock" }),
+        });
+    }
+    if (filters.cost !== "missing") {
+        chips.push({
+            key: "cost",
+            label: t("productCosts.title"),
+            value: optionLabel(costOptions, filters.cost, t("productCosts.allPrices")),
+            onRemove: () => apply({ cost: "missing" }),
+        });
+    }
+    if (filters.brand) {
+        chips.push({
+            key: "brand",
+            label: t("products.brand"),
+            value: brands.find((item) => item.id === Number(filters.brand))?.name ?? String(filters.brand),
+            onRemove: () => apply({ brand: undefined }),
+        });
+    }
+    if (filters.category) {
+        chips.push({
+            key: "category",
+            label: t("products.category"),
+            value: categories.find((item) => item.id === Number(filters.category))?.name ?? String(filters.category),
+            onRemove: () => apply({ category: undefined }),
+        });
+    }
+
     const upload = (event: FormEvent) => {
         event.preventDefault();
         importForm.post("/catalog/purchase-prices/import", {
@@ -199,114 +251,55 @@ export default function ProductCostIndex({
                 </form>
             )}
 
-            <section className="mb-6 surface-card p-4 shadow-soft">
-                <div className="grid gap-2 lg:grid-cols-[minmax(240px,1fr)_160px_180px_190px_190px_auto]">
-                    <SearchInput
-                        value={search}
-                        onChange={setSearch}
-                        searching={searching}
-                        placeholder={t("productCosts.search")}
-                    />
-                    <FilterSelect
-                        aria-label="Stock"
+            <div className="mb-6">
+                <AdvancedFilterBar
+                    label={t("productCosts.title")}
+                    search={
+                        <FilterSearch
+                            value={search}
+                            onChange={setSearch}
+                            loading={searching}
+                            label={t("common.search")}
+                            placeholder={t("productCosts.search")}
+                        />
+                    }
+                    chips={chips}
+                    activeCount={chips.length + (search ? 1 : 0)}
+                    loading={searching}
+                    onReset={() => {
+                        setSearch("");
+                        visit({ stock: "in_stock", cost: "missing" });
+                    }}
+                >
+                    {/* Every state is an explicit option; clearing returns to the page default. */}
+                    <ChoiceFilter
+                        label={t("productCosts.stock")}
+                        options={stockOptions}
                         value={filters.stock}
-                        onChange={(event) =>
-                            visit({
-                                ...filters,
-                                search: search || undefined,
-                                stock: event.target.value,
-                                page: undefined,
-                            })
-                        }
-                    >
-                        <option value="all">
-                            {t("productCosts.allStocks")}
-                        </option>
-                        <option value="in_stock">
-                            {t("productCosts.inStock")}
-                        </option>
-                        <option value="out_of_stock">
-                            {t("productCosts.outOfStock")}
-                        </option>
-                    </FilterSelect>
-                    <FilterSelect
-                        aria-label="Prix d'achat"
+                        onChange={(value) => apply({ stock: value ?? "in_stock" })}
+                    />
+                    <ChoiceFilter
+                        label={t("productCosts.title")}
+                        options={costOptions}
                         value={filters.cost}
-                        onChange={(event) =>
-                            visit({
-                                ...filters,
-                                search: search || undefined,
-                                cost: event.target.value,
-                                page: undefined,
-                            })
-                        }
-                    >
-                        <option value="all">
-                            {t("productCosts.allPrices")}
-                        </option>
-                        <option value="missing">
-                            {t("productCosts.missingPrice")}
-                        </option>
-                        <option value="present">
-                            {t("productCosts.presentPrice")}
-                        </option>
-                    </FilterSelect>
-                    <FilterSelect
-                        aria-label="Marque"
-                        value={filters.brand ?? ""}
-                        onChange={(event) =>
-                            visit({
-                                ...filters,
-                                search: search || undefined,
-                                brand: event.target.value
-                                    ? Number(event.target.value)
-                                    : undefined,
-                                page: undefined,
-                            })
-                        }
-                    >
-                        <option value="">{t("productCosts.allBrands")}</option>
-                        {brands.map((item) => (
-                            <option key={item.id} value={item.id}>
-                                {item.name}
-                            </option>
-                        ))}
-                    </FilterSelect>
-                    <FilterSelect
-                        aria-label={t("products.category")}
-                        value={filters.category ?? ""}
-                        onChange={(event) =>
-                            visit({
-                                ...filters,
-                                search: search || undefined,
-                                category: event.target.value
-                                    ? Number(event.target.value)
-                                    : undefined,
-                                page: undefined,
-                            })
-                        }
-                    >
-                        <option value="">
-                            {t("productCosts.allCategories")}
-                        </option>
-                        {categories.map((item) => (
-                            <option key={item.id} value={item.id}>
-                                {item.name}
-                            </option>
-                        ))}
-                    </FilterSelect>
-                    <button
-                        type="button"
-                        onClick={() => {
-                            setSearch("");
-                            visit({ stock: "in_stock", cost: "missing" });
-                        }}
-                        className="rounded-field px-3 text-sm font-medium text-ink-muted hover:bg-sage"
-                    >
-                        {t("common.reset")}
-                    </button>
-                </div>
-            </section>
+                        onChange={(value) => apply({ cost: value ?? "missing" })}
+                    />
+                    <ChoiceFilter
+                        label={t("products.brand")}
+                        allLabel={t("productCosts.allBrands")}
+                        options={brands.map((item) => ({ value: String(item.id), label: item.name }))}
+                        value={filters.brand ? String(filters.brand) : undefined}
+                        onChange={(value) => apply({ brand: value ? Number(value) : undefined })}
+                    />
+                    <ChoiceFilter
+                        label={t("products.category")}
+                        allLabel={t("productCosts.allCategories")}
+                        options={categories.map((item) => ({ value: String(item.id), label: item.name }))}
+                        value={filters.category ? String(filters.category) : undefined}
+                        onChange={(value) => apply({ category: value ? Number(value) : undefined })}
+                    />
+                </AdvancedFilterBar>
+            </div>
 
             {variants.data.length === 0 ? (
                 <EmptyState
@@ -316,7 +309,7 @@ export default function ProductCostIndex({
             ) : (
                 <>
                     <div className="hidden overflow-x-auto surface-card md:block">
-                        <table className="w-full min-w-[1050px] text-start text-sm">
+                        <table className="erp-table w-full min-w-[1050px] text-start text-sm">
                             <thead className="bg-raised text-[13px] text-ink-muted font-medium">
                                 <tr>
                                     <th className="px-4 py-3">
@@ -463,7 +456,7 @@ export default function ProductCostIndex({
                             </article>
                         ))}
                     </div>
-                    <Pagination links={variants.links} />
+                    <TablePager links={variants.links} from={variants.from} to={variants.to} total={variants.total} />
                 </>
             )}
         </CatalogLayout>
@@ -518,7 +511,7 @@ function CostEditor({ variant }: { variant: Variant }) {
                     onChange={(event) =>
                         form.setData("purchase_price", event.target.value)
                     }
-                    className="w-28 rounded-field border border-line-strong px-2.5 py-2 text-end text-sm tabular-nums"
+                    className="control-input w-28 text-end tabular-nums"
                     placeholder="0,0000"
                 />
                 {form.errors.purchase_price && (

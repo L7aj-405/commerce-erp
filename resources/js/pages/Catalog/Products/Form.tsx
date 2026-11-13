@@ -253,7 +253,7 @@ export default function ProductForm({
                                                     : null,
                                             })
                                         }
-                                        className="mt-1 w-full rounded-lg border px-3 py-2"
+                                        className="control-select mt-1 w-full"
                                     >
                                         <option value="">
                                             {t("products.form.noTax")}
@@ -316,7 +316,7 @@ export default function ProductForm({
                                         selectId(event.target.value),
                                     )
                                 }
-                                className="mt-1 w-full rounded-lg border px-3 py-2"
+                                className="control-select mt-1 w-full"
                             >
                                 <option value="">{t("common.none")}</option>
                                 {categories.map((item) => (
@@ -336,7 +336,7 @@ export default function ProductForm({
                                         selectId(event.target.value),
                                     )
                                 }
-                                className="mt-1 w-full rounded-lg border px-3 py-2"
+                                className="control-select mt-1 w-full"
                             >
                                 <option value="">{t("common.none")}</option>
                                 {brands.map((item) => (
@@ -356,7 +356,7 @@ export default function ProductForm({
                                         selectId(event.target.value),
                                     )
                                 }
-                                className="mt-1 w-full rounded-lg border px-3 py-2"
+                                className="control-select mt-1 w-full"
                             >
                                 <option value="">{t("common.none")}</option>
                                 {units.map((item) => (
@@ -380,7 +380,7 @@ export default function ProductForm({
                             onChange={(event) =>
                                 form.setData("description", event.target.value)
                             }
-                            className="mt-1 w-full rounded-lg border px-3 py-2"
+                            className="control-input mt-1 w-full py-2"
                         />
                     </label>
                     <details className="mt-5">
@@ -394,7 +394,7 @@ export default function ProductForm({
                                 onChange={(event) =>
                                     form.setData("status", event.target.value)
                                 }
-                                className="mt-1 w-full rounded-lg border px-3 py-2"
+                                className="control-select mt-1 w-full"
                             >
                                 <option value="active">
                                     {t("status.active")}

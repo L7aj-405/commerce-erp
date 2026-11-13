@@ -1,4 +1,6 @@
 import { useI18n } from '@/i18n';
+import DatePicker from './DatePicker';
+import type { DatePickerProps } from './DatePicker';
 import { useId, useState } from 'react';
 import type { InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TextareaHTMLAttributes } from 'react';
 
@@ -21,10 +23,10 @@ function describedBy(error: string | undefined, hint: string | undefined, ids: {
     return error ? ids.errorId : hint ? ids.hintId : undefined;
 }
 
-export function FieldLabel({ htmlFor, required, children }: { htmlFor?: string; required?: boolean; children: ReactNode }) {
+export function FieldLabel({ htmlFor, id, required, children }: { htmlFor?: string; id?: string; required?: boolean; children: ReactNode }) {
     const { t } = useI18n();
     return (
-        <label htmlFor={htmlFor} className="mb-1.5 block text-sm font-medium text-ink">
+        <label htmlFor={htmlFor} id={id} className="mb-1.5 block text-sm font-medium text-ink">
             {children}
             {required && (
                 <>
@@ -66,6 +68,28 @@ function FieldFooter({ error, hint, ids }: { error?: string; hint?: string; ids:
             {hint && !error && <FieldHint id={ids.hintId}>{hint}</FieldHint>}
             <FieldError id={ids.errorId}>{error}</FieldError>
         </>
+    );
+}
+
+/** Labelled single-day date field (`YYYY-MM-DD`) using the shared DatePicker. */
+export function DateField({ label, error, hint, id, className = '', required, ...props }: Omit<DatePickerProps, 'invalid' | 'aria-labelledby' | 'aria-describedby'> & FieldChrome & { className?: string }) {
+    const ids = useFieldIds(id);
+    const labelId = `${ids.fieldId}-label`;
+    return (
+        <div className={className}>
+            <FieldLabel htmlFor={ids.fieldId} id={labelId} required={required}>
+                {label}
+            </FieldLabel>
+            <DatePicker
+                {...props}
+                id={ids.fieldId}
+                required={required}
+                invalid={Boolean(error)}
+                aria-labelledby={labelId}
+                aria-describedby={describedBy(error, hint, ids)}
+            />
+            <FieldFooter error={error} hint={hint} ids={ids} />
+        </div>
     );
 }
 

@@ -1,4 +1,5 @@
 import { Button, ButtonLink } from "@/components/ui/Button";
+import DatePicker from "@/components/ui/DatePicker";
 import EmptyState from "@/components/ui/EmptyState";
 import PageHeader from "@/components/ui/PageHeader";
 import Pagination from "@/components/ui/Pagination";
@@ -353,7 +354,7 @@ export default function RecurringObligations(props: Props) {
                                         <td className="px-4 py-3">
                                             {row.beneficiary}
                                         </td>
-                                        <td className="px-4 py-3 text-right font-medium tabular-nums">
+                                        <td className="px-4 py-3 text-end font-medium tabular-nums">
                                             {formatMoney(
                                                 row.planned_amount,
                                                 row.currency_code,
@@ -776,6 +777,24 @@ function Field({
     onChange: (value: string) => void;
     error?: string;
 } & Omit<InputHTMLAttributes<HTMLInputElement>, "value" | "onChange">) {
+    if (rest.type === "date") {
+        return (
+            <label>
+                <Label>{label}</Label>
+                <DatePicker
+                    aria-label={label}
+                    value={value}
+                    onChange={onChange}
+                    required={rest.required}
+                    disabled={rest.disabled}
+                    invalid={Boolean(error)}
+                    min={typeof rest.min === "string" ? rest.min : undefined}
+                    max={typeof rest.max === "string" ? rest.max : undefined}
+                />
+                {error && <p className="mt-1 text-xs text-danger">{error}</p>}
+            </label>
+        );
+    }
     return (
         <label>
             <Label>{label}</Label>

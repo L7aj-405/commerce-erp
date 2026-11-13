@@ -1,4 +1,5 @@
 import CommissionTabs from "@/components/finance/CommissionTabs";
+import DatePicker from "@/components/ui/DatePicker";
 import { useFreshAuth } from "@/components/auth/FreshAuthProvider";
 import { Button } from "@/components/ui/Button";
 import PageHeader from "@/components/ui/PageHeader";
@@ -313,15 +314,12 @@ export default function CommissionRules({
                                 label={t("commissions.rules.effectiveFrom")}
                                 error={form.errors.effective_from}
                             >
-                                <input
-                                    type="date"
-                                    className={inputClass}
+                                <DatePicker
+                                    aria-label={t("commissions.rules.effectiveFrom")}
+                                    invalid={Boolean(form.errors.effective_from)}
                                     value={form.data.effective_from}
-                                    onChange={(e) =>
-                                        form.setData(
-                                            "effective_from",
-                                            e.target.value,
-                                        )
+                                    onChange={(value) =>
+                                        form.setData("effective_from", value)
                                     }
                                 />
                             </Field>
@@ -494,23 +492,19 @@ export default function CommissionRules({
                             </select>
                         </Field>
                         <Field label={t("common.from")}>
-                            <input
-                                type="date"
-                                className={inputClass}
+                            <DatePicker
+                                aria-label={t("common.from")}
                                 value={sim.data.from}
-                                onChange={(e) =>
-                                    sim.setData("from", e.target.value)
-                                }
+                                max={sim.data.to || undefined}
+                                onChange={(value) => sim.setData("from", value)}
                             />
                         </Field>
                         <Field label={t("common.to")}>
-                            <input
-                                type="date"
-                                className={inputClass}
+                            <DatePicker
+                                aria-label={t("common.to")}
                                 value={sim.data.to}
-                                onChange={(e) =>
-                                    sim.setData("to", e.target.value)
-                                }
+                                min={sim.data.from || undefined}
+                                onChange={(value) => sim.setData("to", value)}
                             />
                         </Field>
                         <Field label={t("common.store")}>

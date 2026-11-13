@@ -1,3 +1,4 @@
+import DatePicker from '@/components/ui/DatePicker';
 import FollowUpPanel from "@/components/followups/FollowUpPanel";
 import SandboxDocumentBadge from "@/components/SandboxDocumentBadge";
 import type { FollowUpPanelData } from "@/components/followups/types";
@@ -344,7 +345,7 @@ export default function QuotationShow({
                 </div>
             )}
             {isRevision && !isDraft && !isSuperseded && rootNumber && (
-                <div className="mb-4 rounded-card border border-line bg-surface px-4 py-2.5 text-sm text-ink-muted">
+                <div className="mb-4 surface-card px-4 py-2.5 text-sm text-ink-muted">
                     {t("quotations.revision")} {quotation.revision_number}{" "}
                     {t("quotations.of")} {t("quotations.proposal")}{" "}
                     <bdi>{rootNumber}</bdi>.
@@ -681,7 +682,7 @@ export default function QuotationShow({
 
                 {/* RIGHT — status & actions */}
                 <aside className="space-y-4 lg:sticky lg:top-20 lg:self-start">
-                    <section className="rounded-card border border-line bg-surface p-5">
+                    <section className="surface-card p-5">
                         <dl className="space-y-2 text-sm">
                             <div className="flex justify-between">
                                 <dt className="text-ink-muted">
@@ -716,7 +717,7 @@ export default function QuotationShow({
                                     <dt className="text-ink-muted">
                                         {t("quotations.issued")}
                                     </dt>
-                                    <dd className="text-right text-ink">
+                                    <dd className="text-end text-ink">
                                         {quotation.issued_by?.name ?? "—"}
                                         <br />
                                         {formatDateTime(quotation.issued_at)}
@@ -899,7 +900,7 @@ export default function QuotationShow({
                                                                     : null,
                                                             )
                                                         }
-                                                        className="mt-1 w-full rounded-field border border-line-strong px-2 py-1 text-sm"
+                                                        className="control-select mt-1 w-full"
                                                     >
                                                         {warehouses.map((w) => (
                                                             <option
@@ -1045,7 +1046,7 @@ export default function QuotationShow({
                     )}
 
                     {sharing && (
-                        <section className="rounded-card border border-line bg-surface p-5">
+                        <section className="surface-card p-5">
                             <h2 className="text-sm font-semibold text-ink">
                                 {t("quotations.companyStamp")}
                             </h2>
@@ -1062,7 +1063,7 @@ export default function QuotationShow({
                     )}
 
                     {history.length > 0 && (
-                        <section className="rounded-card border border-line bg-surface p-5">
+                        <section className="surface-card p-5">
                             <h2 className="font-semibold text-base text-ink">
                                 {t("quotations.history")}
                             </h2>
@@ -1125,7 +1126,7 @@ export default function QuotationShow({
                     )}
 
                     {editable && (
-                        <section className="rounded-card border border-line bg-surface p-5">
+                        <section className="surface-card p-5">
                             <h2 className="text-sm font-semibold text-ink">
                                 {t("quotations.variableInfo")}
                             </h2>
@@ -1135,30 +1136,10 @@ export default function QuotationShow({
                             >
                                 <div className="grid grid-cols-2 gap-2">
                                     <Field label={t("quotations.date")}>
-                                        <input
-                                            type="date"
-                                            value={header.data.quotation_date}
-                                            onChange={(e) =>
-                                                header.setData(
-                                                    "quotation_date",
-                                                    e.target.value,
-                                                )
-                                            }
-                                            className={input}
-                                        />
+                                        <DatePicker value={header.data.quotation_date} onChange={(value) => header.setData( "quotation_date", value, ) } />
                                     </Field>
                                     <Field label={t("quotations.validUntil")}>
-                                        <input
-                                            type="date"
-                                            value={header.data.valid_until}
-                                            onChange={(e) =>
-                                                header.setData(
-                                                    "valid_until",
-                                                    e.target.value,
-                                                )
-                                            }
-                                            className={input}
-                                        />
+                                        <DatePicker value={header.data.valid_until} onChange={(value) => header.setData( "valid_until", value, ) } />
                                     </Field>
                                 </div>
                                 <Field label={t("quotations.representative")}>
@@ -1374,7 +1355,7 @@ function ShareCard({
     );
 
     return (
-        <section className="rounded-card border border-line bg-surface p-5">
+        <section className="surface-card p-5">
             <h2 className="text-sm font-semibold text-ink">
                 {t("quotations.send")}
             </h2>
@@ -1415,7 +1396,7 @@ function ShareCard({
                         </p>
                     )}
                     {isTest && (
-                        <p className="text-xs font-semibold text-amber-900">
+                        <p className="text-xs font-semibold text-warning">
                             EMAIL TEST — NON ENVOYÉ : l’envoi est simulé.
                         </p>
                     )}
@@ -1452,7 +1433,7 @@ function ShareCard({
             {tab === "whatsapp" && (
                 <div className="mt-3 space-y-2 text-sm">
                     {isTest && (
-                        <p className="rounded-field border border-amber-400 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-950">
+                        <p className="rounded-field border border-warning/40 bg-warning-soft px-3 py-2 text-xs font-semibold text-ink">
                             DOCUMENT DE TEST — le lien PDF ne s’ouvre que dans votre session de test ; aucun envoi automatique.
                         </p>
                     )}

@@ -282,11 +282,11 @@ export default function StockIndex({ balances, filters, warehouses, brands, cate
                             {can.opening && (
                                 <form onSubmit={submitOpening} className="space-y-3 surface-card p-5">
                                     <h2 className="font-semibold text-ink">{t('inventory.stock.opening')}</h2>
-                                    <select required aria-label={t('inventory.stock.selectWarehouse')} value={opening.data.warehouse_id} onChange={event => opening.setData('warehouse_id', event.target.value)} className="control-input w-full">
+                                    <select required aria-label={t('inventory.stock.selectWarehouse')} value={opening.data.warehouse_id} onChange={event => opening.setData('warehouse_id', event.target.value)} className="control-select w-full">
                                         <option value="">{t('inventory.stock.selectWarehouse')}</option>
                                         {warehouses.map(warehouse => <option key={warehouse.id} value={warehouse.id}>{warehouse.name}</option>)}
                                     </select>
-                                    <select required aria-label={t('inventory.stock.selectProduct')} value={opening.data.product_variant_id} onChange={event => opening.setData('product_variant_id', event.target.value)} className="control-input w-full">
+                                    <select required aria-label={t('inventory.stock.selectProduct')} value={opening.data.product_variant_id} onChange={event => opening.setData('product_variant_id', event.target.value)} className="control-select w-full">
                                         <option value="">{t('inventory.stock.selectProduct')}</option>
                                         {variants.map(variant => <option key={variant.id} value={variant.id}>{variant.product.name} · {variant.label ?? t('inventory.stock.main')} · {variant.sku}</option>)}
                                     </select>
@@ -301,15 +301,15 @@ export default function StockIndex({ balances, filters, warehouses, brands, cate
                             {can.adjust && (
                                 <form onSubmit={submitAdjustment} className="space-y-3 surface-card p-5">
                                     <h2 className="font-semibold text-ink">{t('inventory.stock.adjustment')}</h2>
-                                    <select required aria-label={t('inventory.stock.selectWarehouse')} value={adjustment.data.warehouse_id} onChange={event => adjustment.setData('warehouse_id', event.target.value)} className="control-input w-full">
+                                    <select required aria-label={t('inventory.stock.selectWarehouse')} value={adjustment.data.warehouse_id} onChange={event => adjustment.setData('warehouse_id', event.target.value)} className="control-select w-full">
                                         <option value="">{t('inventory.stock.selectWarehouse')}</option>
                                         {warehouses.map(warehouse => <option key={warehouse.id} value={warehouse.id}>{warehouse.name}</option>)}
                                     </select>
-                                    <select required aria-label={t('inventory.stock.selectProduct')} value={adjustment.data.product_variant_id} onChange={event => adjustment.setData('product_variant_id', event.target.value)} className="control-input w-full">
+                                    <select required aria-label={t('inventory.stock.selectProduct')} value={adjustment.data.product_variant_id} onChange={event => adjustment.setData('product_variant_id', event.target.value)} className="control-select w-full">
                                         <option value="">{t('inventory.stock.selectProduct')}</option>
                                         {variants.map(variant => <option key={variant.id} value={variant.id}>{variant.product.name} · {variant.label ?? t('inventory.stock.main')} · {variant.sku}</option>)}
                                     </select>
-                                    <select aria-label={t('inventory.stock.adjustment')} value={adjustment.data.type} onChange={event => adjustment.setData('type', event.target.value)} className="control-input w-full">
+                                    <select aria-label={t('inventory.stock.adjustment')} value={adjustment.data.type} onChange={event => adjustment.setData('type', event.target.value)} className="control-select w-full">
                                         <option value="adjustment_in">{t('inventory.stock.adjustmentIn')}</option>
                                         <option value="adjustment_out">{t('inventory.stock.adjustmentOut')}</option>
                                     </select>

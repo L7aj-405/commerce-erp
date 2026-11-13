@@ -495,7 +495,7 @@ function RankingTable({
         children: ReactNode;
         right?: boolean;
     }) => (
-        <th className={`px-3 py-2 ${right ? "text-right" : ""}`}>
+        <th className={`px-3 py-2 ${right ? "text-end" : ""}`}>
             <Link href={sortLink(k)} preserveScroll className="hover:text-ink">
                 {children}
                 {sorting.sort === k
@@ -511,7 +511,7 @@ function RankingTable({
 
     return (
         <div className="overflow-x-auto">
-            <table className="w-full min-w-[1100px] text-left text-sm">
+            <table className="w-full min-w-[1100px] text-start text-sm">
                 <thead className="bg-raised text-[11px] uppercase tracking-wide text-ink-faint">
                     <tr>
                         <Th k="salesperson_name" right={false}>
@@ -526,7 +526,7 @@ function RankingTable({
                                 <Th k="margin">
                                     {t("commissions.dashboard.grossMargin")}
                                 </Th>
-                                <th className="px-3 py-2 text-right">
+                                <th className="px-3 py-2 text-end">
                                     {t("commissions.dashboard.marginRate")}
                                 </th>
                             </>
@@ -562,40 +562,40 @@ function RankingTable({
                                     </span>
                                 )}
                             </td>
-                            <td className="px-3 py-2 text-right">
+                            <td className="px-3 py-2 text-end">
                                 {row.orders}
                             </td>
-                            <td className="px-3 py-2 text-right">
+                            <td className="px-3 py-2 text-end">
                                 {formatMoney(row.revenue)}
                             </td>
                             {canCosts && (
                                 <>
-                                    <td className="px-3 py-2 text-right">
+                                    <td className="px-3 py-2 text-end">
                                         {formatMoney(row.margin)}
                                     </td>
-                                    <td className="px-3 py-2 text-right">
+                                    <td className="px-3 py-2 text-end">
                                         {percent(row.margin_rate)}
                                     </td>
                                 </>
                             )}
-                            <td className="px-3 py-2 text-right">
+                            <td className="px-3 py-2 text-end">
                                 {formatMoney(row.gross)}
                             </td>
                             <td
-                                className={`px-3 py-2 text-right ${Number(row.reversals) < 0 ? "text-danger" : ""}`}
+                                className={`px-3 py-2 text-end ${Number(row.reversals) < 0 ? "text-danger" : ""}`}
                             >
                                 {formatMoney(row.reversals)}
                             </td>
-                            <td className="px-3 py-2 text-right font-semibold">
+                            <td className="px-3 py-2 text-end font-semibold">
                                 {formatMoney(row.net)}
                             </td>
-                            <td className="px-3 py-2 text-right">
+                            <td className="px-3 py-2 text-end">
                                 {formatMoney(row.pending)}
                             </td>
-                            <td className="px-3 py-2 text-right">
+                            <td className="px-3 py-2 text-end">
                                 {formatMoney(row.approved)}
                             </td>
-                            <td className="px-3 py-2 text-right">
+                            <td className="px-3 py-2 text-end">
                                 {formatMoney(row.paid)}
                             </td>
                         </tr>
@@ -783,16 +783,16 @@ function AdjustmentsPanel({
                                         t("commissions.dashboard.unattributed")}
                                 </Link>
                             </td>
-                            <td className="py-1.5 text-right text-danger">
+                            <td className="py-1.5 text-end text-danger">
                                 {formatMoney(row.return_reversals)}
                             </td>
-                            <td className="py-1.5 text-right text-danger">
+                            <td className="py-1.5 text-end text-danger">
                                 {formatMoney(row.cancellations)}
                             </td>
-                            <td className="py-1.5 text-right text-danger">
+                            <td className="py-1.5 text-end text-danger">
                                 {formatMoney(row.corrections)}
                             </td>
-                            <td className="py-1.5 text-right font-semibold text-danger">
+                            <td className="py-1.5 text-end font-semibold text-danger">
                                 {formatMoney(row.total)}
                             </td>
                         </tr>
@@ -892,21 +892,21 @@ function TierTable({ tiers, canCosts }: { tiers: Tier[]; canCosts: boolean }) {
                             <td className="py-1.5 text-ink-muted">
                                 {tierLabel(tier.min_margin, tier.max_margin, t)}
                             </td>
-                            <td className="py-1.5 text-right">
+                            <td className="py-1.5 text-end">
                                 {Number(tier.commission_rate).toLocaleString(
                                     "fr-FR",
                                 )}{" "}
                                 %
                             </td>
-                            <td className="py-1.5 text-right">
+                            <td className="py-1.5 text-end">
                                 {tier.sale_lines}
                             </td>
                             {canCosts && (
-                                <td className="py-1.5 text-right">
+                                <td className="py-1.5 text-end">
                                     {formatMoney(tier.margin)}
                                 </td>
                             )}
-                            <td className="py-1.5 text-right font-medium">
+                            <td className="py-1.5 text-end font-medium">
                                 {formatMoney(tier.net)}
                             </td>
                         </tr>
@@ -951,18 +951,18 @@ function StoreTable({
                         className="border-t border-line"
                     >
                         <td className="py-1.5">{row.store_name}</td>
-                        <td className="py-1.5 text-right">
+                        <td className="py-1.5 text-end">
                             {formatMoney(row.revenue)}
                         </td>
                         {canCosts && (
-                            <td className="py-1.5 text-right">
+                            <td className="py-1.5 text-end">
                                 {formatMoney(row.margin)}
                             </td>
                         )}
-                        <td className="py-1.5 text-right font-medium">
+                        <td className="py-1.5 text-end font-medium">
                             {formatMoney(row.net)}
                         </td>
-                        <td className="py-1.5 text-right">
+                        <td className="py-1.5 text-end">
                             {formatMoney(row.paid)}
                         </td>
                     </tr>

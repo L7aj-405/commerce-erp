@@ -5,7 +5,7 @@ import DocBadge from '@/components/ui/DocBadge';
 import PageHeader from '@/components/ui/PageHeader';
 import { TablePager, TableShell } from '@/components/ui/TableShell';
 import { useQueryFilters } from '@/hooks/useQueryFilters';
-import SalesLayout from '@/layouts/SalesLayout';
+import CatalogLayout from '@/layouts/CatalogLayout';
 import { useI18n } from '@/i18n';
 import { formatMoney, formatQuantity } from '@/utils/format';
 import { Head, useForm } from '@inertiajs/react';
@@ -45,7 +45,7 @@ export default function NonStockItemsIndex({ items, filters, taxRates, can }: Pr
     const filtered = f.activeCount > 0;
 
     return (
-        <SalesLayout>
+        <CatalogLayout>
             <Head title={t('catalog.nonStock.title')} />
             <PageHeader
                 title={t('catalog.nonStock.title')}
@@ -143,7 +143,7 @@ export default function NonStockItemsIndex({ items, filters, taxRates, can }: Pr
             <p className="mt-3 text-[13px] text-ink-muted">
                 {t('catalog.nonStock.futureHelp')}
             </p>
-        </SalesLayout>
+        </CatalogLayout>
     );
 }
 

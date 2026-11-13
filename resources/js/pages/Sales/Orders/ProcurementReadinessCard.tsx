@@ -1,3 +1,4 @@
+import DatePicker from '@/components/ui/DatePicker';
 import { useI18n } from '@/i18n';
 import type { TranslationKey } from '@/i18n/translations';
 import { formatDate, formatMoney, formatQuantity } from '@/utils/format';
@@ -267,7 +268,7 @@ function CreatePurchaseOrder({
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
                 <label className="block text-xs text-ink-muted">
                     {k('expectedDelivery')}
-                    <input type="date" value={form.data.expected_delivery_date} onChange={(e) => form.setData('expected_delivery_date', e.target.value)} className="control-input mt-1 w-full" />
+                    <DatePicker value={form.data.expected_delivery_date} onChange={(value) => form.setData('expected_delivery_date', value)} />
                 </label>
                 <label className="block text-xs text-ink-muted">
                     {k('notes')}

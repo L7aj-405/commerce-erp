@@ -67,7 +67,7 @@ export default function TransferShow({ transfer, origin = null }: { transfer: Tr
                     bodyClassName=""
                 >
                     <div className="overflow-x-auto">
-                        <table className="w-full min-w-[480px] text-start text-sm">
+                        <table className="erp-table w-full min-w-[480px] text-start text-sm">
                             <thead className="border-b border-line bg-raised text-[13px] text-ink-muted font-medium">
                                 <tr>
                                     <th scope="col" className="px-4 py-2.5 text-start font-semibold">{t('inventory.product')}</th>

@@ -1,3 +1,4 @@
+import { useConfirm } from '@/components/ui/ConfirmDialog';
 import { Button } from '@/components/ui/Button';
 import SandboxFulfillmentBadge from '@/components/SandboxFulfillmentBadge';
 import { Dialog } from '@/components/ui/Dialog';
@@ -125,7 +126,7 @@ export default function FulfillmentCard({ orderId, data }: { orderId: number; da
             {data.awaiting_replenishment && <p className="mt-2 text-xs text-warning">{k('awaitingReplenishment')}</p>}
 
             <div className="mt-4 overflow-x-auto rounded-field border border-line">
-                <table className="w-full min-w-[520px] text-start text-sm">
+                <table className="erp-table w-full min-w-[520px] text-start text-sm">
                     <thead className="bg-raised text-[13px] text-ink-muted font-medium">
                         <tr>
                             <th className="px-3 py-2 text-start font-medium">{k('article')}</th>
@@ -182,6 +183,7 @@ export default function FulfillmentCard({ orderId, data }: { orderId: number; da
 
 function ShipmentRow({ shipment, base, canAttach, canRemove, onAction }: { shipment: Shipment; base: string; canAttach: boolean; canRemove: boolean; onAction: (action: Action) => void }) {
     const { t } = useI18n();
+    const confirm = useConfirm();
     const k = (key: string) => t(`fulfillment.${key}` as TranslationKey);
     const upload = useForm<{ files: File[] }>({ files: [] });
     const actionLabels: Record<Action, string> = {
@@ -257,7 +259,7 @@ function ShipmentRow({ shipment, base, canAttach, canRemove, onAction }: { shipm
                             <a href={attachment.url} className="text-ink underline">{attachment.name}</a>
                             {canRemove && (
                                 <button type="button" aria-label={k('removeProof')} className="text-ink-faint hover:text-danger"
-                                    onClick={() => window.confirm(k('removeProofConfirm')) && router.delete(`${base}/${shipment.id}/attachments/${attachment.id}`, { preserveScroll: true })}>×</button>
+                                    onClick={async () => { if (await confirm({ title: k('removeProofConfirm'), danger: true })) router.delete(`${base}/${shipment.id}/attachments/${attachment.id}`, { preserveScroll: true }); }}>×</button>
                             )}
                         </span>
                     ))}
@@ -371,7 +373,7 @@ function DispatchDialog({ base, shipment, lines, onClose }: { base: string; ship
                 )}
                 <Field label={k('carrier')} error={errors.carrier_contact_id}>
                     <input value={carrierSearch} onChange={(event) => setCarrierSearch(event.target.value)} placeholder={k('searchCarrier')} className="control-input mb-2 w-full" />
-                    <select value={form.data.carrier_contact_id} onChange={(event) => form.setData('carrier_contact_id', event.target.value)} className="control-input w-full" required>
+                    <select value={form.data.carrier_contact_id} onChange={(event) => form.setData('carrier_contact_id', event.target.value)} className="control-select w-full" required>
                         <option value="">{k('chooseCarrier')}</option>
                         {carriers.map((carrier) => <option key={carrier.id} value={carrier.id}>{[carrier.name, carrier.contact, carrier.phone].filter(Boolean).join(' · ')}</option>)}
                     </select>
@@ -480,7 +482,7 @@ function EditDialog({ base, shipment, onClose }: { base: string; shipment: Shipm
                 {shipment.channel === 'carrier' && (
                     <Field label={k('carrier')} error={errors.carrier_contact_id}>
                         <input value={carrierSearch} onChange={(event) => setCarrierSearch(event.target.value)} placeholder={k('searchCarrier')} className="control-input mb-2 w-full" />
-                        <select value={form.data.carrier_contact_id} onChange={(event) => form.setData('carrier_contact_id', event.target.value)} className="control-input w-full" required>
+                        <select value={form.data.carrier_contact_id} onChange={(event) => form.setData('carrier_contact_id', event.target.value)} className="control-select w-full" required>
                             {carriers.map((carrier) => <option key={carrier.id} value={carrier.id}>{[carrier.name, carrier.contact, carrier.phone].filter(Boolean).join(' · ')}</option>)}
                         </select>
                     </Field>

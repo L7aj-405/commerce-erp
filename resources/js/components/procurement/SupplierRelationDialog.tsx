@@ -168,7 +168,7 @@ export default function SupplierRelationDialog({ open, onClose, fixed, relation,
                             <select
                                 value={String(form.data.counterpart_id ?? '')}
                                 onChange={(event) => form.setData('counterpart_id', event.target.value)}
-                                className="control-input w-full"
+                                className="control-select w-full"
                                 required
                             >
                                 <option value="">{t('supplierCatalog.choose')}</option>
@@ -216,7 +216,7 @@ export default function SupplierRelationDialog({ open, onClose, fixed, relation,
 function Field({ label, error, children }: { label: string; error?: string; children: ReactNode }) {
     return (
         <label className="block min-w-0 text-sm">
-            <span className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-ink-faint">{label}</span>
+            <span className="mb-1.5 block text-[13px] font-medium text-ink">{label}</span>
             {children}
             {error && <span className="mt-1 block text-xs text-danger">{error}</span>}
         </label>

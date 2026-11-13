@@ -1,15 +1,17 @@
-import EmptyState from '@/components/ui/EmptyState';
 import SandboxProcurementBadge from '@/components/SandboxProcurementBadge';
+import { AdvancedFilterBar, ChoiceFilter, FilterSearch } from '@/components/ui/AdvancedFilterBar';
+import type { FilterChip } from '@/components/ui/AdvancedFilterBar';
+import { Button } from '@/components/ui/Button';
+import EmptyState from '@/components/ui/EmptyState';
 import PageHeader from '@/components/ui/PageHeader';
-import Pagination from '@/components/ui/Pagination';
-import SearchInput from '@/components/ui/SearchInput';
 import StatusBadge from '@/components/ui/StatusBadge';
+import { rowLink, TablePager, TableShell } from '@/components/ui/TableShell';
+import { useQueryFilters } from '@/hooks/useQueryFilters';
 import { useI18n } from '@/i18n';
 import type { TranslationKey } from '@/i18n/translations';
 import ProcurementLayout from '@/layouts/ProcurementLayout';
-import { formatDate } from '@/utils/format';
-import { Head, Link, router } from '@inertiajs/react';
-import { useEffect, useState } from 'react';
+import { formatDate, formatInteger } from '@/utils/format';
+import { Head, Link } from '@inertiajs/react';
 
 type Row = {
     id: number;
@@ -23,7 +25,7 @@ type Row = {
 };
 type LinkData = { url: string | null; label: string; active: boolean };
 type Props = {
-    purchaseOrders: { data: Row[]; links: LinkData[] };
+    purchaseOrders: { data: Row[]; links: LinkData[]; from?: number | null; to?: number | null; total?: number };
     filters: { search?: string; status?: string };
 };
 
@@ -32,24 +34,22 @@ const STATUSES = ['ordered', 'partially_received', 'received', 'draft', 'cancell
 export default function PurchaseOrdersIndex({ purchaseOrders, filters }: Props) {
     const { t } = useI18n();
     const statusLabel = (status: string) => t(`purchaseOrders.status.${status}` as TranslationKey);
-    const [search, setSearch] = useState(filters.search ?? '');
-    const [searching, setSearching] = useState(false);
+    // Exactly the params PurchaseOrderController@index validates.
+    const f = useQueryFilters('/procurement/purchase-orders', filters, { keys: ['search', 'status'] });
 
-    const visit = (next: Record<string, string | undefined>) =>
-        router.get('/procurement/purchase-orders', next, {
-            preserveState: true,
-            preserveScroll: true,
-            replace: true,
-            onStart: () => setSearching(true),
-            onFinish: () => setSearching(false),
-        });
+    const chips: FilterChip[] = [];
+    if (filters.search) chips.push({ key: 'search', label: t('filters.search'), value: filters.search, onRemove: () => f.remove('search') });
+    if (filters.status) chips.push({ key: 'status', label: t('common.status'), value: statusLabel(filters.status), onRemove: () => f.remove('status') });
 
-    useEffect(() => {
-        if (search === (filters.search ?? '')) return;
-        const timer = window.setTimeout(() => visit({ search: search || undefined, status: filters.status, page: undefined }), 280);
-        return () => window.clearTimeout(timer);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [search]);
+    const filtered = f.activeCount > 0;
+    const emptyTitle = filtered ? t('filters.noMatch') : t('purchaseOrders.empty');
+    const emptyDescription = filtered ? t('filters.noMatchHelp') : t('purchaseOrders.description');
+    const emptyAction = filtered ? (
+        <Button variant="secondary" onClick={f.reset}>
+            {t('filters.reset')}
+        </Button>
+    ) : undefined;
+    const pager = <TablePager links={purchaseOrders.links} from={purchaseOrders.from} to={purchaseOrders.to} total={purchaseOrders.total} />;
 
     return (
         <ProcurementLayout>
@@ -57,67 +57,94 @@ export default function PurchaseOrdersIndex({ purchaseOrders, filters }: Props) 
             <PageHeader title={t('purchaseOrders.title')} description={t('purchaseOrders.description')} />
             <SandboxProcurementBadge />
 
-            <div className="mb-6 flex flex-wrap items-center gap-2">
-                <SearchInput value={search} onChange={setSearch} searching={searching} placeholder={t('purchaseOrders.searchPlaceholder')} />
-                <select
-                    value={filters.status ?? ''}
-                    onChange={(e) => visit({ search: filters.search, status: e.target.value || undefined, page: undefined })}
-                    className="control-select"
+            <div className="mb-4">
+                <AdvancedFilterBar
+                    label={t('purchaseOrders.title')}
+                    search={
+                        <FilterSearch
+                            value={f.search}
+                            onChange={f.setSearch}
+                            loading={f.searching}
+                            label={t('common.search')}
+                            placeholder={t('purchaseOrders.searchPlaceholder')}
+                        />
+                    }
+                    chips={chips}
+                    activeCount={f.activeCount}
+                    loading={f.loading && !f.searching}
+                    onReset={f.reset}
                 >
-                    <option value="">{t('common.allStatuses')}</option>
-                    {STATUSES.map((s) => (
-                        <option key={s} value={s}>
-                            {statusLabel(s)}
-                        </option>
-                    ))}
-                </select>
+                    <ChoiceFilter
+                        label={t('common.status')}
+                        allLabel={t('common.allStatuses')}
+                        options={STATUSES.map((status) => ({ value: status, label: statusLabel(status) }))}
+                        value={filters.status}
+                        onChange={(value) => f.set('status', value)}
+                    />
+                </AdvancedFilterBar>
             </div>
 
-            {purchaseOrders.data.length === 0 ? (
-                <EmptyState title={t('purchaseOrders.empty')} description={t('purchaseOrders.description')} />
-            ) : (
-                <>
-                    <div className="hidden overflow-x-auto rounded-card border border-line bg-surface md:block">
-                        <table className="erp-table w-full min-w-[760px] text-start text-sm">
-                            <thead className="border-b border-line bg-raised text-xs uppercase tracking-wide text-ink-muted">
-                                <tr>
-                                    <th className="px-4 py-3 font-medium">N°</th>
-                                    <th className="px-4 py-3 font-medium">{t('purchaseOrders.supplier')}</th>
-                                    <th className="px-4 py-3 font-medium">{t('purchaseOrders.store')}</th>
-                                    <th className="px-4 py-3 font-medium">{t('purchaseOrders.orderDate')}</th>
-                                    <th className="px-4 py-3 font-medium">{t('purchaseOrders.expectedDelivery')}</th>
-                                    <th className="px-4 py-3 text-end font-medium">{t('purchaseOrders.lineCount')}</th>
-                                    <th className="px-4 py-3 font-medium">{t('common.status')}</th>
+            <TableShell
+                label={t('purchaseOrders.title')}
+                state={purchaseOrders.data.length === 0 ? 'empty' : 'ready'}
+                busy={f.loading}
+                emptyTitle={emptyTitle}
+                emptyDescription={emptyDescription}
+                emptyAction={emptyAction}
+                className="hidden md:block"
+                footer={purchaseOrders.data.length === 0 ? undefined : pager}
+            >
+                <table className="erp-table min-w-[760px] text-sm">
+                    <thead>
+                        <tr>
+                            <th className="px-4 py-3">{t('common.reference')}</th>
+                            <th className="px-4 py-3">{t('purchaseOrders.supplier')}</th>
+                            <th className="px-4 py-3">{t('purchaseOrders.store')}</th>
+                            <th className="px-4 py-3">{t('purchaseOrders.orderDate')}</th>
+                            <th className="px-4 py-3">{t('purchaseOrders.expectedDelivery')}</th>
+                            <th className="num px-4 py-3">{t('purchaseOrders.lineCount')}</th>
+                            <th className="px-4 py-3">{t('common.status')}</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {purchaseOrders.data.map((row) => {
+                            const link = rowLink(`/procurement/purchase-orders/${row.id}`);
+                            return (
+                                <tr key={row.id} onClick={link.onClick} className={link.className}>
+                                    <td className="px-4 py-3 font-semibold">
+                                        <Link href={`/procurement/purchase-orders/${row.id}`} className="text-ink hover:text-accent hover:underline">
+                                            <bdi>{row.purchase_order_number}</bdi>
+                                        </Link>
+                                    </td>
+                                    <td className="px-4 py-3 text-ink-muted">{row.supplier?.name ?? '—'}</td>
+                                    <td className="px-4 py-3 text-ink-muted">{row.store?.name ?? '—'}</td>
+                                    <td className="px-4 py-3 whitespace-nowrap text-ink-muted tabular-nums">{row.order_date ? formatDate(row.order_date) : '—'}</td>
+                                    <td className="px-4 py-3 whitespace-nowrap text-ink-muted tabular-nums">
+                                        {row.expected_delivery_date ? formatDate(row.expected_delivery_date) : '—'}
+                                    </td>
+                                    <td className="num px-4 py-3">{formatInteger(row.line_count)}</td>
+                                    <td className="px-4 py-3">
+                                        <StatusBadge status={row.status}>{statusLabel(row.status)}</StatusBadge>
+                                    </td>
                                 </tr>
-                            </thead>
-                            <tbody className="divide-y divide-line">
-                                {purchaseOrders.data.map((row) => (
-                                    <tr key={row.id}>
-                                        <td className="px-4 py-3 font-medium">
-                                            <Link href={`/procurement/purchase-orders/${row.id}`} className="text-ink underline">
-                                                <bdi>{row.purchase_order_number}</bdi>
-                                            </Link>
-                                        </td>
-                                        <td className="px-4 py-3 text-ink-muted">{row.supplier?.name ?? '—'}</td>
-                                        <td className="px-4 py-3 text-ink-muted">{row.store?.name ?? '—'}</td>
-                                        <td className="px-4 py-3 text-ink-muted">{row.order_date ? formatDate(row.order_date) : '—'}</td>
-                                        <td className="px-4 py-3 text-ink-muted">{row.expected_delivery_date ? formatDate(row.expected_delivery_date) : '—'}</td>
-                                        <td className="px-4 py-3 text-end tabular-nums">{row.line_count}</td>
-                                        <td className="px-4 py-3">
-                                            <StatusBadge status={row.status}>{statusLabel(row.status)}</StatusBadge>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
+                            );
+                        })}
+                    </tbody>
+                </table>
+            </TableShell>
 
-                    <ul className="space-y-3 md:hidden">
+            {purchaseOrders.data.length === 0 ? (
+                <div className="md:hidden">
+                    <EmptyState compact title={emptyTitle} description={emptyDescription} actions={emptyAction} />
+                </div>
+            ) : (
+                <div className="space-y-3 md:hidden" aria-busy={f.loading || undefined}>
+                    <ul className={`space-y-3 transition-opacity ${f.loading ? 'opacity-55' : ''}`}>
                         {purchaseOrders.data.map((row) => (
-                            <li key={row.id} className="rounded-card border border-line bg-surface p-4">
+                            <li key={row.id} className="surface-card p-4">
                                 <div className="flex items-start justify-between gap-3">
                                     <div className="min-w-0">
-                                        <Link href={`/procurement/purchase-orders/${row.id}`} className="block truncate text-sm font-semibold text-ink underline">
+                                        <Link href={`/procurement/purchase-orders/${row.id}`} className="block truncate text-sm font-semibold text-ink hover:underline">
                                             <bdi>{row.purchase_order_number}</bdi>
                                         </Link>
                                         <p className="truncate text-[13px] text-ink-muted">{row.supplier?.name ?? '—'}</p>
@@ -137,10 +164,9 @@ export default function PurchaseOrdersIndex({ purchaseOrders, filters }: Props) 
                             </li>
                         ))}
                     </ul>
-                </>
+                    {pager}
+                </div>
             )}
-
-            <Pagination links={purchaseOrders.links} />
         </ProcurementLayout>
     );
 }

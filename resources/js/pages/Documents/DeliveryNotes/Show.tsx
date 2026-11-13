@@ -1,3 +1,4 @@
+import DatePicker from '@/components/ui/DatePicker';
 import SendDocumentEmailModal from '@/components/documents/SendDocumentEmailModal';
 import SandboxDocumentBadge from '@/components/SandboxDocumentBadge';
 import { Button, ButtonLink } from '@/components/ui/Button';
@@ -210,13 +211,7 @@ export default function DeliveryNoteShow({ deliveryNote: note, can, mailConfigur
                             <h2 className="text-base font-semibold text-ink md:col-span-2">{t('deliveryNotes.draftInfo')}</h2>
                             <label className="block text-[13px] font-medium text-ink">
                                 {t('deliveryNotes.deliveryDate')}
-                                <input
-                                    type="date"
-                                    readOnly={!can.backdate}
-                                    value={form.data.delivery_date}
-                                    onChange={(e) => form.setData('delivery_date', e.target.value)}
-                                    className="control-input mt-1.5 read-only:bg-raised"
-                                />
+                                <DatePicker disabled={!can.backdate} value={form.data.delivery_date} onChange={(value) => form.setData('delivery_date', value)} />
                             </label>
                             <label className="block text-[13px] font-medium text-ink">
                                 {t('deliveryNotes.recipientName')}

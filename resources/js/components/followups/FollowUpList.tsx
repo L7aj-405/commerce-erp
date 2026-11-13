@@ -1,3 +1,4 @@
+import DatePicker from '@/components/ui/DatePicker';
 import { Button } from '@/components/ui/Button';
 import DocBadge from '@/components/ui/DocBadge';
 import { Dialog } from '@/components/ui/Dialog';
@@ -208,7 +209,7 @@ export default function FollowUpList({ items, context, showAssignee }: { items: 
                     </fieldset>
                     {(shipmentOutcome === 'not_received' || shipmentOutcome === 'customer_unreachable') && (
                         <div className="grid gap-3 sm:grid-cols-2">
-                            <label className="block"><span className="mb-1 block text-xs font-medium text-ink-muted">{t('work.nextFollowUpDate')}</span><input required type="date" value={shipmentDueDate} onChange={(event) => setShipmentDueDate(event.target.value)} className="control-input w-full" /></label>
+                            <label className="block"><span className="mb-1 block text-xs font-medium text-ink-muted">{t('work.nextFollowUpDate')}</span><DatePicker required value={shipmentDueDate} onChange={(value) => setShipmentDueDate(value)} /></label>
                             <label className="block"><span className="mb-1 block text-xs font-medium text-ink-muted">{t('work.dueTime')}</span><input type="time" value={shipmentDueTime} onChange={(event) => setShipmentDueTime(event.target.value)} className="control-input w-full" /></label>
                         </div>
                     )}

@@ -191,7 +191,7 @@ export default function OrderLineGrid({ orderId, currency, lines, searchUrl, tax
     return (
         <div className="space-y-3">
             <div className="hidden overflow-x-auto md:block">
-                <table className="w-full min-w-[820px] border-collapse text-sm">
+                <table className="erp-table w-full min-w-[820px] text-sm">
                     <thead>
                         <tr className="border-b border-line-strong text-start text-[13px] text-ink-muted [&>th]:px-2 [&>th]:py-2 [&>th]:font-medium font-medium">
                             <th>{t('orders.edit.item')}</th>
@@ -240,7 +240,7 @@ export default function OrderLineGrid({ orderId, currency, lines, searchUrl, tax
                                             }}
                                             onBlur={() => commit(line.id)}
                                             onKeyDown={(e) => e.key === 'Enter' && commit(line.id)}
-                                            className="w-14 rounded-field border border-line-strong px-2 py-1 text-end tabular-nums"
+                                            className="control-input control-compact w-14 text-end tabular-nums"
                                         />
                                     </td>
                                     <td>
@@ -256,7 +256,7 @@ export default function OrderLineGrid({ orderId, currency, lines, searchUrl, tax
                                                             schedule(line.id);
                                                         }}
                                                         onBlur={() => commit(line.id)}
-                                                        className="w-24 rounded-field border border-line-strong px-2 py-1 text-end tabular-nums"
+                                                        className="control-input control-compact w-24 text-end tabular-nums"
                                                     />
                                                     {line.line_type === 'custom' && (
                                                         <select
@@ -270,7 +270,7 @@ export default function OrderLineGrid({ orderId, currency, lines, searchUrl, tax
                                                                 });
                                                                 commit(line.id);
                                                             }}
-                                                            className="rounded-field border border-line-strong px-1 py-1 text-xs"
+                                                            className="control-select control-compact"
                                                         >
                                                             <option value="ht">HT</option>
                                                             <option value="ttc">TTC</option>
@@ -300,7 +300,7 @@ export default function OrderLineGrid({ orderId, currency, lines, searchUrl, tax
                                                         schedule(line.id);
                                                     }}
                                                     onBlur={() => commit(line.id)}
-                                                    className="w-14 rounded-field border border-line-strong px-2 py-1 text-end tabular-nums"
+                                                    className="control-input control-compact w-14 text-end tabular-nums"
                                                 />
                                                 <select
                                                     disabled={busy}
@@ -309,7 +309,7 @@ export default function OrderLineGrid({ orderId, currency, lines, searchUrl, tax
                                                         patchDraft(line.id, { discount_unit: e.target.value as '%' | 'DH' });
                                                         commit(line.id);
                                                     }}
-                                                    className="rounded-field border border-line-strong px-1 py-1 text-xs"
+                                                    className="control-select control-compact"
                                                 >
                                                     <option value="%">%</option>
                                                     <option value="DH">DH</option>
@@ -423,7 +423,7 @@ export default function OrderLineGrid({ orderId, currency, lines, searchUrl, tax
                                         }}
                                         onBlur={() => commit(line.id)}
                                         onKeyDown={(e) => e.key === 'Enter' && commit(line.id)}
-                                        className="mt-0.5 h-9 w-full rounded-field border border-line-strong px-2 text-end text-sm tabular-nums text-ink"
+                                        className="control-input control-compact mt-0.5 w-full text-end tabular-nums"
                                     />
                                 </label>
 
@@ -469,7 +469,7 @@ export default function OrderLineGrid({ orderId, currency, lines, searchUrl, tax
                                                         schedule(line.id);
                                                     }}
                                                     onBlur={() => commit(line.id)}
-                                                    className="h-9 w-full rounded-field border border-line-strong px-2 text-end text-sm tabular-nums text-ink"
+                                                    className="control-input control-compact w-full text-end tabular-nums"
                                                 />
                                                 {line.line_type === 'custom' && (
                                                     <select
@@ -483,7 +483,7 @@ export default function OrderLineGrid({ orderId, currency, lines, searchUrl, tax
                                                             });
                                                             commit(line.id);
                                                         }}
-                                                        className="h-9 shrink-0 rounded-field border border-line-strong px-1.5 text-xs text-ink"
+                                                        className="control-select control-compact shrink-0"
                                                     >
                                                         <option value="ht">HT</option>
                                                         <option value="ttc">TTC</option>
@@ -515,7 +515,7 @@ export default function OrderLineGrid({ orderId, currency, lines, searchUrl, tax
                                                     schedule(line.id);
                                                 }}
                                                 onBlur={() => commit(line.id)}
-                                                className="h-9 w-full rounded-field border border-line-strong px-2 text-end text-sm tabular-nums text-ink"
+                                                className="control-input control-compact w-full text-end tabular-nums"
                                             />
                                             <select
                                                 disabled={busy}
@@ -524,7 +524,7 @@ export default function OrderLineGrid({ orderId, currency, lines, searchUrl, tax
                                                     patchDraft(line.id, { discount_unit: e.target.value as '%' | 'DH' });
                                                     commit(line.id);
                                                 }}
-                                                className="h-9 shrink-0 rounded-field border border-line-strong px-1.5 text-xs text-ink"
+                                                className="control-select control-compact shrink-0"
                                             >
                                                 <option value="%">%</option>
                                                 <option value="DH">DH</option>
@@ -683,7 +683,7 @@ function ArticleAdder({
     };
 
     return (
-        <div className="rounded-card border border-line bg-surface p-3 text-sm">
+        <div className="surface-card p-3 text-sm">
             {!manual ? (
                 <>
                     <div className="flex items-center gap-2">
@@ -694,7 +694,7 @@ function ArticleAdder({
                             onChange={(e) => setQuery(e.target.value)}
                             onKeyDown={onKeyDown}
                             placeholder={t('orders.lines.searchPlaceholder')}
-                            className="w-full rounded-field border border-line-strong px-2 py-1"
+                            className="control-input control-compact w-full"
                         />
                         <button type="button" onClick={onClose} className="text-xs text-ink-muted hover:underline">
                             {t('common.close')}
@@ -762,17 +762,17 @@ function ArticleAdder({
                             placeholder={t('orders.lines.designationRequired')}
                             value={mForm.name}
                             onChange={(e) => setMForm((f) => ({ ...f, name: e.target.value }))}
-                            className="rounded-field border border-line-strong px-2 py-1 sm:col-span-2"
+                            className="control-input control-compact sm:col-span-2"
                         />
-                        <input placeholder={t('common.reference')} value={mForm.reference} onChange={(e) => setMForm((f) => ({ ...f, reference: e.target.value }))} className="rounded-field border border-line-strong px-2 py-1" />
-                        <input placeholder={t('orders.lines.unit')} value={mForm.unit_label} onChange={(e) => setMForm((f) => ({ ...f, unit_label: e.target.value }))} className="rounded-field border border-line-strong px-2 py-1" />
+                        <input placeholder={t('common.reference')} value={mForm.reference} onChange={(e) => setMForm((f) => ({ ...f, reference: e.target.value }))} className="control-input control-compact" />
+                        <input placeholder={t('orders.lines.unit')} value={mForm.unit_label} onChange={(e) => setMForm((f) => ({ ...f, unit_label: e.target.value }))} className="control-input control-compact" />
                         <label className="text-xs text-ink-muted">
                             {t('common.quantity')}
-                            <input type="number" inputMode="numeric" min={1} step={1} value={mForm.quantity} onChange={(e) => setMForm((f) => ({ ...f, quantity: e.target.value }))} className="mt-0.5 w-full rounded-field border border-line-strong px-2 py-1 text-end" />
+                            <input type="number" inputMode="numeric" min={1} step={1} value={mForm.quantity} onChange={(e) => setMForm((f) => ({ ...f, quantity: e.target.value }))} className="control-input control-compact mt-0.5 w-full text-end" />
                         </label>
                         <label className="text-xs text-ink-muted">
                             {t('orders.show.tax')}
-                            <select value={mForm.tax_rate_id} onChange={(e) => setMForm((f) => ({ ...f, tax_rate_id: e.target.value }))} className="mt-0.5 w-full rounded-field border border-line-strong px-2 py-1">
+                            <select value={mForm.tax_rate_id} onChange={(e) => setMForm((f) => ({ ...f, tax_rate_id: e.target.value }))} className="control-select control-compact mt-0.5 w-full">
                                 <option value="">{t('common.none')}</option>
                                 {taxRates.map((t) => (
                                     <option key={t.id} value={t.id}>
@@ -788,9 +788,9 @@ function ArticleAdder({
                                     inputMode="decimal"
                                     value={mForm.unit_price}
                                     onChange={(e) => setMForm((f) => ({ ...f, unit_price: e.target.value }))}
-                                    className="w-full rounded-field border border-line-strong px-2 py-1 text-end"
+                                    className="control-input control-compact w-full text-end"
                                 />
-                                <select value={mForm.price_mode} onChange={(e) => setMForm((f) => ({ ...f, price_mode: e.target.value }))} className="rounded-field border border-line-strong px-1 py-1 text-xs">
+                                <select value={mForm.price_mode} onChange={(e) => setMForm((f) => ({ ...f, price_mode: e.target.value }))} className="control-select control-compact">
                                     <option value="ht">HT</option>
                                     <option value="ttc">TTC</option>
                                 </select>
@@ -805,9 +805,9 @@ function ArticleAdder({
                                         placeholder="0"
                                         value={mForm.discount_value}
                                         onChange={(e) => setMForm((f) => ({ ...f, discount_value: e.target.value }))}
-                                        className="w-full rounded-field border border-line-strong px-2 py-1 text-end"
+                                        className="control-input control-compact w-full text-end"
                                     />
-                                    <select value={mForm.discount_unit} onChange={(e) => setMForm((f) => ({ ...f, discount_unit: e.target.value }))} className="rounded-field border border-line-strong px-1 py-1 text-xs">
+                                    <select value={mForm.discount_unit} onChange={(e) => setMForm((f) => ({ ...f, discount_unit: e.target.value }))} className="control-select control-compact">
                                         <option value="%">%</option>
                                         <option value="DH">DH</option>
                                     </select>

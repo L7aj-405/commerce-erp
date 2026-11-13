@@ -1,3 +1,4 @@
+import DatePicker from '@/components/ui/DatePicker';
 import { useFreshAuth } from '@/components/auth/FreshAuthProvider';
 import { Button } from '@/components/ui/Button';
 import FilterSelect from '@/components/ui/FilterSelect';
@@ -226,11 +227,11 @@ export default function SelectiveReset({
                     <div className="grid gap-3 sm:grid-cols-2 lg:max-w-xl">
                         <label className="block text-sm font-medium text-ink">
                             {t('dataReset.sel.dateFrom')}
-                            <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="control-input mt-1 w-full" />
+                            <DatePicker value={dateFrom} onChange={(value) => setDateFrom(value)} />
                         </label>
                         <label className="block text-sm font-medium text-ink">
                             {t('dataReset.sel.dateTo')}
-                            <input type="date" value={dateTo} min={dateFrom || undefined} onChange={(e) => setDateTo(e.target.value)} className="control-input mt-1 w-full" />
+                            <DatePicker value={dateTo} min={dateFrom || undefined} onChange={(value) => setDateTo(value)} />
                         </label>
                     </div>
                     <p className="mt-2 text-xs text-ink-muted">{t('dataReset.sel.businessDateHelp')}</p>

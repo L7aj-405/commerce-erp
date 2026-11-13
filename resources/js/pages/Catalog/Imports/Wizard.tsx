@@ -254,7 +254,7 @@ export default function ProductImportWizard({
                             )}
                         </p>
                         <div className="mt-5 overflow-x-auto">
-                            <table className="w-full text-start text-sm">
+                            <table className="erp-table w-full text-start text-sm">
                                 <thead>
                                     <tr className="border-b">
                                         <th className="py-3">
@@ -287,7 +287,7 @@ export default function ProductImportWizard({
                                                                     .value,
                                                             )
                                                         }
-                                                        className="w-full max-w-sm rounded-lg border px-3 py-2"
+                                                        className="control-select w-full max-w-sm"
                                                     >
                                                         <option value="">
                                                             {t(
@@ -372,7 +372,7 @@ export default function ProductImportWizard({
                                                 ),
                                             })
                                         }
-                                        className="mt-1 w-full rounded-lg border px-3 py-2"
+                                        className="control-select mt-1 w-full"
                                     >
                                         <option value="">
                                             {t("common.none")}
@@ -459,7 +459,7 @@ export default function ProductImportWizard({
                                                     ),
                                                 })
                                             }
-                                            className="mt-1 w-full rounded-lg border px-3 py-2"
+                                            className="control-select mt-1 w-full"
                                         >
                                             <option value="">
                                                 {t(
@@ -557,7 +557,7 @@ export default function ProductImportWizard({
                         </div>
                     )}
                     <div className="mt-6 overflow-x-auto rounded-xl border bg-surface">
-                        <table className="w-full min-w-[1050px] text-start text-sm">
+                        <table className="erp-table w-full min-w-[1050px] text-start text-sm">
                             <thead className="bg-raised">
                                 <tr>
                                     <th className="p-3">
@@ -767,7 +767,7 @@ export default function ProductImportWizard({
                                     {t("imports.products.detailsHelp")}
                                 </p>
                                 <div className="mt-4 overflow-x-auto rounded-xl border">
-                                    <table className="w-full min-w-[760px] text-start text-sm">
+                                    <table className="erp-table w-full min-w-[760px] text-start text-sm">
                                         <thead className="bg-raised">
                                             <tr>
                                                 <th className="p-3">

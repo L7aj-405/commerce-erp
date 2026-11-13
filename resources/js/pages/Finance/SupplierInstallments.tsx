@@ -1,4 +1,5 @@
 import { Button, ButtonLink } from "@/components/ui/Button";
+import DatePicker from "@/components/ui/DatePicker";
 import EmptyState from "@/components/ui/EmptyState";
 import PageHeader from "@/components/ui/PageHeader";
 import Pagination from "@/components/ui/Pagination";
@@ -398,11 +399,10 @@ export default function SupplierInstallments(props: Props) {
                                     key={i}
                                     className="grid grid-cols-[1fr_1fr_auto] gap-2"
                                 >
-                                    <input
-                                        className={input}
-                                        type="date"
+                                    <DatePicker
+                                        aria-label={`${t("supplierInstallments.installments")} ${i + 1} — ${t("common.date")}`}
                                         value={row.due_date}
-                                        onChange={(e) =>
+                                        onChange={(value) =>
                                             form.setData(
                                                 "installments",
                                                 form.data.installments.map(
@@ -411,8 +411,7 @@ export default function SupplierInstallments(props: Props) {
                                                             ? {
                                                                   ...x,
                                                                   due_date:
-                                                                      e.target
-                                                                          .value,
+                                                                      value,
                                                               }
                                                             : x,
                                                 ),

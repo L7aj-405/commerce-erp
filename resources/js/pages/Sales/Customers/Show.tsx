@@ -329,7 +329,7 @@ export default function CustomerShow({
                         {t("customers.show.noOrders")}
                     </p>
                 ) : (
-                    <table className="w-full text-start text-sm">
+                    <table className="erp-table w-full text-start text-sm">
                         <thead className="bg-raised text-[13px] text-ink-muted font-medium">
                             <tr>
                                 <th className="px-4 py-2">N°</th>
@@ -405,7 +405,7 @@ export default function CustomerShow({
                         {t("customers.show.noInvoices")}
                     </p>
                 ) : (
-                    <table className="w-full text-start text-sm">
+                    <table className="erp-table w-full text-start text-sm">
                         <thead className="bg-raised text-[13px] text-ink-muted font-medium">
                             <tr>
                                 <th className="px-4 py-2">N°</th>
@@ -470,7 +470,7 @@ export default function CustomerShow({
                         {t("customers.show.noPayments")}
                     </p>
                 ) : (
-                    <table className="w-full text-start text-sm">
+                    <table className="erp-table w-full text-start text-sm">
                         <thead className="bg-raised text-[13px] text-ink-muted font-medium">
                             <tr>
                                 <th className="px-4 py-2">N°</th>
@@ -542,7 +542,7 @@ export default function CustomerShow({
                         {t("customers.show.noQuotations")}
                     </p>
                 ) : (
-                    <table className="w-full text-start text-sm">
+                    <table className="erp-table w-full text-start text-sm">
                         <thead className="bg-raised text-[13px] text-ink-muted font-medium">
                             <tr>
                                 <th className="px-4 py-2">N°</th>
@@ -608,7 +608,7 @@ export default function CustomerShow({
                         {t("customers.show.noDeliveryNotes")}
                     </p>
                 ) : (
-                    <table className="w-full text-start text-sm">
+                    <table className="erp-table w-full text-start text-sm">
                         <thead className="bg-raised text-[13px] text-ink-muted font-medium">
                             <tr>
                                 <th className="px-4 py-2">N°</th>

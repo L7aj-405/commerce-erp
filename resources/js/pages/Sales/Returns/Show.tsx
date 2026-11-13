@@ -143,7 +143,7 @@ export default function ReturnShow({
                     </p>
                 </section>
 
-                <section className="rounded-card border border-line bg-surface p-5">
+                <section className="surface-card p-5">
                     <h2 className="font-semibold">
                         {t("returns.returnedItems")}
                     </h2>
@@ -171,7 +171,7 @@ export default function ReturnShow({
                 </section>
 
                 {item.credit_notes.length > 0 && (
-                    <section className="rounded-card border border-line bg-surface p-5">
+                    <section className="surface-card p-5">
                         <h2 className="font-semibold">
                             {t("returns.accountingCredits")}
                         </h2>
@@ -207,7 +207,7 @@ export default function ReturnShow({
                 )}
 
                 {item.refunds.length > 0 && (
-                    <section className="rounded-card border border-line bg-surface p-5">
+                    <section className="surface-card p-5">
                         <h2 className="font-semibold">
                             {t("returns.financialRefunds")}
                         </h2>
@@ -266,7 +266,7 @@ export default function ReturnShow({
                 {can.refund &&
                     Number(refundSummary.remaining) > 0 &&
                     payments.length > 0 && (
-                        <section className="space-y-3 rounded-card border border-line bg-surface p-5">
+                        <section className="space-y-3 surface-card p-5">
                             <div>
                                 <h2 className="font-semibold">
                                     {t("returns.refundCustomer")}
@@ -286,7 +286,7 @@ export default function ReturnShow({
                                             Number(event.target.value),
                                         )
                                     }
-                                    className="w-full rounded-field border p-2"
+                                    className="control-select w-full"
                                 >
                                     {payments.map((payment) => (
                                         <option
@@ -324,7 +324,7 @@ export default function ReturnShow({
                                             event.target.value,
                                         )
                                     }
-                                    className="w-full rounded-field border p-2"
+                                    className="control-input w-full"
                                 />
                             </label>
                             <textarea
@@ -334,7 +334,7 @@ export default function ReturnShow({
                                     refund.setData("reason", event.target.value)
                                 }
                                 placeholder={t("returns.refundReason")}
-                                className="w-full rounded-field border p-2"
+                                className="control-input w-full py-2"
                             />
                             {Object.values(refund.errors).map(
                                 (error) =>

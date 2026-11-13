@@ -1,3 +1,4 @@
+import DatePicker from '@/components/ui/DatePicker';
 import DocBadge from '@/components/ui/DocBadge';
 import { Button } from '@/components/ui/Button';
 import SalesLayout from '@/layouts/SalesLayout';
@@ -141,13 +142,7 @@ export default function EditOrder({ order, taxRates, lineSearchUrl, customerSear
                     </label>
                     <label className="block text-sm">
                         <span className="mb-1 block text-[13px] font-medium text-ink-muted">{t('orders.edit.saleDate')}</span>
-                        <input
-                            type="date"
-                            disabled={!isEditable}
-                            value={header.data.sale_date}
-                            onChange={(e) => header.setData('sale_date', e.target.value)}
-                            className="w-full rounded-field border border-line-strong px-3 py-2 disabled:bg-raised"
-                        />
+                        <DatePicker disabled={!isEditable} value={header.data.sale_date} onChange={(value) => header.setData('sale_date', value)} />
                     </label>
                     <div className="flex items-end text-xs text-ink-faint">{t('orders.edit.currency')} : <bdi>{order.currency_code}</bdi></div>
                     <label className="block text-sm">
@@ -157,7 +152,7 @@ export default function EditOrder({ order, taxRates, lineSearchUrl, customerSear
                                 disabled={!isEditable}
                                 value={header.data.salesperson_id ?? ''}
                                 onChange={(e) => header.setData('salesperson_id', e.target.value ? Number(e.target.value) : null)}
-                                className="w-full rounded-field border border-line-strong px-3 py-2 disabled:bg-raised"
+                                className="control-select w-full"
                             >
                                 <option value="">{t('orders.show.unassigned')}</option>
                                 {salespersons.map((salesperson) => <option key={salesperson.id} value={salesperson.id}>{salesperson.name}</option>)}
@@ -175,7 +170,7 @@ export default function EditOrder({ order, taxRates, lineSearchUrl, customerSear
                             value={header.data.notes}
                             onChange={(e) => header.setData('notes', e.target.value)}
                             rows={2}
-                            className="w-full rounded-field border border-line-strong px-3 py-2 disabled:bg-raised"
+                            className="control-input w-full py-2"
                         />
                     </label>
                 </div>
@@ -208,13 +203,13 @@ export default function EditOrder({ order, taxRates, lineSearchUrl, customerSear
             </section>
 
             {/* TOTALS */}
-            <div className="ml-auto max-w-xs space-y-1 text-sm">
+            <div className="ms-auto max-w-xs space-y-1 text-sm">
                 {hasDiscount && <Row term={t('orders.show.grossExclTax')} value={formatMoney(order.subtotal_excl_tax, currency)} />}
                 {hasDiscount && <Row term={t('orders.show.discountExclTax')} value={`- ${formatMoney(order.discount_total, currency)}`} />}
                 <Row term={t('orders.show.totalExclTax')} value={formatMoney(hasDiscount ? net : order.subtotal_excl_tax, currency)} />
                 <Row term={t('orders.show.tax')} value={formatMoney(order.tax_total, currency)} />
                 <div className="flex justify-between border-t-2 border-line pt-1 text-base font-bold text-ink">
-                    <span>TOTAL TTC</span>
+                    <span>{t('orders.show.totalInclTax')}</span>
                     <span className="tabular-nums">{formatMoney(order.total_incl_tax, currency)}</span>
                 </div>
             </div>
@@ -251,7 +246,7 @@ function ReadOnlyLines({ lines, currency }: { lines: OLine[]; currency: string }
     if (lines.length === 0) return <p className="text-sm text-ink-muted">{t('orders.edit.noItems')}</p>;
     return (
         <div className="overflow-x-auto">
-            <table className="w-full min-w-[640px] border-collapse text-sm">
+            <table className="erp-table w-full min-w-[640px] text-sm">
                 <thead>
                     <tr className="border-b border-line-strong text-start text-[13px] text-ink-muted [&>th]:px-2 [&>th]:py-2 [&>th]:font-medium font-medium">
                         <th>{t('orders.edit.item')}</th>
@@ -354,7 +349,7 @@ function CustomerPicker({
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder={t('orders.edit.customerSearch')}
-                className="w-full rounded-field border border-line-strong px-2 py-1 text-sm"
+                className="control-input w-full"
             />
             <ul className="mt-1 max-h-48 divide-y divide-line overflow-y-auto">
                 <li>

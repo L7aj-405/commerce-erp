@@ -229,7 +229,7 @@ export default function LineGrid({
     return (
         <div className="space-y-3">
             <div className="hidden overflow-x-auto md:block">
-                <table className="w-full min-w-[820px] border-collapse text-sm">
+                <table className="erp-table w-full min-w-[820px] text-sm">
                     <thead>
                         <tr className="border-b border-line-strong text-start text-[13px] text-ink-muted [&>th]:px-2 [&>th]:py-2 [&>th]:font-medium font-medium">
                             <th>{t("quotations.item")}</th>
@@ -316,7 +316,7 @@ export default function LineGrid({
                                                 e.key === "Enter" &&
                                                 commit(line.id)
                                             }
-                                            className="w-14 rounded-field border border-line-strong px-2 py-1 text-end tabular-nums"
+                                            className="control-input control-compact w-14 text-end tabular-nums"
                                         />
                                     </td>
                                     <td>
@@ -333,7 +333,7 @@ export default function LineGrid({
                                                     schedule(line.id);
                                                 }}
                                                 onBlur={() => commit(line.id)}
-                                                className="w-24 rounded-field border border-line-strong px-2 py-1 text-end tabular-nums"
+                                                className="control-input control-compact w-24 text-end tabular-nums"
                                             />
                                             <select
                                                 disabled={busy}
@@ -346,7 +346,7 @@ export default function LineGrid({
                                                     });
                                                     commit(line.id);
                                                 }}
-                                                className="rounded-field border border-line-strong px-1 py-1 text-xs"
+                                                className="control-select control-compact"
                                             >
                                                 <option value="ht">HT</option>
                                                 <option value="ttc">TTC</option>
@@ -373,7 +373,7 @@ export default function LineGrid({
                                                     schedule(line.id);
                                                 }}
                                                 onBlur={() => commit(line.id)}
-                                                className="w-14 rounded-field border border-line-strong px-2 py-1 text-end tabular-nums"
+                                                className="control-input control-compact w-14 text-end tabular-nums"
                                             />
                                             <select
                                                 disabled={busy}
@@ -386,7 +386,7 @@ export default function LineGrid({
                                                     });
                                                     commit(line.id);
                                                 }}
-                                                className="rounded-field border border-line-strong px-1 py-1 text-xs"
+                                                className="control-select control-compact"
                                             >
                                                 <option value="%">%</option>
                                                 <option value="DH">DH</option>
@@ -537,7 +537,7 @@ export default function LineGrid({
                                         onKeyDown={(e) =>
                                             e.key === "Enter" && commit(line.id)
                                         }
-                                        className="mt-0.5 h-9 w-full rounded-field border border-line-strong px-2 text-end text-sm tabular-nums text-ink"
+                                        className="control-input control-compact mt-0.5 w-full text-end tabular-nums"
                                     />
                                 </label>
 
@@ -567,7 +567,7 @@ export default function LineGrid({
                                                 schedule(line.id);
                                             }}
                                             onBlur={() => commit(line.id)}
-                                            className="h-9 w-full rounded-field border border-line-strong px-2 text-end text-sm tabular-nums text-ink"
+                                            className="control-input control-compact w-full text-end tabular-nums"
                                         />
                                         <select
                                             disabled={busy}
@@ -579,7 +579,7 @@ export default function LineGrid({
                                                 });
                                                 commit(line.id);
                                             }}
-                                            className="h-9 shrink-0 rounded-field border border-line-strong px-1.5 text-xs text-ink"
+                                            className="control-select control-compact shrink-0"
                                         >
                                             <option value="ht">HT</option>
                                             <option value="ttc">TTC</option>
@@ -608,7 +608,7 @@ export default function LineGrid({
                                                 schedule(line.id);
                                             }}
                                             onBlur={() => commit(line.id)}
-                                            className="h-9 w-full rounded-field border border-line-strong px-2 text-end text-sm tabular-nums text-ink"
+                                            className="control-input control-compact w-full text-end tabular-nums"
                                         />
                                         <select
                                             disabled={busy}
@@ -620,7 +620,7 @@ export default function LineGrid({
                                                 });
                                                 commit(line.id);
                                             }}
-                                            className="h-9 shrink-0 rounded-field border border-line-strong px-1.5 text-xs text-ink"
+                                            className="control-select control-compact shrink-0"
                                         >
                                             <option value="%">%</option>
                                             <option value="DH">DH</option>
@@ -794,7 +794,7 @@ function ArticleAdder({
     };
 
     return (
-        <div className="rounded-card border border-line bg-surface p-3 text-sm">
+        <div className="surface-card p-3 text-sm">
             {manual === null ? (
                 <>
                     <div className="flex items-center gap-2">
@@ -903,7 +903,7 @@ function ArticleAdder({
                                     name: e.target.value,
                                 }))
                             }
-                            className="rounded-field border border-line-strong px-2 py-1 sm:col-span-2"
+                            className="control-input control-compact sm:col-span-2"
                         />
                         <input
                             placeholder={t("common.reference")}
@@ -935,7 +935,7 @@ function ArticleAdder({
                                     tax_rate_id: e.target.value,
                                 }))
                             }
-                            className="rounded-field border border-line-strong px-2 py-1"
+                            className="control-select control-compact"
                         >
                             <option value="">{t("quotations.noTax")}</option>
                             {taxRates.map((t) => (
@@ -955,7 +955,7 @@ function ArticleAdder({
                                         unit_price: e.target.value,
                                     }))
                                 }
-                                className="w-full rounded-field border border-line-strong px-2 py-1 text-end"
+                                className="control-input control-compact w-full text-end"
                             />
                             <select
                                 value={mForm.price_input_mode}
@@ -965,7 +965,7 @@ function ArticleAdder({
                                         price_input_mode: e.target.value,
                                     }))
                                 }
-                                className="rounded-field border border-line-strong px-1 py-1 text-xs"
+                                className="control-select control-compact"
                             >
                                 <option value="ht">HT</option>
                                 <option value="ttc">TTC</option>

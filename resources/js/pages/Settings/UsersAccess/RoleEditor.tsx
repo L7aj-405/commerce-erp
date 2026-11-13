@@ -1,3 +1,4 @@
+import { useConfirm } from '@/components/ui/ConfirmDialog';
 import { Button } from '@/components/ui/Button';
 import { useFreshAuth } from '@/components/auth/FreshAuthProvider';
 import { FormBanner, TextField } from '@/components/ui/form';
@@ -31,6 +32,7 @@ type Props = {
 
 export default function RoleEditor({ permissionGroups, presets, actorPermissions, role, canAssignPermissions, onClose }: Props) {
     const { t } = useI18n();
+    const confirm = useConfirm();
     const { submit: submitProtected } = useFreshAuth();
     const groupLabels: Record<string, string> = {
         organizations: t('roles.group.organizations'), settings: t('roles.group.settings'), stores: t('roles.group.stores'), members: t('roles.group.members'),
@@ -145,9 +147,9 @@ export default function RoleEditor({ permissionGroups, presets, actorPermissions
 
     const canDelete = !isCreate && !role!.is_system && role!.members_count === 0;
 
-    const destroy = () => {
+    const destroy = async () => {
         if (!role) return;
-        if (!window.confirm(t('roles.deleteConfirm').replace('{name}', role.name))) return;
+        if (!(await confirm({ title: t('roles.deleteConfirm').replace('{name}', role.name), danger: true }))) return;
         void submitProtected({ method: 'delete', url: `/roles/${role.id}`, preserveScroll: true, onSuccess: onClose });
     };
 

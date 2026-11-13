@@ -201,7 +201,7 @@ export default function ShowExchange({
                                             },
                                         ])
                                     }
-                                    className="rounded-field border border-line-strong px-3 py-2"
+                                    className="control-select"
                                 >
                                     <option value="cash">
                                         {t("payments.method.cash")}
@@ -230,7 +230,7 @@ export default function ShowExchange({
                                             },
                                         ])
                                     }
-                                    className="rounded-field border border-line-strong px-3 py-2"
+                                    className="control-select"
                                 >
                                     <option value="">
                                         {t("exchanges.receivingAccount")}
@@ -251,7 +251,7 @@ export default function ShowExchange({
                                             },
                                         ])
                                     }
-                                    className="rounded-field border border-line-strong px-3 py-2"
+                                    className="control-input"
                                 />
                             </div>
                             <Button
@@ -284,7 +284,7 @@ export default function ShowExchange({
                                             e.target.value,
                                         )
                                     }
-                                    className="rounded-field border border-line-strong px-3 py-2"
+                                    className="control-select"
                                 >
                                     <option value="">
                                         {t("exchanges.originalPayment")}
@@ -304,7 +304,7 @@ export default function ShowExchange({
                                             e.target.value,
                                         )
                                     }
-                                    className="rounded-field border border-line-strong px-3 py-2"
+                                    className="control-input"
                                 />
                             </div>
                             <Button
@@ -333,7 +333,7 @@ export default function ShowExchange({
                                     cancelForm.setData("reason", e.target.value)
                                 }
                                 placeholder={t("exchanges.reasonRequired")}
-                                className="mt-3 w-full rounded-field border border-line-strong px-3 py-2"
+                                className="control-input mt-3 w-full"
                             />
                             <Button
                                 variant="secondary"

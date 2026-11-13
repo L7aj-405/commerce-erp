@@ -66,10 +66,10 @@ export default function CommissionSalesperson({ organization, salesperson, filte
                                 <td className="px-3 py-2 text-ink-muted">{formatDate(entry.occurred_at)}<span className="block text-[11px] text-ink-faint">{t('commissions.saleDatePrefix')} {formatDate(entry.sale_date)}</span></td>
                                 <td className="px-3 py-2">{entry.sales_order ? <Link className="font-medium text-primary" href={`/sales/orders/${entry.sales_order.id}`}>{entry.sales_order.order_number}</Link> : '—'}{entry.customer_return && <span className="block text-[11px] text-ink-faint">{entry.customer_return.return_number}</span>}</td>
                                 <td className="px-3 py-2"><Link className="text-ink hover:text-primary" href={`/finance/commissions/ledger/${entry.id}`}>{entry.product_name_snapshot ?? entry.line_reference_snapshot ?? `${t('commissions.entry')} #${entry.id}`}</Link>{entry.reversal_reason && <span className="block text-[11px] text-ink-faint">{entry.reversal_reason}</span>}</td>
-                                <td className="px-3 py-2 text-right">{formatMoney(entry.revenue_ht_snapshot)}</td>
-                                {can.costs && <td className="px-3 py-2 text-right">{formatMoney(entry.margin_amount_snapshot)}</td>}
-                                <td className="px-3 py-2 text-right">{Number(entry.commission_rate_snapshot).toLocaleString('fr-FR')} %</td>
-                                <td className={`px-3 py-2 text-right font-semibold ${Number(entry.commission_amount) < 0 ? 'text-danger' : 'text-ink'}`}>{formatMoney(entry.commission_amount)}</td>
+                                <td className="px-3 py-2 text-end">{formatMoney(entry.revenue_ht_snapshot)}</td>
+                                {can.costs && <td className="px-3 py-2 text-end">{formatMoney(entry.margin_amount_snapshot)}</td>}
+                                <td className="px-3 py-2 text-end">{Number(entry.commission_rate_snapshot).toLocaleString('fr-FR')} %</td>
+                                <td className={`px-3 py-2 text-end font-semibold ${Number(entry.commission_amount) < 0 ? 'text-danger' : 'text-ink'}`}>{formatMoney(entry.commission_amount)}</td>
                                 <td className="px-3 py-2">{types[entry.entry_type] ?? entry.entry_type}</td>
                                 <td className="px-3 py-2">{statuses[entry.status] ?? entry.status}</td>
                             </tr>

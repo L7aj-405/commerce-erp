@@ -75,7 +75,7 @@ export default function CreditNoteShow({ creditNote: note, summary }: Props) {
                     </p>
                 </section>
 
-                <div className="overflow-x-auto rounded-card border border-line bg-surface">
+                <div className="overflow-x-auto surface-card">
                     <table className="erp-table w-full text-sm">
                         <thead className="bg-raised text-start text-[13px] text-ink-muted font-medium">
                             <tr><th className="p-3">{t('quotations.item')}</th><th className="p-3">{t('quotations.quantityShort')}</th><th className="p-3 text-end">{t('creditNotes.netExcl')}</th><th className="p-3 text-end">{t('creditNotes.discount')}</th><th className="p-3 text-end">{t('quotations.tax')}</th><th className="p-3 text-end">{t('creditNotes.creditedIncl')}</th></tr>

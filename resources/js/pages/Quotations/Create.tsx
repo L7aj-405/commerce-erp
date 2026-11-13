@@ -1,3 +1,4 @@
+import DatePicker from '@/components/ui/DatePicker';
 import { Button } from '@/components/ui/Button';
 import PageHeader from '@/components/ui/PageHeader';
 import { useI18n } from '@/i18n';
@@ -174,10 +175,10 @@ export default function QuotationCreate({ defaults, currencyCode, can }: Props) 
                         <h2 className="mb-3 text-sm font-semibold text-ink">{t('quotations.dates')}</h2>
                         <div className="grid grid-cols-2 gap-3 text-sm">
                             <Field label={t('quotations.date')}>
-                                <input type="date" value={form.data.quotation_date} onChange={(e) => form.setData('quotation_date', e.target.value)} className={input} />
+                                <DatePicker value={form.data.quotation_date} onChange={(value) => form.setData('quotation_date', value)} />
                             </Field>
                             <Field label={t('quotations.validUntil')}>
-                                <input type="date" value={form.data.valid_until} onChange={(e) => form.setData('valid_until', e.target.value)} className={input} />
+                                <DatePicker value={form.data.valid_until} onChange={(value) => form.setData('valid_until', value)} />
                             </Field>
                         </div>
                     </section>

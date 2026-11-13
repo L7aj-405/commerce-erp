@@ -1,3 +1,4 @@
+import DatePicker from '@/components/ui/DatePicker';
 import { Dialog } from '@/components/ui/Dialog';
 import DocBadge from '@/components/ui/DocBadge';
 import SandboxPaymentBadge from '@/components/SandboxPaymentBadge';
@@ -190,7 +191,7 @@ function FulfillmentRoutingCard({ routing }: { routing: FulfillmentRouting }) {
     const { t } = useI18n();
     const showroom = routing.showroom?.name ?? t('pos.originShowroomFallback');
     return (
-        <section className="mb-6 rounded-card border border-line bg-surface p-5">
+        <section className="mb-6 surface-card p-5">
             <div className="flex flex-wrap items-center justify-between gap-2">
                 <h2 className="text-base font-semibold text-ink">{t('orders.routing.title')}</h2>
                 <div className="flex flex-wrap gap-1.5">
@@ -572,7 +573,7 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
             )}
 
             {customerReturns.length > 0 && (
-                <section className="mb-6 rounded-card border border-line bg-surface p-5">
+                <section className="mb-6 surface-card p-5">
                     <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="font-semibold">{t('orders.show.returns')}</h2>{commercialSummary.state !== 'none' && <span className={`rounded-full px-3 py-1 text-xs font-semibold ${commercialSummary.fully_returned ? 'bg-danger-soft text-danger' : 'bg-warning-soft text-warning'}`}>{commercialSummary.fully_returned ? t('orders.show.fullyReturned') : t('orders.show.partialReturn')}</span>}</div>
                     <div className="mt-3 grid gap-3 sm:grid-cols-3"><Card label={t('orders.show.initialSale')}>{formatMoney(commercialSummary.gross, order.currency_code)}</Card><Card label={t('orders.show.returns')}>-{formatMoney(commercialSummary.returns, order.currency_code)}</Card><Card label={t('orders.show.commercialNet')}>{formatMoney(commercialSummary.net, order.currency_code)}</Card></div>
                     <div className="mt-3 divide-y divide-line">{customerReturns.map((item) => <Link key={item.id} href={`/sales/returns/${item.id}`} className="flex justify-between py-2 text-sm"><span>{item.return_number} · {item.status}</span><span>-{formatMoney(item.total_incl_tax, order.currency_code)}</span></Link>)}</div>
@@ -734,7 +735,7 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
 
             {/* Internal replenishment / transfer requests */}
             {transferRequests.length > 0 && (
-                <section className="mb-6 rounded-card border border-line bg-surface p-5">
+                <section className="mb-6 surface-card p-5">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                         <h2 className="text-base font-semibold text-ink">{t('orders.show.replenishment')}</h2>
                         {awaitingReplenishment && (
@@ -775,7 +776,7 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
             <OutOfStockArticlePanel order={order} canReport={can.reportOutOfStockArticle} />
 
             {revisions.length > 0 && (
-                <section className="mb-6 rounded-card border border-line bg-surface p-5">
+                <section className="mb-6 surface-card p-5">
                     <h2 className="text-base font-semibold text-ink">{t('orders.show.correctionHistory')}</h2>
                     <div className="mt-3 space-y-3">
                         {revisions.map((revision) => (
@@ -795,7 +796,7 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
             )}
 
             {addenda.length > 0 && (
-                <section className="mb-6 rounded-card border border-line bg-surface p-5">
+                <section className="mb-6 surface-card p-5">
                     <h2 className="text-base font-semibold text-ink">{t('orders.show.addendumHistory')}</h2>
                     <div className="mt-3 space-y-3">
                         <div className="rounded-field border border-line bg-raised/50 p-3 text-sm">
@@ -820,7 +821,7 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
             )}
 
             {customerExchanges.length > 0 && (
-                <section className="mb-6 rounded-card border border-line bg-surface p-5">
+                <section className="mb-6 surface-card p-5">
                     <h2 className="text-base font-semibold text-ink">{t('orders.show.exchangeHistory')}</h2>
                     <div className="mt-3 divide-y divide-line">
                         {customerExchanges.map((exchange) => (
@@ -841,7 +842,7 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
             )}
 
             {/* Invoice history */}
-            <section className="mb-6 rounded-card border border-line bg-surface p-5">
+            <section className="mb-6 surface-card p-5">
                 <h2 className="text-base font-semibold text-ink">{t('orders.show.relatedInvoices')}</h2>
                 {pendingReplacementInvoice && (
                     <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-field border border-warning/30 bg-warning-soft/50 p-4">
@@ -990,7 +991,7 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
 
             {/* Record payment (kept, secondary) */}
             {can.recordPayment && order.status === 'confirmed' && paymentSummary.remaining !== '0.0000' && (
-                <details className="group mb-6 rounded-card border border-line bg-surface p-5">
+                <details className="group mb-6 surface-card p-5">
                     {/* Native disclosure kept; styled as a visible secondary action with the balance next to it. */}
                     <summary className="flex cursor-pointer list-none flex-wrap items-center gap-3 [&::-webkit-details-marker]:hidden">
                         <span className="inline-flex min-h-10 items-center gap-2 rounded-field border border-line-strong bg-surface px-4 text-sm font-semibold text-ink shadow-xs transition-soft hover:bg-sage group-open:bg-sage">
@@ -1022,7 +1023,7 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
                                                 ),
                                             );
                                         }}
-                                        className="control-input mt-1"
+                                        className="control-select mt-1"
                                     >
                                         <option value="cash">{t('paymentMethods.cash')}</option>
                                         <option value="card">{t('paymentMethods.card')}</option>
@@ -1036,7 +1037,7 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
                                         required
                                         value={entry.financial_account_id}
                                         onChange={(e) => setEntry(index, 'financial_account_id', e.target.value)}
-                                        className="control-input mt-1"
+                                        className="control-select mt-1"
                                     >
                                         <option value="">{t('common.choose')}</option>
                                         {financialAccounts
@@ -1063,14 +1064,7 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
                                 </label>
                                 <label className="text-sm">
                                     {t('common.date')}
-                                    <input
-                                        required
-                                        type="date"
-                                        readOnly={!can.backdatePayment}
-                                        value={entry.payment_date}
-                                        onChange={(e) => setEntry(index, 'payment_date', e.target.value)}
-                                        className="control-input mt-1 read-only:bg-raised"
-                                    />
+                                    <DatePicker required disabled={!can.backdatePayment} value={entry.payment_date} onChange={(value) => setEntry(index, 'payment_date', value)} />
                                 </label>
                                 <label className="text-sm">
                                     {t('common.reference')}
@@ -1128,7 +1122,7 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
 
             {/* Delivery notes */}
             {(documents.deliveryNotes.length > 0 || canCreateDeliveryNoteForOrder) && (
-                <section className="mb-6 rounded-card border border-line bg-surface p-5">
+                <section className="mb-6 surface-card p-5">
                     <h2 className="text-base font-semibold text-ink">{t('orders.show.deliveryNotes')}</h2>
                     <ul className="mt-2 space-y-1 text-sm">
                         {documents.deliveryNotes.map((note) => (
@@ -1145,7 +1139,7 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
             )}
 
             {order.notes && (
-                <section className="mb-6 rounded-card border border-line bg-surface p-5">
+                <section className="mb-6 surface-card p-5">
                     <h2 className="text-base font-semibold text-ink">{t('common.notes')}</h2>
                     <p className="mt-2 whitespace-pre-line text-sm text-ink-muted">{order.notes}</p>
                 </section>
@@ -1247,7 +1241,7 @@ function OutOfStockArticlePanel({ order, canReport }: { order: Order; canReport:
     const flag = (lineId: number) => router.post(`/sales/orders/${order.id}/out-of-stock-articles`, { sales_order_line_id: lineId }, { preserveScroll: true });
 
     return (
-        <section className="mb-6 rounded-card border border-line bg-surface p-5">
+        <section className="mb-6 surface-card p-5">
             <h2 className="text-base font-semibold text-ink">{t('orders.show.outOfCatalog')}</h2>
             <ul className="mt-3 space-y-2">
                 {unresolvedLines.map((line) => (
@@ -1260,8 +1254,8 @@ function OutOfStockArticlePanel({ order, canReport }: { order: Order; canReport:
                                 <span
                                     className={`rounded-full px-2.5 py-1 text-xs font-medium ${
                                         line.out_of_stock_article.status === 'resolved'
-                                            ? 'bg-emerald-50 text-emerald-700'
-                                            : 'bg-amber-50 text-amber-700'
+                                            ? 'bg-success-soft text-success'
+                                            : 'bg-warning-soft text-warning'
                                     }`}
                                 >
                                     {line.out_of_stock_article.status === 'resolved' ? t('common.resolved') : t('orders.show.reportedPending')}
@@ -1290,7 +1284,7 @@ function ProcurementPanel({ order, data }: { order: Order; data: ProcurementData
     if (data.rows.length === 0 && toProcureLines.length === 0 && !data.awaiting) return null;
 
     return (
-        <section className="mb-6 rounded-card border border-line bg-surface p-5">
+        <section className="mb-6 surface-card p-5">
             <div className="flex flex-wrap items-center justify-between gap-2">
                 <h2 className="text-base font-semibold text-ink">{t('orders.show.supplierProcurement')}</h2>
                 {data.awaiting && (
@@ -1353,7 +1347,7 @@ function ProcurementPanel({ order, data }: { order: Order; data: ProcurementData
                                 </div>
                                 <span
                                     className={`rounded-full px-2.5 py-1 text-xs font-medium ${
-                                        PROC_STATUS_CLASS[row.status] ?? 'bg-slate-100 text-slate-500'
+                                        PROC_STATUS_CLASS[row.status] ?? 'bg-sage text-ink-muted'
                                     }`}
                                 >
                                     {t((`orders.show.procurementStatus.${row.status}`) as Parameters<typeof t>[0])}
@@ -1425,7 +1419,7 @@ function RaiseProcurementForm({
                 <select
                     value={form.data.supplier_id}
                     onChange={(e) => form.setData('supplier_id', Number(e.target.value))}
-                    className="mt-1 w-full rounded-field border border-line-strong px-2 py-1.5 text-sm"
+                    className="control-select mt-1 w-full"
                 >
                     {suppliers.map((s) => (
                         <option key={s.id} value={s.id}>
@@ -1440,7 +1434,7 @@ function RaiseProcurementForm({
                     inputMode="decimal"
                     value={form.data.quantity}
                     onChange={(e) => form.setData('quantity', e.target.value)}
-                    className="mt-1 w-full rounded-field border border-line-strong px-2 py-1.5 text-sm"
+                    className="control-input mt-1 w-full"
                 />
             </label>
             <label className="text-xs">
@@ -1448,17 +1442,12 @@ function RaiseProcurementForm({
                 <input
                     value={form.data.supplier_reference}
                     onChange={(e) => form.setData('supplier_reference', e.target.value)}
-                    className="mt-1 w-full rounded-field border border-line-strong px-2 py-1.5 text-sm"
+                    className="control-input mt-1 w-full"
                 />
             </label>
             <label className="text-xs">
                 {t('orders.show.estimatedReceiptOptional')}
-                <input
-                    type="date"
-                    value={form.data.expected_at}
-                    onChange={(e) => form.setData('expected_at', e.target.value)}
-                    className="mt-1 w-full rounded-field border border-line-strong px-2 py-1.5 text-sm"
-                />
+                <DatePicker value={form.data.expected_at} onChange={(value) => form.setData('expected_at', value)} />
             </label>
             {Object.values(form.errors).map((err) => err && <p key={err} className="text-xs text-danger sm:col-span-2">{err}</p>)}
             <div className="flex gap-2 sm:col-span-2">
@@ -1516,7 +1505,7 @@ function ProcurementRowActions({ row, data }: { row: ProcurementRow; data: Procu
                         <select
                             value={supplierForm.data.supplier_id}
                             onChange={(e) => supplierForm.setData('supplier_id', Number(e.target.value))}
-                            className="mt-1 w-full rounded-field border border-line-strong px-2 py-1.5 text-sm"
+                            className="control-select mt-1 w-full"
                         >
                             {data.suppliers.map((s) => (
                                 <option key={s.id} value={s.id}>
@@ -1543,7 +1532,7 @@ function ProcurementRowActions({ row, data }: { row: ProcurementRow; data: Procu
                         <input
                             value={cancelForm.data.reason}
                             onChange={(e) => cancelForm.setData('reason', e.target.value)}
-                            className="mt-1 w-full rounded-field border border-line-strong px-2 py-1.5 text-sm"
+                            className="control-input mt-1 w-full"
                         />
                     </label>
                     {row.status === 'ordered' && (

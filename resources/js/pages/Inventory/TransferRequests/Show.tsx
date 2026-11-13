@@ -118,7 +118,8 @@ type DriverFormLike = {
     setData: { (key: keyof DriverForm, value: string): void; (updater: (data: DriverForm) => DriverForm): void };
 };
 
-const inputClass = 'h-10 w-full rounded-field border border-line-strong bg-surface px-3 text-sm text-ink outline-none transition-soft focus:border-primary focus-visible:ring-2 focus-visible:ring-primary/20';
+const inputClass = 'control-input';
+const selectClass = 'control-select';
 const n = (v: string | number | null | undefined) => Number(v ?? 0);
 
 function DriverFields({ form, members }: { form: DriverFormLike; members: Member[] }) {
@@ -142,7 +143,7 @@ function DriverFields({ form, members }: { form: DriverFormLike; members: Member
                             const m = members.find((x) => String(x.id) === id);
                             form.setData((d) => ({ ...d, driver_user_id: id, driver_name: m ? m.name : d.driver_name }));
                         }}
-                        className={`${inputClass} mb-2`}
+                        className={`${selectClass} mb-2`}
                     >
                         <option value="">{t('inventory.requests.externalPerson')}</option>
                         {members.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
@@ -689,7 +690,7 @@ export default function TransferRequestShow({ request, breakdown, history, membe
                             required
                             value={cancelForm.data.reason}
                             onChange={(e) => cancelForm.setData('reason', e.target.value)}
-                            className="w-full rounded-field border border-line-strong bg-surface px-3 py-2 text-sm outline-none focus:border-primary"
+                            className="control-input w-full py-2"
                         />
                     </label>
                     {cancelForm.errors.reason && <p className="mt-2 text-sm text-danger" role="alert">{cancelForm.errors.reason}</p>}
@@ -726,7 +727,7 @@ export default function TransferRequestShow({ request, breakdown, history, membe
                     <div>
                         <p className="mb-2 text-sm text-ink-muted">{t('inventory.requestShow.reviewHelp')}</p>
                         <div className="max-h-[min(22rem,45dvh)] overflow-y-auto rounded-field border border-line">
-                            <table className="w-full text-start text-sm">
+                            <table className="erp-table w-full text-start text-sm">
                                 <thead className="sticky top-0 z-[1] bg-raised text-[13px] text-ink-muted font-medium">
                                     <tr>
                                         <th scope="col" className="px-3 py-2 text-start font-semibold">{t('inventory.requests.article')}</th>
@@ -765,7 +766,7 @@ export default function TransferRequestShow({ request, breakdown, history, membe
                                                             value={sent[l.id] ?? ''}
                                                             onChange={(e) => { setSent((c) => ({ ...c, [l.id]: e.target.value })); setReviewed(false); }}
                                                             aria-label={`${t('inventory.requestShow.sentQty')} — ${l.product_name ?? ''}`}
-                                                            className="h-9 w-24 rounded-field border border-line-strong bg-surface px-2 text-end text-sm tabular-nums outline-none focus:border-primary"
+                                                            className="control-input w-24 text-end tabular-nums"
                                                         />
                                                     )}
                                                 </td>

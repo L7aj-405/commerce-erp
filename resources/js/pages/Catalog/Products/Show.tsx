@@ -1,3 +1,4 @@
+import { useConfirm } from '@/components/ui/ConfirmDialog';
 import ProductImage from "@/components/catalog/ProductImage";
 import type { SupplierRelation } from "@/components/procurement/SupplierRelationDialog";
 import VariantSuppliersSection from "@/components/procurement/VariantSuppliersSection";
@@ -91,6 +92,7 @@ export default function ProductShow({
     };
 }) {
     const { t } = useI18n();
+    const confirm = useConfirm();
     const [descriptionOpen, setDescriptionOpen] = useState(false);
     const first = product.variants[0];
     const firstPrice = first ? priceByVariant[first.id] : undefined;
@@ -328,7 +330,7 @@ export default function ProductShow({
                         {t("products.show.variants")}
                     </h2>
                     <div className="mt-4 overflow-x-auto rounded-field border border-line">
-                        <table className="w-full min-w-[860px] text-start text-sm">
+                        <table className="erp-table w-full min-w-[860px] text-start text-sm">
                             <thead className="bg-raised text-[13px] text-ink-muted font-medium">
                                 <tr>
                                     <th className="w-14 px-3 py-2.5">
@@ -422,12 +424,10 @@ export default function ProductShow({
                     <Button
                         variant="danger"
                         type="button"
-                        onClick={() =>
-                            window.confirm(t("products.show.archiveConfirm")) &&
-                            router.patch(
-                                `/catalog/products/${product.id}/archive`,
-                            )
-                        }
+                        onClick={async () => {
+                            if (!(await confirm({ title: t("products.show.archiveConfirm"), danger: true }))) return;
+                            router.patch(`/catalog/products/${product.id}/archive`);
+                        }}
                     >
                         {t("products.show.archive")}
                     </Button>

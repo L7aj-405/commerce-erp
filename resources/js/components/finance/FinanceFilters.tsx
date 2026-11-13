@@ -1,4 +1,5 @@
 import { router } from '@inertiajs/react';
+import MonthPicker from '@/components/ui/MonthPicker';
 import { useI18n } from '@/i18n';
 
 export type FinanceStore = { id: number; name: string; code: string };
@@ -28,15 +29,10 @@ export default function FinanceFilters({ path, period, storeId, stores, extra }:
 
     return (
         <div className="mb-6 flex flex-wrap items-end gap-3 rounded-card border border-line bg-surface p-4">
-            <label className="block">
-                <span className="mb-1.5 block text-[13px] font-medium text-ink">{t('common.period')}</span>
-                <input
-                    type="month"
-                    value={period}
-                    onChange={(e) => e.target.value && go({ month: e.target.value })}
-                    className="control-input h-10"
-                />
-            </label>
+            <div className="block">
+                <span aria-hidden="true" className="mb-1.5 block text-[13px] font-medium text-ink">{t('common.period')}</span>
+                <MonthPicker label={t('common.period')} value={period} onChange={(month) => month && go({ month })} />
+            </div>
             <label className="block">
                 <span className="mb-1.5 block text-[13px] font-medium text-ink">{t('common.store')}</span>
                 <select

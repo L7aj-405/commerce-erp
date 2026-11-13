@@ -1,3 +1,4 @@
+import { Sheet } from '@/components/ui/Sheet';
 import { Button, ButtonLink } from '@/components/ui/Button';
 import EmptyState from '@/components/ui/EmptyState';
 import PageHeader from '@/components/ui/PageHeader';
@@ -6,6 +7,7 @@ import StatusBadge from '@/components/ui/StatusBadge';
 import { useI18n } from '@/i18n';
 import { formatEditableNumber, formatQuantity } from '@/utils/format';
 import { Head, router, useForm, usePage } from '@inertiajs/react';
+import { useState } from 'react';
 import type { FormEvent } from 'react';
 
 function ReplenishmentForm({ warehouse }: { warehouse: { id: number; replenishment: { auto_replenish: boolean; default_minimum_quantity: string } } }) {
@@ -82,15 +84,42 @@ function LocationForm({ warehouse, stores }: { warehouse: Warehouse; stores: Sto
         allow_direct_sales: warehouse.allow_direct_sales,
     });
 
+    const [open, setOpen] = useState(false);
+    const formId = `warehouse-edit-${warehouse.id}`;
+    const close = () => {
+        setOpen(false);
+        form.reset();
+        form.clearErrors();
+    };
+
     return (
-        <details className="mt-4 rounded-field border border-line bg-raised p-4 text-sm">
-            <summary className="cursor-pointer select-none font-medium text-ink">{t('inventory.warehouses.edit')}</summary>
+        <>
+            <Button type="button" variant="secondary" size="sm" className="mt-4" onClick={() => setOpen(true)}>
+                {t('inventory.warehouses.edit')}
+            </Button>
+            <Sheet
+                open={open}
+                onClose={close}
+                title={t('inventory.warehouses.edit')}
+                description={`${warehouse.name} · ${warehouse.code}`}
+                footer={
+                    <div className="flex justify-end gap-2">
+                        <Button type="button" variant="secondary" onClick={close}>
+                            {t('common.cancel')}
+                        </Button>
+                        <Button type="submit" form={formId} loading={form.processing} disabled={!form.isDirty}>
+                            {t('common.save')}
+                        </Button>
+                    </div>
+                }
+            >
             <form
+                id={formId}
                 onSubmit={(e) => {
                     e.preventDefault();
-                    form.patch(`/inventory/warehouses/${warehouse.id}`, { preserveScroll: true });
+                    form.patch(`/inventory/warehouses/${warehouse.id}`, { preserveScroll: true, onSuccess: () => setOpen(false) });
                 }}
-                className="mt-3 grid gap-3"
+                className="grid gap-4 px-4 py-5 text-sm sm:px-6"
             >
                 <label className="text-[13px] font-medium text-ink">
                     {t('inventory.warehouses.name')}
@@ -107,7 +136,7 @@ function LocationForm({ warehouse, stores }: { warehouse: Warehouse; stores: Sto
                     <select
                         value={form.data.store_id ?? ''}
                         onChange={(e) => form.setData('store_id', e.target.value ? Number(e.target.value) : null)}
-                        className="control-input mt-1 w-full"
+                        className="control-select mt-1 w-full"
                     >
                         <option value="">{t('inventory.warehouses.storageOnly')}</option>
                         {stores.map((store) => (
@@ -130,13 +159,9 @@ function LocationForm({ warehouse, stores }: { warehouse: Warehouse; stores: Sto
                         </span>
                     </label>
                 )}
-                <div>
-                    <Button type="submit" variant="secondary" size="sm" loading={form.processing} disabled={!form.isDirty}>
-                        {t('common.save')}
-                    </Button>
-                </div>
             </form>
-        </details>
+            </Sheet>
+        </>
     );
 }
 type SharedProps = { flash?: { warehouseCreatedId?: number | null } };
@@ -255,7 +280,7 @@ export default function WarehouseIndex({ warehouses, stores, can }: Props) {
                             <select
                                 value={createForm.data.store_id ?? ''}
                                 onChange={event => createForm.setData('store_id', event.target.value ? Number(event.target.value) : null)}
-                                className="control-input mt-1.5 w-full"
+                                className="control-select mt-1.5 w-full"
                             >
                                 <option value="">{t('inventory.warehouses.storageOnly')}</option>
                                 {stores.map(store => <option key={store.id} value={store.id}>{store.name} · {store.code}</option>)}

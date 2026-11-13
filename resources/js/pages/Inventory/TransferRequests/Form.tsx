@@ -33,7 +33,8 @@ type Props = {
 };
 type FormLine = PickerLine & { lineId: number | null; reason: string };
 
-const fieldClass = 'h-11 w-full rounded-field border border-line-strong bg-surface px-3 text-sm text-ink outline-none transition-soft focus:border-primary';
+const fieldClass = 'control-input h-11';
+const selectClass = 'control-select h-11';
 const labelClass = 'block text-[13px] font-medium text-ink-muted';
 const trim = (q: string) => String(Number(q));
 
@@ -198,7 +199,7 @@ export default function TransferRequestForm({ mode, request, prefill, filters, w
                     <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-[1fr_1fr_1.4fr]">
                         <label className="block">
                             <span className={labelClass}>{t('inventory.transferCreate.source')}</span>
-                            <select value={form.data.source_warehouse_id} onChange={(e) => form.setData('source_warehouse_id', e.target.value)} className={`${fieldClass} mt-1.5`}>
+                            <select value={form.data.source_warehouse_id} onChange={(e) => form.setData('source_warehouse_id', e.target.value)} className={`${selectClass} mt-1.5`}>
                                 <option value="">{t('inventory.transferCreate.selectSource')}</option>
                                 {warehouses.map((w) => <option key={w.id} value={w.id}>{w.name} · {w.code}</option>)}
                             </select>
@@ -206,7 +207,7 @@ export default function TransferRequestForm({ mode, request, prefill, filters, w
                         </label>
                         <label className="block">
                             <span className={labelClass}>{t('inventory.transferCreate.destination')}</span>
-                            <select value={form.data.destination_warehouse_id} onChange={(e) => form.setData('destination_warehouse_id', e.target.value)} className={`${fieldClass} mt-1.5`}>
+                            <select value={form.data.destination_warehouse_id} onChange={(e) => form.setData('destination_warehouse_id', e.target.value)} className={`${selectClass} mt-1.5`}>
                                 <option value="">{t('inventory.transferCreate.selectDestination')}</option>
                                 {warehouses.map((w) => <option key={w.id} value={w.id} disabled={String(w.id) === form.data.source_warehouse_id}>{w.name} · {w.code}</option>)}
                             </select>

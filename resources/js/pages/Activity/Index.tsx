@@ -1,3 +1,4 @@
+import DatePicker from '@/components/ui/DatePicker';
 import EmptyState from '@/components/ui/EmptyState';
 import PageHeader from '@/components/ui/PageHeader';
 import Pagination from '@/components/ui/Pagination';
@@ -84,12 +85,12 @@ export default function ActivityIndex({ logs, detail, filters, organizations, us
                             {events.map((event) => <option key={event.key} value={event.key}>{event.label}</option>)}
                         </select>
                     </Field>
-                    <Field label={t('activity.from')}><input name="date_from" type="date" defaultValue={String(filters.date_from ?? '')} className={inputClass} /></Field>
-                    <Field label={t('activity.to')}><input name="date_to" type="date" defaultValue={String(filters.date_to ?? '')} className={inputClass} /></Field>
+                    <Field label={t('activity.from')}><DatePicker name="date_from" defaultValue={String(filters.date_from ?? '')} /></Field>
+                    <Field label={t('activity.to')}><DatePicker name="date_to" defaultValue={String(filters.date_to ?? '')} /></Field>
                 </div>
                 <div className="mt-4 flex flex-wrap justify-end gap-2">
                     <Link href="/activity" className="rounded-field border border-line-strong px-4 py-2 text-sm font-medium text-ink-muted hover:bg-raised">{t('common.reset')}</Link>
-                    <button className="rounded-field bg-ink px-4 py-2 text-sm font-semibold text-white hover:bg-ink-muted">{t('activity.filter')}</button>
+                    <button className="rounded-field bg-primary px-4 py-2 text-sm font-semibold text-primary-fg hover:bg-primary-hover">{t('activity.filter')}</button>
                 </div>
             </form>
 

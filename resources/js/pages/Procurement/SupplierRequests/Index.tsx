@@ -1,11 +1,13 @@
 import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
 import EmptyState from '@/components/ui/EmptyState';
-import FilterSelect from '@/components/ui/FilterSelect';
+import { AdvancedFilterBar, ChoiceFilter, DateRangeFilter, FilterSearch } from '@/components/ui/AdvancedFilterBar';
+import type { FilterChip } from '@/components/ui/AdvancedFilterBar';
+import { Dropdown, MenuButton } from '@/components/ui/Menu';
 import SandboxProcurementBadge from '@/components/SandboxProcurementBadge';
 import PageHeader from '@/components/ui/PageHeader';
-import Pagination from '@/components/ui/Pagination';
-import SearchInput from '@/components/ui/SearchInput';
+import { TablePager } from '@/components/ui/TableShell';
+import { useQueryFilters } from '@/hooks/useQueryFilters';
 import StatusBadge, { type StatusVariant } from '@/components/ui/StatusBadge';
 import { useI18n } from '@/i18n';
 import type { TranslationKey } from '@/i18n/translations';
@@ -14,7 +16,7 @@ import { cancelSupplierRequest, RecordResultDialog, type SourcingRequest, type S
 import { formatDate, formatDateTime, formatQuantity } from '@/utils/format';
 import { Head, Link, router } from '@inertiajs/react';
 import type { ReactNode } from 'react';
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 
 type RequestStatus = 'pending' | 'available' | 'partial' | 'unavailable' | 'confirmed_manually' | 'cancelled';
 
@@ -39,7 +41,7 @@ type Row = {
 type LinkData = { url: string | null; label: string; active: boolean };
 type Filters = { search?: string; status: string; source?: string; supplier_id?: number | string; from?: string; to?: string };
 type Props = {
-    requests: { data: Row[]; links: LinkData[] };
+    requests: { data: Row[]; links: LinkData[]; from?: number | null; to?: number | null; total?: number };
     filters: Filters;
     suppliers: { id: number; name: string }[];
     can: { record: boolean; cancel: boolean; cancelCart: boolean; viewCustomers: boolean; viewSalesOrders: boolean };
@@ -125,124 +127,82 @@ function RowStatusBadge({ status, label }: { status: RequestStatus; label: strin
 
 type MenuItem = { label: string; icon: ReactNode; onSelect: () => void; danger?: boolean; disabled?: boolean };
 
-/**
- * Compact "•••" menu for secondary row actions. Positioned `fixed` from the
- * trigger so the table's horizontal scroll container can never clip it.
- */
+/** Compact "•••" menu for secondary row actions (shared Dropdown: portalled, RTL-aware). */
 function OverflowMenu({ label, items }: { label: string; items: MenuItem[] }) {
-    const [position, setPosition] = useState<{ top: number; right: number } | null>(null);
-    const triggerRef = useRef<HTMLButtonElement>(null);
-    const menuRef = useRef<HTMLDivElement>(null);
-    const open = position !== null;
-
-    useEffect(() => {
-        if (!open) return;
-        const close = () => setPosition(null);
-        const onPointer = (event: MouseEvent) => {
-            const target = event.target as Node;
-            if (!menuRef.current?.contains(target) && !triggerRef.current?.contains(target)) close();
-        };
-        const onKey = (event: KeyboardEvent) => {
-            if (event.key === 'Escape') {
-                close();
-                triggerRef.current?.focus();
-            }
-        };
-        document.addEventListener('mousedown', onPointer);
-        document.addEventListener('keydown', onKey);
-        window.addEventListener('resize', close);
-        window.addEventListener('scroll', close, true);
-        menuRef.current?.querySelector<HTMLElement>('[role="menuitem"]:not([disabled])')?.focus();
-        return () => {
-            document.removeEventListener('mousedown', onPointer);
-            document.removeEventListener('keydown', onKey);
-            window.removeEventListener('resize', close);
-            window.removeEventListener('scroll', close, true);
-        };
-    }, [open]);
-
-    const toggle = () => {
-        if (open) return setPosition(null);
-        const rect = triggerRef.current?.getBoundingClientRect();
-        if (rect) setPosition({ top: rect.bottom + 6, right: Math.max(8, window.innerWidth - rect.right) });
-    };
-
     if (items.length === 0) return null;
-
     return (
-        <>
-            <button
-                ref={triggerRef}
-                type="button"
-                aria-haspopup="menu"
-                aria-expanded={open}
-                aria-label={label}
-                title={label}
-                onClick={toggle}
-                className="inline-flex size-8 shrink-0 items-center justify-center rounded-field border border-line-strong bg-surface text-ink-muted transition-soft hover:bg-raised hover:text-ink"
-            >
-                <IconMore />
-            </button>
-            {position && (
-                <div
-                    ref={menuRef}
-                    role="menu"
-                    style={{ top: position.top, right: position.right }}
-                    className="fixed z-40 w-44 rounded-field border border-line bg-surface p-1 shadow-pop"
-                >
-                    {items.map((item) => (
-                        <button
-                            key={item.label}
-                            type="button"
-                            role="menuitem"
-                            disabled={item.disabled}
-                            onClick={() => {
-                                setPosition(null);
-                                item.onSelect();
-                            }}
-                            className={`flex min-h-9 w-full items-center gap-2 rounded-field px-2.5 text-start text-[13px] transition-soft hover:bg-sage disabled:opacity-50 ${item.danger ? 'text-danger' : 'text-ink'}`}
-                        >
-                            {item.icon}
-                            {item.label}
-                        </button>
-                    ))}
-                </div>
-            )}
-        </>
+        <Dropdown
+            label={label}
+            icon={<IconMore />}
+            hideLabel
+            align="end"
+            width="w-48"
+            buttonClassName="inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-field border border-line-strong bg-surface text-ink-muted transition-soft hover:bg-raised hover:text-ink"
+        >
+            {items.map((item) => (
+                <MenuButton key={item.label} onClick={item.onSelect} icon={item.icon} tone={item.danger ? 'danger' : 'default'} disabled={item.disabled}>
+                    {item.label}
+                </MenuButton>
+            ))}
+        </Dropdown>
     );
 }
 
 export default function SupplierRequestsIndex({ requests, filters, suppliers, can }: Props) {
     const { t } = useI18n();
-    const [search, setSearch] = useState(filters.search ?? '');
-    const [searching, setSearching] = useState(false);
     const [recording, setRecording] = useState<Row | null>(null);
     const [detail, setDetail] = useState<Row | null>(null);
     const [cancelling, setCancelling] = useState<number | null>(null);
-
-    const current = {
-        search: filters.search || undefined,
-        status: filters.status,
-        source: filters.source || undefined,
-        supplier_id: filters.supplier_id ? String(filters.supplier_id) : undefined,
-        from: filters.from || undefined,
-        to: filters.to || undefined,
-    };
-    const visit = (patch: Record<string, string | undefined>) =>
-        router.get('/procurement/supplier-requests', { ...current, ...patch, page: undefined }, {
-            preserveState: true,
-            preserveScroll: true,
-            replace: true,
-            onStart: () => setSearching(true),
-            onFinish: () => setSearching(false),
+    // Exactly the params QuotationSupplierRequestController@index validates; `status`
+    // defaults to `open` on the server, so clearing it returns to the open view.
+    const f = useQueryFilters('/procurement/supplier-requests', filters as Record<string, string | undefined>, {
+        keys: ['search', 'status', 'source', 'supplier_id', 'from', 'to'],
+    });
+    const statusOptions = [
+        { value: 'open', label: t('supplierRequests.openStatuses') },
+        { value: 'all', label: t('common.allStatuses') },
+        ...STATUSES.map((status) => ({ value: status, label: t(statusKey(status)) })),
+    ];
+    const sourceOptions = [
+        { value: 'quotation', label: t('supplierRequests.sourceQuotation') },
+        { value: 'pos', label: t('supplierRequests.sourceCart') },
+    ];
+    const supplierId = filters.supplier_id ? String(filters.supplier_id) : undefined;
+    const chips: FilterChip[] = [];
+    if (filters.search) chips.push({ key: 'search', label: t('filters.search'), value: filters.search, onRemove: () => f.remove('search') });
+    if (filters.status !== 'open') {
+        chips.push({
+            key: 'status',
+            label: t('common.status'),
+            value: statusOptions.find((option) => option.value === filters.status)?.label ?? filters.status,
+            onRemove: () => f.remove('status'),
         });
-
-    useEffect(() => {
-        if (search === (filters.search ?? '')) return;
-        const timer = window.setTimeout(() => visit({ search: search || undefined }), 280);
-        return () => window.clearTimeout(timer);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [search]);
+    }
+    if (filters.source) {
+        chips.push({
+            key: 'source',
+            label: t('supplierRequests.source'),
+            value: sourceOptions.find((option) => option.value === filters.source)?.label ?? filters.source,
+            onRemove: () => f.remove('source'),
+        });
+    }
+    if (supplierId) {
+        chips.push({
+            key: 'supplier',
+            label: t('sourcing.supplier'),
+            value: suppliers.find((supplier) => String(supplier.id) === supplierId)?.name ?? supplierId,
+            onRemove: () => f.remove('supplier_id'),
+        });
+    }
+    if (filters.from || filters.to) {
+        chips.push({
+            key: 'period',
+            label: t('supplierRequests.date'),
+            value: `${filters.from ? formatDate(filters.from) : '…'} – ${filters.to ? formatDate(filters.to) : '…'}`,
+            onRemove: () => f.patch({ from: undefined, to: undefined }),
+        });
+    }
+    const filtered = chips.length > 0;
 
     // UI affordances only — the canonical actions re-check permission and draft state.
     const editable = (row: Row) => (row.quotation ? row.quotation.is_draft : row.cart?.is_open === true);
@@ -267,7 +227,7 @@ export default function SupplierRequestsIndex({ requests, filters, suppliers, ca
         const href = sourceHref(row);
         return (
             <span className="inline-flex flex-col items-start gap-0.5">
-                <span className={`rounded px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide ${row.source === 'pos' ? 'bg-info-soft text-info' : 'bg-raised text-ink-muted'}`}>
+                <span className={`rounded px-1.5 py-px text-[11px] font-semibold ${row.source === 'pos' ? 'bg-info-soft text-info' : 'bg-raised text-ink-muted'}`}>
                     {row.source === 'pos' ? t('supplierRequests.sourceCart') : t('supplierRequests.sourceQuotation')}
                 </span>
                 {href ? (
@@ -292,7 +252,7 @@ export default function SupplierRequestsIndex({ requests, filters, suppliers, ca
             </p>
             <p className="truncate text-xs text-ink-faint">
                 {row.article.line_type === 'non_stock' && (
-                    <span className="me-1 rounded bg-raised px-1 text-[10px] uppercase tracking-wide">{t('quotations.nonStock')}</span>
+                    <span className="me-1 rounded bg-raised px-1 text-[11px] font-medium">{t('quotations.nonStock')}</span>
                 )}
                 {[row.article.variant, row.article.reference].filter(Boolean).join(' · ')}
             </p>
@@ -316,7 +276,7 @@ export default function SupplierRequestsIndex({ requests, filters, suppliers, ca
         row.status === 'confirmed_manually' ? (
             <span className="inline-flex flex-col items-end">
                 <span className="font-semibold tabular-nums text-ink">{formatQuantity(row.confirmed_quantity)}</span>
-                <span className="text-[10px] uppercase tracking-wide text-ink-faint">{t('supplierRequests.manualShort')}</span>
+                <span className="text-[11px] text-ink-faint">{t('supplierRequests.manualShort')}</span>
             </span>
         ) : row.confirmed_quantity !== null ? (
             <span className="tabular-nums">{formatQuantity(row.confirmed_quantity)}</span>
@@ -378,52 +338,66 @@ export default function SupplierRequestsIndex({ requests, filters, suppliers, ca
             <PageHeader title={t('supplierRequests.title')} description={t('supplierRequests.description')} />
             <SandboxProcurementBadge />
 
-            <div className="mb-6 flex flex-wrap items-center gap-2">
-                <SearchInput value={search} onChange={setSearch} searching={searching} placeholder={t('supplierRequests.searchPlaceholder')} />
-                <FilterSelect aria-label={t('common.status')} value={filters.status} onChange={(e) => visit({ status: e.target.value })}>
-                    <option value="open">{t('supplierRequests.openStatuses')}</option>
-                    <option value="all">{t('common.allStatuses')}</option>
-                    {STATUSES.map((s) => (
-                        <option key={s} value={s}>
-                            {t(statusKey(s))}
-                        </option>
-                    ))}
-                </FilterSelect>
-                <FilterSelect aria-label={t('supplierRequests.source')} value={current.source ?? ''} onChange={(e) => visit({ source: e.target.value || undefined })}>
-                    <option value="">{t('supplierRequests.allSources')}</option>
-                    <option value="quotation">{t('supplierRequests.sourceQuotation')}</option>
-                    <option value="pos">{t('supplierRequests.sourceCart')}</option>
-                </FilterSelect>
-                <FilterSelect
-                    aria-label={t('sourcing.supplier')}
-                    value={current.supplier_id ?? ''}
-                    onChange={(e) => visit({ supplier_id: e.target.value || undefined })}
+            <div className="mb-4">
+                <AdvancedFilterBar
+                    label={t('supplierRequests.title')}
+                    search={
+                        <FilterSearch
+                            value={f.search}
+                            onChange={f.setSearch}
+                            loading={f.searching}
+                            label={t('common.search')}
+                            placeholder={t('supplierRequests.searchPlaceholder')}
+                        />
+                    }
+                    chips={chips}
+                    activeCount={chips.length}
+                    loading={f.loading && !f.searching}
+                    onReset={f.reset}
                 >
-                    <option value="">{t('supplierRequests.allSuppliers')}</option>
-                    {suppliers.map((s) => (
-                        <option key={s.id} value={s.id}>
-                            {s.name}
-                        </option>
-                    ))}
-                </FilterSelect>
-                <label className="flex items-center gap-1.5 text-xs text-ink-muted">
-                    {t('supplierRequests.from')}
-                    <input type="date" value={filters.from ?? ''} onChange={(e) => visit({ from: e.target.value || undefined })} className="control-input h-10" />
-                </label>
-                <label className="flex items-center gap-1.5 text-xs text-ink-muted">
-                    {t('supplierRequests.to')}
-                    <input type="date" value={filters.to ?? ''} onChange={(e) => visit({ to: e.target.value || undefined })} className="control-input h-10" />
-                </label>
+                    {/* Every status is explicit; clearing returns to the server default (open). */}
+                    <ChoiceFilter label={t('common.status')} options={statusOptions} value={filters.status} onChange={(value) => f.set('status', value)} />
+                    <ChoiceFilter
+                        label={t('supplierRequests.source')}
+                        allLabel={t('supplierRequests.allSources')}
+                        options={sourceOptions}
+                        value={filters.source}
+                        onChange={(value) => f.set('source', value)}
+                    />
+                    <ChoiceFilter
+                        label={t('sourcing.supplier')}
+                        allLabel={t('supplierRequests.allSuppliers')}
+                        options={suppliers.map((supplier) => ({ value: String(supplier.id), label: supplier.name }))}
+                        value={supplierId}
+                        onChange={(value) => f.set('supplier_id', value)}
+                    />
+                    <DateRangeFilter
+                        label={t('supplierRequests.date')}
+                        from={filters.from}
+                        to={filters.to}
+                        onChange={(range) => f.patch({ from: range.from, to: range.to })}
+                    />
+                </AdvancedFilterBar>
             </div>
 
             {requests.data.length === 0 ? (
-                <EmptyState title={t('supplierRequests.empty')} description={t('supplierRequests.emptyDescription')} />
+                <EmptyState
+                    title={filtered ? t('filters.noMatch') : t('supplierRequests.empty')}
+                    description={filtered ? t('filters.noMatchHelp') : t('supplierRequests.emptyDescription')}
+                    actions={
+                        filtered ? (
+                            <Button variant="secondary" onClick={f.reset}>
+                                {t('filters.reset')}
+                            </Button>
+                        ) : undefined
+                    }
+                />
             ) : (
-                <>
+                <div className={`transition-opacity ${f.loading ? 'opacity-55' : ''}`} aria-busy={f.loading || undefined}>
                     {/* Desktop (≥ 1280px): table. "Créée par" only on wide screens (it is in Détails). */}
-                    <div className="hidden overflow-x-auto rounded-card border border-line bg-surface xl:block">
+                    <div className="hidden overflow-x-auto surface-card xl:block">
                         <table className="erp-table w-full min-w-[60rem] text-start text-sm">
-                            <thead className="border-b border-line bg-raised text-xs uppercase tracking-wide text-ink-muted">
+                            <thead>
                                 <tr className="[&>th]:px-2.5 [&>th]:py-3 [&>th]:font-medium [&>th]:whitespace-nowrap">
                                     <th>{t('common.status')}</th>
                                     <th className="w-[15rem]">{t('supplierRequests.article')}</th>
@@ -484,7 +458,7 @@ export default function SupplierRequestsIndex({ requests, filters, suppliers, ca
                     {/* Tablet and mobile (< 1280px): compact cards, never a squeezed table. */}
                     <ul className="grid gap-3 md:grid-cols-2 xl:hidden">
                         {requests.data.map((row) => (
-                            <li key={row.id} className="flex min-w-0 flex-col rounded-card border border-line bg-surface p-3 text-sm">
+                            <li key={row.id} className="flex min-w-0 flex-col surface-card p-3 text-sm">
                                 <div className="flex items-center justify-between gap-2">
                                     <RowStatusBadge status={row.status} label={t(statusKey(row.status))} />
                                     <span className="whitespace-nowrap text-xs text-ink-faint">{row.requested_at ? formatDate(row.requested_at) : '—'}</span>
@@ -531,8 +505,10 @@ export default function SupplierRequestsIndex({ requests, filters, suppliers, ca
                         ))}
                     </ul>
 
-                    <Pagination links={requests.links} />
-                </>
+                    <div className="mt-4">
+                        <TablePager links={requests.links} from={requests.from} to={requests.to} total={requests.total} />
+                    </div>
+                </div>
             )}
 
             {recording && (

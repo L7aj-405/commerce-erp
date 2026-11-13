@@ -1,3 +1,4 @@
+import DatePicker from '@/components/ui/DatePicker';
 import FollowUpFormDialog from '@/components/followups/FollowUpFormDialog';
 import type { FollowUpContext } from '@/components/followups/types';
 import { Button } from '@/components/ui/Button';
@@ -116,7 +117,7 @@ export default function AttentionList({ items, context, owners, focusId }: { ite
                 footer={<div className="flex justify-end gap-2"><Button type="button" variant="secondary" onClick={() => setSnoozingDate(null)}>{t('common.cancel')}</Button>
                     <Button type="button" disabled={!date} onClick={() => snoozingDate && post(snoozingDate, 'snooze', { preset: 'date', until_date: date }, () => setSnoozingDate(null))}>{t('attention.snooze')}</Button></div>}>
                 <label className="block px-4 py-4 sm:px-6">
-                    <input data-autofocus type="date" min={context.today} value={date} onChange={(e) => setDate(e.target.value)} className={`${fieldClass} w-full`} />
+                    <DatePicker min={context.today} value={date} onChange={(value) => setDate(value)} />
                 </label>
             </Dialog>
         </>

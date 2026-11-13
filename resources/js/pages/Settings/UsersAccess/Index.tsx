@@ -1,3 +1,4 @@
+import { useConfirm } from '@/components/ui/ConfirmDialog';
 import { Button } from '@/components/ui/Button';
 import { useFreshAuth } from '@/components/auth/FreshAuthProvider';
 import { FormBanner, TextField } from '@/components/ui/form';
@@ -55,6 +56,7 @@ type Props = {
 
 export default function UsersAccessIndex({ organization, memberships, roles, invitations, permissionGroups, presets, stores, warehouses, can }: Props) {
     const { t } = useI18n();
+    const confirm = useConfirm();
     const { auth, flash } = usePage<SharedPageProps>().props;
     const selectableRoles = roles.filter((role) => role.slug !== 'owner');
 
@@ -136,13 +138,13 @@ export default function UsersAccessIndex({ organization, memberships, roles, inv
                                             <td className="px-4 py-2.5">{invitation.email}</td>
                                             <td className="px-4 py-2.5">{invitation.role.name}</td>
                                             <td className="px-4 py-2.5 text-ink-muted">{new Date(invitation.expires_at).toLocaleDateString()}</td>
-                                            <td className="px-4 py-2.5 text-right">
+                                            <td className="px-4 py-2.5 text-end">
                                                 <button
                                                     type="button"
-                                                    onClick={() =>
-                                                        window.confirm(t('usersAccess.cancelInvitation').replace('{email}', invitation.email)) &&
-                                                        router.delete(`/invitations/${invitation.id}`, { preserveScroll: true })
-                                                    }
+                                                    onClick={async () => {
+                                                        if (await confirm({ title: t('usersAccess.cancelInvitation').replace('{email}', invitation.email), danger: true }))
+                                                            router.delete(`/invitations/${invitation.id}`, { preserveScroll: true });
+                                                    }}
                                                     className="inline-flex min-h-9 items-center rounded-field px-2 text-xs text-danger hover:bg-danger-soft hover:underline"
                                                 >
                                                     {t('common.cancel')}
@@ -353,6 +355,7 @@ function DefaultWarehouseField({
 /** Shared state/handlers for a membership row, reused by both the desktop `<tr>` and the mobile `<li>` card. */
 function useMemberRowActions(member: Member) {
     const { t } = useI18n();
+    const confirm = useConfirm();
     const { submit: submitProtected } = useFreshAuth();
     const [managingStores, setManagingStores] = useState(false);
 
@@ -365,8 +368,8 @@ function useMemberRowActions(member: Member) {
         void submitProtected({ method: 'patch', url: `/organization-memberships/${member.id}`, data: { status: next }, preserveScroll: true });
     };
 
-    const remove = () => {
-        if (!window.confirm(t('usersAccess.removeMemberConfirm').replace('{name}', member.user.name))) return;
+    const remove = async () => {
+        if (!(await confirm({ title: t('usersAccess.removeMemberConfirm').replace('{name}', member.user.name), danger: true }))) return;
         void submitProtected({ method: 'delete', url: `/organization-memberships/${member.id}`, preserveScroll: true });
     };
 

@@ -1,3 +1,4 @@
+import { useConfirm } from '@/components/ui/ConfirmDialog';
 import { Money } from '@/components/pos/primitives';
 import { Sheet } from '@/components/ui/Sheet';
 import { useToast } from '@/components/ui/toast';
@@ -100,6 +101,7 @@ export default function PosIndex({
     stockConflict: initialStockConflict,
 }: Props) {
     const { t } = useI18n();
+    const confirm = useConfirm();
     const toast = useToast();
     const pending = usePendingKeys();
     const serialized = useSerializedByKey();
@@ -399,9 +401,9 @@ export default function PosIndex({
         );
     }
 
-    function createNewSale() {
+    async function createNewSale() {
         if (activeSaleRef.current && activeSaleRef.current.lines.length > 0) {
-            if (!window.confirm(t('pos.holdConfirm'))) return;
+            if (!(await confirm({ title: t('pos.holdConfirm') }))) return;
             holdCurrent(true);
             return;
         }
@@ -450,8 +452,8 @@ export default function PosIndex({
         );
     }
 
-    function deleteHeldSale(sale: HeldSale) {
-        if (!window.confirm(t('pos.deleteHeldConfirm').replace('{order}', sale.order_number))) return;
+    async function deleteHeldSale(sale: HeldSale) {
+        if (!(await confirm({ title: t('pos.deleteHeldConfirm').replace('{order}', sale.order_number), danger: true }))) return;
         void perform(`sale:delete:${sale.id}`, async () => {
             sync(await posJson<DraftStatePayload>(`/pos/drafts/${sale.id}`, { method: 'DELETE' }));
         });

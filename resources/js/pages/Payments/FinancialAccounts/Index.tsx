@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/Button";
+import DatePicker from "@/components/ui/DatePicker";
 import { useFreshAuth } from "@/components/auth/FreshAuthProvider";
 import EmptyState from "@/components/ui/EmptyState";
 import PageHeader from "@/components/ui/PageHeader";
@@ -333,14 +334,12 @@ function OpeningPositionForm({
             </div>
             <label className={labelClass}>
                 {t("financialAccounts.referenceDate")}
-                <input
-                    type="date"
+                <DatePicker
+                    aria-label={t("financialAccounts.referenceDate")}
                     required
+                    invalid={Boolean(form.errors.effective_date)}
                     value={form.data.effective_date}
-                    onChange={(e) =>
-                        form.setData("effective_date", e.target.value)
-                    }
-                    className={fieldClass}
+                    onChange={(value) => form.setData("effective_date", value)}
                 />
                 {form.errors.effective_date && (
                     <p className={errorClass}>{form.errors.effective_date}</p>

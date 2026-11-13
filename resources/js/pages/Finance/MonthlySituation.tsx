@@ -1,3 +1,4 @@
+import DatePicker from "@/components/ui/DatePicker";
 import FinanceFilters, {
     type FinanceStore,
 } from "@/components/finance/FinanceFilters";
@@ -951,13 +952,13 @@ export default function MonthlySituation(props: Props) {
                                         </td>
                                         <td className="px-4 py-3">
                                             <button
-                                                className="text-left font-medium text-ink hover:underline"
+                                                className="text-start font-medium text-ink hover:underline"
                                                 onClick={() => setDetail(row)}
                                             >
                                                 {row.label}
                                             </button>
                                             {row.recurring_template_id && (
-                                                <span className="ml-2 inline-flex rounded-full bg-sage px-2 py-0.5 text-[10px] font-semibold text-primary">
+                                                <span className="ms-2 inline-flex rounded-full bg-sage px-2 py-0.5 text-[10px] font-semibold text-primary">
                                                     {t(
                                                         "finance.monthEnd.recurring",
                                                     )}
@@ -978,19 +979,19 @@ export default function MonthlySituation(props: Props) {
                                         <td className="px-4 py-3 text-ink-muted">
                                             {row.reference ?? "—"}
                                         </td>
-                                        <td className="px-4 py-3 text-right tabular-nums">
+                                        <td className="px-4 py-3 text-end tabular-nums">
                                             {formatMoney(
                                                 row.planned_amount,
                                                 row.currency_code,
                                             )}
                                         </td>
-                                        <td className="px-4 py-3 text-right tabular-nums">
+                                        <td className="px-4 py-3 text-end tabular-nums">
                                             {formatMoney(
                                                 row.paid_amount,
                                                 row.currency_code,
                                             )}
                                         </td>
-                                        <td className="px-4 py-3 text-right font-semibold tabular-nums">
+                                        <td className="px-4 py-3 text-end font-semibold tabular-nums">
                                             {formatMoney(
                                                 row.remaining_amount,
                                                 row.currency_code,
@@ -1069,7 +1070,7 @@ export default function MonthlySituation(props: Props) {
                 ) : (
                     <div className="overflow-x-auto rounded-card border border-line bg-surface">
                         <table className="w-full min-w-[900px] text-sm">
-                            <thead className="bg-raised text-left text-xs uppercase text-ink-muted">
+                            <thead className="bg-raised text-start text-xs uppercase text-ink-muted">
                                 <tr>
                                     {[
                                         t("common.date"),
@@ -1099,19 +1100,19 @@ export default function MonthlySituation(props: Props) {
                                         <td className="px-4 py-3">
                                             {row.customer}
                                         </td>
-                                        <td className="px-4 py-3 text-right">
+                                        <td className="px-4 py-3 text-end">
                                             {formatMoney(
                                                 row.amount,
                                                 row.currency_code,
                                             )}
                                         </td>
-                                        <td className="px-4 py-3 text-right">
+                                        <td className="px-4 py-3 text-end">
                                             {formatMoney(
                                                 row.matched,
                                                 row.currency_code,
                                             )}
                                         </td>
-                                        <td className="px-4 py-3 text-right font-semibold">
+                                        <td className="px-4 py-3 text-end font-semibold">
                                             {formatMoney(
                                                 row.remaining,
                                                 row.currency_code,
@@ -1248,7 +1249,7 @@ export default function MonthlySituation(props: Props) {
                     </div>
                     <div className="overflow-hidden rounded-card border border-line bg-surface">
                         <table className="w-full text-sm">
-                            <thead className="bg-raised text-left text-xs uppercase text-ink-muted">
+                            <thead className="bg-raised text-start text-xs uppercase text-ink-muted">
                                 <tr>
                                     {[
                                         t("common.date"),
@@ -1275,7 +1276,7 @@ export default function MonthlySituation(props: Props) {
                                         <td className="px-4 py-3">
                                             {x.reference ?? "—"}
                                         </td>
-                                        <td className="px-4 py-3 text-right font-medium">
+                                        <td className="px-4 py-3 text-end font-medium">
                                             {formatMoney(
                                                 x.amount,
                                                 x.currency_code,
@@ -1378,7 +1379,7 @@ export default function MonthlySituation(props: Props) {
                                                         )?.label ?? p.method}
                                                     </p>
                                                 </div>
-                                                <div className="text-right">
+                                                <div className="text-end">
                                                     <p className="font-semibold">
                                                         {formatMoney(
                                                             p.amount,
@@ -1462,7 +1463,7 @@ export default function MonthlySituation(props: Props) {
                                                         )}
                                                     </p>
                                                 </div>
-                                                <div className="text-right">
+                                                <div className="text-end">
                                                     <p className="font-semibold">
                                                         {formatMoney(
                                                             i.amount,
@@ -2330,6 +2331,24 @@ function Field({
     onChange: (v: string) => void;
     error?: string;
 } & Omit<InputHTMLAttributes<HTMLInputElement>, "value" | "onChange">) {
+    if (rest.type === "date") {
+        return (
+            <label className="block">
+                <Label>{label}</Label>
+                <DatePicker
+                    aria-label={label}
+                    value={value}
+                    onChange={onChange}
+                    required={rest.required}
+                    disabled={rest.disabled}
+                    invalid={Boolean(error)}
+                    min={typeof rest.min === "string" ? rest.min : undefined}
+                    max={typeof rest.max === "string" ? rest.max : undefined}
+                />
+                {error && <p className="mt-1 text-xs text-danger">{error}</p>}
+            </label>
+        );
+    }
     return (
         <label className="block">
             <Label>{label}</Label>

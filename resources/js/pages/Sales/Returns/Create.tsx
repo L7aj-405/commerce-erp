@@ -169,7 +169,7 @@ export default function ReturnCreate({
                                         placeholder={t(
                                             "returns.overrideReason",
                                         )}
-                                        className="mt-2 w-full rounded-field border border-line-strong p-2 text-sm"
+                                        className="control-input mt-2 w-full py-2"
                                     />
                                 )}
                             </div>
@@ -189,7 +189,7 @@ export default function ReturnCreate({
                                 {t("returns.returnAll")}
                             </button>
                         </div>
-                        <table className="w-full text-sm">
+                        <table className="erp-table w-full text-sm">
                             <thead className="bg-raised text-start text-[13px] text-ink-muted font-medium">
                                 <tr>
                                     {[
@@ -267,7 +267,7 @@ export default function ReturnCreate({
                                                 disabled={
                                                     Number(line.returnable) <= 0
                                                 }
-                                                className="w-28 rounded-field border border-line-strong px-2 py-1.5"
+                                                className="control-input w-28"
                                             />
                                         </td>
                                     </tr>
@@ -286,7 +286,7 @@ export default function ReturnCreate({
                                         e.target.value as "restock" | "damaged",
                                     )
                                 }
-                                className="mt-1 w-full rounded-field border border-line-strong px-3 py-2"
+                                className="control-select mt-1 w-full"
                             >
                                 <option value="restock">
                                     {t("returns.sellableRestock")}
@@ -303,7 +303,7 @@ export default function ReturnCreate({
                                 onChange={(e) =>
                                     form.setData("reason", e.target.value)
                                 }
-                                className="mt-1 w-full rounded-field border border-line-strong p-2"
+                                className="control-input mt-1 w-full py-2"
                                 rows={3}
                             />
                         </label>

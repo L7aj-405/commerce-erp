@@ -1,3 +1,4 @@
+import DatePicker from '@/components/ui/DatePicker';
 import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
 import { useI18n } from '@/i18n';
@@ -165,12 +166,12 @@ export default function RecurringFormDialog({ open, onClose, context, rule, link
                 <div className="grid gap-3 sm:grid-cols-3">
                     <label className="block">
                         <span className="mb-1 block text-xs font-medium text-ink-muted">{t('work.recStartsOn')}</span>
-                        <input type="date" required value={form.data.starts_on} onChange={(e) => form.setData('starts_on', e.target.value)} className={fieldClass} />
+                        <DatePicker required value={form.data.starts_on} onChange={(value) => form.setData('starts_on', value)} />
                         {error('starts_on')}
                     </label>
                     <label className="block">
                         <span className="mb-1 block text-xs font-medium text-ink-muted">{t('work.recEndsOn')}</span>
-                        <input type="date" value={form.data.ends_on} onChange={(e) => form.setData('ends_on', e.target.value)} className={fieldClass} />
+                        <DatePicker value={form.data.ends_on} onChange={(value) => form.setData('ends_on', value)} />
                         {error('ends_on')}
                     </label>
                     <label className="block">

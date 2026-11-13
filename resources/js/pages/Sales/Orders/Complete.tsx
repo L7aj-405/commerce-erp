@@ -193,7 +193,7 @@ export default function CompletePosOrder({ order, paymentSummary, searchUrl, sub
                             placeholder={t('orders.complete.searchPlaceholder')}
                             aria-label={t('orders.complete.searchLabel')}
                             aria-controls="completion-product-results"
-                            className="min-h-10 w-full rounded-field border border-line-strong bg-surface px-3 pe-28 text-sm"
+                            className="control-input min-h-10 w-full"
                         />
                         {searching && <span className="absolute inset-y-0 end-3 flex items-center text-xs text-ink-muted">{t('orders.complete.searching')}</span>}
                     </div>
@@ -254,7 +254,7 @@ export default function CompletePosOrder({ order, paymentSummary, searchUrl, sub
                                 <div key={line.id} className="grid items-end gap-3 rounded-field border border-line p-3 sm:grid-cols-[1fr_140px_auto]">
                                     <div><p className="font-medium text-ink">{line.product_name}</p><p className="text-xs text-ink-muted">{formatMoney(line.unit_price_incl_tax ?? '0', order.currency_code)} · {t('orders.complete.localStock').replace('{stock}', formatQuantity(line.local_stock_available))}</p></div>
                                     <label className="text-xs text-ink-muted">{t('orders.complete.quantity')}
-                                        <input type="number" inputMode="numeric" min={1} step={1} value={line.quantity} onChange={(event) => setQuantity(line.id, event.target.value)} className="mt-1 w-full rounded-field border border-line-strong px-3 py-2 text-sm" />
+                                        <input type="number" inputMode="numeric" min={1} step={1} value={line.quantity} onChange={(event) => setQuantity(line.id, event.target.value)} className="control-input mt-1 w-full" />
                                     </label>
                                     <button type="button" onClick={() => setCart(cart.filter((item) => item.id !== line.id))} className="min-h-10 text-sm text-danger">{t('orders.complete.remove')}</button>
                                 </div>

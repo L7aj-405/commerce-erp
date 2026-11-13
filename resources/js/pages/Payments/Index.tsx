@@ -1,4 +1,5 @@
 import EmptyState from '@/components/ui/EmptyState';
+import DatePicker from '@/components/ui/DatePicker';
 import SandboxPaymentBadge from '@/components/SandboxPaymentBadge';
 import PageHeader from '@/components/ui/PageHeader';
 import Pagination from '@/components/ui/Pagination';
@@ -55,12 +56,7 @@ export default function PaymentIndex({ payments, accounts, filters }: Props) {
                         />
                     </label>
                     <Field label={t('common.date')}>
-                        <input
-                            name="date"
-                            type="date"
-                            defaultValue={String(filters.date ?? '')}
-                            className="control-input w-full"
-                        />
+                        <DatePicker name="date" aria-label={t('common.date')} defaultValue={String(filters.date ?? '')} />
                     </Field>
                     <Field label={t('payments.method')}>
                         <select name="method" defaultValue={String(filters.method ?? '')} className="control-select w-full">
@@ -90,7 +86,7 @@ export default function PaymentIndex({ payments, accounts, filters }: Props) {
                     </Field>
                 </div>
                 <div className="mt-4 flex justify-end">
-                    <button className="rounded-field bg-ink px-4 py-2 text-sm font-semibold text-white transition-soft hover:bg-ink-muted">{t('payments.filter')}</button>
+                    <button className="rounded-field bg-primary px-4 py-2 text-sm font-semibold text-primary-fg transition-soft hover:bg-primary-hover">{t('payments.filter')}</button>
                 </div>
             </form>
 

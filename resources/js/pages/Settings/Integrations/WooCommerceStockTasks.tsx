@@ -81,7 +81,7 @@ export default function WooCommerceStockTasksIndex({ tasks, filters, pendingCoun
                             key={tab.value}
                             onClick={() => visit({ search: filters.search, status: tab.value, page: undefined })}
                             className={`rounded-md px-3 py-1.5 text-sm font-medium ${
-                                filters.status === tab.value ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-50'
+                                filters.status === tab.value ? 'bg-primary text-primary-fg' : 'text-ink-muted hover:bg-sage hover:text-ink'
                             }`}
                         >
                             {tab.label}

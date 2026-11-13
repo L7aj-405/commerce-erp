@@ -1,3 +1,4 @@
+import DatePicker from '@/components/ui/DatePicker';
 import { Dialog } from '@/components/ui/Dialog';
 import DocBadge from '@/components/ui/DocBadge';
 import SandboxDocumentBadge from '@/components/SandboxDocumentBadge';
@@ -396,7 +397,7 @@ export default function InvoiceShow({
                         )}
                     </section>
 
-                    <section className="rounded-card border border-line bg-surface p-4 text-sm">
+                    <section className="surface-card p-4 text-sm">
                         <p className="font-medium text-ink">{t('invoices.financialPosition')}</p>
                         <dl className="mt-2 grid gap-1 text-ink-muted sm:grid-cols-2">
                             <SummaryRow term={t('invoices.original')} value={formatMoney(invoice.total_incl_tax, currency)} />
@@ -412,7 +413,7 @@ export default function InvoiceShow({
                         <p className="mt-2 text-xs text-ink-faint">{t('invoices.creditRefundDistinct')}</p>
                     </section>
                     {creditNotes.length > 0 && (
-                        <section className="rounded-card border border-line bg-surface p-4 text-sm">
+                        <section className="surface-card p-4 text-sm">
                             <div className="flex justify-between gap-3"><h2 className="font-medium">{t('invoices.credits')}</h2><span className="rounded-full bg-raised px-2 py-1 text-xs">{creditSummary.state === 'full' ? t('invoices.fullCredit') : t('invoices.partialCredit')}</span></div>
                             <div className="mt-2 divide-y divide-line">{creditNotes.map(note => <Link key={note.id} href={`/credit-notes/${note.id}`} className="flex justify-between py-2"><span>{note.credit_note_number} · {formatDate(note.credit_note_date)}</span><span>-{formatMoney(note.total_incl_tax, currency)}</span></Link>)}</div>
                             <div className="mt-3 flex justify-between border-t border-line pt-3 font-semibold"><span>{t('invoices.netAfterCredits')}</span><span>{formatMoney(creditSummary.net, currency)}</span></div>
@@ -422,7 +423,7 @@ export default function InvoiceShow({
 
                 {/* RIGHT — status & actions */}
                 <aside className="space-y-4 lg:sticky lg:top-20 lg:self-start">
-                    <section className="rounded-card border border-line bg-surface p-5">
+                    <section className="surface-card p-5">
                         <dl className="space-y-2 text-sm">
                             <div className="flex justify-between">
                                 <dt className="text-ink-muted">{t('quotations.totalTaxIncluded')}</dt>
@@ -439,7 +440,7 @@ export default function InvoiceShow({
                             {(isIssued || isSuperseded) && (
                                 <div className="flex justify-between">
                                     <dt className="text-ink-muted">{t('invoices.issued')}</dt>
-                                    <dd className="text-right text-ink">
+                                    <dd className="text-end text-ink">
                                         {invoice.issued_by?.name ?? '—'}
                                         <br />
                                         {invoice.issued_at ? formatDateTime(invoice.issued_at) : ''}
@@ -547,7 +548,7 @@ export default function InvoiceShow({
                     )}
 
                     {isIssued && (
-                        <section className="rounded-card border border-line bg-surface p-5">
+                        <section className="surface-card p-5">
                             <h2 className="text-sm font-semibold text-ink">{t('invoices.companyStamp')}</h2>
                             <div className="mt-3">
                                 <StampDocumentAction
@@ -562,7 +563,7 @@ export default function InvoiceShow({
                     )}
 
                     {history.length > 0 && (
-                        <section className="rounded-card border border-line bg-surface p-5">
+                        <section className="surface-card p-5">
                             <h2 className="font-semibold text-base text-ink">{t('invoices.history')}</h2>
                             <ul className="mt-2 space-y-2 text-sm">
                                 {history.map((entry) => (
@@ -593,51 +594,45 @@ export default function InvoiceShow({
                     )}
 
                     {isDraft && can.updateDraft && (
-                        <section className="rounded-card border border-line bg-surface p-5">
+                        <section className="surface-card p-5">
                             <h2 className="text-sm font-semibold text-ink">{t('invoices.variableInfo')}</h2>
                             <form onSubmit={save} className="mt-3 space-y-3 text-sm">
                                 <Field label={t('invoices.date')}>
-                                    <input
-                                        type="date"
-                                        readOnly={!can.backdate}
-                                        value={form.data.invoice_date}
-                                        onChange={(e) => form.setData('invoice_date', e.target.value)}
-                                        className="control-input w-full read-only:bg-raised"
-                                    />
+                                    <DatePicker disabled={!can.backdate} value={form.data.invoice_date} onChange={(value) => form.setData('invoice_date', value)} />
                                 </Field>
                                 <Field label={t('quotations.representative')}>
                                     <input
                                         value={form.data.representative_name}
                                         onChange={(e) => form.setData('representative_name', e.target.value)}
-                                        className="w-full rounded-field border border-line-strong px-3 py-2"
+                                        className="control-input w-full"
                                     />
                                 </Field>
                                 <Field label={t('invoices.paymentTerms')}>
                                     <input
                                         value={form.data.payment_method_summary}
                                         onChange={(e) => form.setData('payment_method_summary', e.target.value)}
-                                        className="w-full rounded-field border border-line-strong px-3 py-2"
+                                        className="control-input w-full"
                                     />
                                 </Field>
                                 <Field label={t('quotations.nameCompany')}>
                                     <input
                                         value={form.data.customer_name}
                                         onChange={(e) => form.setData('customer_name', e.target.value)}
-                                        className="w-full rounded-field border border-line-strong px-3 py-2"
+                                        className="control-input w-full"
                                     />
                                 </Field>
                                 <Field label={t('quotations.company')}>
                                     <input
                                         value={form.data.customer_company}
                                         onChange={(e) => form.setData('customer_company', e.target.value)}
-                                        className="w-full rounded-field border border-line-strong px-3 py-2"
+                                        className="control-input w-full"
                                     />
                                 </Field>
                                 <Field label={t('quotations.taxId')}>
                                     <input
                                         value={form.data.customer_tax_identifier}
                                         onChange={(e) => form.setData('customer_tax_identifier', e.target.value)}
-                                        className="w-full rounded-field border border-line-strong px-3 py-2"
+                                        className="control-input w-full"
                                     />
                                 </Field>
                                 <div className="grid grid-cols-2 gap-2">
@@ -646,14 +641,14 @@ export default function InvoiceShow({
                                             type="email"
                                             value={form.data.customer_email}
                                             onChange={(e) => form.setData('customer_email', e.target.value)}
-                                            className="w-full rounded-field border border-line-strong px-3 py-2"
+                                            className="control-input w-full"
                                         />
                                     </Field>
                                     <Field label={t('quotations.phone')}>
                                         <input
                                             value={form.data.customer_phone}
                                             onChange={(e) => form.setData('customer_phone', e.target.value)}
-                                            className="w-full rounded-field border border-line-strong px-3 py-2"
+                                            className="control-input w-full"
                                         />
                                     </Field>
                                 </div>
@@ -661,14 +656,14 @@ export default function InvoiceShow({
                                     <textarea
                                         value={form.data.billing_address}
                                         onChange={(e) => form.setData('billing_address', e.target.value)}
-                                        className="w-full rounded-field border border-line-strong px-3 py-2"
+                                        className="control-input w-full py-2"
                                     />
                                 </Field>
                                 <Field label={t('quotations.notes')}>
                                     <textarea
                                         value={form.data.notes}
                                         onChange={(e) => form.setData('notes', e.target.value)}
-                                        className="w-full rounded-field border border-line-strong px-3 py-2"
+                                        className="control-input w-full py-2"
                                     />
                                 </Field>
                                 {Object.values(form.errors).map(
@@ -836,7 +831,7 @@ function ShareCard({
     const unavailable = !whatsappLink(sharing.whatsappDestination, waMessage, waPhone);
 
     return (
-        <section className="rounded-card border border-line bg-surface p-5">
+        <section className="surface-card p-5">
             <h2 className="text-sm font-semibold text-ink">{t('invoices.send')}</h2>
 
             <div role="tablist" className="mt-3 inline-flex rounded-field border border-line-strong p-0.5 text-sm">
@@ -910,7 +905,7 @@ function ShareCard({
                                     setWaOpened(false);
                                 }}
                                 placeholder="+212 6 12 34 56 78"
-                                className="w-full rounded-field border border-line-strong px-3 py-2"
+                                className="control-input w-full"
                             />
                         </Field>
                     )}
@@ -923,7 +918,7 @@ function ShareCard({
                                 setWaMessage(e.target.value);
                                 setWaOpened(false);
                             }}
-                            className="w-full rounded-field border border-line-strong px-3 py-2"
+                            className="control-input w-full py-2"
                         />
                     </Field>
                     <p className="text-xs text-ink-faint">
