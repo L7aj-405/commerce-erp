@@ -54,13 +54,46 @@ const HINTS: Record<SandboxBadgeKind, string> = {
     email: 'E-mail simulé : aucun message réel n’est envoyé',
 };
 
+/*
+ * One shape for every Test badge (height, radius, padding, type, icon); only the tint
+ * carries the domain, so a screen reads at a glance without any debug-style block:
+ *   stock → green · payment → blue · documents → indigo · return/exchange → amber
+ *   fulfillment → cyan · procurement → neutral · generic / e-mail → teal (as the top bar)
+ * Every pair is a theme token with AA text contrast on its soft fill, light and dark.
+ */
+const TONES = {
+    green: 'border-success/30 bg-success-soft text-success',
+    blue: 'border-info/30 bg-info-soft text-info',
+    indigo: 'border-indigo/30 bg-indigo-soft text-indigo',
+    amber: 'border-warning/30 bg-warning-soft text-warning',
+    cyan: 'border-cyan/30 bg-cyan-soft text-cyan',
+    neutral: 'border-line-strong bg-sage text-ink-muted',
+    teal: 'border-accent/30 bg-accent-soft text-accent',
+} as const;
+
+const TONE_OF: Record<SandboxBadgeKind, keyof typeof TONES> = {
+    test: 'teal',
+    email: 'teal',
+    stock: 'green',
+    payment: 'blue',
+    document: 'indigo',
+    quotation: 'indigo',
+    invoice: 'indigo',
+    delivery: 'indigo',
+    credit: 'indigo',
+    return: 'amber',
+    exchange: 'amber',
+    fulfillment: 'cyan',
+    procurement: 'neutral',
+};
+
 export function SandboxBadge({ kind = 'test', label, title, className = '' }: { kind?: SandboxBadgeKind; label?: string; title?: string; className?: string }) {
     return (
         <span
             title={title ?? HINTS[kind]}
-            className={`inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md border border-warning/30 bg-warning-soft px-1.5 py-px align-middle text-[11.5px] font-semibold leading-5 text-ink ${className}`}
+            className={`inline-flex h-6 shrink-0 items-center gap-1 whitespace-nowrap rounded-md border px-2 align-middle text-[11.5px] font-semibold leading-none ${TONES[TONE_OF[kind]]} ${className}`}
         >
-            <FlaskConicalIcon size={12} className="shrink-0 text-warning" />
+            <FlaskConicalIcon size={12} className="shrink-0" />
             {label ?? LABELS[kind]}
         </span>
     );

@@ -32,9 +32,9 @@ export default function SandboxReset({ preview, phrase }: Props) {
 
     return <main className="min-h-dvh bg-canvas text-ink">
         <Head title="Réinitialiser le mode test" />
-        {sandbox.restricted && <div role="status" className="sticky top-0 z-50 flex min-h-8 items-center gap-2 border-b border-warning/25 bg-warning-soft px-4 py-1 text-[13px] font-medium text-ink">
-            <FlaskConicalIcon size={14} className="shrink-0 text-warning" />
-            Mode test actif — aucune donnée de Production n’est modifiée.
+        {sandbox.restricted && <div role="status" className="sticky top-0 z-50 flex min-h-9 flex-wrap items-center justify-center gap-x-3 gap-y-0.5 border-b border-accent/25 bg-accent-soft px-4 py-1 text-[13px] font-medium text-ink">
+            <span className="inline-flex items-center gap-2 font-semibold text-accent"><FlaskConicalIcon size={15} className="shrink-0" />Mode test</span>
+            Aucune donnée de Production n’est modifiée.
         </div>}
         <header className="border-b border-line p-4 font-semibold">10xScale ERP · Mode test</header>
         <section className="mx-auto max-w-3xl space-y-6 p-4 sm:p-6">

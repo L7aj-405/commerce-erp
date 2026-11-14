@@ -75,6 +75,12 @@
     --color-info: #2f5f8a;
     --color-info-soft: #e6eef5;
 
+    /* Test Mode badges only (Phase 10.2): document = indigo, shipping = cyan. AA on their soft fill. */
+    --color-indigo: #4b4ba8;
+    --color-indigo-soft: #ececf8;
+    --color-cyan: #0f6b7a;
+    --color-cyan-soft: #e0f1f4;
+
     /* Financial semantics — meaning stays stable across dashboards and tables. */
     --color-finance-inflow: #23683f;
     --color-finance-inflow-soft: #e2f0e7;
@@ -189,6 +195,10 @@
     --color-danger-fg: #1a0907;
     --color-info: #8db6dc;
     --color-info-soft: #172532;
+    --color-indigo: #b4b4f0;
+    --color-indigo-soft: #1f2040;
+    --color-cyan: #7fd0de;
+    --color-cyan-soft: #11303a;
     --color-finance-inflow: #79c99a;
     --color-finance-inflow-soft: #142a1e;
     --color-finance-outflow: #ef8e82;

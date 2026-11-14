@@ -45,7 +45,7 @@ export default function SandboxPage({ enabled, canManage, canSwitch, canReset, c
         <main className="app-canvas min-h-dvh bg-canvas text-ink">
             <Head title={t('sandboxPage.title')} />
             {sandbox.restricted && (
-                <div role="status" className="sticky top-0 z-50 flex flex-wrap items-center justify-center gap-3 border-b border-warning/40 bg-warning-soft px-4 py-3 text-center text-sm font-semibold text-warning">
+                <div role="status" className="sticky top-0 z-50 flex min-h-9 flex-wrap items-center justify-center gap-3 border-b border-accent/25 bg-accent-soft px-4 py-1.5 text-center text-[13px] font-medium text-ink">
                     <span>{t('sandboxPage.restrictedBanner')}</span>
                     <Button size="sm" variant="secondary" loading={busy} onClick={() => submit('/test-mode/leave')}>
                         {t('sandboxPage.leave')}
