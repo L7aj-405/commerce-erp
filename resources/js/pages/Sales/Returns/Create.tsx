@@ -169,14 +169,14 @@ export default function ReturnCreate({
                                         placeholder={t(
                                             "returns.overrideReason",
                                         )}
-                                        className="mt-2 w-full rounded-field border border-line-strong p-2 text-sm"
+                                        className="control-input mt-2 w-full py-2"
                                     />
                                 )}
                             </div>
                         )}
                 </section>
                 <form onSubmit={submit} className="space-y-5">
-                    <section className="overflow-x-auto rounded-card border border-line bg-surface">
+                    <section className="overflow-x-auto surface-card">
                         <div className="flex justify-between p-4">
                             <h2 className="font-semibold">
                                 {t("returns.deliveredItems")}
@@ -189,8 +189,8 @@ export default function ReturnCreate({
                                 {t("returns.returnAll")}
                             </button>
                         </div>
-                        <table className="w-full text-sm">
-                            <thead className="bg-raised text-start text-xs uppercase text-ink-muted">
+                        <table className="erp-table w-full text-sm">
+                            <thead className="bg-raised text-start text-[13px] text-ink-muted font-medium">
                                 <tr>
                                     {[
                                         "item",
@@ -267,7 +267,8 @@ export default function ReturnCreate({
                                                 disabled={
                                                     Number(line.returnable) <= 0
                                                 }
-                                                className="w-28 rounded-field border border-line-strong px-2 py-1.5"
+                                                aria-label={`${t("returns.column.quantity")} · ${line.product_name}`}
+                                                className="control-input w-28"
                                             />
                                         </td>
                                     </tr>
@@ -275,7 +276,7 @@ export default function ReturnCreate({
                             </tbody>
                         </table>
                     </section>
-                    <section className="grid gap-4 rounded-card border border-line bg-surface p-5 sm:grid-cols-2">
+                    <section className="grid gap-4 surface-card p-5 sm:grid-cols-2">
                         <label className="text-sm font-medium">
                             {t("returns.itemDisposition")}
                             <select
@@ -286,7 +287,7 @@ export default function ReturnCreate({
                                         e.target.value as "restock" | "damaged",
                                     )
                                 }
-                                className="mt-1 w-full rounded-field border border-line-strong px-3 py-2"
+                                className="control-select mt-1 w-full"
                             >
                                 <option value="restock">
                                     {t("returns.sellableRestock")}
@@ -303,7 +304,7 @@ export default function ReturnCreate({
                                 onChange={(e) =>
                                     form.setData("reason", e.target.value)
                                 }
-                                className="mt-1 w-full rounded-field border border-line-strong p-2"
+                                className="control-input mt-1 w-full py-2"
                                 rows={3}
                             />
                         </label>

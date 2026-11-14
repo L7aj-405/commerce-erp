@@ -1,4 +1,5 @@
 import { Button, ButtonLink } from "@/components/ui/Button";
+import DatePicker from "@/components/ui/DatePicker";
 import EmptyState from "@/components/ui/EmptyState";
 import PageHeader from "@/components/ui/PageHeader";
 import Pagination from "@/components/ui/Pagination";
@@ -87,8 +88,8 @@ type Props = {
     canManage: boolean;
 };
 
-const inputClass =
-    "h-10 w-full rounded-field border border-line-strong bg-surface px-3 text-sm text-ink outline-none focus:border-primary focus:ring-4 focus:ring-primary/10";
+const inputClass = 'control-input w-full';
+const selectClass = 'control-select w-full';
 const emptyTemplate = (currency: string) => ({
     store_id: "",
     category: "fixed_expense",
@@ -195,7 +196,7 @@ export default function RecurringObligations(props: Props) {
                 }
             />
 
-            <section className="mb-5 rounded-card border border-line bg-surface p-4">
+            <section className="mb-5 surface-card p-4">
                 <form
                     className="grid gap-3 xl:grid-cols-[minmax(220px,1fr)_150px_170px_180px_190px_auto]"
                     onSubmit={(e) => {
@@ -212,7 +213,8 @@ export default function RecurringObligations(props: Props) {
                         )}
                     />
                     <select
-                        className={inputClass}
+                        className={selectClass}
+                        aria-label={t("common.status")}
                         value={props.filters.status ?? ""}
                         onChange={(e) =>
                             applyFilters({ status: e.target.value })
@@ -227,7 +229,8 @@ export default function RecurringObligations(props: Props) {
                         </option>
                     </select>
                     <select
-                        className={inputClass}
+                        className={selectClass}
+                        aria-label={t("common.type")}
                         value={props.filters.category ?? ""}
                         onChange={(e) =>
                             applyFilters({ category: e.target.value })
@@ -241,7 +244,8 @@ export default function RecurringObligations(props: Props) {
                         ))}
                     </select>
                     <select
-                        className={inputClass}
+                        className={selectClass}
+                        aria-label={t("common.store")}
                         value={props.filters.store_id ?? ""}
                         onChange={(e) =>
                             applyFilters({ store_id: e.target.value })
@@ -255,7 +259,8 @@ export default function RecurringObligations(props: Props) {
                         ))}
                     </select>
                     <select
-                        className={inputClass}
+                        className={selectClass}
+                        aria-label={t("common.supplier")}
                         value={props.filters.supplier_id ?? ""}
                         onChange={(e) =>
                             applyFilters({ supplier_id: e.target.value })
@@ -300,10 +305,10 @@ export default function RecurringObligations(props: Props) {
                     }
                 />
             ) : (
-                <section className="overflow-hidden rounded-card border border-line bg-surface">
+                <section className="overflow-hidden surface-card">
                     <div className="overflow-x-auto">
-                        <table className="w-full min-w-[1050px] text-sm">
-                            <thead className="bg-raised text-start text-[11px] uppercase tracking-wide text-ink-muted">
+                        <table className="erp-table w-full min-w-[1050px] text-sm">
+                            <thead>
                                 <tr>
                                     {[
                                         "label",
@@ -353,7 +358,7 @@ export default function RecurringObligations(props: Props) {
                                         <td className="px-4 py-3">
                                             {row.beneficiary}
                                         </td>
-                                        <td className="px-4 py-3 text-right font-medium tabular-nums">
+                                        <td className="px-4 py-3 text-end font-medium tabular-nums">
                                             {formatMoney(
                                                 row.planned_amount,
                                                 row.currency_code,
@@ -748,7 +753,7 @@ function RecurringForm({
             <label>
                 <Label>{t("common.notes")}</Label>
                 <textarea
-                    className="min-h-24 w-full rounded-field border border-line-strong bg-surface px-3 py-2 text-sm"
+                    className="control-input min-h-24 w-full py-2"
                     value={form.data.notes as string}
                     onChange={(e) => form.setData("notes", e.target.value)}
                 />
@@ -776,6 +781,24 @@ function Field({
     onChange: (value: string) => void;
     error?: string;
 } & Omit<InputHTMLAttributes<HTMLInputElement>, "value" | "onChange">) {
+    if (rest.type === "date") {
+        return (
+            <label>
+                <Label>{label}</Label>
+                <DatePicker
+                    aria-label={label}
+                    value={value}
+                    onChange={onChange}
+                    required={rest.required}
+                    disabled={rest.disabled}
+                    invalid={Boolean(error)}
+                    min={typeof rest.min === "string" ? rest.min : undefined}
+                    max={typeof rest.max === "string" ? rest.max : undefined}
+                />
+                {error && <p className="mt-1 text-xs text-danger">{error}</p>}
+            </label>
+        );
+    }
     return (
         <label>
             <Label>{label}</Label>
@@ -806,7 +829,7 @@ function Select({
         <label>
             <Label>{label}</Label>
             <select
-                className={inputClass}
+                className={selectClass}
                 value={value}
                 onChange={(e) => onChange(e.target.value)}
             >

@@ -1,3 +1,4 @@
+import DatePicker from '@/components/ui/DatePicker';
 import DocBadge from '@/components/ui/DocBadge';
 import { Button } from '@/components/ui/Button';
 import SalesLayout from '@/layouts/SalesLayout';
@@ -125,10 +126,10 @@ export default function EditOrder({ order, taxRates, lineSearchUrl, customerSear
             )}
 
             {/* HEADER */}
-            <form onSubmit={saveHeader} className="mb-6 rounded-card border border-line bg-surface p-5">
+            <form onSubmit={saveHeader} className="mb-6 surface-card p-5">
                 <div className="grid gap-4 md:grid-cols-3">
                     <label className="block text-sm">
-                        <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-ink-muted">{t('common.customer')}</span>
+                        <span className="mb-1 block text-[13px] font-medium text-ink-muted">{t('common.customer')}</span>
                         <CustomerPicker
                             searchUrl={customerSearchUrl}
                             disabled={!isEditable}
@@ -140,24 +141,18 @@ export default function EditOrder({ order, taxRates, lineSearchUrl, customerSear
                         />
                     </label>
                     <label className="block text-sm">
-                        <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-ink-muted">{t('orders.edit.saleDate')}</span>
-                        <input
-                            type="date"
-                            disabled={!isEditable}
-                            value={header.data.sale_date}
-                            onChange={(e) => header.setData('sale_date', e.target.value)}
-                            className="w-full rounded-field border border-line-strong px-3 py-2 disabled:bg-raised"
-                        />
+                        <span className="mb-1 block text-[13px] font-medium text-ink-muted">{t('orders.edit.saleDate')}</span>
+                        <DatePicker disabled={!isEditable} value={header.data.sale_date} onChange={(value) => header.setData('sale_date', value)} />
                     </label>
                     <div className="flex items-end text-xs text-ink-faint">{t('orders.edit.currency')} : <bdi>{order.currency_code}</bdi></div>
                     <label className="block text-sm">
-                        <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-ink-muted">{t('orders.show.salesperson')}</span>
+                        <span className="mb-1 block text-[13px] font-medium text-ink-muted">{t('orders.show.salesperson')}</span>
                         {can.assignSalesperson && !correction ? (
                             <select
                                 disabled={!isEditable}
                                 value={header.data.salesperson_id ?? ''}
                                 onChange={(e) => header.setData('salesperson_id', e.target.value ? Number(e.target.value) : null)}
-                                className="w-full rounded-field border border-line-strong px-3 py-2 disabled:bg-raised"
+                                className="control-select w-full"
                             >
                                 <option value="">{t('orders.show.unassigned')}</option>
                                 {salespersons.map((salesperson) => <option key={salesperson.id} value={salesperson.id}>{salesperson.name}</option>)}
@@ -169,13 +164,13 @@ export default function EditOrder({ order, taxRates, lineSearchUrl, customerSear
                         )}
                     </label>
                     <label className="block text-sm md:col-span-3">
-                        <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-ink-muted">{t('common.notes')}</span>
+                        <span className="mb-1 block text-[13px] font-medium text-ink-muted">{t('common.notes')}</span>
                         <textarea
                             disabled={!isEditable}
                             value={header.data.notes}
                             onChange={(e) => header.setData('notes', e.target.value)}
                             rows={2}
-                            className="w-full rounded-field border border-line-strong px-3 py-2 disabled:bg-raised"
+                            className="control-input w-full py-2"
                         />
                     </label>
                 </div>
@@ -190,8 +185,8 @@ export default function EditOrder({ order, taxRates, lineSearchUrl, customerSear
             </form>
 
             {/* ARTICLES */}
-            <section className="mb-6 rounded-card border border-line bg-surface p-5">
-                <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-ink-muted">{t('orders.edit.items')}</h2>
+            <section className="mb-6 surface-card p-5">
+                <h2 className="mb-3 font-semibold text-base text-ink">{t('orders.edit.items')}</h2>
                 {isEditable ? (
                     <OrderLineGrid
                         orderId={order.id}
@@ -208,19 +203,19 @@ export default function EditOrder({ order, taxRates, lineSearchUrl, customerSear
             </section>
 
             {/* TOTALS */}
-            <div className="ml-auto max-w-xs space-y-1 text-sm">
+            <div className="ms-auto max-w-xs space-y-1 text-sm">
                 {hasDiscount && <Row term={t('orders.show.grossExclTax')} value={formatMoney(order.subtotal_excl_tax, currency)} />}
                 {hasDiscount && <Row term={t('orders.show.discountExclTax')} value={`- ${formatMoney(order.discount_total, currency)}`} />}
                 <Row term={t('orders.show.totalExclTax')} value={formatMoney(hasDiscount ? net : order.subtotal_excl_tax, currency)} />
                 <Row term={t('orders.show.tax')} value={formatMoney(order.tax_total, currency)} />
                 <div className="flex justify-between border-t-2 border-line pt-1 text-base font-bold text-ink">
-                    <span>TOTAL TTC</span>
+                    <span>{t('orders.show.totalInclTax')}</span>
                     <span className="tabular-nums">{formatMoney(order.total_incl_tax, currency)}</span>
                 </div>
             </div>
 
             {correction && isEditable && can.confirm && (
-                <div className="mt-6 flex flex-col items-stretch gap-2 rounded-card border border-line bg-surface p-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="mt-6 flex flex-col items-stretch gap-2 surface-card p-4 sm:flex-row sm:items-center sm:justify-between">
                     <p className="text-sm text-ink-muted">{t('orders.edit.confirmCorrectionHelp')}</p>
                     <Button
                         type="button"
@@ -251,15 +246,15 @@ function ReadOnlyLines({ lines, currency }: { lines: OLine[]; currency: string }
     if (lines.length === 0) return <p className="text-sm text-ink-muted">{t('orders.edit.noItems')}</p>;
     return (
         <div className="overflow-x-auto">
-            <table className="w-full min-w-[640px] border-collapse text-sm">
+            <table className="erp-table w-full min-w-[640px] text-sm">
                 <thead>
-                    <tr className="border-b border-line-strong text-left text-xs uppercase tracking-wide text-ink-muted [&>th]:px-2 [&>th]:py-2 [&>th]:font-medium">
+                    <tr className="border-b border-line-strong text-start text-[13px] text-ink-muted [&>th]:px-2 [&>th]:py-2 [&>th]:font-medium font-medium">
                         <th>{t('orders.edit.item')}</th>
-                        <th className="text-right">{t('common.quantityShort')}</th>
-                        <th className="text-right">{t('orders.show.unitPriceExclTax')}</th>
-                        <th className="text-right">{t('orders.show.discountExclTax')}</th>
-                        <th className="text-right">{t('orders.show.tax')}</th>
-                        <th className="text-right">{t('orders.show.totalInclTax')}</th>
+                        <th className="text-end">{t('common.quantityShort')}</th>
+                        <th className="text-end">{t('orders.show.unitPriceExclTax')}</th>
+                        <th className="text-end">{t('orders.show.discountExclTax')}</th>
+                        <th className="text-end">{t('orders.show.tax')}</th>
+                        <th className="text-end">{t('orders.show.totalInclTax')}</th>
                     </tr>
                 </thead>
                 <tbody className="[&>tr>td]:border-b [&>tr>td]:border-line [&>tr>td]:px-2 [&>tr>td]:py-2">
@@ -269,13 +264,13 @@ function ReadOnlyLines({ lines, currency }: { lines: OLine[]; currency: string }
                                 <span className="font-medium text-ink">{line.product_name}</span>
                                 {line.variant_name && <span className="block text-xs text-ink-muted">{line.variant_name}</span>}
                             </td>
-                            <td className="text-right tabular-nums">{line.quantity.replace(/\.?0+$/, '')}</td>
-                            <td className="text-right tabular-nums">{formatMoney(line.unit_price_excl_tax, currency)}</td>
-                            <td className="text-right tabular-nums">{Number(line.discount_amount) > 0 ? `- ${formatMoney(line.discount_amount, currency)}` : '—'}</td>
-                            <td className="text-right tabular-nums text-ink-muted">
+                            <td className="text-end tabular-nums">{line.quantity.replace(/\.?0+$/, '')}</td>
+                            <td className="text-end tabular-nums">{formatMoney(line.unit_price_excl_tax, currency)}</td>
+                            <td className="text-end tabular-nums">{Number(line.discount_amount) > 0 ? `- ${formatMoney(line.discount_amount, currency)}` : '—'}</td>
+                            <td className="text-end tabular-nums text-ink-muted">
                                 {line.tax_unresolved ? t('orders.edit.toDefine') : `${Number(line.tax_rate)} %`}
                             </td>
-                            <td className="text-right font-medium tabular-nums text-ink">{formatMoney(line.total_incl_tax, currency)}</td>
+                            <td className="text-end font-medium tabular-nums text-ink">{formatMoney(line.total_incl_tax, currency)}</td>
                         </tr>
                     ))}
                 </tbody>
@@ -334,7 +329,7 @@ function CustomerPicker({
                     type="button"
                     disabled={disabled}
                     onClick={() => setOpen(true)}
-                    className="flex-1 rounded-field border border-line-strong px-3 py-2 text-left disabled:bg-raised"
+                    className="flex-1 rounded-field border border-line-strong px-3 py-2 text-start disabled:bg-raised"
                 >
                     {value || <span className="text-ink-faint">{t('common.counterCustomer')}</span>}
                 </button>
@@ -354,7 +349,7 @@ function CustomerPicker({
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder={t('orders.edit.customerSearch')}
-                className="w-full rounded-field border border-line-strong px-2 py-1 text-sm"
+                className="control-input w-full"
             />
             <ul className="mt-1 max-h-48 divide-y divide-line overflow-y-auto">
                 <li>
@@ -364,7 +359,7 @@ function CustomerPicker({
                             onPick(null);
                             setOpen(false);
                         }}
-                        className="block w-full px-1 py-1.5 text-left text-xs text-ink-muted hover:bg-raised"
+                        className="block w-full px-1 py-1.5 text-start text-xs text-ink-muted hover:bg-raised"
                     >
                         {t('orders.edit.counterCustomerNone')}
                     </button>
@@ -379,7 +374,7 @@ function CustomerPicker({
                                     onPick(row);
                                     setOpen(false);
                                 }}
-                                className="block w-full px-1 py-1.5 text-left hover:bg-raised"
+                                className="block w-full px-1 py-1.5 text-start hover:bg-raised"
                             >
                                 <span className="text-sm font-medium text-ink">{row.company_name || row.display_name}</span>
                                 <span className="block text-xs text-ink-faint">{[row.phone, row.email].filter(Boolean).join(' · ') || '—'}</span>

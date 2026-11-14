@@ -1,3 +1,4 @@
+import DatePicker from '@/components/ui/DatePicker';
 import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
 import { useI18n } from '@/i18n';
@@ -135,7 +136,7 @@ export default function FollowUpFormDialog({
                 <div className="grid gap-3 sm:grid-cols-3">
                     <label className="block">
                         <span className="mb-1 block text-xs font-medium text-ink-muted">{t('work.dueDate')}</span>
-                        <input type="date" value={form.data.due_date} onChange={(e) => form.setData('due_date', e.target.value)} className={fieldClass} />
+                        <DatePicker value={form.data.due_date} onChange={(value) => form.setData('due_date', value)} />
                         {errors.due_date && <span className="mt-1 block text-xs text-danger">{errors.due_date}</span>}
                     </label>
                     <label className="block">

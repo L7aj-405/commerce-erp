@@ -1,3 +1,4 @@
+import DatePicker from '@/components/ui/DatePicker';
 import FollowUpFormDialog from '@/components/followups/FollowUpFormDialog';
 import type { FollowUpContext } from '@/components/followups/types';
 import { Button } from '@/components/ui/Button';
@@ -41,7 +42,7 @@ export default function AttentionList({ items, context, owners, focusId }: { ite
 
     return (
         <>
-            <ul className="divide-y divide-line rounded-card border border-line bg-surface">
+            <ul className="divide-y divide-line surface-card">
                 {items.map((item) => (
                     <li key={item.id} className={`flex flex-col gap-3 p-4 lg:flex-row lg:items-start lg:justify-between ${focusId === item.id ? 'bg-sage/30' : ''}`}>
                         <div className="min-w-0 flex-1">
@@ -71,7 +72,7 @@ export default function AttentionList({ items, context, owners, focusId }: { ite
                             {item.can_assign && (
                                 <select aria-label={t('attention.reassign')} value="" disabled={busy === item.id}
                                     onChange={(e) => e.target.value && post(item, 'assign', { assigned_user_id: e.target.value === 'none' ? null : Number(e.target.value) })}
-                                    className="h-8 rounded-field border border-line-strong bg-surface px-2 text-xs text-ink">
+                                    className="control-select">
                                     <option value="">{t('attention.reassign')}</option>
                                     {item.assignee && <option value="none">{t('attention.unassign')}</option>}
                                     {owners.filter((owner) => owner.id !== item.assignee?.id && owner.subjects.includes(item.subject_type) && (item.store_id === null || owner.store_ids.includes(item.store_id)))
@@ -82,7 +83,7 @@ export default function AttentionList({ items, context, owners, focusId }: { ite
                             {item.can_act && (
                                 <>
                                     <select aria-label={t('attention.snooze')} value="" disabled={busy === item.id} onChange={(e) => e.target.value && snooze(item, e.target.value)}
-                                        className="h-8 rounded-field border border-line-strong bg-surface px-2 text-xs text-ink">
+                                        className="control-select">
                                         <option value="">{t('attention.snooze')}</option>
                                         <option value="later_today">{t('attention.snoozeLaterToday')}</option>
                                         <option value="tomorrow">{t('attention.snoozeTomorrow')}</option>
@@ -108,7 +109,7 @@ export default function AttentionList({ items, context, owners, focusId }: { ite
                     <Button type="button" onClick={() => dismissing && post(dismissing, 'dismiss', note.trim() ? { note: note.trim() } : {}, () => setDismissing(null))}>{t('attention.dismiss')}</Button></div>}>
                 <label className="block px-4 py-4 sm:px-6">
                     <span className="mb-1 block text-xs font-medium text-ink-muted">{t('attention.dismissNote')}</span>
-                    <textarea data-autofocus rows={2} maxLength={500} value={note} onChange={(e) => setNote(e.target.value)} className="w-full rounded-field border border-line-strong bg-surface px-3 py-2 text-sm" />
+                    <textarea data-autofocus rows={2} maxLength={500} value={note} onChange={(e) => setNote(e.target.value)} className="control-input w-full py-2" />
                 </label>
             </Dialog>
 
@@ -116,7 +117,7 @@ export default function AttentionList({ items, context, owners, focusId }: { ite
                 footer={<div className="flex justify-end gap-2"><Button type="button" variant="secondary" onClick={() => setSnoozingDate(null)}>{t('common.cancel')}</Button>
                     <Button type="button" disabled={!date} onClick={() => snoozingDate && post(snoozingDate, 'snooze', { preset: 'date', until_date: date }, () => setSnoozingDate(null))}>{t('attention.snooze')}</Button></div>}>
                 <label className="block px-4 py-4 sm:px-6">
-                    <input data-autofocus type="date" min={context.today} value={date} onChange={(e) => setDate(e.target.value)} className={`${fieldClass} w-full`} />
+                    <DatePicker min={context.today} value={date} onChange={(value) => setDate(value)} />
                 </label>
             </Dialog>
         </>

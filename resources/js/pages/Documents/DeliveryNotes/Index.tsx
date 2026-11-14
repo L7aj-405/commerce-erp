@@ -1,106 +1,189 @@
-import DocBadge from '@/components/ui/DocBadge';
 import SandboxDocumentBadge from '@/components/SandboxDocumentBadge';
+import { AdvancedFilterBar, ChoiceFilter, DateFilter, FilterSearch } from '@/components/ui/AdvancedFilterBar';
+import type { FilterChip } from '@/components/ui/AdvancedFilterBar';
+import { Button, ButtonLink } from '@/components/ui/Button';
+import DocBadge from '@/components/ui/DocBadge';
 import EmptyState from '@/components/ui/EmptyState';
 import PageHeader from '@/components/ui/PageHeader';
-import Pagination from '@/components/ui/Pagination';
-import SalesLayout from '@/layouts/SalesLayout';
+import { rowLink, TablePager, TableShell } from '@/components/ui/TableShell';
+import { useQueryFilters } from '@/hooks/useQueryFilters';
 import { useI18n } from '@/i18n';
+import SalesLayout from '@/layouts/SalesLayout';
+import type { SharedPageProps } from '@/types/app';
 import { formatDate } from '@/utils/format';
 import { deliveryNoteStatusTone } from '@/utils/labels';
-import { Head, Link, router } from '@inertiajs/react';
-import type { FormEvent } from 'react';
+import { Head, Link, usePage } from '@inertiajs/react';
 
-type Note = { id: number; sandbox_id?: number | null; delivery_note_number: string | null; delivery_date: string; recipient_name: string | null; recipient_company: string | null; status: string; store: { name: string }; sales_order: { id: number; order_number: string } };
+type Note = {
+    id: number;
+    sandbox_id?: number | null;
+    delivery_note_number: string | null;
+    delivery_date: string;
+    recipient_name: string | null;
+    recipient_company: string | null;
+    status: string;
+    store: { name: string };
+    sales_order: { id: number; order_number: string };
+};
 type PageLink = { url: string | null; label: string; active: boolean };
-type Props = { deliveryNotes: { data: Note[]; links: PageLink[] }; filters: Record<string, string | undefined> };
+type Filters = { search?: string; status?: string; delivery_date?: string };
+type Props = { deliveryNotes: { data: Note[]; links: PageLink[]; from?: number | null; to?: number | null; total?: number }; filters: Filters };
 
-const fieldClass = 'h-10 rounded-field border border-line-strong bg-surface px-3 text-sm text-ink outline-none transition-soft focus:border-primary';
+// Exactly the single-value params DeliveryNoteController@index validates.
+const FILTER_KEYS = ['search', 'status', 'delivery_date'] as const;
 
 export default function DeliveryNoteIndex({ deliveryNotes, filters }: Props) {
     const { t } = useI18n();
-    const statusLabel: Record<string, string> = { draft: t('deliveryNotes.draft'), issued: t('deliveryNotes.issued'), cancelled: t('deliveryNotes.cancelled') };
-    const submit = (event: FormEvent<HTMLFormElement>) => {
-        event.preventDefault();
-        router.get('/delivery-notes', Object.fromEntries(new FormData(event.currentTarget).entries()), { preserveState: true, replace: true });
-    };
+    const { tenant } = usePage<SharedPageProps>().props;
+    const canViewOrders = tenant.permissions.includes('sales_orders.view');
+    const f = useQueryFilters('/delivery-notes', filters, { keys: [...FILTER_KEYS] });
+
+    const statusOptions = [
+        { value: 'draft', label: t('deliveryNotes.draft') },
+        { value: 'issued', label: t('deliveryNotes.issued') },
+        { value: 'cancelled', label: t('deliveryNotes.cancelled') },
+    ];
+    const statusLabel = (value: string) => statusOptions.find((option) => option.value === value)?.label ?? value;
+
+    const chips: FilterChip[] = [];
+    if (filters.search) chips.push({ key: 'search', label: t('filters.search'), value: filters.search, onRemove: () => f.remove('search') });
+    if (filters.status) chips.push({ key: 'status', label: t('common.status'), value: statusLabel(filters.status), onRemove: () => f.remove('status') });
+    if (filters.delivery_date)
+        chips.push({ key: 'delivery_date', label: t('deliveryNotes.deliveryDate'), value: formatDate(filters.delivery_date), onRemove: () => f.remove('delivery_date') });
+
+    const number = (note: Note) => note.delivery_note_number ?? t('deliveryNotes.draftNumber').replace('{id}', String(note.id));
+    const recipient = (note: Note) => note.recipient_company ?? note.recipient_name ?? t('common.counterCustomer');
+    const orderRef = (note: Note) =>
+        canViewOrders ? (
+            <Link href={`/sales/orders/${note.sales_order.id}`} className="text-ink-muted underline-offset-2 hover:text-accent hover:underline">
+                <bdi>{note.sales_order.order_number}</bdi>
+            </Link>
+        ) : (
+            <bdi className="text-ink-muted">{note.sales_order.order_number}</bdi>
+        );
+
+    const filtered = f.activeCount > 0;
+    const resetAction = filtered ? (
+        <Button variant="secondary" onClick={f.reset}>
+            {t('filters.reset')}
+        </Button>
+    ) : undefined;
+    const emptyTitle = filtered ? t('filters.noMatch') : t('deliveryNotes.empty');
+    const emptyDescription = filtered ? t('filters.noMatchHelp') : t('deliveryNotes.emptyHelp');
 
     return (
         <SalesLayout>
             <Head title={t('deliveryNotes.title')} />
             <PageHeader title={t('deliveryNotes.title')} description={t('deliveryNotes.description')} />
 
-            <form onSubmit={submit} className="mb-6 grid gap-3 rounded-card border border-line bg-raised p-4 md:grid-cols-5">
-                <input name="search" defaultValue={filters.search ?? ''} placeholder={t('deliveryNotes.search')} className={`${fieldClass} md:col-span-2`} />
-                <input name="delivery_date" type="date" defaultValue={filters.delivery_date ?? ''} className={fieldClass} />
-                <select name="status" defaultValue={filters.status ?? ''} className={fieldClass}>
-                    <option value="">{t('common.allStatuses')}</option><option value="draft">{t('deliveryNotes.draft')}</option><option value="issued">{t('deliveryNotes.issued')}</option><option value="cancelled">{t('deliveryNotes.cancelled')}</option>
-                </select>
-                <button type="submit" className="inline-flex min-h-10 items-center justify-center rounded-field border border-line-strong bg-surface px-4 text-sm font-medium text-ink transition-soft hover:bg-raised">
-                    {t('deliveryNotes.filter')}
-                </button>
-            </form>
+            <div className="mb-4">
+                <AdvancedFilterBar
+                    search={<FilterSearch value={f.search} onChange={f.setSearch} loading={f.searching} label={t('common.search')} placeholder={t('deliveryNotes.search')} />}
+                    chips={chips}
+                    activeCount={f.activeCount}
+                    loading={f.loading && !f.searching}
+                    onReset={f.reset}
+                >
+                    <ChoiceFilter label={t('common.status')} options={statusOptions} value={filters.status} onChange={(value) => f.set('status', value)} />
+                    <DateFilter label={t('deliveryNotes.deliveryDate')} value={filters.delivery_date} onChange={(value) => f.set('delivery_date', value)} />
+                </AdvancedFilterBar>
+            </div>
 
-            {deliveryNotes.data.length === 0 ? (
-                <EmptyState title={t('deliveryNotes.empty')} description={t('deliveryNotes.emptyHelp')} />
-            ) : (
-                <>
-                    {/* Desktop/tablet: table */}
-                    <div className="hidden overflow-x-auto rounded-card border border-line bg-surface md:block">
-                        <table className="w-full text-start text-sm">
-                            <thead className="bg-raised text-[11px] uppercase tracking-wide text-ink-faint">
-                                <tr>
-                                    <th className="px-4 py-2.5">{t('deliveryNotes.number')}</th><th className="px-4 py-2.5">{t('deliveryNotes.deliveryDate')}</th><th className="px-4 py-2.5">{t('deliveryNotes.order')}</th><th className="px-4 py-2.5">{t('deliveryNotes.recipient')}</th><th className="px-4 py-2.5">{t('deliveryNotes.store')}</th><th className="px-4 py-2.5">{t('common.status')}</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {deliveryNotes.data.map((note) => (
-                                    <tr key={note.id} className="border-t border-line">
-                                        <td className="px-4 py-2.5 font-medium text-ink">
-                                            <Link href={`/delivery-notes/${note.id}`}><bdi>{note.delivery_note_number ?? t('deliveryNotes.draftNumber').replace('{id}', String(note.id))}</bdi></Link> <SandboxDocumentBadge sandboxId={note.sandbox_id} />
-                                        </td>
-                                        <td className="px-4 py-2.5 text-ink-muted">{formatDate(note.delivery_date)}</td>
-                                        <td className="px-4 py-2.5"><Link href={`/sales/orders/${note.sales_order.id}`}><bdi>{note.sales_order.order_number}</bdi></Link></td><td className="px-4 py-2.5 text-ink-muted">{note.recipient_company ?? note.recipient_name ?? t('common.counterCustomer')}</td>
-                                        <td className="px-4 py-2.5 text-ink-muted">{note.store.name}</td>
-                                        <td className="px-4 py-2.5"><DocBadge tone={deliveryNoteStatusTone(note.status)}>{statusLabel[note.status] ?? note.status}</DocBadge></td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-
-                    {/* Mobile: stacked cards */}
-                    <ul className="space-y-3 md:hidden">
-                        {deliveryNotes.data.map((note) => (
-                            <li key={note.id}>
-                                <Link href={`/delivery-notes/${note.id}`} className="block rounded-card border border-line bg-surface p-4">
-                                    <div className="flex items-start justify-between gap-3">
-                                        <div className="min-w-0">
-                                            <bdi className="block truncate text-sm font-semibold text-ink">{note.delivery_note_number ?? t('deliveryNotes.draftNumber').replace('{id}', String(note.id))}</bdi>
+            <TableShell
+                label={t('deliveryNotes.title')}
+                state={deliveryNotes.data.length === 0 ? 'empty' : 'ready'}
+                busy={f.loading}
+                emptyTitle={emptyTitle}
+                emptyDescription={emptyDescription}
+                emptyAction={resetAction}
+                className="hidden xl:block"
+                footer={
+                    deliveryNotes.data.length === 0 ? undefined : (
+                        <TablePager links={deliveryNotes.links} from={deliveryNotes.from} to={deliveryNotes.to} total={deliveryNotes.total} />
+                    )
+                }
+            >
+                <table className="erp-table min-w-[820px] text-sm">
+                    <thead>
+                        <tr>
+                            <th className="px-4 py-2.5">{t('deliveryNotes.number')}</th>
+                            <th className="px-4 py-2.5">{t('deliveryNotes.deliveryDate')}</th>
+                            <th className="px-4 py-2.5">{t('deliveryNotes.order')}</th>
+                            <th className="px-4 py-2.5">{t('deliveryNotes.recipient')}</th>
+                            <th className="px-4 py-2.5">{t('deliveryNotes.store')}</th>
+                            <th className="px-4 py-2.5">{t('common.status')}</th>
+                            <th className="px-4 py-2.5">
+                                <span className="sr-only">{t('common.actions')}</span>
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {deliveryNotes.data.map((note) => {
+                            const row = rowLink(`/delivery-notes/${note.id}`);
+                            return (
+                                <tr key={note.id} onClick={row.onClick} className={row.className}>
+                                    <td className="px-4 py-3">
+                                        <span className="inline-flex flex-wrap items-center gap-1.5">
+                                            <Link href={`/delivery-notes/${note.id}`} className="font-semibold text-ink hover:text-accent hover:underline">
+                                                <bdi>{number(note)}</bdi>
+                                            </Link>
                                             <SandboxDocumentBadge sandboxId={note.sandbox_id} />
-                                            <p className="text-[13px] text-ink-muted">{formatDate(note.delivery_date)}</p>
-                                        </div>
-                                        <DocBadge tone={deliveryNoteStatusTone(note.status)}>{statusLabel[note.status] ?? note.status}</DocBadge>
+                                        </span>
+                                    </td>
+                                    <td className="px-4 py-3 whitespace-nowrap text-ink-muted tabular-nums">{formatDate(note.delivery_date)}</td>
+                                    <td className="px-4 py-3 whitespace-nowrap">{orderRef(note)}</td>
+                                    <td className="max-w-72 truncate px-4 py-3 font-medium text-ink">{recipient(note)}</td>
+                                    <td className="px-4 py-3 text-ink-muted">{note.store.name}</td>
+                                    <td className="px-4 py-3">
+                                        <DocBadge tone={deliveryNoteStatusTone(note.status)}>{statusLabel(note.status)}</DocBadge>
+                                    </td>
+                                    <td className="px-4 py-3 text-end">
+                                        <ButtonLink href={`/delivery-notes/${note.id}`} size="sm" variant="outline">
+                                            {t('common.open')}
+                                            <span className="sr-only"> {number(note)}</span>
+                                        </ButtonLink>
+                                    </td>
+                                </tr>
+                            );
+                        })}
+                    </tbody>
+                </table>
+            </TableShell>
+
+            {/* Below xl: cards (the filter bar above is shared) */}
+            <div className="xl:hidden" aria-busy={f.loading || undefined}>
+                {deliveryNotes.data.length === 0 ? (
+                    <EmptyState compact title={emptyTitle} description={emptyDescription} actions={resetAction} />
+                ) : (
+                    <ul className={`grid gap-3 transition-opacity sm:grid-cols-2 lg:grid-cols-3 ${f.loading ? 'opacity-55' : ''}`}>
+                        {deliveryNotes.data.map((note) => (
+                            <li key={note.id} className="surface-card flex flex-col p-4">
+                                <div className="flex items-start justify-between gap-3">
+                                    <div className="min-w-0">
+                                        <Link href={`/delivery-notes/${note.id}`} className="block truncate text-base font-semibold text-ink hover:underline">
+                                            <bdi>{number(note)}</bdi>
+                                        </Link>
+                                        <p className="text-[13px] text-ink-muted tabular-nums">{formatDate(note.delivery_date)}</p>
                                     </div>
-                                    <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1.5 text-[13px]">
-                                        <div className="min-w-0">
-                                            <dt className="text-ink-faint">{t('deliveryNotes.recipient')}</dt><dd className="truncate text-ink-muted">{note.recipient_company ?? note.recipient_name ?? t('common.counterCustomer')}</dd>
-                                        </div>
-                                        <div className="min-w-0">
-                                            <dt className="text-ink-faint">{t('deliveryNotes.order')}</dt><dd className="truncate text-ink-muted"><bdi>{note.sales_order.order_number}</bdi></dd>
-                                        </div>
-                                        <div className="min-w-0">
-                                            <dt className="text-ink-faint">{t('deliveryNotes.store')}</dt>
-                                            <dd className="truncate text-ink-muted">{note.store.name}</dd>
-                                        </div>
-                                    </dl>
-                                </Link>
+                                    <DocBadge tone={deliveryNoteStatusTone(note.status)}>{statusLabel(note.status)}</DocBadge>
+                                </div>
+                                <p className="mt-2 truncate text-sm font-medium text-ink">{recipient(note)}</p>
+                                <p className="mt-1 text-[13px] text-ink-muted">
+                                    {t('deliveryNotes.order')} : {orderRef(note)} · {note.store.name}
+                                </p>
+                                <SandboxDocumentBadge sandboxId={note.sandbox_id} />
+                                <ButtonLink href={`/delivery-notes/${note.id}`} size="sm" variant="outline" className="mt-3 w-full">
+                                    {t('common.open')}
+                                    <span className="sr-only"> {number(note)}</span>
+                                </ButtonLink>
                             </li>
                         ))}
                     </ul>
-                </>
-            )}
-
-            <Pagination links={deliveryNotes.links} />
+                )}
+                <div className="mt-4">
+                    <TablePager links={deliveryNotes.links} from={deliveryNotes.from} to={deliveryNotes.to} total={deliveryNotes.total} />
+                </div>
+            </div>
         </SalesLayout>
     );
 }

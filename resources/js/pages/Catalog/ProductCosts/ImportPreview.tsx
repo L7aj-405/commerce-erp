@@ -1,6 +1,6 @@
 import { Button, ButtonLink } from "@/components/ui/Button";
 import PageHeader from "@/components/ui/PageHeader";
-import Pagination from "@/components/ui/Pagination";
+import { TablePager } from "@/components/ui/TableShell";
 import { useI18n } from "@/i18n";
 import CatalogLayout from "@/layouts/CatalogLayout";
 import { formatMoney } from "@/utils/format";
@@ -36,6 +36,9 @@ type Props = {
     rows: {
         data: Row[];
         links: { url: string | null; label: string; active: boolean }[];
+        from?: number | null;
+        to?: number | null;
+        total?: number;
     };
 };
 
@@ -111,7 +114,7 @@ export default function ProductCostImportPreview({
                     value={productImport.skipped_count}
                 />
             </section>
-            <section className="mb-6 flex flex-col gap-3 rounded-card border border-line bg-surface p-5 shadow-soft sm:flex-row sm:items-center sm:justify-between">
+            <section className="mb-6 flex flex-col gap-3 surface-card p-5 shadow-soft sm:flex-row sm:items-center sm:justify-between">
                 <div>
                     <p className="font-semibold text-ink">
                         {completed
@@ -147,9 +150,9 @@ export default function ProductCostImportPreview({
                     </Button>
                 )}
             </section>
-            <div className="overflow-x-auto rounded-card border border-line bg-surface shadow-soft">
-                <table className="w-full min-w-[850px] text-start text-sm">
-                    <thead className="bg-raised text-[11px] uppercase tracking-wide text-ink-faint">
+            <div className="overflow-x-auto surface-card">
+                <table className="erp-table w-full min-w-[850px] text-start text-sm">
+                    <thead className="bg-raised text-[13px] text-ink-muted font-medium">
                         <tr>
                             <th className="px-4 py-3">
                                 {t("imports.products.row")}
@@ -213,15 +216,15 @@ export default function ProductCostImportPreview({
                     </tbody>
                 </table>
             </div>
-            <Pagination links={rows.links} />
+            <TablePager links={rows.links} from={rows.from} to={rows.to} total={rows.total} />
         </CatalogLayout>
     );
 }
 
 function Count({ label, value }: { label: string; value: number }) {
     return (
-        <div className="rounded-card border border-line bg-surface p-4 shadow-soft">
-            <p className="text-xs uppercase tracking-wide text-ink-faint">
+        <div className="surface-card p-4 shadow-soft">
+            <p className="text-[13px] text-ink-muted font-medium">
                 {label}
             </p>
             <p className="mt-1 text-xl font-semibold tabular-nums">

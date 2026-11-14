@@ -1,3 +1,4 @@
+import { Sheet } from '@/components/ui/Sheet';
 import { Button, ButtonLink } from '@/components/ui/Button';
 import EmptyState from '@/components/ui/EmptyState';
 import PageHeader from '@/components/ui/PageHeader';
@@ -6,6 +7,7 @@ import StatusBadge from '@/components/ui/StatusBadge';
 import { useI18n } from '@/i18n';
 import { formatEditableNumber, formatQuantity } from '@/utils/format';
 import { Head, router, useForm, usePage } from '@inertiajs/react';
+import { useState } from 'react';
 import type { FormEvent } from 'react';
 
 function ReplenishmentForm({ warehouse }: { warehouse: { id: number; replenishment: { auto_replenish: boolean; default_minimum_quantity: string } } }) {
@@ -23,7 +25,7 @@ function ReplenishmentForm({ warehouse }: { warehouse: { id: number; replenishme
             }}
             className="mt-4 rounded-field border border-line bg-raised p-4 text-sm"
         >
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-faint">{t('inventory.warehouses.autoReplenishment')}</p>
+            <p className="text-[13px] font-medium text-ink-muted">{t('inventory.warehouses.autoReplenishment')}</p>
             <label className="mt-2.5 flex items-center gap-2 text-ink">
                 <input
                     type="checkbox"
@@ -82,15 +84,42 @@ function LocationForm({ warehouse, stores }: { warehouse: Warehouse; stores: Sto
         allow_direct_sales: warehouse.allow_direct_sales,
     });
 
+    const [open, setOpen] = useState(false);
+    const formId = `warehouse-edit-${warehouse.id}`;
+    const close = () => {
+        setOpen(false);
+        form.reset();
+        form.clearErrors();
+    };
+
     return (
-        <details className="mt-4 rounded-field border border-line bg-raised p-4 text-sm">
-            <summary className="cursor-pointer select-none font-medium text-ink">{t('inventory.warehouses.edit')}</summary>
+        <>
+            <Button type="button" variant="secondary" size="sm" className="mt-4" onClick={() => setOpen(true)}>
+                {t('inventory.warehouses.edit')}
+            </Button>
+            <Sheet
+                open={open}
+                onClose={close}
+                title={t('inventory.warehouses.edit')}
+                description={`${warehouse.name} · ${warehouse.code}`}
+                footer={
+                    <div className="flex justify-end gap-2">
+                        <Button type="button" variant="secondary" onClick={close}>
+                            {t('common.cancel')}
+                        </Button>
+                        <Button type="submit" form={formId} loading={form.processing} disabled={!form.isDirty}>
+                            {t('common.save')}
+                        </Button>
+                    </div>
+                }
+            >
             <form
+                id={formId}
                 onSubmit={(e) => {
                     e.preventDefault();
-                    form.patch(`/inventory/warehouses/${warehouse.id}`, { preserveScroll: true });
+                    form.patch(`/inventory/warehouses/${warehouse.id}`, { preserveScroll: true, onSuccess: () => setOpen(false) });
                 }}
-                className="mt-3 grid gap-3"
+                className="grid gap-4 px-4 py-5 text-sm sm:px-6"
             >
                 <label className="text-[13px] font-medium text-ink">
                     {t('inventory.warehouses.name')}
@@ -107,7 +136,7 @@ function LocationForm({ warehouse, stores }: { warehouse: Warehouse; stores: Sto
                     <select
                         value={form.data.store_id ?? ''}
                         onChange={(e) => form.setData('store_id', e.target.value ? Number(e.target.value) : null)}
-                        className="control-input mt-1 w-full"
+                        className="control-select mt-1 w-full"
                     >
                         <option value="">{t('inventory.warehouses.storageOnly')}</option>
                         {stores.map((store) => (
@@ -130,13 +159,9 @@ function LocationForm({ warehouse, stores }: { warehouse: Warehouse; stores: Sto
                         </span>
                     </label>
                 )}
-                <div>
-                    <Button type="submit" variant="secondary" size="sm" loading={form.processing} disabled={!form.isDirty}>
-                        {t('common.save')}
-                    </Button>
-                </div>
             </form>
-        </details>
+            </Sheet>
+        </>
     );
 }
 type SharedProps = { flash?: { warehouseCreatedId?: number | null } };
@@ -186,7 +211,7 @@ export default function WarehouseIndex({ warehouses, stores, can }: Props) {
                             <div className="flex items-start justify-between gap-3">
                                 <div>
                                     <h2 className="text-base font-semibold text-ink">{warehouse.name}</h2>
-                                    <p className="mt-0.5 text-[12px] font-medium uppercase tracking-wide text-ink-faint">{warehouse.code}</p>
+                                    <p className="mt-0.5 text-[13px] font-medium text-ink-muted">{warehouse.code}</p>
                                     <p className="mt-1 text-[12px] text-ink-muted">
                                         {warehouse.store_id !== null
                                             ? t('inventory.warehouses.kindStore').replace('{store}', storeName(warehouse.store_id))
@@ -199,11 +224,11 @@ export default function WarehouseIndex({ warehouses, stores, can }: Props) {
                             <p className="mt-3.5 min-h-10 text-[13px] text-ink-muted">{warehouse.description ?? t('inventory.warehouses.noDescription')}</p>
                             <dl className="mt-4 grid grid-cols-2 gap-3 rounded-field bg-raised p-4 text-sm">
                                 <div>
-                                    <dt className="text-[11px] uppercase tracking-wide text-ink-faint">{t('inventory.transfers.products')}</dt>
+                                    <dt className="text-[13px] text-ink-muted font-medium">{t('inventory.transfers.products')}</dt>
                                     <dd className="mt-1 text-lg font-semibold text-ink">{warehouse.product_count}</dd>
                                 </div>
                                 <div>
-                                    <dt className="text-[11px] uppercase tracking-wide text-ink-faint">{t('inventory.warehouses.stockUnits')}</dt>
+                                    <dt className="text-[13px] text-ink-muted font-medium">{t('inventory.warehouses.stockUnits')}</dt>
                                     <dd className="mt-1 text-lg font-semibold text-ink">{formatQuantity(warehouse.unit_count)}</dd>
                                 </div>
                             </dl>
@@ -236,7 +261,7 @@ export default function WarehouseIndex({ warehouses, stores, can }: Props) {
             )}
 
             {can.create && (
-                <section id="warehouse-create" className="mt-8 rounded-card border border-line bg-surface p-6">
+                <section id="warehouse-create" className="mt-8 surface-card p-6">
                     <h2 className="text-base font-semibold text-ink">{t('inventory.warehouses.add')}</h2>
                     <p className="mt-1 text-[13px] text-ink-muted">{t('inventory.warehouses.addHelp')}</p>
                     <form onSubmit={create} className="mt-5 grid gap-4 md:grid-cols-3">
@@ -255,7 +280,7 @@ export default function WarehouseIndex({ warehouses, stores, can }: Props) {
                             <select
                                 value={createForm.data.store_id ?? ''}
                                 onChange={event => createForm.setData('store_id', event.target.value ? Number(event.target.value) : null)}
-                                className="control-input mt-1.5 w-full"
+                                className="control-select mt-1.5 w-full"
                             >
                                 <option value="">{t('inventory.warehouses.storageOnly')}</option>
                                 {stores.map(store => <option key={store.id} value={store.id}>{store.name} · {store.code}</option>)}

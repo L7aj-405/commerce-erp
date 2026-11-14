@@ -179,7 +179,7 @@ export default function CreateExchange({
                     </p>
                 )}
 
-                <section className="rounded-card border border-line bg-surface p-5">
+                <section className="surface-card p-5">
                     <h2 className="font-semibold text-ink">
                         1 — {t("returns.returnedItems")}
                     </h2>
@@ -227,7 +227,7 @@ export default function CreateExchange({
                                             })
                                         }
                                         inputMode="decimal"
-                                        className="mt-1 w-full rounded-field border border-line-strong px-2 py-2"
+                                        className="control-input mt-1 w-full"
                                     />
                                 </label>
                             </div>
@@ -235,7 +235,7 @@ export default function CreateExchange({
                     </div>
                 </section>
 
-                <section className="rounded-card border border-line bg-surface p-5">
+                <section className="surface-card p-5">
                     <h2 className="font-semibold text-ink">
                         2 — {t("exchanges.newItems")}
                     </h2>
@@ -244,7 +244,7 @@ export default function CreateExchange({
                         value={query}
                         onChange={(e) => setQuery(e.target.value)}
                         placeholder={t("exchanges.searchPlaceholder")}
-                        className="mt-3 w-full rounded-field border border-line-strong px-3 py-2"
+                        className="control-input mt-3 w-full"
                     />
                     <div className="mt-2 divide-y divide-line rounded-field border border-line">
                         {searching && (
@@ -338,7 +338,7 @@ export default function CreateExchange({
                                             ),
                                         )
                                     }
-                                    className="rounded-field border border-line-strong px-2 py-2"
+                                    className="control-input"
                                 />
                                 <button
                                     type="button"
@@ -358,7 +358,7 @@ export default function CreateExchange({
                     </div>
                 </section>
 
-                <section className="rounded-card border border-line bg-surface p-5">
+                <section className="surface-card p-5">
                     <h2 className="font-semibold text-ink">
                         3 — {t("exchanges.summary")}
                     </h2>
@@ -406,7 +406,7 @@ export default function CreateExchange({
                                 onChange={(e) =>
                                     form.setData("reason", e.target.value)
                                 }
-                                className="mt-1 w-full rounded-field border border-line-strong px-3 py-2"
+                                className="control-input mt-1 w-full"
                             />
                         </label>
                         <label className="text-sm text-ink-muted">
@@ -416,7 +416,7 @@ export default function CreateExchange({
                                 onChange={(e) =>
                                     form.setData("disposition", e.target.value)
                                 }
-                                className="mt-1 w-full rounded-field border border-line-strong px-3 py-2"
+                                className="control-select mt-1 w-full"
                             >
                                 <option value="restock">
                                     {t("exchanges.restock")}
@@ -452,7 +452,7 @@ export default function CreateExchange({
                                         )
                                     }
                                     placeholder={t("exchanges.reasonRequired")}
-                                    className="mt-2 w-full rounded-field border border-line-strong px-3 py-2"
+                                    className="control-input mt-2 w-full"
                                 />
                             )}
                         </div>

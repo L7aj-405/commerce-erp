@@ -1,10 +1,15 @@
+import { AdvancedFilterBar, FilterSearch } from "@/components/ui/AdvancedFilterBar";
+import type { FilterChip } from "@/components/ui/AdvancedFilterBar";
+import { Button } from "@/components/ui/Button";
+import EmptyState from "@/components/ui/EmptyState";
 import PageHeader from "@/components/ui/PageHeader";
-import Pagination from "@/components/ui/Pagination";
-import SearchInput from "@/components/ui/SearchInput";
+import StatusBadge from "@/components/ui/StatusBadge";
+import { TablePager, TableShell } from "@/components/ui/TableShell";
+import { useQueryFilters } from "@/hooks/useQueryFilters";
 import { useI18n } from "@/i18n";
 import ProcurementLayout from "@/layouts/ProcurementLayout";
 import { formatDate, formatQuantity } from "@/utils/format";
-import { Head, Link, router, useForm } from "@inertiajs/react";
+import { Head, Link, useForm } from "@inertiajs/react";
 import { useEffect, useState } from "react";
 
 type Row = {
@@ -23,7 +28,7 @@ type Row = {
 };
 type LinkData = { url: string | null; label: string; active: boolean };
 type Props = {
-    articles: { data: Row[]; links: LinkData[] };
+    articles: { data: Row[]; links: LinkData[]; from?: number | null; to?: number | null; total?: number };
     filters: { search?: string; status: string };
     unresolvedCount: number;
     can: { manage: boolean };
@@ -82,14 +87,16 @@ function ResolveForm({
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder={t("outOfStock.searchCatalog")}
-                className="h-9 min-w-[220px] rounded-lg border border-slate-300 px-2 text-xs"
+                aria-label={t("outOfStock.searchCatalog")}
+                className="control-input control-compact min-w-[220px] flex-1"
             />
             <select
                 value={form.data.product_variant_id}
                 onChange={(e) =>
                     form.setData("product_variant_id", Number(e.target.value))
                 }
-                className="h-9 rounded-lg border border-slate-300 px-2 text-xs"
+                aria-label={t("outOfStock.linkToItem")}
+                className="control-select control-compact min-w-[200px] flex-1"
             >
                 <option value={0}>{t("common.select")}</option>
                 {options.map((o) => (
@@ -100,20 +107,17 @@ function ResolveForm({
                     </option>
                 ))}
             </select>
-            <button
+            <Button
                 type="submit"
-                disabled={!form.data.product_variant_id || form.processing}
-                className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+                size="sm"
+                disabled={!form.data.product_variant_id}
+                loading={form.processing}
             >
                 {t("outOfStock.linkToItem")}
-            </button>
-            <button
-                type="button"
-                onClick={onDone}
-                className="text-xs text-slate-500 hover:underline"
-            >
+            </Button>
+            <Button type="button" size="sm" variant="ghost" onClick={onDone}>
                 {t("common.cancel")}
-            </button>
+            </Button>
         </form>
     );
 }
@@ -125,33 +129,63 @@ export default function OutOfStockArticlesIndex({
     can,
 }: Props) {
     const { t } = useI18n();
-    const [search, setSearch] = useState(filters.search ?? "");
-    const [searching, setSearching] = useState(false);
     const [resolving, setResolving] = useState<number | null>(null);
+    // OutOfStockArticleController@index validates `search` and `status`
+    // (unresolved|resolved|all); the server defaults to `unresolved`.
+    const f = useQueryFilters("/procurement/out-of-stock-articles", filters, {
+        keys: ["search", "status"],
+    });
+    const tabLabel = (tab: string) =>
+        t(`outOfStock.tab.${tab}` as Parameters<typeof t>[0]);
 
-    const visit = (next: Record<string, string | undefined>) =>
-        router.get("/procurement/out-of-stock-articles", next, {
-            preserveState: true,
-            preserveScroll: true,
-            replace: true,
-            onStart: () => setSearching(true),
-            onFinish: () => setSearching(false),
+    const chips: FilterChip[] = [];
+    if (filters.search) {
+        chips.push({
+            key: "search",
+            label: t("filters.search"),
+            value: filters.search,
+            onRemove: () => f.remove("search"),
         });
-
-    useEffect(() => {
-        if (search === (filters.search ?? "")) return;
-        const timer = window.setTimeout(
-            () =>
-                visit({
-                    search: search || undefined,
-                    status: filters.status,
-                    page: undefined,
-                }),
-            280,
+    }
+    if (filters.status !== "unresolved") {
+        chips.push({
+            key: "status",
+            label: t("common.status"),
+            value: tabLabel(filters.status),
+            onRemove: () => f.remove("status"),
+        });
+    }
+    const filtered = chips.length > 0;
+    const emptyTitle = filtered ? t("filters.noMatch") : t("outOfStock.empty");
+    const emptyDescription = filtered ? t("filters.noMatchHelp") : undefined;
+    const emptyAction = filtered ? (
+        <Button variant="secondary" onClick={f.reset}>
+            {t("filters.reset")}
+        </Button>
+    ) : undefined;
+    const pager = (
+        <TablePager
+            links={articles.links}
+            from={articles.from}
+            to={articles.to}
+            total={articles.total}
+        />
+    );
+    const statusPill = (row: Row) =>
+        row.status === "resolved" ? (
+            <StatusBadge status="completed">{t("outOfStock.resolved")}</StatusBadge>
+        ) : (
+            <StatusBadge status="pending">{t("outOfStock.toProcess")}</StatusBadge>
         );
-        return () => window.clearTimeout(timer);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [search]);
+    const resolution = (row: Row) => (
+        <>
+            → {row.resolved_article} · {t("finance.monthEnd.by")}{" "}
+            {row.resolved_by ?? "—"}
+            {row.resolved_at
+                ? ` ${t("outOfStock.onDate")} ${formatDate(row.resolved_at)}`
+                : ""}
+        </>
+    );
 
     return (
         <ProcurementLayout>
@@ -164,214 +198,150 @@ export default function OutOfStockArticlesIndex({
                 )}
             />
 
-            <div className="mb-6 flex flex-wrap items-center gap-2">
-                <div className="inline-flex rounded-lg border border-slate-300 bg-white p-1">
-                    {TABS.map((tab) => (
-                        <button
-                            key={tab}
-                            onClick={() =>
-                                visit({
-                                    search: filters.search,
-                                    status: tab,
-                                    page: undefined,
-                                })
-                            }
-                            className={`rounded-md px-3 py-1.5 text-sm font-medium ${
-                                filters.status === tab
-                                    ? "bg-slate-900 text-white"
-                                    : "text-slate-600 hover:bg-slate-50"
-                            }`}
-                        >
-                            {t(
-                                `outOfStock.tab.${tab}` as Parameters<
-                                    typeof t
-                                >[0],
-                            )}
-                        </button>
-                    ))}
-                </div>
-                <SearchInput
-                    value={search}
-                    onChange={setSearch}
-                    searching={searching}
-                    placeholder={t("outOfStock.search")}
-                />
+            <div className="mb-4">
+                <AdvancedFilterBar
+                    label={t("outOfStock.title")}
+                    search={
+                        <FilterSearch
+                            value={f.search}
+                            onChange={f.setSearch}
+                            loading={f.searching}
+                            label={t("common.search")}
+                            placeholder={t("outOfStock.search")}
+                        />
+                    }
+                    chips={chips}
+                    activeCount={chips.length}
+                    loading={f.loading && !f.searching}
+                    onReset={f.reset}
+                >
+                    <div
+                        role="group"
+                        aria-label={t("common.status")}
+                        className="inline-flex h-10 items-center gap-0.5 rounded-field border border-line-strong bg-surface p-0.5"
+                    >
+                        {TABS.map((tab) => {
+                            const active = filters.status === tab;
+                            return (
+                                <button
+                                    key={tab}
+                                    type="button"
+                                    aria-pressed={active}
+                                    onClick={() =>
+                                        tab === "unresolved"
+                                            ? f.remove("status")
+                                            : f.set("status", tab)
+                                    }
+                                    className={`h-full rounded-[calc(var(--radius-field)-3px)] px-3 text-sm font-medium transition-soft focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary ${
+                                        active
+                                            ? "bg-primary text-primary-fg"
+                                            : "text-ink-muted hover:bg-sage hover:text-ink"
+                                    }`}
+                                >
+                                    {tabLabel(tab)}
+                                </button>
+                            );
+                        })}
+                    </div>
+                </AdvancedFilterBar>
             </div>
 
+            <TableShell
+                label={t("outOfStock.title")}
+                state={articles.data.length === 0 ? "empty" : "ready"}
+                busy={f.loading}
+                emptyTitle={emptyTitle}
+                emptyDescription={emptyDescription}
+                emptyAction={emptyAction}
+                className="hidden md:block"
+                footer={articles.data.length === 0 ? undefined : pager}
+            >
+                <table className="erp-table min-w-[900px] text-sm">
+                    <thead>
+                        <tr>
+                            <th className="px-4 py-3">{t("outOfStock.requestedItem")}</th>
+                            <th className="num px-4 py-3">{t("common.quantityShort")}</th>
+                            <th className="px-4 py-3">{t("orders.show.order")}</th>
+                            <th className="px-4 py-3">{t("common.customer")}</th>
+                            <th className="px-4 py-3">{t("outOfStock.agent")}</th>
+                            <th className="px-4 py-3">{t("common.date")}</th>
+                            <th className="px-4 py-3">{t("common.status")}</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {articles.data.map((row) => (
+                            <tr key={row.id}>
+                                <td className="px-4 py-3 font-medium text-ink">{row.description}</td>
+                                <td className="num px-4 py-3">{formatQuantity(row.requested_quantity)}</td>
+                                <td className="px-4 py-3">
+                                    {row.sales_order ? (
+                                        <Link
+                                            href={`/sales/orders/${row.sales_order.id}`}
+                                            className="font-medium text-ink hover:text-accent hover:underline"
+                                        >
+                                            <bdi>{row.sales_order.order_number}</bdi>
+                                        </Link>
+                                    ) : (
+                                        "—"
+                                    )}
+                                </td>
+                                <td className="px-4 py-3 text-ink-muted">{row.customer ?? "—"}</td>
+                                <td className="px-4 py-3 text-ink-muted">{row.requested_by ?? "—"}</td>
+                                <td className="px-4 py-3 whitespace-nowrap text-ink-muted tabular-nums">
+                                    {row.created_at ? formatDate(row.created_at) : "—"}
+                                </td>
+                                <td className="px-4 py-3">
+                                    {row.status === "resolved" ? (
+                                        <div>
+                                            {statusPill(row)}
+                                            <p className="mt-1 text-xs text-ink-muted">{resolution(row)}</p>
+                                        </div>
+                                    ) : resolving === row.id ? (
+                                        <ResolveForm articleId={row.id} onDone={() => setResolving(null)} />
+                                    ) : (
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            {statusPill(row)}
+                                            {can.manage && (
+                                                <Button type="button" size="sm" variant="secondary" onClick={() => setResolving(row.id)}>
+                                                    {t("outOfStock.linkToItem")}
+                                                </Button>
+                                            )}
+                                        </div>
+                                    )}
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </TableShell>
+
+            {/* Mobile: stacked cards */}
             {articles.data.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-10 text-center text-sm text-slate-500">
-                    {t("outOfStock.empty")}
+                <div className="md:hidden">
+                    <EmptyState compact title={emptyTitle} description={emptyDescription} actions={emptyAction} />
                 </div>
             ) : (
-                <>
-                    {/* Desktop/tablet: table */}
-                    <div className="hidden overflow-x-auto rounded-xl border border-slate-200 bg-white md:block">
-                        <table className="w-full min-w-[900px] text-start text-sm">
-                            <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-                                <tr>
-                                    <th className="px-4 py-3 font-medium">
-                                        {t("outOfStock.requestedItem")}
-                                    </th>
-                                    <th className="px-4 py-3 text-end font-medium">
-                                        {t("common.quantityShort")}
-                                    </th>
-                                    <th className="px-4 py-3 font-medium">
-                                        {t("orders.show.order")}
-                                    </th>
-                                    <th className="px-4 py-3 font-medium">
-                                        {t("common.customer")}
-                                    </th>
-                                    <th className="px-4 py-3 font-medium">
-                                        {t("outOfStock.agent")}
-                                    </th>
-                                    <th className="px-4 py-3 font-medium">
-                                        {t("common.date")}
-                                    </th>
-                                    <th className="px-4 py-3 font-medium">
-                                        {t("common.status")}
-                                    </th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100">
-                                {articles.data.map((row) => (
-                                    <tr key={row.id}>
-                                        <td className="px-4 py-3 text-slate-900">
-                                            {row.description}
-                                        </td>
-                                        <td className="px-4 py-3 text-end tabular-nums">
-                                            {formatQuantity(
-                                                row.requested_quantity,
-                                            )}
-                                        </td>
-                                        <td className="px-4 py-3">
-                                            {row.sales_order ? (
-                                                <Link
-                                                    href={`/sales/orders/${row.sales_order.id}`}
-                                                    className="text-slate-900 underline"
-                                                >
-                                                    {
-                                                        row.sales_order
-                                                            .order_number
-                                                    }
-                                                </Link>
-                                            ) : (
-                                                "—"
-                                            )}
-                                        </td>
-                                        <td className="px-4 py-3 text-slate-600">
-                                            {row.customer ?? "—"}
-                                        </td>
-                                        <td className="px-4 py-3 text-slate-600">
-                                            {row.requested_by ?? "—"}
-                                        </td>
-                                        <td className="px-4 py-3 text-slate-600">
-                                            {row.created_at
-                                                ? formatDate(row.created_at)
-                                                : "—"}
-                                        </td>
-                                        <td className="px-4 py-3">
-                                            {row.status === "resolved" ? (
-                                                <div>
-                                                    <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">
-                                                        {t(
-                                                            "outOfStock.resolved",
-                                                        )}
-                                                    </span>
-                                                    <p className="mt-1 text-xs text-slate-500">
-                                                        → {row.resolved_article}{" "}
-                                                        ·{" "}
-                                                        {t(
-                                                            "finance.monthEnd.by",
-                                                        )}{" "}
-                                                        {row.resolved_by ?? "—"}
-                                                        {row.resolved_at
-                                                            ? ` ${t("outOfStock.onDate")} ${formatDate(row.resolved_at)}`
-                                                            : ""}
-                                                    </p>
-                                                </div>
-                                            ) : resolving === row.id ? (
-                                                <ResolveForm
-                                                    articleId={row.id}
-                                                    onDone={() =>
-                                                        setResolving(null)
-                                                    }
-                                                />
-                                            ) : (
-                                                <div className="flex items-center gap-2">
-                                                    <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700">
-                                                        {t(
-                                                            "outOfStock.toProcess",
-                                                        )}
-                                                    </span>
-                                                    {can.manage && (
-                                                        <button
-                                                            onClick={() =>
-                                                                setResolving(
-                                                                    row.id,
-                                                                )
-                                                            }
-                                                            className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-900 hover:bg-slate-50"
-                                                        >
-                                                            {t(
-                                                                "outOfStock.linkToItem",
-                                                            )}
-                                                        </button>
-                                                    )}
-                                                </div>
-                                            )}
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-
-                    {/* Mobile: stacked cards */}
-                    <ul className="space-y-3 md:hidden">
+                <div className="space-y-3 md:hidden" aria-busy={f.loading || undefined}>
+                    <ul className={`space-y-3 transition-opacity ${f.loading ? "opacity-55" : ""}`}>
                         {articles.data.map((row) => (
-                            <li
-                                key={row.id}
-                                className="rounded-xl border border-slate-200 bg-white p-4"
-                            >
+                            <li key={row.id} className="surface-card p-4">
                                 <div className="flex items-start justify-between gap-3">
                                     <div className="min-w-0">
-                                        <p className="truncate text-sm font-semibold text-slate-900">
-                                            {row.description}
-                                        </p>
-                                        <p className="text-[13px] text-slate-500">
+                                        <p className="truncate text-sm font-semibold text-ink">{row.description}</p>
+                                        <p className="text-[13px] text-ink-muted">
                                             {t("common.quantityShort")}{" "}
-                                            <span className="tabular-nums">
-                                                {formatQuantity(
-                                                    row.requested_quantity,
-                                                )}
-                                            </span>
+                                            <span className="tabular-nums">{formatQuantity(row.requested_quantity)}</span>
                                         </p>
                                     </div>
-                                    {row.status === "resolved" ? (
-                                        <span className="shrink-0 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">
-                                            {t("outOfStock.resolved")}
-                                        </span>
-                                    ) : (
-                                        <span className="shrink-0 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700">
-                                            {t("outOfStock.toProcess")}
-                                        </span>
-                                    )}
+                                    <span className="shrink-0">{statusPill(row)}</span>
                                 </div>
                                 <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1.5 text-[13px]">
                                     <div className="min-w-0">
-                                        <dt className="text-slate-400">
-                                            {t("orders.show.order")}
-                                        </dt>
+                                        <dt className="text-ink-faint">{t("orders.show.order")}</dt>
                                         <dd className="truncate">
                                             {row.sales_order ? (
-                                                <Link
-                                                    href={`/sales/orders/${row.sales_order.id}`}
-                                                    className="text-slate-900 underline"
-                                                >
-                                                    {
-                                                        row.sales_order
-                                                            .order_number
-                                                    }
+                                                <Link href={`/sales/orders/${row.sales_order.id}`} className="font-medium text-ink underline">
+                                                    <bdi>{row.sales_order.order_number}</bdi>
                                                 </Link>
                                             ) : (
                                                 "—"
@@ -379,65 +349,37 @@ export default function OutOfStockArticlesIndex({
                                         </dd>
                                     </div>
                                     <div className="min-w-0">
-                                        <dt className="text-slate-400">
-                                            {t("common.customer")}
-                                        </dt>
-                                        <dd className="truncate text-slate-600">
-                                            {row.customer ?? "—"}
-                                        </dd>
+                                        <dt className="text-ink-faint">{t("common.customer")}</dt>
+                                        <dd className="truncate text-ink-muted">{row.customer ?? "—"}</dd>
                                     </div>
                                     <div className="min-w-0">
-                                        <dt className="text-slate-400">
-                                            {t("outOfStock.agent")}
-                                        </dt>
-                                        <dd className="truncate text-slate-600">
-                                            {row.requested_by ?? "—"}
-                                        </dd>
+                                        <dt className="text-ink-faint">{t("outOfStock.agent")}</dt>
+                                        <dd className="truncate text-ink-muted">{row.requested_by ?? "—"}</dd>
                                     </div>
                                     <div className="min-w-0">
-                                        <dt className="text-slate-400">
-                                            {t("common.date")}
-                                        </dt>
-                                        <dd className="text-slate-600">
-                                            {row.created_at
-                                                ? formatDate(row.created_at)
-                                                : "—"}
-                                        </dd>
+                                        <dt className="text-ink-faint">{t("common.date")}</dt>
+                                        <dd className="text-ink-muted">{row.created_at ? formatDate(row.created_at) : "—"}</dd>
                                     </div>
                                 </dl>
                                 {row.status === "resolved" ? (
-                                    <p className="mt-2 text-[13px] text-slate-500">
-                                        → {row.resolved_article} ·{" "}
-                                        {t("finance.monthEnd.by")}{" "}
-                                        {row.resolved_by ?? "—"}
-                                        {row.resolved_at
-                                            ? ` ${t("outOfStock.onDate")} ${formatDate(row.resolved_at)}`
-                                            : ""}
-                                    </p>
+                                    <p className="mt-2 text-[13px] text-ink-muted">{resolution(row)}</p>
                                 ) : resolving === row.id ? (
-                                    <div className="mt-3 border-t border-slate-100 pt-3">
-                                        <ResolveForm
-                                            articleId={row.id}
-                                            onDone={() => setResolving(null)}
-                                        />
+                                    <div className="mt-3 border-t border-line pt-3">
+                                        <ResolveForm articleId={row.id} onDone={() => setResolving(null)} />
                                     </div>
                                 ) : (
                                     can.manage && (
-                                        <button
-                                            onClick={() => setResolving(row.id)}
-                                            className="mt-3 inline-flex min-h-9 items-center justify-center rounded-lg border border-slate-300 bg-white px-3 text-[13px] font-medium text-slate-900 hover:bg-slate-50"
-                                        >
+                                        <Button type="button" size="sm" variant="secondary" className="mt-3" onClick={() => setResolving(row.id)}>
                                             {t("outOfStock.linkToItem")}
-                                        </button>
+                                        </Button>
                                     )
                                 )}
                             </li>
                         ))}
                     </ul>
-                </>
+                    {pager}
+                </div>
             )}
-
-            <Pagination links={articles.links} />
         </ProcurementLayout>
     );
 }

@@ -771,7 +771,7 @@ export default function TemplateStudio({
                             />
                         )}
                     </aside>
-                    <main className="flex min-h-0 min-w-0 flex-1 flex-col bg-slate-200/80">
+                    <main className="flex min-h-0 min-w-0 flex-1 flex-col bg-line/70">
                         <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-line bg-surface px-3 py-2">
                             <div className="flex gap-1">
                                 <button
@@ -874,7 +874,7 @@ export default function TemplateStudio({
                         </div>
                         <div
                             ref={canvasRef}
-                            className="relative min-h-0 flex-1 overflow-auto bg-slate-300 p-3 sm:p-6"
+                            className="relative min-h-0 flex-1 overflow-auto bg-line-strong/60 p-3 sm:p-6"
                         >
                             {previewing && (
                                 <span className="absolute end-4 top-4 z-10 rounded-full bg-surface px-3 py-1 text-xs text-ink-muted shadow-soft">
@@ -890,7 +890,7 @@ export default function TemplateStudio({
                                     key={iframeSrc}
                                     src={iframeSrc}
                                     title={t("pdfStudio.previewTitle")}
-                                    className="mx-auto block h-full min-h-[760px] w-full max-w-[980px] border-0 bg-white shadow-2xl"
+                                    className="mx-auto block h-full min-h-[760px] w-full max-w-[980px] border-0 bg-surface shadow-2xl"
                                 />
                             ) : (
                                 <div className="flex h-full items-center justify-center text-sm text-ink-muted">
@@ -2339,7 +2339,7 @@ function Inspector({
                                 ),
                         )}
                     </div>
-                    <p className="text-[11px] text-ink-subtle">
+                    <p className="text-[11px] text-ink-faint">
                         {translate(
                             "Les dimensions restent visuelles et ne modifient aucune donnée commerciale.",
                         )}
@@ -2721,7 +2721,7 @@ function TextGroupEditor({
                         suffix="%"
                         onChange={(v) => setPath(`${prefix}.width_percent`, v)}
                     />
-                    <p className="text-[11px] text-ink-subtle">
+                    <p className="text-[11px] text-ink-faint">
                         {translate(
                             "La colonne des valeurs utilise automatiquement l’espace restant.",
                         )}
@@ -2751,7 +2751,7 @@ function SectionNavigation({
         <nav className="space-y-4 p-2">
             {groups.map((group) => (
                 <div key={group}>
-                    <div className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-ink-subtle">
+                    <div className="px-3 pb-1 text-[11px] font-semibold text-ink-faint">
                         {translate(group)}
                     </div>
                     {sections
@@ -2794,7 +2794,7 @@ function PanelHeader({
                 </button>
             )}
             <span
-                className={`${open ? "block" : "hidden"} text-xs font-semibold uppercase tracking-wide text-ink-muted`}
+                className={`${open ? "block" : "hidden"} text-xs font-semibold text-ink-muted`}
             >
                 {label}
             </span>
@@ -2845,7 +2845,7 @@ function Panel({ title, children }: { title: string; children: ReactNode }) {
     return (
         <details
             open
-            className="group rounded-card border border-line bg-surface"
+            className="group surface-card"
         >
             <summary className="cursor-pointer list-none px-3 py-2 text-xs font-semibold text-ink">
                 {translate(title)}
@@ -2895,9 +2895,9 @@ function NumberField({
                         Number.isFinite(Number(e.target.value)) &&
                         onChange(Number(e.target.value))
                     }
-                    className="min-w-0 flex-1 rounded-s-field border border-line-strong bg-surface px-2.5 py-2 text-sm"
+                    className="control-input control-compact min-w-0 flex-1 rounded-e-none"
                 />
-                <span className="rounded-e-field border border-s-0 border-line-strong bg-raised px-2 py-2 text-xs text-ink-muted">
+                <span className="inline-flex items-center rounded-e-field border border-s-0 border-line-strong bg-raised px-2 text-xs text-ink-muted">
                     {suffix || "—"}
                 </span>
             </div>
@@ -2930,7 +2930,9 @@ function ColorField({
                     value={value}
                     maxLength={7}
                     onChange={(e) => onChange(e.target.value)}
-                    className="min-w-0 flex-1 rounded-field border border-line-strong px-2 py-1.5 text-sm"
+                    aria-label={`${translate(label)} (hex)`}
+                    dir="ltr"
+                    className="control-input min-w-0 flex-1"
                 />
             </div>
         </label>
@@ -2977,7 +2979,7 @@ function SelectField({
             <select
                 value={value}
                 onChange={(e) => onChange(e.target.value)}
-                className="w-full rounded-field border border-line-strong bg-surface px-2.5 py-2 text-sm"
+                className="control-select w-full"
             >
                 {options.map(([key, text]) => (
                     <option key={key} value={key}>

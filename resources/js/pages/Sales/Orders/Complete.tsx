@@ -166,8 +166,8 @@ export default function CompletePosOrder({ order, paymentSummary, searchUrl, sub
                     </p>
                 </header>
 
-                <section className="rounded-card border border-line bg-surface p-5">
-                    <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">{t('orders.complete.existing')}</h2>
+                <section className="surface-card p-5">
+                    <h2 className="font-semibold text-base text-ink">{t('orders.complete.existing')}</h2>
                     <ul className="mt-3 divide-y divide-line text-sm">
                         {order.lines.map((line) => (
                             <li key={line.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
@@ -182,7 +182,7 @@ export default function CompletePosOrder({ order, paymentSummary, searchUrl, sub
                     </ul>
                 </section>
 
-                <section className="rounded-card border border-line bg-surface p-5">
+                <section className="surface-card p-5">
                     <h2 className="font-semibold text-ink">{t('orders.complete.addItem')}</h2>
                     <div className="relative mt-3">
                         <input
@@ -193,7 +193,7 @@ export default function CompletePosOrder({ order, paymentSummary, searchUrl, sub
                             placeholder={t('orders.complete.searchPlaceholder')}
                             aria-label={t('orders.complete.searchLabel')}
                             aria-controls="completion-product-results"
-                            className="min-h-10 w-full rounded-field border border-line-strong bg-surface px-3 pe-28 text-sm"
+                            className="control-input min-h-10 w-full"
                         />
                         {searching && <span className="absolute inset-y-0 end-3 flex items-center text-xs text-ink-muted">{t('orders.complete.searching')}</span>}
                     </div>
@@ -225,7 +225,7 @@ export default function CompletePosOrder({ order, paymentSummary, searchUrl, sub
                                     className={`flex flex-wrap items-center justify-between gap-3 px-3 py-2.5 ${activeResult === index ? 'bg-raised' : ''}`}
                                 >
                                     <div className="min-w-0 flex-1">
-                                        <p className="text-xs font-semibold uppercase tracking-wide text-ink-faint">{code}{variant.sku && variant.sku !== code ? ` · SKU ${variant.sku}` : ''}</p>
+                                        <p className="text-[13px] font-medium text-ink-muted">{code}{variant.sku && variant.sku !== code ? ` · SKU ${variant.sku}` : ''}</p>
                                         <p className="truncate text-sm font-medium text-ink">{variant.product_name}{variant.variant_name ? ` — ${variant.variant_name}` : ''}</p>
                                         <p className="text-xs text-ink-muted">{t('orders.complete.localStock').replace('{stock}', formatQuantity(variant.local_stock_available))}{variant.config_missing ? ` · ${t('orders.complete.configMissing')}` : ''}</p>
                                     </div>
@@ -247,14 +247,14 @@ export default function CompletePosOrder({ order, paymentSummary, searchUrl, sub
                 </section>
 
                 {cart.length > 0 && (
-                    <section className="rounded-card border border-line bg-surface p-5">
+                    <section className="surface-card p-5">
                         <h2 className="font-semibold text-ink">{t('orders.complete.newItems')}</h2>
                         <div className="mt-3 space-y-3">
                             {cart.map((line) => (
                                 <div key={line.id} className="grid items-end gap-3 rounded-field border border-line p-3 sm:grid-cols-[1fr_140px_auto]">
                                     <div><p className="font-medium text-ink">{line.product_name}</p><p className="text-xs text-ink-muted">{formatMoney(line.unit_price_incl_tax ?? '0', order.currency_code)} · {t('orders.complete.localStock').replace('{stock}', formatQuantity(line.local_stock_available))}</p></div>
                                     <label className="text-xs text-ink-muted">{t('orders.complete.quantity')}
-                                        <input type="number" inputMode="numeric" min={1} step={1} value={line.quantity} onChange={(event) => setQuantity(line.id, event.target.value)} className="mt-1 w-full rounded-field border border-line-strong px-3 py-2 text-sm" />
+                                        <input type="number" inputMode="numeric" min={1} step={1} value={line.quantity} onChange={(event) => setQuantity(line.id, event.target.value)} className="control-input mt-1 w-full" />
                                     </label>
                                     <button type="button" onClick={() => setCart(cart.filter((item) => item.id !== line.id))} className="min-h-10 text-sm text-danger">{t('orders.complete.remove')}</button>
                                 </div>

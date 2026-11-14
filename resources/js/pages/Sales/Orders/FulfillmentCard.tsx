@@ -1,3 +1,4 @@
+import { useConfirm } from '@/components/ui/ConfirmDialog';
 import { Button } from '@/components/ui/Button';
 import SandboxFulfillmentBadge from '@/components/SandboxFulfillmentBadge';
 import { Dialog } from '@/components/ui/Dialog';
@@ -106,11 +107,11 @@ export default function FulfillmentCard({ orderId, data }: { orderId: number; da
     const shippable = data.lines.filter((line) => Number(line.shippable) > 0);
 
     return (
-        <section className="mb-6 rounded-card border border-line bg-surface p-5">
+        <section className="mb-6 surface-card p-5">
             <SandboxFulfillmentBadge />
             <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                    <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">{k('title')}</h2>
+                    <h2 className="font-semibold text-base text-ink">{k('title')}</h2>
                     <p className="mt-1 flex flex-wrap items-center gap-2 text-sm">
                         <span className="font-medium text-ink">{k(`state.${data.state}`)}</span>
                         {data.delivery_state !== 'not_delivered' && <span className="text-ink-muted">· {k(`delivery.${data.delivery_state}`)}</span>}
@@ -125,8 +126,8 @@ export default function FulfillmentCard({ orderId, data }: { orderId: number; da
             {data.awaiting_replenishment && <p className="mt-2 text-xs text-warning">{k('awaitingReplenishment')}</p>}
 
             <div className="mt-4 overflow-x-auto rounded-field border border-line">
-                <table className="w-full min-w-[520px] text-start text-sm">
-                    <thead className="bg-raised text-xs uppercase tracking-wide text-ink-faint">
+                <table className="erp-table w-full min-w-[520px] text-start text-sm">
+                    <thead className="bg-raised text-[13px] text-ink-muted font-medium">
                         <tr>
                             <th className="px-3 py-2 text-start font-medium">{k('article')}</th>
                             <th className="px-3 py-2 text-end font-medium">{k('ordered')}</th>
@@ -182,6 +183,7 @@ export default function FulfillmentCard({ orderId, data }: { orderId: number; da
 
 function ShipmentRow({ shipment, base, canAttach, canRemove, onAction }: { shipment: Shipment; base: string; canAttach: boolean; canRemove: boolean; onAction: (action: Action) => void }) {
     const { t } = useI18n();
+    const confirm = useConfirm();
     const k = (key: string) => t(`fulfillment.${key}` as TranslationKey);
     const upload = useForm<{ files: File[] }>({ files: [] });
     const actionLabels: Record<Action, string> = {
@@ -257,7 +259,7 @@ function ShipmentRow({ shipment, base, canAttach, canRemove, onAction }: { shipm
                             <a href={attachment.url} className="text-ink underline">{attachment.name}</a>
                             {canRemove && (
                                 <button type="button" aria-label={k('removeProof')} className="text-ink-faint hover:text-danger"
-                                    onClick={() => window.confirm(k('removeProofConfirm')) && router.delete(`${base}/${shipment.id}/attachments/${attachment.id}`, { preserveScroll: true })}>×</button>
+                                    onClick={async () => { if (await confirm({ title: k('removeProofConfirm'), danger: true })) router.delete(`${base}/${shipment.id}/attachments/${attachment.id}`, { preserveScroll: true }); }}>×</button>
                             )}
                         </span>
                     ))}
@@ -294,7 +296,7 @@ function Quantities({ lines, value, onChange, errors }: { lines: Line[]; value: 
 
     return (
         <fieldset>
-            <legend className="mb-1.5 text-xs font-medium uppercase tracking-wide text-ink-faint">{k('quantities')}</legend>
+            <legend className="mb-1.5 text-[13px] font-medium text-ink-muted">{k('quantities')}</legend>
             <div className="divide-y divide-line rounded-field border border-line">
                 {lines.map((line) => (
                     <label key={line.line_id} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
@@ -316,7 +318,7 @@ function Quantities({ lines, value, onChange, errors }: { lines: Line[]; value: 
 function Field({ label, error, children }: { label: string; error?: string; children: ReactNode }) {
     return (
         <label className="block min-w-0 text-sm">
-            <span className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-ink-faint">{label}</span>
+            <span className="mb-1.5 block text-[13px] font-medium text-ink-muted">{label}</span>
             {children}
             {error && <span className="mt-1 block text-xs text-danger">{error}</span>}
         </label>
@@ -371,7 +373,7 @@ function DispatchDialog({ base, shipment, lines, onClose }: { base: string; ship
                 )}
                 <Field label={k('carrier')} error={errors.carrier_contact_id}>
                     <input value={carrierSearch} onChange={(event) => setCarrierSearch(event.target.value)} placeholder={k('searchCarrier')} className="control-input mb-2 w-full" />
-                    <select value={form.data.carrier_contact_id} onChange={(event) => form.setData('carrier_contact_id', event.target.value)} className="control-input w-full" required>
+                    <select value={form.data.carrier_contact_id} onChange={(event) => form.setData('carrier_contact_id', event.target.value)} className="control-select w-full" required>
                         <option value="">{k('chooseCarrier')}</option>
                         {carriers.map((carrier) => <option key={carrier.id} value={carrier.id}>{[carrier.name, carrier.contact, carrier.phone].filter(Boolean).join(' · ')}</option>)}
                     </select>
@@ -480,7 +482,7 @@ function EditDialog({ base, shipment, onClose }: { base: string; shipment: Shipm
                 {shipment.channel === 'carrier' && (
                     <Field label={k('carrier')} error={errors.carrier_contact_id}>
                         <input value={carrierSearch} onChange={(event) => setCarrierSearch(event.target.value)} placeholder={k('searchCarrier')} className="control-input mb-2 w-full" />
-                        <select value={form.data.carrier_contact_id} onChange={(event) => form.setData('carrier_contact_id', event.target.value)} className="control-input w-full" required>
+                        <select value={form.data.carrier_contact_id} onChange={(event) => form.setData('carrier_contact_id', event.target.value)} className="control-select w-full" required>
                             {carriers.map((carrier) => <option key={carrier.id} value={carrier.id}>{[carrier.name, carrier.contact, carrier.phone].filter(Boolean).join(' · ')}</option>)}
                         </select>
                     </Field>
@@ -595,7 +597,7 @@ function ShareDialog({ base, shipment, onClose }: { base: string; shipment: Ship
                             ))}
                         </div>
                         <fieldset>
-                            <legend className="mb-1.5 text-xs font-medium uppercase tracking-wide text-ink-faint">{k('shareProofs')}</legend>
+                            <legend className="mb-1.5 text-[13px] font-medium text-ink-muted">{k('shareProofs')}</legend>
                             {preview.proofs.length === 0 ? <p className="text-xs text-ink-muted">{k('shareNoProof')}</p> : preview.proofs.map((proof) => (
                                 <label key={proof.id} className="flex items-center gap-2 text-sm">
                                     <input type="checkbox" checked={proofs?.includes(proof.id) ?? false}
@@ -612,7 +614,7 @@ function ShareDialog({ base, shipment, onClose }: { base: string; shipment: Ship
                                     <input type="email" value={email} onChange={(event) => { setEmail(event.target.value); setResend(false); }} className="control-input w-full" maxLength={254} />
                                 </Field>
                                 <div>
-                                    <span className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-ink-faint">{k('sharePreview')}</span>
+                                    <span className="mb-1.5 block text-[13px] font-medium text-ink-muted">{k('sharePreview')}</span>
                                     <p className="mb-1 text-sm font-medium text-ink">{preview.email.subject}</p>
                                     <iframe title={k('sharePreview')} sandbox="" srcDoc={preview.email.html} className="h-56 w-full rounded-field border border-line bg-white" />
                                 </div>

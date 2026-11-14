@@ -109,6 +109,8 @@ class FinanceMonthlyReportService
                 $organization,
                 $store
             )
+                // Production report: Test-mode orders share this table (sandbox_id NOT NULL).
+                ->whereNull('sales_orders.sandbox_id')
                 ->where('status', SalesOrderStatus::Confirmed->value)
                 ->where(
                     'sale_date',
@@ -154,6 +156,8 @@ class FinanceMonthlyReportService
                 $organization,
                 $store
             )
+                // Production report: Test invoices share this table (sandbox_id NOT NULL).
+                ->whereNull('invoices.sandbox_id')
                 ->where('status', InvoiceStatus::Issued->value)
                 ->where(
                     'invoice_date',
@@ -206,6 +210,8 @@ class FinanceMonthlyReportService
                 $organization,
                 $store
             )
+                // Production report: Test credit notes share this table (sandbox_id NOT NULL).
+                ->whereNull('credit_notes.sandbox_id')
                 ->where('status', 'issued')
                 ->where(
                     'credit_note_date',
@@ -256,7 +262,7 @@ class FinanceMonthlyReportService
             ->where('status', SalesOrderStatus::Confirmed->value)
             ->whereBetween('sale_date', [$period->start->toDateString(), $period->end->toDateString()])
             ->orderBy('sale_date')->orderBy('id')
-            ->paginate($perPage);
+            ->paginate($perPage)->withQueryString();
         $summaries = $this->payments->summaries($orders->getCollection());
 
         return $orders->through(function (SalesOrder $order) use ($summaries) {
@@ -289,7 +295,7 @@ class FinanceMonthlyReportService
             ->whereDate('payment_date', '<=', $period->end->toDateString())
             ->with(['financialAccount:id,name,code,type', 'allocations.salesOrder:id,order_number,customer_name,customer_company'])
             ->orderBy('payment_date')->orderBy('id')
-            ->paginate($perPage)
+            ->paginate($perPage)->withQueryString()
             ->through(fn(Payment $payment) => [
                 'id' => $payment->id,
                 'payment_number' => $payment->payment_number,

@@ -67,7 +67,7 @@ export default function DocumentStamp({ stamp, canUpdate }: Props) {
                 )}
 
                 {!stamp && (
-                    <section className="mt-8 rounded-card border border-line bg-surface p-5">
+                    <section className="mt-8 surface-card p-5">
                         <p className="text-sm text-ink-muted">
                             {t('stamp.uploadHelp')}
                         </p>
@@ -76,7 +76,7 @@ export default function DocumentStamp({ stamp, canUpdate }: Props) {
                 )}
 
                 {stamp?.available && (
-                    <section className="mt-8 rounded-card border border-line bg-surface p-5">
+                    <section className="mt-8 surface-card p-5">
                         <h2 className="mb-3 text-sm font-semibold text-ink">{t('stamp.preview')}</h2>
                         <div className="flex size-28 items-center justify-center overflow-hidden rounded-card border border-line bg-raised">
                             <img
@@ -102,7 +102,7 @@ export default function DocumentStamp({ stamp, canUpdate }: Props) {
                                 type="file"
                                 accept="image/png,image/jpeg,image/webp"
                                 onChange={(e) => form.setData('image', e.target.files?.[0] ?? null)}
-                                className="block text-sm"
+                                className="block w-full min-w-0 max-w-full text-sm text-ink-muted file:me-3 file:cursor-pointer file:rounded-field file:border file:border-line-strong file:bg-surface file:px-3 file:py-2 file:text-sm file:font-medium file:text-ink hover:file:bg-raised"
                             />
                             <p className="text-xs text-ink-faint">{t('stamp.maxSize')}</p>
                             {form.errors.image && <p className="text-xs text-danger">{form.errors.image}</p>}
@@ -120,7 +120,7 @@ export default function DocumentStamp({ stamp, canUpdate }: Props) {
                 </form>
 
                 {stamp && canUpdate && (
-                    <section className="mt-8 rounded-card border border-line bg-surface p-5">
+                    <section className="mt-8 surface-card p-5">
                         <h2 className="text-sm font-semibold text-ink">{t('stamp.disable')}</h2><p className="mt-1 text-xs text-ink-muted">{t('stamp.disableHelp')}</p>
                         {!confirmRemove ? (
                             <Button type="button" variant="danger" size="sm" className="mt-3" onClick={() => setConfirmRemove(true)}>
@@ -145,7 +145,7 @@ export default function DocumentStamp({ stamp, canUpdate }: Props) {
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
     return (
-        <section className="rounded-card border border-line bg-surface p-5">
+        <section className="surface-card p-5">
             <h2 className="mb-3 text-sm font-semibold text-ink">{title}</h2>
             <div className="space-y-3">{children}</div>
         </section>

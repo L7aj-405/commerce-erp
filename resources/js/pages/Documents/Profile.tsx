@@ -157,7 +157,7 @@ export default function DocumentProfile({
                 />
 
                 <form onSubmit={submit} className="space-y-5">
-                    <fieldset disabled={!canUpdate} className="space-y-5">
+                    <fieldset disabled={!canUpdate} className="min-w-0 space-y-5">
                         <Section
                             title={t("docProfile.general")}
                             description={t("docProfile.generalHelp")}
@@ -228,7 +228,7 @@ export default function DocumentProfile({
                                     label={t("docProfile.patente")}
                                 />
                             </Grid>
-                            <fieldset className="mt-2">
+                            <fieldset className="mt-2 min-w-0">
                                 <legend className="text-xs font-medium text-ink-muted">
                                     {t("docProfile.additionalIds")}
                                 </legend>
@@ -256,7 +256,7 @@ export default function DocumentProfile({
                                                 placeholder={t(
                                                     "docProfile.label",
                                                 )}
-                                                className="rounded-field border border-line-strong bg-surface px-3 py-2 text-sm"
+                                                className="control-input w-full min-w-0"
                                             />
                                             <input
                                                 aria-label={t(
@@ -276,7 +276,7 @@ export default function DocumentProfile({
                                                 placeholder={t(
                                                     "docProfile.value",
                                                 )}
-                                                className="rounded-field border border-line-strong bg-surface px-3 py-2 text-sm"
+                                                className="control-input w-full min-w-0"
                                             />
                                             <button
                                                 type="button"
@@ -347,7 +347,7 @@ export default function DocumentProfile({
                                             );
                                             setRemoveLogo(false);
                                         }}
-                                        className="block text-sm"
+                                        className="block w-full min-w-0 max-w-full text-sm text-ink-muted file:me-3 file:cursor-pointer file:rounded-field file:border file:border-line-strong file:bg-surface file:px-3 file:py-2 file:text-sm file:font-medium file:text-ink hover:file:bg-raised"
                                     />
                                     <p className="text-xs text-ink-faint">
                                         {t("docProfile.logoFormats")}
@@ -407,7 +407,7 @@ export default function DocumentProfile({
                                             e.target.value,
                                         )
                                     }
-                                    className="w-full rounded-field border border-line-strong bg-surface px-3 py-2 text-sm"
+                                    className="control-input w-full py-2"
                                 />
                             </label>
                         </Section>
@@ -496,7 +496,7 @@ function TimezoneSection({
 
     return (
         <form onSubmit={submit} className="mb-5">
-            <fieldset disabled={!canUpdate}>
+            <fieldset disabled={!canUpdate} className="min-w-0">
                 <Section
                     title={t("orgTimezone.title")}
                     description={t("orgTimezone.help")}
@@ -520,7 +520,7 @@ function TimezoneSection({
                                     form.setData("timezone", e.target.value)
                                 }
                                 placeholder="Africa/Casablanca"
-                                className="w-full rounded-field border border-line-strong bg-surface px-3 py-2 text-sm"
+                                className="control-input w-full"
                             />
                             <datalist id="organization-timezones">
                                 {timezone.options.map((option) => (
@@ -577,7 +577,7 @@ function FulfillmentModeSection({
 
     return (
         <form onSubmit={submit} className="mb-5">
-            <fieldset disabled={!canUpdate}>
+            <fieldset disabled={!canUpdate} className="min-w-0">
                 <Section title={t("fulfillmentMode.title")} description={t("fulfillmentMode.help")}>
                     <div className="grid gap-2 sm:grid-cols-2">
                         {(["simple", "advanced"] as const).map((option) => (
@@ -641,7 +641,7 @@ function Section({
     children: ReactNode;
 }) {
     return (
-        <section className="rounded-card border border-line bg-surface p-5 shadow-soft">
+        <section className="surface-card p-5">
             <div className="mb-4">
                 <h2 className="text-sm font-semibold text-ink">{title}</h2>
                 {description && (
@@ -681,7 +681,7 @@ function TextField({
                 required={required}
                 value={form.data[name] ?? ""}
                 onChange={(e) => form.setData(name, e.target.value)}
-                className="w-full rounded-field border border-line-strong bg-surface px-3 py-2 text-sm"
+                className="control-input w-full"
             />
             {form.errors[name] && (
                 <span className="mt-1 block text-xs text-danger">

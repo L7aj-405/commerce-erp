@@ -21,7 +21,7 @@ export default function AccountLayout({ children }: PropsWithChildren) {
     const currentPath = usePage().url.split("?")[0];
 
     return (
-        <ApplicationShell>
+        <ApplicationShell width="reading">
             <div className="mx-auto max-w-2xl">
                 <nav
                     aria-label={t("account.navigation")}

@@ -3,13 +3,16 @@ import SupplierRelationTable from '@/components/procurement/SupplierRelationTabl
 import { Button } from '@/components/ui/Button';
 import EmptyState from '@/components/ui/EmptyState';
 import PageHeader from '@/components/ui/PageHeader';
-import Pagination from '@/components/ui/Pagination';
-import SearchInput from '@/components/ui/SearchInput';
+import { AdvancedFilterBar, ChoiceFilter, FilterSearch } from '@/components/ui/AdvancedFilterBar';
+import type { FilterChip } from '@/components/ui/AdvancedFilterBar';
+import { ButtonLink } from '@/components/ui/Button';
+import { TablePager } from '@/components/ui/TableShell';
+import { useQueryFilters } from '@/hooks/useQueryFilters';
 import StatusBadge from '@/components/ui/StatusBadge';
 import { useI18n } from '@/i18n';
 import ProcurementLayout from '@/layouts/ProcurementLayout';
-import { Head, Link, router } from '@inertiajs/react';
-import { useEffect, useState } from 'react';
+import { Head } from '@inertiajs/react';
+import { useState } from 'react';
 
 type Supplier = {
     id: number;
@@ -24,7 +27,7 @@ type Supplier = {
 type LinkData = { url: string | null; label: string; active: boolean };
 type Props = {
     supplier: Supplier;
-    relations: { data: SupplierRelation[]; links: LinkData[]; total: number } | null;
+    relations: { data: SupplierRelation[]; links: LinkData[]; from?: number | null; to?: number | null; total: number } | null;
     filters: { search?: string; status?: string };
     can: { manage: boolean; editSupplier: boolean; viewPrices: boolean };
     defaultCurrency: string;
@@ -32,25 +35,23 @@ type Props = {
 
 export default function SupplierShow({ supplier, relations, filters, can, defaultCurrency }: Props) {
     const { t } = useI18n();
-    const [search, setSearch] = useState(filters.search ?? '');
-    const [searching, setSearching] = useState(false);
     const [dialog, setDialog] = useState<{ relation: SupplierRelation | null } | null>(null);
-
-    const visit = (next: Record<string, string | undefined>) =>
-        router.get(`/procurement/suppliers/${supplier.id}`, next, {
-            preserveState: true,
-            preserveScroll: true,
-            replace: true,
-            onStart: () => setSearching(true),
-            onFinish: () => setSearching(false),
+    // SupplierController@show validates `search` and `status` (active|inactive).
+    const f = useQueryFilters(`/procurement/suppliers/${supplier.id}`, filters, { keys: ['search', 'status'] });
+    const statusOptions = [
+        { value: 'active', label: t('status.active') },
+        { value: 'inactive', label: t('status.inactive') },
+    ];
+    const chips: FilterChip[] = [];
+    if (filters.search) chips.push({ key: 'search', label: t('filters.search'), value: filters.search, onRemove: () => f.remove('search') });
+    if (filters.status) {
+        chips.push({
+            key: 'status',
+            label: t('common.status'),
+            value: statusOptions.find((option) => option.value === filters.status)?.label ?? filters.status,
+            onRemove: () => f.remove('status'),
         });
-
-    useEffect(() => {
-        if (search === (filters.search ?? '')) return;
-        const timer = window.setTimeout(() => visit({ search: search || undefined, status: filters.status }), 280);
-        return () => window.clearTimeout(timer);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [search]);
+    }
 
     return (
         <ProcurementLayout>
@@ -59,16 +60,27 @@ export default function SupplierShow({ supplier, relations, filters, can, defaul
                 title={supplier.name}
                 description={[supplier.contact_person, supplier.phone, supplier.email].filter(Boolean).join(' · ') || undefined}
                 actions={
-                    <Link href="/procurement/suppliers" className="inline-flex min-h-10 items-center rounded-field border border-line-strong bg-surface px-4 text-sm text-ink hover:bg-raised">
+                    <ButtonLink href="/procurement/suppliers" variant="secondary">
                         {t('suppliers.backToList')}
-                    </Link>
+                    </ButtonLink>
                 }
             />
 
-            <section className="mb-6 grid gap-3 rounded-card border border-line bg-surface p-5 text-sm sm:grid-cols-2">
-                <div><span className="block text-xs uppercase tracking-wide text-ink-faint">{t('common.status')}</span><StatusBadge status={supplier.active ? 'active' : 'inactive'} /></div>
-                <div><span className="block text-xs uppercase tracking-wide text-ink-faint">{t('suppliers.address')}</span>{supplier.address ?? '—'}</div>
-                {supplier.notes && <div className="sm:col-span-2"><span className="block text-xs uppercase tracking-wide text-ink-faint">{t('suppliers.notes')}</span>{supplier.notes}</div>}
+            <section className="mb-6 grid gap-3 surface-card p-5 text-sm sm:grid-cols-2">
+                <div>
+                    <span className="mb-1 block text-[13px] text-ink-muted">{t('common.status')}</span>
+                    <StatusBadge status={supplier.active ? 'active' : 'inactive'} />
+                </div>
+                <div>
+                    <span className="mb-1 block text-[13px] text-ink-muted">{t('suppliers.address')}</span>
+                    <span className="text-ink">{supplier.address ?? '—'}</span>
+                </div>
+                {supplier.notes && (
+                    <div className="sm:col-span-2">
+                        <span className="mb-1 block text-[13px] text-ink-muted">{t('suppliers.notes')}</span>
+                        <span className="text-ink">{supplier.notes}</span>
+                    </div>
+                )}
             </section>
 
             {relations !== null && (
@@ -80,26 +92,52 @@ export default function SupplierShow({ supplier, relations, filters, can, defaul
                         </div>
                         {can.manage && supplier.active && <Button onClick={() => setDialog({ relation: null })}>{t('supplierCatalog.addProduct')}</Button>}
                     </div>
-                    <div className="mb-4 flex flex-wrap gap-3">
-                        <div className="min-w-[240px] flex-1">
-                            <SearchInput value={search} onChange={setSearch} searching={searching} placeholder={t('supplierCatalog.searchPlaceholder')} />
-                        </div>
-                        <select
-                            value={filters.status ?? ''}
-                            onChange={(event) => visit({ search: search || undefined, status: event.target.value || undefined })}
-                            className="control-input"
+                    <div className="mb-4">
+                        <AdvancedFilterBar
+                            label={t('supplierCatalog.supplierSection')}
+                            search={
+                                <FilterSearch
+                                    value={f.search}
+                                    onChange={f.setSearch}
+                                    loading={f.searching}
+                                    label={t('common.search')}
+                                    placeholder={t('supplierCatalog.searchPlaceholder')}
+                                />
+                            }
+                            chips={chips}
+                            activeCount={f.activeCount}
+                            loading={f.loading && !f.searching}
+                            onReset={f.reset}
                         >
-                            <option value="">{t('supplierCatalog.allStatuses')}</option>
-                            <option value="active">{t('status.active')}</option>
-                            <option value="inactive">{t('status.inactive')}</option>
-                        </select>
+                            <ChoiceFilter
+                                label={t('common.status')}
+                                allLabel={t('supplierCatalog.allStatuses')}
+                                options={statusOptions}
+                                value={filters.status}
+                                onChange={(value) => f.set('status', value)}
+                            />
+                        </AdvancedFilterBar>
                     </div>
                     {relations.data.length === 0 ? (
-                        <EmptyState title={t('supplierCatalog.noProducts')} description={t('supplierCatalog.supplierSectionHint')} />
+                        <EmptyState
+                            title={f.activeCount > 0 ? t('filters.noMatch') : t('supplierCatalog.noProducts')}
+                            description={f.activeCount > 0 ? t('filters.noMatchHelp') : t('supplierCatalog.supplierSectionHint')}
+                            actions={
+                                f.activeCount > 0 ? (
+                                    <Button variant="secondary" onClick={f.reset}>
+                                        {t('filters.reset')}
+                                    </Button>
+                                ) : undefined
+                            }
+                        />
                     ) : (
-                        <SupplierRelationTable relations={relations.data} side="supplier" canManage={can.manage} onEdit={(relation) => setDialog({ relation })} />
+                        <div className={f.loading ? 'opacity-55 transition-opacity' : 'transition-opacity'} aria-busy={f.loading || undefined}>
+                            <SupplierRelationTable relations={relations.data} side="supplier" canManage={can.manage} onEdit={(relation) => setDialog({ relation })} />
+                        </div>
                     )}
-                    <Pagination links={relations.links} />
+                    <div className="mt-3">
+                        <TablePager links={relations.links} from={relations.from} to={relations.to} total={relations.total} />
+                    </div>
                 </section>
             )}
 

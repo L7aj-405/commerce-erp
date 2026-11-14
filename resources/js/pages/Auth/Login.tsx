@@ -101,7 +101,7 @@ export default function Login({ status }: Props) {
                         {form.processing ? t('auth.signingIn') : t('auth.signIn')}
                     </Button>
 
-                    <div className="flex items-center gap-3 py-1 text-xs uppercase tracking-wide text-ink-muted">
+                    <div className="flex items-center gap-3 py-1 text-[13px] text-ink-muted">
                         <span className="h-px flex-1 bg-line" />
                         {t('auth.or')}
                         <span className="h-px flex-1 bg-line" />

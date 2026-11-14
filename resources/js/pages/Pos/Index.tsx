@@ -1,3 +1,4 @@
+import { useConfirm } from '@/components/ui/ConfirmDialog';
 import { Money } from '@/components/pos/primitives';
 import { Sheet } from '@/components/ui/Sheet';
 import { useToast } from '@/components/ui/toast';
@@ -13,6 +14,7 @@ import HeldSalesDrawer from './HeldSalesDrawer';
 import PosCartPanel from './PosCartPanel';
 import PosCatalogue from './PosCatalogue';
 import PosCheckoutPanel from './PosCheckoutPanel';
+import PosCustomerDialog from './PosCustomerDialog';
 import PosFilters, { emptyFilters, filtersActive, type CatalogueFilters } from './PosFilters';
 import PosReceipt from './PosReceipt';
 import PosReviewModal from './PosReviewModal';
@@ -99,6 +101,7 @@ export default function PosIndex({
     stockConflict: initialStockConflict,
 }: Props) {
     const { t } = useI18n();
+    const confirm = useConfirm();
     const toast = useToast();
     const pending = usePendingKeys();
     const serialized = useSerializedByKey();
@@ -114,6 +117,10 @@ export default function PosIndex({
     const [showHeld, setShowHeld] = useState(false);
     const [successVisible, setSuccessVisible] = useState(true);
     const isDesktop = useMediaQuery('(min-width: 1024px)');
+    // The filter column only fits beside catalogue + cart from 1280px; below that it
+    // lives in the same sheet as on mobile so the catalogue keeps usable card widths.
+    const filtersInline = useMediaQuery('(min-width: 1280px)');
+    const [customerDialog, setCustomerDialog] = useState<null | 'search' | 'edit'>(null);
     const [mobileCartOpen, setMobileCartOpen] = useState(false);
     const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
     const [stockConflict, setStockConflict] = useState<StockConflict | null>(initialStockConflict);
@@ -394,9 +401,9 @@ export default function PosIndex({
         );
     }
 
-    function createNewSale() {
+    async function createNewSale() {
         if (activeSaleRef.current && activeSaleRef.current.lines.length > 0) {
-            if (!window.confirm(t('pos.holdConfirm'))) return;
+            if (!(await confirm({ title: t('pos.holdConfirm') }))) return;
             holdCurrent(true);
             return;
         }
@@ -445,23 +452,24 @@ export default function PosIndex({
         );
     }
 
-    function deleteHeldSale(sale: HeldSale) {
-        if (!window.confirm(t('pos.deleteHeldConfirm').replace('{order}', sale.order_number))) return;
+    async function deleteHeldSale(sale: HeldSale) {
+        if (!(await confirm({ title: t('pos.deleteHeldConfirm').replace('{order}', sale.order_number), danger: true }))) return;
         void perform(`sale:delete:${sale.id}`, async () => {
             sync(await posJson<DraftStatePayload>(`/pos/drafts/${sale.id}`, { method: 'DELETE' }));
         });
     }
 
-    async function selectCustomer(customer: Customer) {
+    /** Resolves true only when the customer is really attached to the draft. */
+    async function selectCustomer(customer: Customer): Promise<boolean> {
         if (!activeSaleRef.current) {
             try {
                 await ensureDraft();
             } catch (error) {
                 toast.error(posErrorMessage(error, t('pos.operationFailed')));
-                return;
+                return false;
             }
         }
-        await perform('customer:attach', () => updateDraftFields({ customer_id: String(customer.id) }));
+        return perform('customer:attach', () => updateDraftFields({ customer_id: String(customer.id) }));
     }
 
     function detachCustomer() {
@@ -598,7 +606,7 @@ export default function PosIndex({
                             ))}
                         </select>
                     </label>
-                    {!isDesktop && (
+                    {!filtersInline && (
                         <button
                             type="button"
                             onClick={() => setMobileFiltersOpen(true)}
@@ -614,7 +622,7 @@ export default function PosIndex({
                 {isDesktop ? (
                     /* 3-zone workspace */
                     <div className="flex min-h-0 flex-1 gap-3">
-                        <PosFilters brands={brands} categories={categories} value={filters} onChange={setFilters} />
+                        {filtersInline && <PosFilters brands={brands} categories={categories} value={filters} onChange={setFilters} />}
 
                         <div className="flex min-h-0 min-w-0 flex-1">
                             <PosCatalogue
@@ -626,7 +634,7 @@ export default function PosIndex({
                             />
                         </div>
 
-                        <div className="flex w-[26rem] shrink-0 flex-col overflow-hidden rounded-card border border-line bg-surface shadow-card">
+                        <div className="flex w-[23rem] shrink-0 flex-col overflow-hidden rounded-card border border-line bg-surface shadow-card xl:w-[26rem]">
                             {panelMode === 'cart' || !activeSale ? (
                                 <PosCartPanel
                                     sale={decoratedSale}
@@ -645,19 +653,20 @@ export default function PosIndex({
                                     onNewSale={createNewSale}
                                     onOpenHeld={() => setShowHeld(true)}
                                     onCheckout={() => setPanelMode('checkout')}
+                                    customer={activeSale?.customer ?? null}
+                                    attachingCustomer={pending.anyPending('customer:')}
+                                    onOpenCustomer={() => setCustomerDialog('search')}
                                 />
                             ) : (
                                 <PosCheckoutPanel
                                     sale={activeSale}
                                     currencyCode={currencyCode}
                                     financialAccounts={financialAccounts}
-                                    canCreateCustomer={can.createCustomer}
                                     canUpdateCustomer={can.updateCustomer}
                                     savingCheckout={pending.isPending('checkout:save')}
                                     attachingCustomer={pending.anyPending('customer:')}
                                     onBack={() => setPanelMode('cart')}
-                                    onCustomerSelected={selectCustomer}
-                                    onCustomerUpdated={updateCustomerLocal}
+                                    onOpenCustomer={setCustomerDialog}
                                     onCustomerDetach={detachCustomer}
                                     onCheckoutStateSave={saveCheckoutState}
                                     onReview={openReview}
@@ -717,6 +726,9 @@ export default function PosIndex({
                             onNewSale={createNewSale}
                             onOpenHeld={() => setShowHeld(true)}
                             onCheckout={() => setPanelMode('checkout')}
+                            customer={activeSale?.customer ?? null}
+                            attachingCustomer={pending.anyPending('customer:')}
+                            onOpenCustomer={() => setCustomerDialog('search')}
                             onMobileBack={() => setMobileCartOpen(false)}
                         />
                     ) : (
@@ -724,13 +736,11 @@ export default function PosIndex({
                             sale={activeSale}
                             currencyCode={currencyCode}
                             financialAccounts={financialAccounts}
-                            canCreateCustomer={can.createCustomer}
                             canUpdateCustomer={can.updateCustomer}
                             savingCheckout={pending.isPending('checkout:save')}
                             attachingCustomer={pending.anyPending('customer:')}
                             onBack={() => setPanelMode('cart')}
-                            onCustomerSelected={selectCustomer}
-                            onCustomerUpdated={updateCustomerLocal}
+                            onOpenCustomer={setCustomerDialog}
                             onCustomerDetach={detachCustomer}
                             onCheckoutStateSave={saveCheckoutState}
                             onReview={openReview}
@@ -739,10 +749,24 @@ export default function PosIndex({
                 </div>
             )}
 
+            <PosCustomerDialog
+                open={customerDialog !== null}
+                initialView={customerDialog ?? 'search'}
+                current={activeSale?.customer ?? null}
+                canCreate={can.createCustomer}
+                canUpdate={can.updateCustomer}
+                attaching={pending.anyPending('customer:')}
+                onClose={() => setCustomerDialog(null)}
+                onSelect={selectCustomer}
+                onUpdated={updateCustomerLocal}
+                onRemove={detachCustomer}
+            />
+
             <Sheet
-                open={!isDesktop && mobileFiltersOpen}
+                open={!filtersInline && mobileFiltersOpen}
                 onClose={() => setMobileFiltersOpen(false)}
-                side="bottom"
+                side={isDesktop ? 'left' : 'bottom'}
+                widthClassName="max-w-sm"
                 footer={
                     <button
                         type="button"

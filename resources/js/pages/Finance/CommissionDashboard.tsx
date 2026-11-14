@@ -315,7 +315,7 @@ export default function CommissionDashboard(props: Props) {
                             />
                         </section>
                     ) : (
-                        <p className="mb-6 rounded-card border border-line bg-surface p-3 text-xs text-ink-muted">
+                        <p className="mb-6 surface-card p-3 text-xs text-ink-muted">
                             {t("commissions.dashboard.coveredRevenue")} :{" "}
                             <strong>{formatMoney(kpis.revenue)}</strong> ·{" "}
                             {t("commissions.dashboard.costPermissionHelp")}
@@ -495,7 +495,7 @@ function RankingTable({
         children: ReactNode;
         right?: boolean;
     }) => (
-        <th className={`px-3 py-2 ${right ? "text-right" : ""}`}>
+        <th className={`px-3 py-2 ${right ? "text-end" : ""}`}>
             <Link href={sortLink(k)} preserveScroll className="hover:text-ink">
                 {children}
                 {sorting.sort === k
@@ -511,8 +511,8 @@ function RankingTable({
 
     return (
         <div className="overflow-x-auto">
-            <table className="w-full min-w-[1100px] text-left text-sm">
-                <thead className="bg-raised text-[11px] uppercase tracking-wide text-ink-faint">
+            <table className="erp-table w-full min-w-[1100px] text-start text-sm">
+                <thead>
                     <tr>
                         <Th k="salesperson_name" right={false}>
                             {t("commissions.dashboard.salesperson")}
@@ -526,7 +526,7 @@ function RankingTable({
                                 <Th k="margin">
                                     {t("commissions.dashboard.grossMargin")}
                                 </Th>
-                                <th className="px-3 py-2 text-right">
+                                <th className="px-3 py-2 text-end">
                                     {t("commissions.dashboard.marginRate")}
                                 </th>
                             </>
@@ -562,40 +562,40 @@ function RankingTable({
                                     </span>
                                 )}
                             </td>
-                            <td className="px-3 py-2 text-right">
+                            <td className="px-3 py-2 text-end">
                                 {row.orders}
                             </td>
-                            <td className="px-3 py-2 text-right">
+                            <td className="px-3 py-2 text-end">
                                 {formatMoney(row.revenue)}
                             </td>
                             {canCosts && (
                                 <>
-                                    <td className="px-3 py-2 text-right">
+                                    <td className="px-3 py-2 text-end">
                                         {formatMoney(row.margin)}
                                     </td>
-                                    <td className="px-3 py-2 text-right">
+                                    <td className="px-3 py-2 text-end">
                                         {percent(row.margin_rate)}
                                     </td>
                                 </>
                             )}
-                            <td className="px-3 py-2 text-right">
+                            <td className="px-3 py-2 text-end">
                                 {formatMoney(row.gross)}
                             </td>
                             <td
-                                className={`px-3 py-2 text-right ${Number(row.reversals) < 0 ? "text-danger" : ""}`}
+                                className={`px-3 py-2 text-end ${Number(row.reversals) < 0 ? "text-danger" : ""}`}
                             >
                                 {formatMoney(row.reversals)}
                             </td>
-                            <td className="px-3 py-2 text-right font-semibold">
+                            <td className="px-3 py-2 text-end font-semibold">
                                 {formatMoney(row.net)}
                             </td>
-                            <td className="px-3 py-2 text-right">
+                            <td className="px-3 py-2 text-end">
                                 {formatMoney(row.pending)}
                             </td>
-                            <td className="px-3 py-2 text-right">
+                            <td className="px-3 py-2 text-end">
                                 {formatMoney(row.approved)}
                             </td>
-                            <td className="px-3 py-2 text-right">
+                            <td className="px-3 py-2 text-end">
                                 {formatMoney(row.paid)}
                             </td>
                         </tr>
@@ -625,8 +625,8 @@ function TrendTable({ points }: { points: Props["trend"]["points"] }) {
     );
     return (
         <div className="max-h-80 overflow-y-auto">
-            <table className="w-full text-sm">
-                <thead className="sticky top-0 bg-surface text-[11px] uppercase tracking-wide text-ink-faint">
+            <table className="erp-table w-full text-sm">
+                <thead className="sticky top-0 bg-surface text-[11px] text-ink-faint">
                     <tr>
                         <th className="py-2 text-start">
                             {t("common.period")}
@@ -750,8 +750,8 @@ function AdjustmentsPanel({
                     </span>
                 ))}
             </div>
-            <table className="w-full text-sm">
-                <thead className="text-[11px] uppercase tracking-wide text-ink-faint">
+            <table className="erp-table w-full text-sm">
+                <thead className="text-[11px] text-ink-faint">
                     <tr>
                         <th className="py-1 text-start">
                             {t("commissions.dashboard.salesperson")}
@@ -783,16 +783,16 @@ function AdjustmentsPanel({
                                         t("commissions.dashboard.unattributed")}
                                 </Link>
                             </td>
-                            <td className="py-1.5 text-right text-danger">
+                            <td className="py-1.5 text-end text-danger">
                                 {formatMoney(row.return_reversals)}
                             </td>
-                            <td className="py-1.5 text-right text-danger">
+                            <td className="py-1.5 text-end text-danger">
                                 {formatMoney(row.cancellations)}
                             </td>
-                            <td className="py-1.5 text-right text-danger">
+                            <td className="py-1.5 text-end text-danger">
                                 {formatMoney(row.corrections)}
                             </td>
-                            <td className="py-1.5 text-right font-semibold text-danger">
+                            <td className="py-1.5 text-end font-semibold text-danger">
                                 {formatMoney(row.total)}
                             </td>
                         </tr>
@@ -800,7 +800,7 @@ function AdjustmentsPanel({
                 </tbody>
             </table>
             <div>
-                <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-ink-faint">
+                <p className="mb-1 text-xs font-semibold text-ink-faint">
                     {t("commissions.dashboard.latestReversals")}
                 </p>
                 <ul className="divide-y divide-line text-sm">
@@ -860,8 +860,8 @@ function TierTable({ tiers, canCosts }: { tiers: Tier[]; canCosts: boolean }) {
         );
     return (
         <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-                <thead className="text-[11px] uppercase tracking-wide text-ink-faint">
+            <table className="erp-table w-full text-sm">
+                <thead className="text-[11px] text-ink-faint">
                     <tr>
                         <th className="py-1 text-start">
                             {t("commissions.dashboard.rule")}
@@ -892,21 +892,21 @@ function TierTable({ tiers, canCosts }: { tiers: Tier[]; canCosts: boolean }) {
                             <td className="py-1.5 text-ink-muted">
                                 {tierLabel(tier.min_margin, tier.max_margin, t)}
                             </td>
-                            <td className="py-1.5 text-right">
+                            <td className="py-1.5 text-end">
                                 {Number(tier.commission_rate).toLocaleString(
                                     "fr-FR",
                                 )}{" "}
                                 %
                             </td>
-                            <td className="py-1.5 text-right">
+                            <td className="py-1.5 text-end">
                                 {tier.sale_lines}
                             </td>
                             {canCosts && (
-                                <td className="py-1.5 text-right">
+                                <td className="py-1.5 text-end">
                                     {formatMoney(tier.margin)}
                                 </td>
                             )}
-                            <td className="py-1.5 text-right font-medium">
+                            <td className="py-1.5 text-end font-medium">
                                 {formatMoney(tier.net)}
                             </td>
                         </tr>
@@ -926,8 +926,8 @@ function StoreTable({
 }) {
     const { t } = useI18n();
     return (
-        <table className="w-full text-sm">
-            <thead className="text-[11px] uppercase tracking-wide text-ink-faint">
+        <table className="erp-table w-full text-sm">
+            <thead className="text-[11px] text-ink-faint">
                 <tr>
                     <th className="py-1 text-start">{t("common.store")}</th>
                     <th className="py-1 text-end">
@@ -951,18 +951,18 @@ function StoreTable({
                         className="border-t border-line"
                     >
                         <td className="py-1.5">{row.store_name}</td>
-                        <td className="py-1.5 text-right">
+                        <td className="py-1.5 text-end">
                             {formatMoney(row.revenue)}
                         </td>
                         {canCosts && (
-                            <td className="py-1.5 text-right">
+                            <td className="py-1.5 text-end">
                                 {formatMoney(row.margin)}
                             </td>
                         )}
-                        <td className="py-1.5 text-right font-medium">
+                        <td className="py-1.5 text-end font-medium">
                             {formatMoney(row.net)}
                         </td>
-                        <td className="py-1.5 text-right">
+                        <td className="py-1.5 text-end">
                             {formatMoney(row.paid)}
                         </td>
                     </tr>

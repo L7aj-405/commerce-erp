@@ -1,0 +1,6 @@
+@extends('errors.layout')
+@section('code', '419')
+@section('title_fr', 'Session expirée')
+@section('title_ar', 'انتهت صلاحية الجلسة')
+@section('message_fr', 'La page est restée ouverte trop longtemps. Rechargez-la puis recommencez votre action.')
+@section('message_ar', 'بقيت الصفحة مفتوحة لفترة طويلة. أعد تحميلها ثم أعد المحاولة.')

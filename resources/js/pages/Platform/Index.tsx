@@ -1,9 +1,5 @@
-import { Button, ButtonLink } from "@/components/ui/Button";
-import {
-    OrderStatesChart,
-    RankedMoneyChart,
-    SalesCollectionsChart,
-} from "@/components/dashboard/DashboardCharts";
+import { Button } from "@/components/ui/Button";
+import RoleDashboard from "@/components/dashboard/RoleDashboard";
 import { TextField } from "@/components/ui/form";
 import { useI18n } from "@/i18n";
 import ApplicationShell from "@/layouts/ApplicationShell";
@@ -12,9 +8,10 @@ import type {
     TenantOrganization,
     TenantStore,
 } from "@/types/app";
-import { formatInteger, formatMoney } from "@/utils/format";
-import { Head, Link, router, useForm, usePage } from "@inertiajs/react";
+import { Head, useForm, usePage } from "@inertiajs/react";
 import type { FormEvent } from "react";
+
+export type DashboardProps = Pick<Props, "dashboard" | "onboarding" | "executiveDashboard">;
 
 type Props = {
     organizations: TenantOrganization[];
@@ -76,14 +73,6 @@ type Props = {
     };
 };
 
-const checklist = [
-    "organization",
-    "store",
-    "products",
-    "stock",
-    "first_sale",
-] as const;
-
 export default function PlatformIndex({
     organizations,
     stores,
@@ -114,82 +103,8 @@ export default function PlatformIndex({
         storeForm.post("/stores");
     };
 
-    const metrics = [
-        {
-            label: t("products.title"),
-            value: dashboard.product_count,
-            href: "/catalog/products",
-            permission: "products.view",
-            needsStore: false,
-        },
-        {
-            label: t("platform.stockedItems"),
-            value: dashboard.stocked_item_count,
-            href: "/inventory/stock",
-            permission: "inventory.view",
-            needsStore: false,
-        },
-        {
-            label: t("platform.salesToday"),
-            value: dashboard.sales_today,
-            href: "/sales/orders",
-            permission: "sales_orders.view",
-            needsStore: true,
-        },
-        {
-            label: t("platform.paymentsToReceive"),
-            value: dashboard.payments_to_receive,
-            href: "/payments",
-            permission: "payments.view",
-            needsStore: true,
-        },
-        {
-            label: t("platform.wooStockPending"),
-            value: dashboard.woo_stock_tasks_pending,
-            href: "/integrations/woocommerce/stock-tasks",
-            permission: "integrations.woocommerce.stock_tasks.view",
-            needsStore: false,
-        },
-        {
-            label: t("platform.itemsToCatalog"),
-            value: dashboard.out_of_stock_articles_pending,
-            href: "/procurement/out-of-stock-articles",
-            permission: "procurement.view",
-            needsStore: false,
-        },
-    ];
-
-    const quickEntries = [
-        {
-            label: t("platform.pos"),
-            href: "/pos",
-            permission: "pos.access",
-            needsStore: true,
-        },
-        {
-            label: t("products.title"),
-            href: "/catalog/products",
-            permission: "products.view",
-            needsStore: false,
-        },
-        {
-            label: t("productCosts.stock"),
-            href: "/inventory/stock",
-            permission: "inventory.view",
-            needsStore: false,
-        },
-        {
-            label: t("customers.title"),
-            href: "/sales/customers",
-            permission: "customers.view",
-            needsStore: false,
-        },
-    ].filter(
-        (entry) => can(entry.permission) && (!entry.needsStore || tenant.store),
-    );
-
     return (
-        <ApplicationShell>
+        <ApplicationShell fluid={!inSetup}>
             <Head
                 title={
                     inSetup ? t("platform.prepareSpace") : t("platform.home")
@@ -198,10 +113,10 @@ export default function PlatformIndex({
 
             {inSetup ? (
                 <div className="mx-auto max-w-xl">
-                    <p className="text-[13px] font-medium uppercase tracking-[0.14em] text-ink-muted">
+                    <p className="text-sm font-medium text-ink-muted">
                         {t("platform.welcome")}
                     </p>
-                    <h1 className="mt-2 text-2xl font-semibold tracking-tight text-ink">
+                    <h1 className="mt-1 text-2xl font-semibold text-ink">
                         {t("platform.greetingSetup").replace(
                             "{name}",
                             firstName,
@@ -332,412 +247,14 @@ export default function PlatformIndex({
                     )}
                 </div>
             ) : (
-                <div className="space-y-6">
-                    <header className="flex flex-wrap items-start justify-between gap-4">
-                        <div>
-                            <h1 className="text-2xl font-semibold tracking-tight text-ink">
-                                {t("platform.greeting").replace(
-                                    "{name}",
-                                    firstName,
-                                )}
-                            </h1>
-                            <p className="mt-1 text-sm text-ink-muted">
-                                {tenant.organization?.name}
-                                {tenant.store ? ` · ${tenant.store.name}` : ""}
-                            </p>
-                        </div>
-                        <div className="flex flex-wrap items-end gap-3">
-                            {executiveDashboard && (
-                                <label className="block">
-                                    <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
-                                        {t("common.period")}
-                                    </span>
-                                    <input
-                                        type="month"
-                                        value={executiveDashboard.period.month}
-                                        onChange={(event) =>
-                                            event.target.value &&
-                                            router.get(
-                                                "/platform",
-                                                { month: event.target.value },
-                                                {
-                                                    preserveState: true,
-                                                    preserveScroll: true,
-                                                },
-                                            )
-                                        }
-                                        className="h-10 rounded-field border border-line-strong bg-surface px-3 text-sm text-ink"
-                                    />
-                                </label>
-                            )}
-                            {tenant.store && can("pos.access") && (
-                                <ButtonLink href="/pos" size="lg">
-                                    {t("platform.newSale")}
-                                </ButtonLink>
-                            )}
-                        </div>
-                    </header>
-
-                    {executiveDashboard ? (
-                        <>
-                            <section aria-labelledby="executive-kpis">
-                                <div className="mb-3 flex items-end justify-between gap-3">
-                                    <div>
-                                        <h2
-                                            id="executive-kpis"
-                                            className="text-[13px] font-semibold uppercase tracking-wider text-ink-faint"
-                                        >
-                                            {t("platform.overview")}
-                                        </h2>
-                                        <p className="mt-1 text-sm text-ink-muted">
-                                            {executiveDashboard.period.label}
-                                        </p>
-                                    </div>
-                                    <span className="text-xs text-ink-faint">
-                                        {tenant.store
-                                            ? tenant.store.name
-                                            : t(
-                                                  "finance.monthEnd.wholeOrganization",
-                                              )}
-                                    </span>
-                                </div>
-                                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                                    <ExecutiveKpi
-                                        label={t("platform.netSales")}
-                                        value={formatMoney(
-                                            executiveDashboard.primary.net_sales
-                                                .value,
-                                        )}
-                                        variation={
-                                            executiveDashboard.primary.net_sales
-                                                .variation
-                                        }
-                                        href="/finance/ventes"
-                                    />
-                                    <ExecutiveKpi
-                                        label={t("platform.netCollections")}
-                                        value={formatMoney(
-                                            executiveDashboard.primary
-                                                .net_collections.value,
-                                        )}
-                                        variation={
-                                            executiveDashboard.primary
-                                                .net_collections.variation
-                                        }
-                                        href="/finance/ca-encaisse"
-                                    />
-                                    <ExecutiveKpi
-                                        label={t(
-                                            "commissions.dashboard.orders",
-                                        )}
-                                        value={formatInteger(
-                                            executiveDashboard.primary.orders
-                                                .value,
-                                        )}
-                                        variation={
-                                            executiveDashboard.primary.orders
-                                                .variation
-                                        }
-                                        href="/sales/orders"
-                                    />
-                                    <ExecutiveKpi
-                                        label={t("platform.receivables")}
-                                        value={formatMoney(
-                                            executiveDashboard.primary
-                                                .receivables.value,
-                                        )}
-                                        variation={null}
-                                        href="/finance/creances"
-                                    />
-                                </div>
-                            </section>
-
-                            <div className="grid gap-5 xl:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]">
-                                <SalesCollectionsChart
-                                    points={
-                                        executiveDashboard.charts
-                                            .sales_vs_collections
-                                    }
-                                />
-                                <OrderStatesChart
-                                    states={
-                                        executiveDashboard.charts.order_states
-                                    }
-                                />
-                            </div>
-
-                            <section
-                                aria-label="Indicateurs secondaires"
-                                className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6"
-                            >
-                                <CompactMetric
-                                    label={t("platform.averageBasket")}
-                                    value={formatMoney(
-                                        executiveDashboard.secondary
-                                            .average_basket,
-                                    )}
-                                />
-                                <CompactMetric
-                                    label={t("platform.partiallyPaid")}
-                                    value={formatInteger(
-                                        executiveDashboard.secondary
-                                            .partial_orders,
-                                    )}
-                                />
-                                <CompactMetric
-                                    label={t("platform.unpaid")}
-                                    value={formatInteger(
-                                        executiveDashboard.secondary
-                                            .unpaid_orders,
-                                    )}
-                                />
-                                <CompactMetric
-                                    label={t("platform.refunds")}
-                                    value={formatMoney(
-                                        executiveDashboard.secondary.refunds,
-                                    )}
-                                />
-                                <CompactMetric
-                                    label={t("finance.sales.receivedReturns")}
-                                    value={`${formatInteger(executiveDashboard.secondary.returns.count)} · ${formatMoney(executiveDashboard.secondary.returns.amount)}`}
-                                />
-                                <CompactMetric
-                                    label={t("platform.itemsToCatalog")}
-                                    value={formatInteger(
-                                        executiveDashboard.secondary
-                                            .out_of_stock,
-                                    )}
-                                />
-                            </section>
-
-                            <div className="grid gap-5 lg:grid-cols-[minmax(0,1.4fr)_minmax(300px,.8fr)]">
-                                <RankedMoneyChart
-                                    title={t("platform.topProducts")}
-                                    description={t("platform.topProductsHelp")}
-                                    points={
-                                        executiveDashboard.charts.top_products
-                                    }
-                                    emptyLabel={t("platform.noProductSales")}
-                                />
-                                <section className="rounded-card border border-line bg-surface p-5 shadow-card">
-                                    <h2 className="font-semibold text-ink">
-                                        {t("platform.watch")}
-                                    </h2>
-                                    <p className="mt-1 text-[13px] text-ink-muted">
-                                        {t("platform.watchHelp")}
-                                    </p>
-                                    <div className="mt-4 divide-y divide-line">
-                                        {executiveDashboard.attention.map(
-                                            (item) => (
-                                                <Link
-                                                    key={item.label}
-                                                    href={item.href}
-                                                    className="flex items-center justify-between gap-4 py-3 text-sm hover:text-primary"
-                                                >
-                                                    <span className="text-ink-muted">
-                                                        {item.label}
-                                                    </span>
-                                                    <strong className="tabular-nums text-ink">
-                                                        {item.kind === "money"
-                                                            ? formatMoney(
-                                                                  item.value,
-                                                              )
-                                                            : formatInteger(
-                                                                  Number(
-                                                                      item.value,
-                                                                  ),
-                                                              )}
-                                                    </strong>
-                                                </Link>
-                                            ),
-                                        )}
-                                    </div>
-                                </section>
-                            </div>
-                        </>
-                    ) : (
-                        <section aria-labelledby="activity-title">
-                            <h2
-                                id="activity-title"
-                                className="mb-3 text-[13px] font-semibold uppercase tracking-wider text-ink-faint"
-                            >
-                                {t("platform.yourActivity")}
-                            </h2>
-                            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                                {metrics
-                                    .filter(
-                                        (metric) =>
-                                            can(metric.permission) &&
-                                            (!metric.needsStore ||
-                                                tenant.store),
-                                    )
-                                    .map((metric) => (
-                                        <Link
-                                            key={metric.label}
-                                            href={metric.href}
-                                            className="rounded-card border border-line bg-surface p-5 shadow-card transition-soft hover:border-line-strong"
-                                        >
-                                            <p className="text-sm text-ink-muted">
-                                                {metric.label}
-                                            </p>
-                                            <p className="mt-2 text-3xl font-semibold tabular-nums text-ink">
-                                                {metric.value ?? "—"}
-                                            </p>
-                                        </Link>
-                                    ))}
-                            </div>
-                        </section>
-                    )}
-
-                    {quickEntries.length > 0 && (
-                        <section>
-                            <h2 className="mb-3 text-[13px] font-semibold uppercase tracking-wider text-ink-faint">
-                                {t("platform.quickAccess")}
-                            </h2>
-                            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                                {quickEntries.map((entry) => (
-                                    <Link
-                                        key={entry.href}
-                                        href={entry.href}
-                                        className="rounded-card border border-line bg-surface p-4 text-sm font-medium text-ink transition-soft hover:border-line-strong hover:bg-raised"
-                                    >
-                                        {entry.label}
-                                    </Link>
-                                ))}
-                            </div>
-                        </section>
-                    )}
-
-                    <div className="grid gap-6 lg:grid-cols-[1.25fr_1fr]">
-                        <section className="rounded-card border border-line bg-surface p-6 shadow-card">
-                            <h2 className="font-semibold text-ink">
-                                {t("platform.getStarted")}
-                            </h2>
-                            <p className="mt-1 text-sm text-ink-muted">
-                                {t("platform.getStartedHelp")}
-                            </p>
-                            <ol className="mt-5 space-y-3">
-                                {checklist.map((key) => (
-                                    <li
-                                        key={key}
-                                        className="flex items-center gap-3 text-sm"
-                                    >
-                                        <span
-                                            aria-hidden="true"
-                                            className={`grid size-6 place-items-center rounded-full text-xs font-bold ${
-                                                onboarding[key]
-                                                    ? "bg-success-soft text-success"
-                                                    : "bg-sage text-ink-muted"
-                                            }`}
-                                        >
-                                            {onboarding[key] ? "✓" : "·"}
-                                        </span>
-                                        <span
-                                            className={
-                                                onboarding[key]
-                                                    ? "text-ink-faint line-through"
-                                                    : "font-medium text-ink"
-                                            }
-                                        >
-                                            {t(
-                                                `platform.checklist.${key}` as Parameters<
-                                                    typeof t
-                                                >[0],
-                                            )}
-                                        </span>
-                                    </li>
-                                ))}
-                            </ol>
-                        </section>
-
-                        <section className="rounded-card border border-line bg-surface p-6 shadow-card">
-                            <h2 className="font-semibold text-ink">
-                                {t("platform.nextAction")}
-                            </h2>
-                            <p className="mt-1 text-sm text-ink-muted">
-                                {t("platform.nextActionHelp")}
-                            </p>
-                            <div className="mt-5 grid gap-3">
-                                {can("products.import") && (
-                                    <ButtonLink href="/catalog/products/import">
-                                        {t("imports.products.title")}
-                                    </ButtonLink>
-                                )}
-                                {can("products.create") && (
-                                    <ButtonLink
-                                        href="/catalog/products/create"
-                                        variant="secondary"
-                                    >
-                                        {t("platform.addProduct")}
-                                    </ButtonLink>
-                                )}
-                                {can("inventory.opening") && (
-                                    <ButtonLink
-                                        href="/inventory/stock"
-                                        variant="secondary"
-                                    >
-                                        {t("platform.enterOpeningStock")}
-                                    </ButtonLink>
-                                )}
-                                {tenant.store && can("pos.access") && (
-                                    <ButtonLink href="/pos" variant="secondary">
-                                        {t("platform.openPos")}
-                                    </ButtonLink>
-                                )}
-                            </div>
-                        </section>
-                    </div>
-                </div>
+                <RoleDashboard
+                    firstName={firstName}
+                    dashboard={dashboard}
+                    onboarding={onboarding}
+                    executiveDashboard={executiveDashboard}
+                />
             )}
         </ApplicationShell>
-    );
-}
-
-function ExecutiveKpi({
-    label,
-    value,
-    variation,
-    href,
-}: {
-    label: string;
-    value: string;
-    variation: string | null;
-    href: string;
-}) {
-    const { t } = useI18n();
-    const numericVariation = variation === null ? null : Number(variation);
-    return (
-        <Link
-            href={href}
-            className="rounded-card border border-line bg-surface p-5 shadow-card transition-soft hover:border-line-strong"
-        >
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
-                {label}
-            </p>
-            <p className="mt-3 text-3xl font-semibold tabular-nums tracking-tight text-ink">
-                {value}
-            </p>
-            <p
-                className={`mt-2 text-xs font-medium ${numericVariation === null ? "text-ink-faint" : numericVariation >= 0 ? "text-success" : "text-danger"}`}
-            >
-                {numericVariation === null
-                    ? t("platform.comparisonUnavailable")
-                    : `${numericVariation >= 0 ? "+" : ""}${numericVariation.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} % ${t("platform.vsPreviousMonth")}`}
-            </p>
-        </Link>
-    );
-}
-
-function CompactMetric({ label, value }: { label: string; value: string }) {
-    return (
-        <div className="rounded-card border border-line bg-raised px-4 py-3">
-            <p className="text-[11px] uppercase tracking-wide text-ink-faint">
-                {label}
-            </p>
-            <p className="mt-1.5 font-semibold tabular-nums text-ink">
-                {value}
-            </p>
-        </div>
     );
 }
 

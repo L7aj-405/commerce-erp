@@ -1,3 +1,4 @@
+import DatePicker from '@/components/ui/DatePicker';
 import { useI18n } from '@/i18n';
 import type { TranslationKey } from '@/i18n/translations';
 import { formatDate, formatMoney, formatQuantity } from '@/utils/format';
@@ -79,8 +80,8 @@ export default function ProcurementReadinessCard({ orderId, plan }: { orderId: n
 
     if (summary.state === 'covered') {
         return (
-            <section className="mb-6 rounded-card border border-line bg-surface p-5">
-                <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">{k('title')}</h2>
+            <section className="mb-6 surface-card p-5">
+                <h2 className="font-semibold text-base text-ink">{k('title')}</h2>
                 <p className="mt-2 text-sm text-success">{k('covered')}</p>
             </section>
         );
@@ -103,7 +104,7 @@ export default function ProcurementReadinessCard({ orderId, plan }: { orderId: n
 
     return (
         <section className={`mb-6 rounded-card border bg-surface p-5 ${tone}`}>
-            <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">{k('title')}</h2>
+            <h2 className="font-semibold text-base text-ink">{k('title')}</h2>
             <p className={`mt-2 text-sm font-medium ${summary.state === 'received' ? 'text-success' : settled ? 'text-ink' : 'text-warning'}`}>{headline}</p>
 
             <ul className="mt-3 space-y-2">
@@ -267,7 +268,7 @@ function CreatePurchaseOrder({
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
                 <label className="block text-xs text-ink-muted">
                     {k('expectedDelivery')}
-                    <input type="date" value={form.data.expected_delivery_date} onChange={(e) => form.setData('expected_delivery_date', e.target.value)} className="control-input mt-1 w-full" />
+                    <DatePicker value={form.data.expected_delivery_date} onChange={(value) => form.setData('expected_delivery_date', value)} />
                 </label>
                 <label className="block text-xs text-ink-muted">
                     {k('notes')}

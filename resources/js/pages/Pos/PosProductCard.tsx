@@ -20,9 +20,9 @@ type Props = {
 };
 
 const sizeConfig: Record<PosCardSize, { pad: string; aspect: string; name: string; price: string }> = {
-    compact: { pad: 'p-2', aspect: 'aspect-square', name: 'text-[12px]', price: 'text-[13px]' },
-    normal: { pad: 'p-2.5', aspect: 'aspect-[4/3]', name: 'text-[13px]', price: 'text-sm' },
-    large: { pad: 'p-3', aspect: 'aspect-[5/4]', name: 'text-sm', price: 'text-[15px]' },
+    compact: { pad: 'p-2', aspect: 'aspect-square', name: 'text-[13px]', price: 'text-sm' },
+    normal: { pad: 'p-2.5', aspect: 'aspect-[4/3]', name: 'text-sm', price: 'text-[15px]' },
+    large: { pad: 'p-3', aspect: 'aspect-[5/4]', name: 'text-[15px]', price: 'text-base' },
 };
 
 export default function PosProductCard({ product, onAdd, pending = false, added = false, size = 'normal', showImage = true, showLocalStock = true, showCompanyStock = true }: Props) {
@@ -53,11 +53,11 @@ export default function PosProductCard({ product, onAdd, pending = false, added 
             {(pending || added) && (
                 <span className="absolute inset-0 z-20 grid place-items-center rounded-card bg-surface/70">
                     {pending ? (
-                        <span className="inline-flex items-center gap-1.5 rounded-full bg-surface px-2.5 py-1 text-[11px] font-medium text-ink-muted shadow-card">
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-surface px-2.5 py-1 text-[12px] font-medium text-ink-muted shadow-card">
                             <Spinner size="xs" /> {t('pos.adding')}
                         </span>
                     ) : (
-                        <span className="inline-flex items-center gap-1.5 rounded-full bg-success-soft px-2.5 py-1 text-[11px] font-semibold text-success shadow-card">
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-success-soft px-2.5 py-1 text-[12px] font-semibold text-success shadow-card">
                             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" aria-hidden="true"><path d="m5 13 4 4L19 7" /></svg>
                             {t('pos.added')}
                         </span>
@@ -67,8 +67,12 @@ export default function PosProductCard({ product, onAdd, pending = false, added 
 
             {(taxMissing || remote || low || backorder) && (
                 <span
-                    className={`absolute end-2 top-2 z-10 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
-                        taxMissing ? 'bg-danger-soft text-danger' : backorder ? 'bg-warning-soft text-warning' : remote ? 'bg-warning-soft text-warning' : 'bg-sage text-ink-muted'
+                    className={`absolute end-2 top-2 z-10 rounded-full border px-2 py-0.5 text-[11.5px] leading-4 font-semibold ${
+                        taxMissing
+                            ? 'border-danger/30 bg-danger-soft text-danger'
+                            : backorder || remote
+                              ? 'border-warning/35 bg-warning-soft text-warning'
+                              : 'border-line-strong bg-sage text-ink-muted'
                     }`}
                 >
                     {taxMissing ? t('pos.taxUnknown') : backorder ? t('pos.backorder') : remote ? t('pos.internal') : t('pos.last')}
@@ -83,10 +87,10 @@ export default function PosProductCard({ product, onAdd, pending = false, added 
 
             <div className={`flex flex-1 flex-col ${showImage ? 'mt-2' : ''}`}>
                 <p className={`line-clamp-2 font-semibold text-ink ${c.name}`}>{product.product_name}</p>
-                {size !== 'compact' && product.variant_name && <p className="text-[11px] text-ink-muted">{product.variant_name}</p>}
-                <p className={`mt-1 font-semibold text-ink ${c.price}`}><Money value={product.unit_price_incl_tax} /> <span className="text-[10px] font-normal text-ink-faint">{t('pos.vatIncluded')}</span></p>
+                {size !== 'compact' && product.variant_name && <p className="text-[12px] text-ink-muted">{product.variant_name}</p>}
+                <p className={`mt-1 font-semibold text-ink tabular-nums ${c.price}`}><Money value={product.unit_price_incl_tax} /> <span className="text-[11px] font-medium text-ink-muted">{t('pos.vatIncluded')}</span></p>
                 {(showLocalStock || showCompanyStock) && (
-                    <p className={`mt-0.5 text-[11px] ${backorder ? 'text-warning' : 'text-ink-muted'}`}>
+                    <p className={`mt-0.5 text-[12px] leading-4 ${backorder ? 'font-medium text-warning' : 'text-ink-muted'}`}>
                         {backorder ? (
                             t('pos.companyBackorder')
                         ) : (

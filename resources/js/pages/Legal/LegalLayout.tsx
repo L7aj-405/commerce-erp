@@ -69,7 +69,7 @@ export default function LegalLayout({
 
                 <main className="mx-auto max-w-5xl px-5 py-10 sm:px-8 sm:py-14">
                     <div className="rounded-panel border border-line bg-surface p-6 shadow-card sm:p-9">
-                        <p className="text-[13px] font-medium uppercase tracking-[0.14em] text-primary">
+                        <p className="text-[13px] font-semibold text-primary">
                             {legal.productName}
                         </p>
                         <h1 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">

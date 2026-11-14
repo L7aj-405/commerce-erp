@@ -229,9 +229,9 @@ export default function LineGrid({
     return (
         <div className="space-y-3">
             <div className="hidden overflow-x-auto md:block">
-                <table className="w-full min-w-[820px] border-collapse text-sm">
+                <table className="erp-table w-full min-w-[820px] text-sm">
                     <thead>
-                        <tr className="border-b border-line-strong text-left text-xs uppercase tracking-wide text-ink-muted [&>th]:px-2 [&>th]:py-2 [&>th]:font-medium">
+                        <tr className="border-b border-line-strong text-start text-[13px] text-ink-muted [&>th]:px-2 [&>th]:py-2 [&>th]:font-medium font-medium">
                             <th>{t("quotations.item")}</th>
                             <th className="w-16 text-end">
                                 {t("quotations.quantityShort")}
@@ -297,7 +297,7 @@ export default function LineGrid({
                                             </p>
                                         )}
                                     </td>
-                                    <td className="text-right">
+                                    <td className="text-end">
                                         <input
                                             type="number"
                                             inputMode="numeric"
@@ -316,7 +316,8 @@ export default function LineGrid({
                                                 e.key === "Enter" &&
                                                 commit(line.id)
                                             }
-                                            className="w-14 rounded-field border border-line-strong px-2 py-1 text-right tabular-nums"
+                                            aria-label={`${t("quotations.quantityShort")} · ${articleName}`}
+                                            className="control-input control-compact w-14 text-end tabular-nums"
                                         />
                                     </td>
                                     <td>
@@ -333,7 +334,8 @@ export default function LineGrid({
                                                     schedule(line.id);
                                                 }}
                                                 onBlur={() => commit(line.id)}
-                                                className="w-24 rounded-field border border-line-strong px-2 py-1 text-right tabular-nums"
+                                                aria-label={`${t("quotations.unitPrice")} · ${articleName}`}
+                                                className="control-input control-compact w-24 text-end tabular-nums"
                                             />
                                             <select
                                                 disabled={busy}
@@ -346,13 +348,14 @@ export default function LineGrid({
                                                     });
                                                     commit(line.id);
                                                 }}
-                                                className="rounded-field border border-line-strong px-1 py-1 text-xs"
+                                                aria-label={`HT / TTC · ${articleName}`}
+                                                className="control-select control-compact"
                                             >
                                                 <option value="ht">HT</option>
                                                 <option value="ttc">TTC</option>
                                             </select>
                                         </div>
-                                        <span className="mt-0.5 block text-right text-xs text-ink-faint">
+                                        <span className="mt-0.5 block text-end text-xs text-ink-faint">
                                             {d.price_input_mode === "ht"
                                                 ? `TTC ${formatMoney(line.unit_price_incl_tax, currency)}`
                                                 : `HT ${formatMoney(line.unit_price_excl_tax, currency)}`}
@@ -373,7 +376,8 @@ export default function LineGrid({
                                                     schedule(line.id);
                                                 }}
                                                 onBlur={() => commit(line.id)}
-                                                className="w-14 rounded-field border border-line-strong px-2 py-1 text-right tabular-nums"
+                                                aria-label={`${t("quotations.discount")} · ${articleName}`}
+                                                className="control-input control-compact w-14 text-end tabular-nums"
                                             />
                                             <select
                                                 disabled={busy}
@@ -386,14 +390,15 @@ export default function LineGrid({
                                                     });
                                                     commit(line.id);
                                                 }}
-                                                className="rounded-field border border-line-strong px-1 py-1 text-xs"
+                                                aria-label={`% / DH · ${articleName}`}
+                                                className="control-select control-compact"
                                             >
                                                 <option value="%">%</option>
                                                 <option value="DH">DH</option>
                                             </select>
                                         </div>
                                     </td>
-                                    <td className="text-right text-xs tabular-nums text-ink-muted">
+                                    <td className="text-end text-xs tabular-nums text-ink-muted">
                                         {formatQuantity(line.tax_rate)} %
                                         {line.tax_name && (
                                             <span className="block text-ink-faint">
@@ -401,19 +406,19 @@ export default function LineGrid({
                                             </span>
                                         )}
                                     </td>
-                                    <td className="text-right tabular-nums text-ink-muted">
+                                    <td className="text-end tabular-nums text-ink-muted">
                                         {formatMoney(
                                             line.taxable_amount,
                                             currency,
                                         )}
                                     </td>
-                                    <td className="text-right font-medium tabular-nums text-ink">
+                                    <td className="text-end font-medium tabular-nums text-ink">
                                         {formatMoney(
                                             line.total_incl_tax,
                                             currency,
                                         )}
                                     </td>
-                                    <td className="text-right">
+                                    <td className="text-end">
                                         <button
                                             type="button"
                                             disabled={busy}
@@ -473,7 +478,7 @@ export default function LineGrid({
                         >
                             <div className="flex items-start justify-between gap-2">
                                 <div className="min-w-0">
-                                    <span className="mr-1 rounded bg-raised px-1 text-[10px] uppercase tracking-wide text-ink-faint">
+                                    <span className="me-1 rounded bg-raised px-1.5 py-px text-[11px] font-medium text-ink-muted">
                                         {line.line_type === "non_stock"
                                             ? t("quotations.nonStock")
                                             : t("quotations.catalog")}
@@ -537,7 +542,7 @@ export default function LineGrid({
                                         onKeyDown={(e) =>
                                             e.key === "Enter" && commit(line.id)
                                         }
-                                        className="mt-0.5 h-9 w-full rounded-field border border-line-strong px-2 text-right text-sm tabular-nums text-ink"
+                                        className="control-input control-compact mt-0.5 w-full text-end tabular-nums"
                                     />
                                 </label>
 
@@ -554,7 +559,7 @@ export default function LineGrid({
                                 </label>
 
                                 <label className="col-span-2 block">
-                                    Prix unitaire
+                                    {t("quotations.unitPrice")}
                                     <div className="mt-0.5 flex items-center gap-1.5">
                                         <input
                                             inputMode="decimal"
@@ -567,7 +572,7 @@ export default function LineGrid({
                                                 schedule(line.id);
                                             }}
                                             onBlur={() => commit(line.id)}
-                                            className="h-9 w-full rounded-field border border-line-strong px-2 text-right text-sm tabular-nums text-ink"
+                                            className="control-input control-compact w-full text-end tabular-nums"
                                         />
                                         <select
                                             disabled={busy}
@@ -579,13 +584,13 @@ export default function LineGrid({
                                                 });
                                                 commit(line.id);
                                             }}
-                                            className="h-9 shrink-0 rounded-field border border-line-strong px-1.5 text-xs text-ink"
+                                            className="control-select control-compact shrink-0"
                                         >
                                             <option value="ht">HT</option>
                                             <option value="ttc">TTC</option>
                                         </select>
                                     </div>
-                                    <span className="mt-1 block text-right text-xs text-ink-faint">
+                                    <span className="mt-1 block text-end text-xs text-ink-faint">
                                         {d.price_input_mode === "ht"
                                             ? `TTC ${formatMoney(line.unit_price_incl_tax, currency)}`
                                             : `HT ${formatMoney(line.unit_price_excl_tax, currency)}`}
@@ -608,7 +613,7 @@ export default function LineGrid({
                                                 schedule(line.id);
                                             }}
                                             onBlur={() => commit(line.id)}
-                                            className="h-9 w-full rounded-field border border-line-strong px-2 text-right text-sm tabular-nums text-ink"
+                                            className="control-input control-compact w-full text-end tabular-nums"
                                         />
                                         <select
                                             disabled={busy}
@@ -620,7 +625,7 @@ export default function LineGrid({
                                                 });
                                                 commit(line.id);
                                             }}
-                                            className="h-9 shrink-0 rounded-field border border-line-strong px-1.5 text-xs text-ink"
+                                            className="control-select control-compact shrink-0"
                                         >
                                             <option value="%">%</option>
                                             <option value="DH">DH</option>
@@ -794,7 +799,7 @@ function ArticleAdder({
     };
 
     return (
-        <div className="rounded-card border border-line bg-surface p-3 text-sm">
+        <div className="surface-card p-3 text-sm">
             {manual === null ? (
                 <>
                     <div className="flex items-center gap-2">
@@ -831,7 +836,7 @@ function ArticleAdder({
                                         className="flex w-full items-start justify-between gap-3 px-1 py-2 text-start hover:bg-raised disabled:opacity-50"
                                     >
                                         <span>
-                                            <span className="mr-1 rounded bg-raised px-1 text-[10px] uppercase tracking-wide text-ink-faint">
+                                            <span className="me-1 rounded bg-raised px-1.5 py-px text-[11px] font-medium text-ink-muted">
                                                 {row.kind === "catalog"
                                                     ? t("quotations.catalog")
                                                     : t("quotations.nonStock")}
@@ -879,7 +884,7 @@ function ArticleAdder({
                                             name: query,
                                         }));
                                     }}
-                                    className="block w-full px-1 py-2 text-left text-primary hover:bg-raised"
+                                    className="block w-full px-1 py-2 text-start text-primary hover:bg-raised"
                                 >
                                     + {t("quotations.addNonStock")}
                                     {query.trim() ? ` « ${query.trim()} »` : ""}
@@ -903,7 +908,7 @@ function ArticleAdder({
                                     name: e.target.value,
                                 }))
                             }
-                            className="rounded-field border border-line-strong px-2 py-1 sm:col-span-2"
+                            className="control-input control-compact sm:col-span-2"
                         />
                         <input
                             placeholder={t("common.reference")}
@@ -935,7 +940,7 @@ function ArticleAdder({
                                     tax_rate_id: e.target.value,
                                 }))
                             }
-                            className="rounded-field border border-line-strong px-2 py-1"
+                            className="control-select control-compact"
                         >
                             <option value="">{t("quotations.noTax")}</option>
                             {taxRates.map((t) => (
@@ -955,7 +960,7 @@ function ArticleAdder({
                                         unit_price: e.target.value,
                                     }))
                                 }
-                                className="w-full rounded-field border border-line-strong px-2 py-1 text-right"
+                                className="control-input control-compact w-full text-end"
                             />
                             <select
                                 value={mForm.price_input_mode}
@@ -965,7 +970,7 @@ function ArticleAdder({
                                         price_input_mode: e.target.value,
                                     }))
                                 }
-                                className="rounded-field border border-line-strong px-1 py-1 text-xs"
+                                className="control-select control-compact"
                             >
                                 <option value="ht">HT</option>
                                 <option value="ttc">TTC</option>

@@ -34,5 +34,5 @@ export default function CommissionEntryShow({ entry, can }: { entry: Entry; can:
         </div>
     </ApplicationShell>;
 }
-function Card({ title, children }: { title: string; children: ReactNode }) { return <section className="rounded-card border border-line bg-surface p-5"><h2 className="mb-4 font-semibold text-ink">{title}</h2><dl>{children}</dl></section>; }
+function Card({ title, children }: { title: string; children: ReactNode }) { return <section className="surface-card p-5"><h2 className="mb-4 font-semibold text-ink">{title}</h2><dl>{children}</dl></section>; }
 function Row({ label, value, strong = false }: { label: string; value: string; strong?: boolean }) { return <div className="flex items-start justify-between gap-5 border-b border-line py-2.5 last:border-0"><dt className="text-sm text-ink-muted">{label}</dt><dd dir="auto" className={`text-end text-sm ${strong ? 'font-semibold text-ink' : 'text-ink'}`}>{value}</dd></div>; }

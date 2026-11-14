@@ -1,6 +1,8 @@
 import ApplicationShell from '@/layouts/ApplicationShell';
+import type { WorkspaceWidth } from '@/layouts/ApplicationShell';
 import type { PropsWithChildren } from 'react';
 
-export default function InventoryLayout({ children, wide = false }: PropsWithChildren<{ wide?: boolean }>) {
-    return <ApplicationShell wide={wide}>{children}</ApplicationShell>;
+/** Full-width data workspace by default; pass width="reading" for single-column forms. */
+export default function InventoryLayout({ children, width = 'full' }: PropsWithChildren<{ width?: WorkspaceWidth; wide?: boolean }>) {
+    return <ApplicationShell width={width}>{children}</ApplicationShell>;
 }

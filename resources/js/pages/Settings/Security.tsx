@@ -89,7 +89,7 @@ function PasswordSection({
     };
 
     return (
-        <section className="rounded-2xl border bg-white p-4 sm:p-6">
+        <section className="rounded-2xl border bg-surface p-4 sm:p-6">
             <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="min-w-0">
                     <p className="font-medium text-ink">{t('security.password')}</p>
@@ -131,7 +131,7 @@ function PasswordSection({
                                 autoFocus
                                 value={currentPassword}
                                 onChange={(e) => setCurrentPassword(e.target.value)}
-                                className="mt-1 block h-11 w-full rounded-lg border border-slate-300 px-3 text-sm"
+                                className="mt-1 block h-11 w-full rounded-lg border border-line-strong px-3 text-sm"
                             />
                             {errors.current_password && <span className="mt-1 block text-xs text-danger">{errors.current_password}</span>}
                         </label>
@@ -144,7 +144,7 @@ function PasswordSection({
                             autoFocus={!hasPassword}
                             value={newPassword}
                             onChange={(e) => setNewPassword(e.target.value)}
-                            className="mt-1 block h-11 w-full rounded-lg border border-slate-300 px-3 text-sm"
+                            className="mt-1 block h-11 w-full rounded-lg border border-line-strong px-3 text-sm"
                         />
                         {errors.password && <span className="mt-1 block text-xs text-danger">{errors.password}</span>}
                     </label>
@@ -155,7 +155,7 @@ function PasswordSection({
                             autoComplete="new-password"
                             value={confirmation}
                             onChange={(e) => setConfirmation(e.target.value)}
-                            className="mt-1 block h-11 w-full rounded-lg border border-slate-300 px-3 text-sm"
+                            className="mt-1 block h-11 w-full rounded-lg border border-line-strong px-3 text-sm"
                         />
                     </label>
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -327,7 +327,7 @@ export default function Security({ status, twoFactorEnabled, hasPassword, google
 
                 {error && <p className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>}
 
-                <section className="rounded-2xl border bg-white p-4 sm:p-6">
+                <section className="rounded-2xl border bg-surface p-4 sm:p-6">
                     {step === 'idle' && (
                         <>
                             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -383,7 +383,7 @@ export default function Security({ status, twoFactorEnabled, hasPassword, google
                                     <TotpQrCode otpauthUri={otpauthUri} />
                                 </div>
                                 <p className="mt-3 text-xs text-ink-muted">{t('security.manualKey')}</p>
-                                <p className="mt-1 break-all rounded-lg bg-slate-50 p-3 font-mono text-sm">{secret}</p>
+                                <p className="mt-1 break-all rounded-lg bg-raised p-3 font-mono text-sm">{secret}</p>
                             </div>
                             <div>
                                 <label className="text-sm font-medium text-ink" htmlFor="totp-code">
@@ -395,7 +395,7 @@ export default function Security({ status, twoFactorEnabled, hasPassword, google
                                     autoComplete="one-time-code"
                                     value={code}
                                     onChange={(e) => setCode(e.target.value)}
-                                    className="mt-1 block h-11 w-full max-w-40 rounded-lg border border-slate-300 px-3 text-lg tracking-widest"
+                                    className="mt-1 block h-11 w-full max-w-40 rounded-lg border border-line-strong px-3 text-lg tracking-widest"
                                     maxLength={6}
                                     autoFocus
                                 />
@@ -415,7 +415,7 @@ export default function Security({ status, twoFactorEnabled, hasPassword, google
                         <div>
                             <p className="text-sm font-medium text-ink">{t('security.recoveryCodes')}</p>
                             <p className="mt-1 text-sm text-ink-muted">{t('security.recoveryCodesHelp')}</p>
-                            <ul className="mt-3 grid grid-cols-1 gap-2 rounded-lg bg-slate-50 p-4 font-mono text-sm min-[420px]:grid-cols-2">
+                            <ul className="mt-3 grid grid-cols-1 gap-2 rounded-lg bg-raised p-4 font-mono text-sm min-[420px]:grid-cols-2">
                                 {recoveryCodes.map((c) => (
                                     <li key={c} className="break-all">{c}</li>
                                 ))}
@@ -428,7 +428,7 @@ export default function Security({ status, twoFactorEnabled, hasPassword, google
                 </section>
 
                 {enabled && (
-                    <section className="rounded-2xl border bg-white p-4 sm:p-6">
+                    <section className="rounded-2xl border bg-surface p-4 sm:p-6">
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                             <div className="min-w-0">
                                 <p className="font-medium text-ink">{t('security.trustedDevices')}</p>
@@ -447,7 +447,7 @@ export default function Security({ status, twoFactorEnabled, hasPassword, google
                         </div>
 
                         {trustedDeviceRows.length === 0 ? (
-                            <p className="mt-4 rounded-lg bg-slate-50 px-3 py-3 text-sm text-ink-muted">
+                            <p className="mt-4 rounded-lg bg-raised px-3 py-3 text-sm text-ink-muted">
                                 {t('security.noTrustedDevices')}
                             </p>
                         ) : (

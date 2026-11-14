@@ -44,8 +44,8 @@ export default function SystemHealthIndex({ snapshot: initial, pollSeconds }: Pr
     return <ApplicationShell wide>
         <Head title={t('health.title')} />
         <PageHeader title={t('health.title')} description={t('health.description')} />
-        <section className="mb-6 flex flex-col gap-4 rounded-card border border-line bg-surface p-5 shadow-soft sm:flex-row sm:items-center sm:justify-between">
-            <div><p className="text-xs font-semibold uppercase tracking-wide text-ink-faint">{t('health.overall')}</p><div className="mt-2 flex items-center gap-3"><StatusBadge status={snapshot.status} large /><span className="text-sm text-ink-muted">{t('health.updated')} {formatDateTime(snapshot.checked_at)}</span></div></div>
+        <section className="mb-6 flex flex-col gap-4 surface-card p-5 sm:flex-row sm:items-center sm:justify-between">
+            <div><p className="text-xs font-semibold text-ink-faint">{t('health.overall')}</p><div className="mt-2 flex items-center gap-3"><StatusBadge status={snapshot.status} large /><span className="text-sm text-ink-muted">{t('health.updated')} {formatDateTime(snapshot.checked_at)}</span></div></div>
             <button onClick={() => void refresh()} disabled={refreshing} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-field border border-line-strong px-4 text-sm font-semibold text-ink disabled:opacity-50">{refreshing && <Spinner size="sm" />}{t('health.refresh')}</button>
         </section>
         {refreshError && <p className="mb-4 rounded-field bg-danger-soft px-4 py-3 text-sm text-danger">{refreshError}</p>}
@@ -69,14 +69,14 @@ export default function SystemHealthIndex({ snapshot: initial, pollSeconds }: Pr
 
 function HealthCard({ title, check }: { title: string; check: Check }) {
     const entries = healthEntries(check.data ?? {}).slice(0, 8);
-    return <article className="rounded-card border border-line bg-surface p-4 shadow-soft"><div className="flex items-start justify-between gap-3"><h2 className="font-semibold text-ink">{title}</h2><StatusBadge status={check.status} /></div><p className="mt-2 min-h-10 text-sm text-ink-muted">{check.message}</p>{entries.length > 0 && <dl className="mt-3 space-y-1 border-t border-line pt-3">{entries.map(([key, value]) => <div key={key} className="flex justify-between gap-3 text-xs"><dt className="text-ink-faint">{key.replaceAll('_', ' ')}</dt><dd className="max-w-[55%] truncate text-right font-medium text-ink">{formatValue(key, value)}</dd></div>)}</dl>}</article>;
+    return <article className="surface-card p-4"><div className="flex items-start justify-between gap-3"><h2 className="font-semibold text-ink">{title}</h2><StatusBadge status={check.status} /></div><p className="mt-2 min-h-10 text-sm text-ink-muted">{check.message}</p>{entries.length > 0 && <dl className="mt-3 space-y-1 border-t border-line pt-3">{entries.map(([key, value]) => <div key={key} className="flex justify-between gap-3 text-xs"><dt className="text-ink-faint">{key.replaceAll('_', ' ')}</dt><dd className="max-w-[55%] truncate text-end font-medium text-ink">{formatValue(key, value)}</dd></div>)}</dl>}</article>;
 }
 function StatusBadge({ status, large = false }: { status: Status; large?: boolean }) {
     const { t } = useI18n();
     const labels: Record<Status, string> = { operational: t('health.operational'), degraded: t('health.degraded'), critical: t('health.critical'), unknown: t('health.unknown') };
     return <span className={`inline-flex rounded-full font-semibold ${large ? 'px-3 py-1.5 text-sm' : 'px-2.5 py-1 text-xs'} ${statusStyles[status]}`}>{labels[status]}</span>;
 }
-function Section({ title, subtitle, children }: { title: string; subtitle: string; children: ReactNode }) { return <section className="rounded-card border border-line bg-surface p-5 shadow-soft"><h2 className="font-semibold text-ink">{title}</h2><p className="mt-1 text-sm text-ink-muted">{subtitle}</p><div className="mt-3">{children}</div></section>; }
+function Section({ title, subtitle, children }: { title: string; subtitle: string; children: ReactNode }) { return <section className="surface-card p-5"><h2 className="font-semibold text-ink">{title}</h2><p className="mt-1 text-sm text-ink-muted">{subtitle}</p><div className="mt-3">{children}</div></section>; }
 function Empty({ text }: { text: string }) { return <p className="rounded-field bg-raised px-4 py-3 text-sm text-ink-muted">{text}</p>; }
 function formatValue(key: string, value: unknown) { if (typeof value === 'boolean') return value ? '✓' : '—'; if (key.endsWith('_at') && typeof value === 'string') return formatDateTime(value); if (key.endsWith('_bytes') && typeof value === 'number') return `${(value / 1024 / 1024 / 1024).toFixed(1)} Go`; if (key.endsWith('_percent')) return `${value} %`; return String(value); }
 function healthEntries(data: Record<string, unknown>): Array<[string, unknown]> {

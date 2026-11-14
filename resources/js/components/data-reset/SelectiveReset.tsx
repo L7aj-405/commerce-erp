@@ -1,3 +1,4 @@
+import DatePicker from '@/components/ui/DatePicker';
 import { useFreshAuth } from '@/components/auth/FreshAuthProvider';
 import { Button } from '@/components/ui/Button';
 import FilterSelect from '@/components/ui/FilterSelect';
@@ -189,7 +190,7 @@ export default function SelectiveReset({
                 <div className="space-y-5">
                     {byModule.map(([module, items]) => (
                         <div key={module}>
-                            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-faint">{labels.module(module)}</h3>
+                            <h3 className="mb-2 text-xs font-semibold text-ink-faint">{labels.module(module)}</h3>
                             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                                 {items.map((category) => {
                                     const on = selected.includes(category.key);
@@ -226,11 +227,11 @@ export default function SelectiveReset({
                     <div className="grid gap-3 sm:grid-cols-2 lg:max-w-xl">
                         <label className="block text-sm font-medium text-ink">
                             {t('dataReset.sel.dateFrom')}
-                            <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="control-input mt-1 w-full" />
+                            <DatePicker value={dateFrom} onChange={(value) => setDateFrom(value)} />
                         </label>
                         <label className="block text-sm font-medium text-ink">
                             {t('dataReset.sel.dateTo')}
-                            <input type="date" value={dateTo} min={dateFrom || undefined} onChange={(e) => setDateTo(e.target.value)} className="control-input mt-1 w-full" />
+                            <DatePicker value={dateTo} min={dateFrom || undefined} onChange={(value) => setDateTo(value)} />
                         </label>
                     </div>
                     <p className="mt-2 text-xs text-ink-muted">{t('dataReset.sel.businessDateHelp')}</p>
@@ -329,7 +330,7 @@ export default function SelectiveReset({
 
 function Step({ number, title, help, children }: { number: number; title: string; help: string; children: React.ReactNode }) {
     return (
-        <section className="rounded-card border border-line bg-surface p-4 shadow-soft sm:p-6">
+        <section className="surface-card p-4 sm:p-6">
             <div className="mb-4 flex items-start gap-3">
                 <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-sage text-sm font-semibold text-primary">{number}</span>
                 <div>
@@ -385,7 +386,7 @@ function ImpactPanel({ preview, onAddCategory }: { preview: SelectivePreview; on
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
                 {metrics.map((m) => (
                     <div key={m.label} className="rounded-field bg-raised p-3">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-ink-faint">{m.label}</p>
+                        <p className="text-xs font-semibold text-ink-faint">{m.label}</p>
                         <p className={`mt-1 text-2xl font-semibold tabular-nums ${m.danger ? 'text-danger' : 'text-ink'}`}>{formatInteger(m.value)}</p>
                     </div>
                 ))}
@@ -522,8 +523,8 @@ function RecordPicker({
             </div>
 
             <div className="mt-3 overflow-x-auto rounded-field border border-line">
-                <table className="w-full min-w-[34rem] text-sm">
-                    <thead className="bg-raised text-start text-xs uppercase tracking-wide text-ink-faint">
+                <table className="erp-table w-full min-w-[34rem] text-sm">
+                    <thead>
                         <tr>
                             <th className="w-10 px-3 py-2"><input type="checkbox" aria-label={t('dataReset.sel.selectPage')} checked={allPageOn} onChange={() => setPicked((p) => (allPageOn ? p.filter((id) => !pageIds.includes(id)) : [...new Set([...p, ...pageIds])]))} /></th>
                             <th className="px-3 py-2 text-start">{t('dataReset.sel.reference')}</th>

@@ -152,7 +152,7 @@ export default function ProductImportWizard({
             />
             <StepIndicator current={step} />
             {productImport?.global_error_message && (
-                <section className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4 text-red-900">
+                <section className="mb-6 rounded-xl border border-danger/25 bg-danger-soft p-4 text-danger">
                     <p className="font-semibold">
                         {productImport.global_error_code === "technical_error"
                             ? t("imports.products.technicalIncident")
@@ -174,7 +174,7 @@ export default function ProductImportWizard({
                 <>
                     <form
                         onSubmit={submitFile}
-                        className="rounded-2xl border border-slate-200 bg-white p-6"
+                        className="rounded-2xl border border-line bg-surface p-6"
                     >
                         <label className="block text-sm font-medium">
                             {t("imports.products.fileLabel")}
@@ -187,17 +187,17 @@ export default function ProductImportWizard({
                                         event.target.files?.[0] ?? null,
                                     )
                                 }
-                                className="mt-3 block w-full rounded-xl border border-dashed border-slate-300 p-6 text-sm"
+                                className="mt-3 block w-full rounded-xl border border-dashed border-line-strong p-6 text-sm"
                             />
                         </label>
-                        <p className="mt-3 text-sm text-slate-500">
+                        <p className="mt-3 text-sm text-ink-muted">
                             {t("imports.products.fileHelp").replace(
                                 "{size}",
                                 String(maxFileMb),
                             )}
                         </p>
                         {upload.errors.file && (
-                            <p className="mt-3 text-sm text-red-600">
+                            <p className="mt-3 text-sm text-danger">
                                 {upload.errors.file}
                             </p>
                         )}
@@ -216,18 +216,18 @@ export default function ProductImportWizard({
                             <h2 className="mb-3 font-semibold">
                                 {t("imports.products.recent")}
                             </h2>
-                            <div className="overflow-hidden rounded-xl border bg-white">
+                            <div className="overflow-hidden rounded-xl border bg-surface">
                                 {recentImports.map((item) => (
                                     <Link
                                         key={item.id}
                                         href={`/catalog/products/import/${item.id}`}
-                                        className="flex items-center justify-between border-b px-4 py-3 last:border-0 hover:bg-slate-50"
+                                        className="flex items-center justify-between border-b px-4 py-3 last:border-0 hover:bg-raised"
                                     >
                                         <div>
                                             <p className="font-medium">
                                                 {item.original_file_name}
                                             </p>
-                                            <p className="text-xs text-slate-500">
+                                            <p className="text-xs text-ink-muted">
                                                 {item.created_by?.name} ·{" "}
                                                 {item.created_at}
                                             </p>
@@ -242,11 +242,11 @@ export default function ProductImportWizard({
             )}
             {productImport?.status === "uploaded" && (
                 <form onSubmit={submitMapping} className="space-y-6">
-                    <section className="rounded-2xl border bg-white p-6">
+                    <section className="rounded-2xl border bg-surface p-6">
                         <h2 className="font-semibold">
                             {t("imports.products.mapColumns")}
                         </h2>
-                        <p className="mt-1 text-sm text-slate-500">
+                        <p className="mt-1 text-sm text-ink-muted">
                             {productImport.original_file_name} ·{" "}
                             {t("imports.products.detectedRows").replace(
                                 "{count}",
@@ -254,7 +254,7 @@ export default function ProductImportWizard({
                             )}
                         </p>
                         <div className="mt-5 overflow-x-auto">
-                            <table className="w-full text-start text-sm">
+                            <table className="erp-table w-full text-start text-sm">
                                 <thead>
                                     <tr className="border-b">
                                         <th className="py-3">
@@ -287,7 +287,7 @@ export default function ProductImportWizard({
                                                                     .value,
                                                             )
                                                         }
-                                                        className="w-full max-w-sm rounded-lg border px-3 py-2"
+                                                        className="control-select w-full max-w-sm"
                                                     >
                                                         <option value="">
                                                             {t(
@@ -323,16 +323,16 @@ export default function ProductImportWizard({
                             </table>
                         </div>
                         {Object.entries(mapping.errors).map(([key, error]) => (
-                            <p key={key} className="mt-2 text-sm text-red-600">
+                            <p key={key} className="mt-2 text-sm text-danger">
                                 {error}
                             </p>
                         ))}
                     </section>
-                    <section className="rounded-2xl border bg-white p-6">
+                    <section className="rounded-2xl border bg-surface p-6">
                         <h2 className="font-semibold">
                             {t("imports.products.defaults")}
                         </h2>
-                        <p className="mt-1 text-sm text-slate-500">
+                        <p className="mt-1 text-sm text-ink-muted">
                             {t("imports.products.defaultsHelp")}
                         </p>
                         <div className="mt-4 grid gap-4 md:grid-cols-4">
@@ -372,7 +372,7 @@ export default function ProductImportWizard({
                                                 ),
                                             })
                                         }
-                                        className="mt-1 w-full rounded-lg border px-3 py-2"
+                                        className="control-select mt-1 w-full"
                                     >
                                         <option value="">
                                             {t("common.none")}
@@ -397,11 +397,11 @@ export default function ProductImportWizard({
                         </div>
                     </section>
                     {quantityMapped && (
-                        <section className="rounded-2xl border border-blue-200 bg-blue-50 p-6">
-                            <h2 className="font-semibold text-blue-950">
+                        <section className="rounded-2xl border border-info/25 bg-info-soft p-6">
+                            <h2 className="font-semibold text-info">
                                 {t("imports.products.stockConfiguration")}
                             </h2>
-                            <p className="mt-1 text-sm text-blue-800">
+                            <p className="mt-1 text-sm text-info">
                                 {t("imports.products.stockHelp")}
                             </p>
                             <div className="mt-4 space-y-3">
@@ -459,7 +459,7 @@ export default function ProductImportWizard({
                                                     ),
                                                 })
                                             }
-                                            className="mt-1 w-full rounded-lg border px-3 py-2"
+                                            className="control-select mt-1 w-full"
                                         >
                                             <option value="">
                                                 {t(
@@ -481,14 +481,14 @@ export default function ProductImportWizard({
                                     </label>
                                 )}
                                 {!canImportStock && (
-                                    <p className="text-sm text-blue-800">
+                                    <p className="text-sm text-info">
                                         {t(
                                             "imports.products.noStockPermission",
                                         )}
                                     </p>
                                 )}
                                 {mapping.errors["defaults.warehouse_id"] && (
-                                    <p className="text-sm text-red-600">
+                                    <p className="text-sm text-danger">
                                         {
                                             mapping.errors[
                                                 "defaults.warehouse_id"
@@ -511,24 +511,24 @@ export default function ProductImportWizard({
             {productImport?.status === "previewed" && (
                 <>
                     <section className="grid gap-4 sm:grid-cols-3">
-                        <div className="rounded-xl bg-emerald-50 p-5">
-                            <p className="text-sm text-emerald-700">
+                        <div className="rounded-xl bg-success-soft p-5">
+                            <p className="text-sm text-success">
                                 {t("imports.products.ready")}
                             </p>
                             <p className="mt-1 text-3xl font-semibold">
                                 {productImport.ready_count}
                             </p>
                         </div>
-                        <div className="rounded-xl bg-amber-50 p-5">
-                            <p className="text-sm text-amber-700">
+                        <div className="rounded-xl bg-warning-soft p-5">
+                            <p className="text-sm text-warning">
                                 {t("imports.products.warnings")}
                             </p>
                             <p className="mt-1 text-3xl font-semibold">
                                 {productImport.warning_count}
                             </p>
                         </div>
-                        <div className="rounded-xl bg-red-50 p-5">
-                            <p className="text-sm text-red-700">
+                        <div className="rounded-xl bg-danger-soft p-5">
+                            <p className="text-sm text-danger">
                                 {t("imports.products.errors")}
                             </p>
                             <p className="mt-1 text-3xl font-semibold">
@@ -537,7 +537,7 @@ export default function ProductImportWizard({
                         </div>
                     </section>
                     {productImport.stock_detected && (
-                        <div className="mt-5 rounded-lg bg-blue-50 px-4 py-3 text-sm text-blue-800">
+                        <div className="mt-5 rounded-lg bg-info-soft px-4 py-3 text-sm text-info">
                             {t("imports.products.stockDetected")} ·{" "}
                             {productImport.defaults?.stock_mode === "import"
                                 ? t("imports.products.stockPlanned").replace(
@@ -556,9 +556,9 @@ export default function ProductImportWizard({
                             .
                         </div>
                     )}
-                    <div className="mt-6 overflow-x-auto rounded-xl border bg-white">
-                        <table className="w-full min-w-[1050px] text-start text-sm">
-                            <thead className="bg-slate-50">
+                    <div className="mt-6 overflow-x-auto rounded-xl border bg-surface">
+                        <table className="erp-table w-full min-w-[1050px] text-start text-sm">
+                            <thead className="bg-raised">
                                 <tr>
                                     <th className="p-3">
                                         {t("imports.products.row")}
@@ -598,7 +598,7 @@ export default function ProductImportWizard({
                                         </td>
                                         <td className="p-3 font-medium">
                                             {row.normalized_data?.name || "—"}
-                                            <p className="text-xs font-normal text-slate-500">
+                                            <p className="text-xs font-normal text-ink-muted">
                                                 {row.normalized_data
                                                     ?.variant_label ||
                                                     t(
@@ -609,7 +609,7 @@ export default function ProductImportWizard({
                                                 (message, index) => (
                                                     <p
                                                         key={index}
-                                                        className="mt-1 max-w-lg text-xs font-normal text-slate-500"
+                                                        className="mt-1 max-w-lg text-xs font-normal text-ink-muted"
                                                     >
                                                         {message}
                                                     </p>
@@ -630,7 +630,7 @@ export default function ProductImportWizard({
                                         <td className="p-3">
                                             {row.normalized_data
                                                 ?.stock_quantity || "—"}
-                                            <p className="text-xs text-slate-500">
+                                            <p className="text-xs text-ink-muted">
                                                 {productImport.defaults
                                                     ?.stock_mode === "import"
                                                     ? lookups.warehouses.find(
@@ -657,7 +657,7 @@ export default function ProductImportWizard({
                                                     }
                                                     target="_blank"
                                                     rel="noreferrer"
-                                                    className="block max-w-48 truncate text-blue-700"
+                                                    className="block max-w-48 truncate text-info"
                                                 >
                                                     {
                                                         row.normalized_data
@@ -689,27 +689,27 @@ export default function ProductImportWizard({
                                 String(prospectiveCount),
                             )}
                         </Button>
-                        <span className="text-sm text-slate-500">
+                        <span className="text-sm text-ink-muted">
                             {t("imports.products.errorRowsSkipped")}
                         </span>
                     </div>
                 </>
             )}
             {productImport?.status === "processing" && (
-                <section className="rounded-2xl border bg-white p-8 text-center">
+                <section className="rounded-2xl border bg-surface p-8 text-center">
                     <h2 className="text-xl font-semibold">
                         {t("imports.products.processing")}
                     </h2>
-                    <p className="mt-2 text-sm text-slate-600">
+                    <p className="mt-2 text-sm text-ink-muted">
                         {t("imports.products.processingHelp")}
                     </p>
                 </section>
             )}
             {productImport && isFinal && (
-                <section className="rounded-2xl border bg-white p-8">
+                <section className="rounded-2xl border bg-surface p-8">
                     <div className="mx-auto max-w-5xl">
                         <p
-                            className={`text-center text-sm font-medium ${productImport.status === "completed" ? "text-emerald-700" : "text-amber-700"}`}
+                            className={`text-center text-sm font-medium ${productImport.status === "completed" ? "text-success" : "text-warning"}`}
                         >
                             {productImport.status === "failed"
                                 ? t("imports.products.impossible")
@@ -725,32 +725,32 @@ export default function ProductImportWizard({
                             )}
                         </h2>
                         <dl className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                            <div className="rounded-lg bg-emerald-50 p-3">
-                                <dt className="text-sm text-emerald-700">
+                            <div className="rounded-lg bg-success-soft p-3">
+                                <dt className="text-sm text-success">
                                     {t("imports.products.imported")}
                                 </dt>
                                 <dd className="text-xl font-semibold">
                                     {productImport.created_product_count}
                                 </dd>
                             </div>
-                            <div className="rounded-lg bg-slate-50 p-3">
-                                <dt className="text-sm text-slate-500">
+                            <div className="rounded-lg bg-raised p-3">
+                                <dt className="text-sm text-ink-muted">
                                     {t("imports.products.skipped")}
                                 </dt>
                                 <dd className="text-xl font-semibold">
                                     {productImport.skipped_count}
                                 </dd>
                             </div>
-                            <div className="rounded-lg bg-red-50 p-3">
-                                <dt className="text-sm text-red-700">
+                            <div className="rounded-lg bg-danger-soft p-3">
+                                <dt className="text-sm text-danger">
                                     {t("imports.products.failed")}
                                 </dt>
                                 <dd className="text-xl font-semibold">
                                     {productImport.failed_count}
                                 </dd>
                             </div>
-                            <div className="rounded-lg bg-amber-50 p-3">
-                                <dt className="text-sm text-amber-700">
+                            <div className="rounded-lg bg-warning-soft p-3">
+                                <dt className="text-sm text-warning">
                                     {t("imports.products.warnings")}
                                 </dt>
                                 <dd className="text-xl font-semibold">
@@ -763,12 +763,12 @@ export default function ProductImportWizard({
                                 <h3 className="font-semibold">
                                     {t("imports.products.details")}
                                 </h3>
-                                <p className="mt-1 text-sm text-slate-500">
+                                <p className="mt-1 text-sm text-ink-muted">
                                     {t("imports.products.detailsHelp")}
                                 </p>
                                 <div className="mt-4 overflow-x-auto rounded-xl border">
-                                    <table className="w-full min-w-[760px] text-start text-sm">
-                                        <thead className="bg-slate-50">
+                                    <table className="erp-table w-full min-w-[760px] text-start text-sm">
+                                        <thead className="bg-raised">
                                             <tr>
                                                 <th className="p-3">
                                                     {t("imports.products.row")}
@@ -815,7 +815,7 @@ export default function ProductImportWizard({
                                                                     row.status
                                                                 }
                                                             />
-                                                            <p className="mt-1 text-xs text-slate-500">
+                                                            <p className="mt-1 text-xs text-ink-muted">
                                                                 {row.error_phase ===
                                                                 "preview"
                                                                     ? t(
@@ -833,7 +833,7 @@ export default function ProductImportWizard({
                                                             <p>{detail}</p>
                                                             {row.error_code ===
                                                                 "technical_error" && (
-                                                                <p className="mt-1 text-xs text-slate-500">
+                                                                <p className="mt-1 text-xs text-ink-muted">
                                                                     {t(
                                                                         "common.reference",
                                                                     )}{" "}
@@ -854,12 +854,12 @@ export default function ProductImportWizard({
                                                                 ?.length ?? 0) >
                                                                 1 && (
                                                                 <details className="mt-2">
-                                                                    <summary className="cursor-pointer text-xs font-medium text-slate-600">
+                                                                    <summary className="cursor-pointer text-xs font-medium text-ink-muted">
                                                                         {t(
                                                                             "imports.products.showDetails",
                                                                         )}
                                                                     </summary>
-                                                                    <ul className="mt-2 space-y-1 text-xs text-slate-600">
+                                                                    <ul className="mt-2 space-y-1 text-xs text-ink-muted">
                                                                         {row.messages?.map(
                                                                             (
                                                                                 message,
@@ -889,16 +889,16 @@ export default function ProductImportWizard({
                             </div>
                         )}
                         <div className="mt-6 grid gap-3 sm:grid-cols-3">
-                            <div className="rounded-lg bg-slate-50 p-3">
-                                <p className="text-sm text-slate-500">
+                            <div className="rounded-lg bg-raised p-3">
+                                <p className="text-sm text-ink-muted">
                                     {t("imports.products.createdVariants")}
                                 </p>
                                 <p className="font-semibold">
                                     {productImport.created_variant_count}
                                 </p>
                             </div>
-                            <div className="rounded-lg bg-slate-50 p-3">
-                                <p className="text-sm text-slate-500">
+                            <div className="rounded-lg bg-raised p-3">
+                                <p className="text-sm text-ink-muted">
                                     {t("imports.products.imageUrlsSummary")}
                                 </p>
                                 <p className="font-semibold">
@@ -908,8 +908,8 @@ export default function ProductImportWizard({
                                     }
                                 </p>
                             </div>
-                            <div className="rounded-lg bg-slate-50 p-3">
-                                <p className="text-sm text-slate-500">
+                            <div className="rounded-lg bg-raised p-3">
+                                <p className="text-sm text-ink-muted">
                                     {t("imports.products.initializedStocks")}
                                 </p>
                                 <p className="font-semibold">

@@ -85,13 +85,13 @@ export default function AiMcpAuthorize({ error, requestId, client, requestedScop
 
                 {enabledOrganizations.length === 0 ? <p className="text-sm text-ink-muted">{t('mcp.oauth.noOrganization')}</p> : <>
                     <label className="block text-sm font-medium text-ink">{t('common.organization')}
-                        <select className="control-input mt-1 w-full" value={organizationId ?? ''} onChange={(event) => chooseOrganization(Number(event.target.value))}>
+                        <select className="control-select mt-1 w-full" value={organizationId ?? ''} onChange={(event) => chooseOrganization(Number(event.target.value))}>
                             {enabledOrganizations.map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}
                         </select>
                     </label>
 
                     <label className="block text-sm font-medium text-ink">{t('mcp.oauth.connection')}
-                        <select className="control-input mt-1 w-full" value={connectionId} onChange={(event) => setConnectionId(event.target.value)}>
+                        <select className="control-select mt-1 w-full" value={connectionId} onChange={(event) => setConnectionId(event.target.value)}>
                             <option value="">{t('mcp.oauth.newConnection')}</option>
                             {(organization?.connections ?? []).map((connection) => <option key={connection.id} value={connection.id}>{connection.name}</option>)}
                         </select>

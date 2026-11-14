@@ -1,3 +1,5 @@
+import { Button } from '@/components/ui/Button';
+import DatePicker from '@/components/ui/DatePicker';
 import SandboxProcurementBadge from '@/components/SandboxProcurementBadge';
 import PageHeader from '@/components/ui/PageHeader';
 import StatusBadge from '@/components/ui/StatusBadge';
@@ -82,7 +84,7 @@ export default function PurchaseOrderShow({ purchaseOrder: po, warehouses, today
             />
             <SandboxProcurementBadge />
 
-            <section className="mb-6 rounded-card border border-line bg-surface p-5">
+            <section className="mb-6 surface-card p-5">
                 <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
                     {fact(t('purchaseOrders.supplier'), po.supplier?.name)}
                     {fact(t('purchaseOrders.store'), po.store?.name)}
@@ -107,8 +109,8 @@ export default function PurchaseOrderShow({ purchaseOrder: po, warehouses, today
                 )}
             </section>
 
-            <section className="mb-6 rounded-card border border-line bg-surface">
-                <h2 className="border-b border-line px-5 py-3 text-xs font-semibold uppercase tracking-wide text-ink-muted">{t('purchaseOrders.lines')}</h2>
+            <section className="mb-6 surface-card">
+                <h2 className="border-b border-line px-5 py-3 text-sm font-semibold text-ink">{t('purchaseOrders.lines')}</h2>
                 <ul className="divide-y divide-line">
                     {po.lines.map((line) => (
                         <PurchaseOrderLineItem key={line.id} po={po} line={line} warehouses={warehouses} today={today} canReceive={can.receive} />
@@ -120,7 +122,7 @@ export default function PurchaseOrderShow({ purchaseOrder: po, warehouses, today
             {can.cancel &&
                 (cancelling ? (
                     <form
-                        className="rounded-card border border-line bg-surface p-5"
+                        className="surface-card p-5"
                         onSubmit={(e) => {
                             e.preventDefault();
                             form.post(`/procurement/purchase-orders/${po.id}/cancel`, { preserveScroll: true, onSuccess: () => setCancelling(false) });
@@ -135,7 +137,7 @@ export default function PurchaseOrderShow({ purchaseOrder: po, warehouses, today
                             onChange={(e) => form.setData('reason', e.target.value)}
                             rows={2}
                             required
-                            className="control-input mt-1 w-full"
+                            className="control-input mt-1 w-full py-2"
                         />
                         {form.errors.reason && <p className="mt-1 text-xs text-danger">{form.errors.reason}</p>}
                         {(form.errors as Record<string, string>).purchase_order && (
@@ -143,18 +145,18 @@ export default function PurchaseOrderShow({ purchaseOrder: po, warehouses, today
                         )}
                         <p className="mt-2 text-xs text-ink-muted">{t('purchaseOrders.cancelHint')}</p>
                         <div className="mt-3 flex flex-wrap gap-2">
-                            <button type="submit" disabled={form.processing} className="rounded-field bg-danger px-3 py-1.5 text-sm font-medium text-white disabled:opacity-60">
+                            <Button type="submit" size="sm" variant="danger-solid" loading={form.processing}>
                                 {t('purchaseOrders.confirmCancel')}
-                            </button>
-                            <button type="button" onClick={() => setCancelling(false)} className="rounded-field border border-line px-3 py-1.5 text-sm text-ink">
+                            </Button>
+                            <Button type="button" size="sm" variant="secondary" onClick={() => setCancelling(false)}>
                                 {t('common.cancel')}
-                            </button>
+                            </Button>
                         </div>
                     </form>
                 ) : (
-                    <button type="button" onClick={() => setCancelling(true)} className="rounded-field border border-line px-3 py-1.5 text-sm text-danger hover:bg-raised">
+                    <Button type="button" size="sm" variant="danger" onClick={() => setCancelling(true)}>
                         {t('purchaseOrders.cancel')}
-                    </button>
+                    </Button>
                 ))}
         </ProcurementLayout>
     );
@@ -250,9 +252,9 @@ function PurchaseOrderLineItem({ po, line, warehouses, today, canReceive }: { po
                     {receiving ? (
                         <ReceiveForm po={po} line={line} warehouses={warehouses} today={today} onDone={() => setReceiving(false)} />
                     ) : (
-                        <button type="button" onClick={() => setReceiving(true)} className="rounded-field bg-primary px-3 py-1.5 text-sm font-medium text-primary-fg hover:bg-primary-hover">
+                        <Button type="button" size="sm" onClick={() => setReceiving(true)}>
                             {t('purchaseOrders.receive')}
-                        </button>
+                        </Button>
                     )}
                 </div>
             )}
@@ -311,7 +313,7 @@ function ReceiveForm({ po, line, warehouses, today, onDone }: { po: PurchaseOrde
                 </label>
                 <label className="block text-xs text-ink-muted">
                     {t('purchaseOrders.receiveDate')}
-                    <input type="date" max={today} required value={form.data.received_on} onChange={(e) => form.setData('received_on', e.target.value)} className="control-input mt-1 w-full" />
+                    <DatePicker max={today} required value={form.data.received_on} onChange={(value) => form.setData('received_on', value)} />
                 </label>
                 <label className="block text-xs text-ink-muted sm:col-span-2">
                     {t('purchaseOrders.deliveryReference')}
@@ -331,12 +333,12 @@ function ReceiveForm({ po, line, warehouses, today, onDone }: { po: PurchaseOrde
             {Object.values(errors).length > 0 && <p className="mt-2 text-xs text-danger">{Object.values(errors)[0]}</p>}
             <p className="mt-2 text-xs text-ink-muted">{t('purchaseOrders.receiveHint')}</p>
             <div className="mt-3 flex flex-wrap gap-2">
-                <button type="submit" disabled={form.processing} className="rounded-field bg-primary px-3 py-1.5 text-sm font-medium text-primary-fg hover:bg-primary-hover disabled:opacity-60">
+                <Button type="submit" size="sm" loading={form.processing}>
                     {t('purchaseOrders.receiveSubmit')}
-                </button>
-                <button type="button" onClick={onDone} className="rounded-field border border-line px-3 py-1.5 text-sm text-ink">
+                </Button>
+                <Button type="button" size="sm" variant="secondary" onClick={onDone}>
                     {t('common.cancel')}
-                </button>
+                </Button>
             </div>
         </form>
     );

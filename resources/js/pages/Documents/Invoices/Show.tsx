@@ -1,6 +1,8 @@
+import DatePicker from '@/components/ui/DatePicker';
+import { Dialog } from '@/components/ui/Dialog';
 import DocBadge from '@/components/ui/DocBadge';
 import SandboxDocumentBadge from '@/components/SandboxDocumentBadge';
-import { Button } from '@/components/ui/Button';
+import { Button, ButtonLink } from '@/components/ui/Button';
 import SendDocumentEmailModal from '@/components/documents/SendDocumentEmailModal';
 import StampDocumentAction from '@/components/documents/StampDocumentAction';
 import ActivityTimeline from '@/components/timeline/ActivityTimeline';
@@ -182,7 +184,8 @@ export default function InvoiceShow({
         event.preventDefault();
         form.patch(`/invoices/${invoice.id}`, { preserveScroll: true });
     };
-    const issue = () => issueForm.post(`/invoices/${invoice.id}/issue`, { preserveScroll: true });
+    const [confirmIssue, setConfirmIssue] = useState(false);
+    const issue = () => issueForm.post(`/invoices/${invoice.id}/issue`, { preserveScroll: true, onSuccess: () => setConfirmIssue(false) });
     const cancel = (event: FormEvent) => {
         event.preventDefault();
         cancellation.post(`/invoices/${invoice.id}/cancel`, { preserveScroll: true, onSuccess: () => setConfirmCancel(false) });
@@ -194,11 +197,12 @@ export default function InvoiceShow({
             <Head title={invoice.invoice_number ?? `${t('invoices.invoice')} ${t('invoices.draft')}`} />
 
             <div className="mb-6">
-                <Link href="/invoices" className="text-sm text-ink-muted">
-                    {direction === 'rtl' ? '→' : '←'} {t('invoices.title')}
-                </Link>
-                <div className="mt-1 flex flex-wrap items-center gap-3">
-                    <h1 className="text-2xl font-semibold tracking-tight text-ink">
+                <ButtonLink href="/invoices" variant="ghost" size="sm" className="-ms-2 mb-1">
+                    <svg aria-hidden="true" className="directional-icon rtl:rotate-180" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 6 8 12l6 6" /></svg>
+                    {t('invoices.title')}
+                </ButtonLink>
+                <div className="flex flex-wrap items-center gap-2">
+                    <h1 className="me-1 min-w-0 text-2xl font-semibold tracking-[-0.02em] text-ink [overflow-wrap:anywhere] sm:text-page">
                         {t('invoices.invoice')} <bdi>{invoice.invoice_number ?? t('invoices.draft')}</bdi>
                     </h1>
                     <DocBadge tone={invoiceStatusTone(invoice.status)}>{label(invoiceStatusLabel, invoice.status)}</DocBadge>
@@ -209,8 +213,8 @@ export default function InvoiceShow({
                 </p>
                 <p className="text-sm text-ink-muted">
                     {t('invoices.order')}{' '}
-                    <Link href={`/sales/orders/${invoice.sales_order.id}`} className="text-ink underline">
-                        {invoice.sales_order.order_number}
+                    <Link href={`/sales/orders/${invoice.sales_order.id}`} className="font-medium text-ink underline-offset-2 hover:text-accent hover:underline">
+                        <bdi>{invoice.sales_order.order_number}</bdi>
                     </Link>{' '}
                     · {invoice.store.name}
                 </p>
@@ -218,9 +222,9 @@ export default function InvoiceShow({
 
             {isReplacement && previousVersion && (
                 <div className="mb-4 rounded-card border border-line bg-sage/50 px-4 py-2.5 text-sm text-ink">
-                    {isDraft ? 'Nouvelle version de la ' : 'Cette version remplace la '}
+                    {isDraft ? t('invoices.newVersionOf') : t('invoices.replacesVersion')}{' '}
                     <Link href={`/invoices/${previousVersion.id}`} className="font-medium underline">
-                        facture {previousVersion.invoice_number ?? 'brouillon'} · V{previousVersion.version}
+                        {t('invoices.invoice')} <bdi>{previousVersion.invoice_number ?? t('invoices.draft')}</bdi> · V{previousVersion.version}
                     </Link>
                     {invoice.correction_reason && <> — {invoice.correction_reason}</>}
                 </div>
@@ -230,7 +234,7 @@ export default function InvoiceShow({
                 <div className="mb-4 rounded-card border border-warning/30 bg-warning-soft/50 px-4 py-2.5 text-sm text-warning">
                     {t('invoices.supersededNotice')}{' '}
                     <Link href={`/invoices/${currentVersion.id}`} className="font-medium underline">
-                        Voir la version actuelle — V{currentVersion.version}
+                        {t('invoices.viewCurrentVersion')} — V{currentVersion.version}
                     </Link>
                     .
                 </div>
@@ -244,10 +248,10 @@ export default function InvoiceShow({
                 </div>
             )}
 
-            <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
-                {/* LEFT — document */}
-                <div className="space-y-4">
-                    <section className="rounded-card border border-line bg-surface p-6">
+            <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+                {/* LEFT — document (always rendered as light paper, like the PDF) */}
+                <div className="min-w-0 space-y-4">
+                    <section className="doc-paper overflow-x-auto rounded-card border border-line bg-surface p-4 sm:p-6">
                         <div className="flex flex-wrap justify-between gap-6">
                             <div className="text-sm">
                                 <p className="text-base font-semibold uppercase text-ink">{seller.legal_name ?? '—'}</p>
@@ -258,7 +262,7 @@ export default function InvoiceShow({
                                 {seller.email && <p className="text-ink-muted">{seller.email}</p>}
                             </div>
                             <div className="min-w-52 border p-3 text-sm" style={{ borderColor: accentColor }}>
-                                <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: accentColor }}>
+                                <p className="text-[13px] font-medium" style={{ color: accentColor }}>
                                     Destinataire
                                 </p>
                                 <p className="font-medium text-ink">
@@ -393,7 +397,7 @@ export default function InvoiceShow({
                         )}
                     </section>
 
-                    <section className="rounded-card border border-line bg-surface p-4 text-sm">
+                    <section className="surface-card p-4 text-sm">
                         <p className="font-medium text-ink">{t('invoices.financialPosition')}</p>
                         <dl className="mt-2 grid gap-1 text-ink-muted sm:grid-cols-2">
                             <SummaryRow term={t('invoices.original')} value={formatMoney(invoice.total_incl_tax, currency)} />
@@ -409,7 +413,7 @@ export default function InvoiceShow({
                         <p className="mt-2 text-xs text-ink-faint">{t('invoices.creditRefundDistinct')}</p>
                     </section>
                     {creditNotes.length > 0 && (
-                        <section className="rounded-card border border-line bg-surface p-4 text-sm">
+                        <section className="surface-card p-4 text-sm">
                             <div className="flex justify-between gap-3"><h2 className="font-medium">{t('invoices.credits')}</h2><span className="rounded-full bg-raised px-2 py-1 text-xs">{creditSummary.state === 'full' ? t('invoices.fullCredit') : t('invoices.partialCredit')}</span></div>
                             <div className="mt-2 divide-y divide-line">{creditNotes.map(note => <Link key={note.id} href={`/credit-notes/${note.id}`} className="flex justify-between py-2"><span>{note.credit_note_number} · {formatDate(note.credit_note_date)}</span><span>-{formatMoney(note.total_incl_tax, currency)}</span></Link>)}</div>
                             <div className="mt-3 flex justify-between border-t border-line pt-3 font-semibold"><span>{t('invoices.netAfterCredits')}</span><span>{formatMoney(creditSummary.net, currency)}</span></div>
@@ -419,7 +423,7 @@ export default function InvoiceShow({
 
                 {/* RIGHT — status & actions */}
                 <aside className="space-y-4 lg:sticky lg:top-20 lg:self-start">
-                    <section className="rounded-card border border-line bg-surface p-5">
+                    <section className="surface-card p-5">
                         <dl className="space-y-2 text-sm">
                             <div className="flex justify-between">
                                 <dt className="text-ink-muted">{t('quotations.totalTaxIncluded')}</dt>
@@ -436,7 +440,7 @@ export default function InvoiceShow({
                             {(isIssued || isSuperseded) && (
                                 <div className="flex justify-between">
                                     <dt className="text-ink-muted">{t('invoices.issued')}</dt>
-                                    <dd className="text-right text-ink">
+                                    <dd className="text-end text-ink">
                                         {invoice.issued_by?.name ?? '—'}
                                         <br />
                                         {invoice.issued_at ? formatDateTime(invoice.issued_at) : ''}
@@ -452,7 +456,7 @@ export default function InvoiceShow({
                                         href={previewUrl}
                                         target="_blank"
                                         rel="noreferrer"
-                                        className="inline-flex min-h-10 items-center justify-center rounded-field border border-line-strong bg-surface px-4 text-sm text-ink hover:bg-raised"
+                                        className="inline-flex min-h-10 items-center justify-center gap-2 rounded-field border border-line-strong bg-surface px-4 text-sm font-semibold text-ink shadow-xs transition-soft hover:bg-sage"
                                     >
                                         {t('quotations.previewPdf')}
                                     </a>
@@ -461,11 +465,41 @@ export default function InvoiceShow({
                                             <Button
                                                 loading={issueForm.processing}
                                                 loadingText={t('common.loading')}
-                                                onClick={issue}
+                                                onClick={() => setConfirmIssue(true)}
                                                 disabled={issueBlockedByPayment}
                                             >
                                                 {isReplacement ? t('invoices.issueReplacement') : t('invoices.issue')}
                                             </Button>
+                                            <Dialog
+                                                open={confirmIssue}
+                                                onClose={() => setConfirmIssue(false)}
+                                                dismissible={!issueForm.processing}
+                                                size="sm"
+                                                title={isReplacement ? t('invoices.issueReplacement') : t('invoices.issue')}
+                                                description={t('invoices.issueConfirmHelp')}
+                                            >
+                                                <div className="space-y-4 p-4 sm:p-6">
+                                                    <dl className="grid grid-cols-2 gap-3 rounded-field bg-raised p-3 text-sm">
+                                                        <div>
+                                                            <dt className="text-ink-muted">{t('invoices.order')}</dt>
+                                                            <dd className="font-medium text-ink"><bdi>{invoice.sales_order.order_number}</bdi></dd>
+                                                        </div>
+                                                        <div>
+                                                            <dt className="text-ink-muted">{t('common.total')}</dt>
+                                                            <dd className="metric-value font-semibold text-ink" dir="ltr">{formatMoney(invoice.total_incl_tax, currency)}</dd>
+                                                        </div>
+                                                    </dl>
+                                                    {Object.values(issueForm.errors as Record<string, string | undefined>).map((error) => error && <p key={error} className="text-sm text-danger">{error}</p>)}
+                                                    <div className="flex flex-wrap justify-end gap-2">
+                                                        <Button type="button" variant="secondary" onClick={() => setConfirmIssue(false)} disabled={issueForm.processing}>
+                                                            {t('common.back')}
+                                                        </Button>
+                                                        <Button type="button" data-autofocus loading={issueForm.processing} loadingText={t('common.loading')} onClick={issue}>
+                                                            {isReplacement ? t('invoices.issueReplacement') : t('invoices.issue')}
+                                                        </Button>
+                                                    </div>
+                                                </div>
+                                            </Dialog>
                                             {issueBlockedByPayment && (
                                                 <div className="rounded-field border border-warning/30 bg-warning-soft/50 px-3 py-2 text-xs text-warning">
                                                     <p className="font-medium">
@@ -487,13 +521,13 @@ export default function InvoiceShow({
                                         href={`/invoices/${invoice.id}/pdf`}
                                         target="_blank"
                                         rel="noreferrer"
-                                        className="inline-flex min-h-10 items-center justify-center rounded-field bg-primary px-4 text-sm font-medium text-primary-fg hover:bg-primary-hover"
+                                        className="inline-flex min-h-10 items-center justify-center gap-2 rounded-field bg-primary px-4 text-sm font-semibold text-primary-fg shadow-sm transition-soft hover:bg-primary-hover"
                                     >
                                         {t('quotations.viewPdf')}
                                     </a>
                                     <a
                                         href={`/invoices/${invoice.id}/download`}
-                                        className="inline-flex min-h-10 items-center justify-center rounded-field border border-line-strong bg-surface px-4 text-sm text-ink hover:bg-raised"
+                                        className="inline-flex min-h-10 items-center justify-center gap-2 rounded-field border border-line-strong bg-surface px-4 text-sm font-semibold text-ink shadow-xs transition-soft hover:bg-sage"
                                     >
                                         {t('quotations.downloadPdf')}
                                     </a>
@@ -514,7 +548,7 @@ export default function InvoiceShow({
                     )}
 
                     {isIssued && (
-                        <section className="rounded-card border border-line bg-surface p-5">
+                        <section className="surface-card p-5">
                             <h2 className="text-sm font-semibold text-ink">{t('invoices.companyStamp')}</h2>
                             <div className="mt-3">
                                 <StampDocumentAction
@@ -529,8 +563,8 @@ export default function InvoiceShow({
                     )}
 
                     {history.length > 0 && (
-                        <section className="rounded-card border border-line bg-surface p-5">
-                            <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">{t('invoices.history')}</h2>
+                        <section className="surface-card p-5">
+                            <h2 className="font-semibold text-base text-ink">{t('invoices.history')}</h2>
                             <ul className="mt-2 space-y-2 text-sm">
                                 {history.map((entry) => (
                                     <li key={entry.id} className="flex flex-col">
@@ -560,51 +594,45 @@ export default function InvoiceShow({
                     )}
 
                     {isDraft && can.updateDraft && (
-                        <section className="rounded-card border border-line bg-surface p-5">
+                        <section className="surface-card p-5">
                             <h2 className="text-sm font-semibold text-ink">{t('invoices.variableInfo')}</h2>
                             <form onSubmit={save} className="mt-3 space-y-3 text-sm">
                                 <Field label={t('invoices.date')}>
-                                    <input
-                                        type="date"
-                                        readOnly={!can.backdate}
-                                        value={form.data.invoice_date}
-                                        onChange={(e) => form.setData('invoice_date', e.target.value)}
-                                        className="control-input w-full read-only:bg-raised"
-                                    />
+                                    <DatePicker disabled={!can.backdate} value={form.data.invoice_date} onChange={(value) => form.setData('invoice_date', value)} />
                                 </Field>
                                 <Field label={t('quotations.representative')}>
                                     <input
                                         value={form.data.representative_name}
                                         onChange={(e) => form.setData('representative_name', e.target.value)}
-                                        className="w-full rounded-field border border-line-strong px-3 py-2"
+                                        className="control-input w-full"
                                     />
                                 </Field>
                                 <Field label={t('invoices.paymentTerms')}>
                                     <input
                                         value={form.data.payment_method_summary}
                                         onChange={(e) => form.setData('payment_method_summary', e.target.value)}
-                                        className="w-full rounded-field border border-line-strong px-3 py-2"
+                                        className="control-input w-full"
                                     />
                                 </Field>
                                 <Field label={t('quotations.nameCompany')}>
                                     <input
                                         value={form.data.customer_name}
                                         onChange={(e) => form.setData('customer_name', e.target.value)}
-                                        className="w-full rounded-field border border-line-strong px-3 py-2"
+                                        className="control-input w-full"
                                     />
                                 </Field>
                                 <Field label={t('quotations.company')}>
                                     <input
                                         value={form.data.customer_company}
                                         onChange={(e) => form.setData('customer_company', e.target.value)}
-                                        className="w-full rounded-field border border-line-strong px-3 py-2"
+                                        className="control-input w-full"
                                     />
                                 </Field>
                                 <Field label={t('quotations.taxId')}>
                                     <input
                                         value={form.data.customer_tax_identifier}
                                         onChange={(e) => form.setData('customer_tax_identifier', e.target.value)}
-                                        className="w-full rounded-field border border-line-strong px-3 py-2"
+                                        className="control-input w-full"
                                     />
                                 </Field>
                                 <div className="grid grid-cols-2 gap-2">
@@ -613,14 +641,14 @@ export default function InvoiceShow({
                                             type="email"
                                             value={form.data.customer_email}
                                             onChange={(e) => form.setData('customer_email', e.target.value)}
-                                            className="w-full rounded-field border border-line-strong px-3 py-2"
+                                            className="control-input w-full"
                                         />
                                     </Field>
                                     <Field label={t('quotations.phone')}>
                                         <input
                                             value={form.data.customer_phone}
                                             onChange={(e) => form.setData('customer_phone', e.target.value)}
-                                            className="w-full rounded-field border border-line-strong px-3 py-2"
+                                            className="control-input w-full"
                                         />
                                     </Field>
                                 </div>
@@ -628,14 +656,14 @@ export default function InvoiceShow({
                                     <textarea
                                         value={form.data.billing_address}
                                         onChange={(e) => form.setData('billing_address', e.target.value)}
-                                        className="w-full rounded-field border border-line-strong px-3 py-2"
+                                        className="control-input w-full py-2"
                                     />
                                 </Field>
                                 <Field label={t('quotations.notes')}>
                                     <textarea
                                         value={form.data.notes}
                                         onChange={(e) => form.setData('notes', e.target.value)}
-                                        className="w-full rounded-field border border-line-strong px-3 py-2"
+                                        className="control-input w-full py-2"
                                     />
                                 </Field>
                                 {Object.values(form.errors).map(
@@ -803,7 +831,7 @@ function ShareCard({
     const unavailable = !whatsappLink(sharing.whatsappDestination, waMessage, waPhone);
 
     return (
-        <section className="rounded-card border border-line bg-surface p-5">
+        <section className="surface-card p-5">
             <h2 className="text-sm font-semibold text-ink">{t('invoices.send')}</h2>
 
             <div role="tablist" className="mt-3 inline-flex rounded-field border border-line-strong p-0.5 text-sm">
@@ -877,7 +905,7 @@ function ShareCard({
                                     setWaOpened(false);
                                 }}
                                 placeholder="+212 6 12 34 56 78"
-                                className="w-full rounded-field border border-line-strong px-3 py-2"
+                                className="control-input w-full"
                             />
                         </Field>
                     )}
@@ -890,7 +918,7 @@ function ShareCard({
                                 setWaMessage(e.target.value);
                                 setWaOpened(false);
                             }}
-                            className="w-full rounded-field border border-line-strong px-3 py-2"
+                            className="control-input w-full py-2"
                         />
                     </Field>
                     <p className="text-xs text-ink-faint">

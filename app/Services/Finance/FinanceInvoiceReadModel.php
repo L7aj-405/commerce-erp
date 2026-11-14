@@ -34,7 +34,7 @@ class FinanceInvoiceReadModel
             ->whereDate('invoice_date', '>=', $period->start->toDateString())
             ->whereDate('invoice_date', '<=', $period->end->toDateString())
             ->orderBy('invoice_date')->orderBy('id')
-            ->paginate($perPage);
+            ->paginate($perPage)->withQueryString();
 
         // Batch-enrich the page's invoices in 3 queries total BEFORE mapping —
         // through() maps row-by-row, so building each row's summary lazily

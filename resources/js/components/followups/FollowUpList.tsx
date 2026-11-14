@@ -1,3 +1,4 @@
+import DatePicker from '@/components/ui/DatePicker';
 import { Button } from '@/components/ui/Button';
 import DocBadge from '@/components/ui/DocBadge';
 import { Dialog } from '@/components/ui/Dialog';
@@ -84,7 +85,7 @@ export default function FollowUpList({ items, context, showAssignee }: { items: 
 
     return (
         <>
-            <ul className="divide-y divide-line rounded-card border border-line bg-surface">
+            <ul className="divide-y divide-line surface-card">
                 {items.map((item) => (
                     <li key={item.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-start sm:justify-between">
                         <div className="min-w-0 flex-1">
@@ -136,7 +137,7 @@ export default function FollowUpList({ items, context, showAssignee }: { items: 
                                             value=""
                                             disabled={busy === item.id}
                                             onChange={(e) => e.target.value && snooze(item, Number(e.target.value))}
-                                            className="h-8 rounded-field border border-line-strong bg-surface px-2 text-xs text-ink"
+                                            className="control-select"
                                         >
                                             <option value="">{t('work.snooze')}</option>
                                             <option value="1">{t('work.snoozeTomorrow')}</option>
@@ -181,7 +182,7 @@ export default function FollowUpList({ items, context, showAssignee }: { items: 
             >
                 <label className="block px-4 py-4 sm:px-6">
                     <span className="mb-1 block text-xs font-medium text-ink-muted">{t('work.outcomeOptional')}</span>
-                    <textarea data-autofocus rows={3} maxLength={5000} value={outcome} onChange={(e) => setOutcome(e.target.value)} className="w-full rounded-field border border-line-strong bg-surface px-3 py-2 text-sm" />
+                    <textarea data-autofocus rows={3} maxLength={5000} value={outcome} onChange={(e) => setOutcome(e.target.value)} className="control-input w-full py-2" />
                 </label>
             </Dialog>
 
@@ -198,7 +199,7 @@ export default function FollowUpList({ items, context, showAssignee }: { items: 
             >
                 <div className="space-y-4 px-4 py-5 sm:px-6">
                     <fieldset className="space-y-2">
-                        <legend className="text-xs font-medium uppercase tracking-wide text-ink-faint">{t('work.shipmentOutcomeLabel')}</legend>
+                        <legend className="text-xs font-medium text-ink-faint">{t('work.shipmentOutcomeLabel')}</legend>
                         {(['received_ok', 'not_received', 'customer_unreachable', 'delivery_problem'] as const).map((value) => (
                             <label key={value} className="flex cursor-pointer items-start gap-2 rounded-field border border-line p-3 text-sm">
                                 <input type="radio" name="shipment-outcome" value={value} checked={shipmentOutcome === value} onChange={() => setShipmentOutcome(value)} className="mt-0.5" />
@@ -208,7 +209,7 @@ export default function FollowUpList({ items, context, showAssignee }: { items: 
                     </fieldset>
                     {(shipmentOutcome === 'not_received' || shipmentOutcome === 'customer_unreachable') && (
                         <div className="grid gap-3 sm:grid-cols-2">
-                            <label className="block"><span className="mb-1 block text-xs font-medium text-ink-muted">{t('work.nextFollowUpDate')}</span><input required type="date" value={shipmentDueDate} onChange={(event) => setShipmentDueDate(event.target.value)} className="control-input w-full" /></label>
+                            <label className="block"><span className="mb-1 block text-xs font-medium text-ink-muted">{t('work.nextFollowUpDate')}</span><DatePicker required value={shipmentDueDate} onChange={(value) => setShipmentDueDate(value)} /></label>
                             <label className="block"><span className="mb-1 block text-xs font-medium text-ink-muted">{t('work.dueTime')}</span><input type="time" value={shipmentDueTime} onChange={(event) => setShipmentDueTime(event.target.value)} className="control-input w-full" /></label>
                         </div>
                     )}

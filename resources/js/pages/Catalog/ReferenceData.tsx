@@ -32,8 +32,8 @@ type Props = {
     stores?: StoreRow[];
 };
 
-const fieldClass =
-    "mt-1.5 h-10 w-full rounded-field border border-line-strong bg-surface px-3 text-sm text-ink outline-none transition-soft focus:border-primary";
+const fieldClass = 'control-input mt-1.5';
+const selectClass = 'control-select mt-1.5';
 const labelClass = "block text-[13px] font-medium text-ink";
 
 export default function ReferenceData({
@@ -107,9 +107,9 @@ export default function ReferenceData({
             />
 
             <div className="grid gap-6 lg:grid-cols-[1fr_22rem]">
-                <section className="overflow-x-auto rounded-card border border-line bg-surface">
-                    <table className="w-full min-w-[520px] text-start text-sm">
-                        <thead className="bg-raised text-[11px] uppercase tracking-wide text-ink-faint">
+                <section className="overflow-x-auto surface-card">
+                    <table className="erp-table w-full min-w-[520px] text-start text-sm">
+                        <thead className="bg-raised text-[13px] text-ink-muted font-medium">
                             <tr>
                                 <th className="px-4 py-2.5">
                                     {t("common.name")}
@@ -189,7 +189,7 @@ export default function ReferenceData({
                                                 : t("status.inactive")}
                                         </span>
                                     </td>
-                                    <td className="px-4 py-3 text-right">
+                                    <td className="px-4 py-3 text-end">
                                         <button
                                             type="button"
                                             onClick={() => select(record)}
@@ -216,7 +216,7 @@ export default function ReferenceData({
 
                 <form
                     onSubmit={submit}
-                    className="h-fit space-y-3.5 rounded-card border border-line bg-surface p-5"
+                    className="h-fit space-y-3.5 surface-card p-5"
                 >
                     <h3 className="text-sm font-semibold text-ink">
                         {editing
@@ -254,7 +254,7 @@ export default function ReferenceData({
                         <label className={labelClass}>
                             {t("referenceData.parentCategory")}
                             <select
-                                className={fieldClass}
+                                className={selectClass}
                                 value={form.data.parent_id ?? ""}
                                 onChange={(e) =>
                                     form.setData(
@@ -328,7 +328,7 @@ export default function ReferenceData({
                     <label className={labelClass}>
                         {t("common.status")}
                         <select
-                            className={fieldClass}
+                            className={selectClass}
                             value={form.data.status}
                             onChange={(e) =>
                                 form.setData("status", e.target.value)
@@ -382,7 +382,7 @@ export default function ReferenceData({
                     <p className="mt-1 text-[13px] text-ink-muted">
                         {t("referenceData.storeDefaultTaxHelp")}
                     </p>
-                    <div className="mt-4 divide-y divide-line rounded-card border border-line bg-surface">
+                    <div className="mt-4 divide-y divide-line surface-card">
                         {stores.map((store) => (
                             <div
                                 key={store.id}
@@ -412,7 +412,7 @@ export default function ReferenceData({
                                             { preserveScroll: true },
                                         )
                                     }
-                                    className="h-10 min-w-56 rounded-field border border-line-strong bg-surface px-3 text-sm text-ink outline-none focus:border-primary"
+                                    className="control-select h-10 min-w-56"
                                 >
                                     <option value="">
                                         {t("referenceData.useOrganizationTax")}

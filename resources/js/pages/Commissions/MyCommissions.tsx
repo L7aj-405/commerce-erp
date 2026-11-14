@@ -4,7 +4,7 @@ import CommissionFilters, {
 import type { CommissionFilterState } from "@/components/finance/CommissionFilters";
 import CommissionMetric from "@/components/finance/CommissionMetric";
 import PageHeader from "@/components/ui/PageHeader";
-import Pagination from "@/components/ui/Pagination";
+import { TablePager, TableShell } from "@/components/ui/TableShell";
 import ApplicationShell from "@/layouts/ApplicationShell";
 import { useI18n } from "@/i18n";
 import { formatDate, formatMoney } from "@/utils/format";
@@ -58,7 +58,7 @@ export default function MyCommissions({
     can,
 }: Props) {
     const { statuses, types } = useCommissionLabels();
-    const { t } = useI18n();
+    const { t, locale } = useI18n();
     return (
         <ApplicationShell wide>
             <Head title={t("commissions.my")} />
@@ -98,30 +98,35 @@ export default function MyCommissions({
                 />
             </section>
 
-            <section className="overflow-x-auto rounded-card border border-line bg-surface">
-                <table className="erp-table w-full min-w-[820px] text-start text-sm">
-                    <thead className="bg-raised text-[11px] uppercase tracking-wide text-ink-faint">
+            <TableShell
+                label={t("commissions.my")}
+                state={entries.data.length === 0 ? "empty" : "ready"}
+                emptyTitle={t("commissions.emptyPeriod")}
+                footer={entries.data.length === 0 ? undefined : <TablePager links={entries.links} total={entries.total} />}
+            >
+                <table className="erp-table min-w-[820px] text-sm">
+                    <thead>
                         <tr>
-                            <th className="px-3 py-2">{t("common.date")}</th>
-                            <th className="px-3 py-2">{t("invoices.order")}</th>
-                            <th className="px-3 py-2">
+                            <th className="px-3 py-2.5">{t("common.date")}</th>
+                            <th className="px-3 py-2.5">{t("invoices.order")}</th>
+                            <th className="px-3 py-2.5">
                                 {t("commissions.product")}
                             </th>
                             {can.margin && (
-                                <th className="px-3 py-2 text-end">
+                                <th className="num px-3 py-2.5">
                                     {t("commissions.margin")}
                                 </th>
                             )}
-                            <th className="px-3 py-2 text-end">
+                            <th className="num px-3 py-2.5">
                                 {t("commissions.rate")}
                             </th>
-                            <th className="px-3 py-2 text-end">
+                            <th className="num px-3 py-2.5">
                                 {t("commissions.commission")}
                             </th>
-                            <th className="px-3 py-2">
+                            <th className="px-3 py-2.5">
                                 {t("commissions.type")}
                             </th>
-                            <th className="px-3 py-2">{t("common.status")}</th>
+                            <th className="px-3 py-2.5">{t("common.status")}</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -130,13 +135,13 @@ export default function MyCommissions({
                                 key={entry.id}
                                 className="border-t border-line align-top"
                             >
-                                <td className="px-3 py-2 text-ink-muted">
+                                <td className="px-3 py-2.5 whitespace-nowrap text-ink-muted tabular-nums">
                                     {formatDate(entry.occurred_at)}
                                 </td>
-                                <td className="px-3 py-2">
+                                <td className="px-3 py-2.5">
                                     {entry.sales_order?.order_number ?? "—"}
                                     {entry.customer_return && (
-                                        <span className="block text-[11px] text-ink-faint">
+                                        <span className="block text-xs text-ink-muted">
                                             {
                                                 entry.customer_return
                                                     .return_number
@@ -144,40 +149,40 @@ export default function MyCommissions({
                                         </span>
                                     )}
                                 </td>
-                                <td className="px-3 py-2">
+                                <td className="px-3 py-2.5">
                                     {entry.product_name_snapshot ?? "—"}
                                     {entry.reversal_reason && (
-                                        <span className="block text-[11px] text-ink-faint">
+                                        <span className="block text-xs text-ink-muted">
                                             {entry.reversal_reason}
                                         </span>
                                     )}
                                 </td>
                                 {can.margin && (
-                                    <td className="px-3 py-2 text-right">
+                                    <td className="num px-3 py-2.5">
                                         {formatMoney(
                                             entry.margin_amount_snapshot,
                                         )}
                                     </td>
                                 )}
-                                <td className="px-3 py-2 text-right">
+                                <td className="num px-3 py-2.5">
                                     {Number(
                                         entry.commission_rate_snapshot,
-                                    ).toLocaleString("fr-FR")}{" "}
+                                    ).toLocaleString(locale === "ar" ? "ar-MA" : "fr-FR")}{" "}
                                     %
                                 </td>
                                 <td
-                                    className={`px-3 py-2 text-right font-semibold ${Number(entry.commission_amount) < 0 ? "text-danger" : "text-ink"}`}
+                                    className={`num px-3 py-2.5 font-semibold ${Number(entry.commission_amount) < 0 ? "text-danger" : "text-ink"}`}
                                 >
                                     {formatMoney(entry.commission_amount)}
                                 </td>
-                                <td className="px-3 py-2">
+                                <td className="px-3 py-2.5">
                                     {types[entry.entry_type] ??
                                         entry.entry_type}
                                 </td>
-                                <td className="px-3 py-2">
+                                <td className="px-3 py-2.5">
                                     {statuses[entry.status] ?? entry.status}
                                     {entry.paid_at && (
-                                        <span className="block text-[11px] text-ink-faint">
+                                        <span className="block text-xs text-ink-muted">
                                             {t("commissions.on")}{" "}
                                             {formatDate(entry.paid_at)}
                                         </span>
@@ -187,13 +192,7 @@ export default function MyCommissions({
                         ))}
                     </tbody>
                 </table>
-                {entries.data.length === 0 && (
-                    <p className="p-8 text-center text-sm text-ink-faint">
-                        {t("commissions.emptyPeriod")}
-                    </p>
-                )}
-            </section>
-            <Pagination links={entries.links} />
+            </TableShell>
         </ApplicationShell>
     );
 }

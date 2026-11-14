@@ -4,85 +4,334 @@
 @source '../../storage/framework/views/*.php';
 
 /*
- * 10xScale ERP — visual foundation tokens.
- * Warm, light, calm SaaS palette. Business modules still use Tailwind's `slate`
- * scale; these semantic tokens are the shared language for the app shell,
- * welcome page, auth and onboarding, and are where new module work should draw from.
+ * 10xScale ERP — Editorial SaaS + refined Liquid Glass.
+ * Ink on warm paper, white data surfaces, petrol teal for action/selection and a
+ * restrained amber for attention. Colour carries meaning; the chrome stays quiet.
+ * Every text token passes WCAG AA (≥4.5:1) on canvas and surface in both themes.
  */
 @theme {
-    --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
-        'Segoe UI Symbol', 'Noto Color Emoji';
+    --font-sans: 'Plus Jakarta Sans', 'IBM Plex Sans Arabic', ui-sans-serif, system-ui, 'Segoe UI', sans-serif;
+    --font-arabic: 'IBM Plex Sans Arabic', 'Plus Jakarta Sans', 'Segoe UI', Tahoma, sans-serif;
 
-    /* Surfaces */
-    --color-canvas: #f6f6f2;
-    --color-surface: #ffffff;
-    --color-raised: #fbfbf8;
-    --color-sage: #ecf0e8;
-    --color-sage-deep: #e3e9dc;
+    /* Type scale (rem) — titles are confident, never heavy. */
+    --text-page: 1.875rem;
+    --text-page--line-height: 1.15;
+    --text-page--letter-spacing: -0.02em;
+    --text-section: 1.0625rem;
+    --text-section--line-height: 1.35;
+    --text-kpi: 2rem;
+    --text-kpi--line-height: 1.1;
+    --text-kpi--letter-spacing: -0.02em;
 
-    /* Text */
-    --color-ink: #1f211d;
-    --color-ink-muted: #656a5e;
-    --color-ink-faint: #949a8b;
+    /* Surfaces — warm paper canvas, pure white data cards. */
+    --color-canvas: #f6f2ee;
+    --color-surface: #fffefc;
+    --color-raised: #fbf9f7;
+    --color-sage: #f4f1ef; /* neutral hover / selected fill (name kept for compatibility) */
+    --color-sage-deep: #e7e9e3;
 
-    /* Lines */
-    --color-line: #e7e6df;
-    --color-line-strong: #d8d7cd;
+    /* Ink */
+    --color-ink: #121b1c;
+    --color-ink-muted: #606869;
+    --color-ink-faint: #667070;
 
-    /* Brand / primary action — deep charcoal green */
-    --color-primary: #2b3a30;
-    --color-primary-hover: #212e26;
-    --color-primary-fg: #f7f8f4;
+    /* Lines — hairlines tinted toward the ink, never coloured. */
+    --color-line: #e6e8e3;
+    --color-line-strong: #d3d8d2;
 
-    /* Feedback — restrained */
-    --color-success: #3f7a56;
-    --color-success-soft: #eaf2ec;
-    --color-warning: #a9761f;
-    --color-warning-soft: #f6efe0;
-    --color-danger: #b0453b;
-    --color-danger-soft: #f6e8e6;
-    --color-info: #426b86;
-    --color-info-soft: #eaf1f5;
+    /* Primary action: petrol teal (white text 5.1:1). */
+    --color-primary: #007c73;
+    --color-primary-hover: #005d56;
+    --color-primary-fg: #ffffff;
+
+    /* Accent: navigation state, selection, focus. */
+    --color-accent: #007c73;
+    --color-accent-soft: #dcefe9;
+
+    /* Secondary accent: warm amber (fill/indicator only; text uses --color-amber). */
+    --color-highlight: #ca852a;
+    --color-highlight-soft: #fff1dd;
+
+    /* Category tints for icon tiles (names kept; values retuned, no purple). */
+    --color-violet: #007c73;
+    --color-violet-soft: #e1f3ee;
+    --color-blue: #1471a2;
+    --color-blue-soft: #e1edf4;
+    --color-rose: #bf5246;
+    --color-rose-soft: #fdecea;
+    --color-mint: #27804e;
+    --color-mint-soft: #dff2e4;
+    --color-amber: #a8650f;
+    --color-amber-soft: #fff1dd;
+
+    /* Feedback — semantic only */
+    --color-success: #23683f;
+    --color-success-soft: #e2f0e7;
+    --color-warning: #85520c;
+    --color-warning-soft: #fbefdf;
+    --color-danger: #a83a2e;
+    --color-danger-soft: #f8e8e4;
+    --color-danger-fg: #ffffff;
+    --color-info: #2f5f8a;
+    --color-info-soft: #e6eef5;
 
     /* Financial semantics — meaning stays stable across dashboards and tables. */
-    --color-finance-inflow: #3f7a56;
-    --color-finance-inflow-soft: #eaf2ec;
-    --color-finance-outflow: #b0453b;
-    --color-finance-outflow-soft: #f6e8e6;
-    --color-finance-forecast: #426b86;
-    --color-finance-forecast-soft: #eaf1f5;
-    --color-finance-balance: #2b3a30;
-    --color-finance-overdue: #9c3f38;
+    --color-finance-inflow: #23683f;
+    --color-finance-inflow-soft: #e2f0e7;
+    --color-finance-outflow: #a83a2e;
+    --color-finance-outflow-soft: #f8e8e4;
+    --color-finance-forecast: #2f5f8a;
+    --color-finance-forecast-soft: #e6eef5;
+    --color-finance-balance: #15191a;
+    --color-finance-overdue: #962f24;
 
     /* Radius */
-    --radius-field: 0.625rem;
-    --radius-card: 1rem;
-    --radius-panel: 1.5rem;
+    --radius-field: 0.75rem;
+    --radius-card: 1.125rem;
+    --radius-panel: 1.25rem;
 
-    /* Elevation */
-    --shadow-card: 0 1px 2px rgb(28 33 25 / 0.04), 0 10px 30px -16px rgb(28 33 25 / 0.12);
-    --shadow-pop: 0 8px 28px -8px rgb(28 33 25 / 0.18);
+    /* Elevation — neutral, ink-tinted. */
+    --shadow-card: 0 12px 26px rgb(35 53 49 / 0.075), 0 2px 6px rgb(35 53 49 / 0.025);
+    --shadow-pop: 0 2px 6px rgb(35 53 49 / 0.05), 0 22px 48px -14px rgb(35 53 49 / 0.26);
+
+    /* Liquid Glass — three densities. Shell (rail, header controls) is the most
+       translucent; popovers are denser so option text stays crisp; overlays dim. */
+    --glass-shell: rgb(255 255 255 / 0.6);
+    --glass-popover: rgb(255 255 255 / 0.86);
+    --glass-edge: rgb(255 255 255 / 0.66);
+    --glass-line: rgb(87 102 101 / 0.14);
+    --glass-highlight: inset 0 1px 0 rgb(255 255 255 / 0.72);
+    --glass-sheen: linear-gradient(180deg, rgb(255 255 255 / 0.55), rgb(255 255 255 / 0) 45%);
+    --glass-scrim: rgb(21 25 26 / 0.26);
+
+    /* Atmosphere — paper light, grain and editorial rules. */
+    --atmo-light: rgb(255 255 255 / 0.7);
+    --atmo-tint: rgb(66 173 161 / 0.14);
+    --atmo-warm: rgb(237 188 126 / 0.14);
+    --atmo-sweep: rgb(66 173 161 / 0.10);
+    --atmo-rule: rgb(30 70 68 / 0.012);
+    --atmo-grain-opacity: 0.05;
+
+    /* Data surfaces (approved Liquid Glass reference): near-solid warm paper. */
+    --card-bg: rgb(255 254 252 / 0.94);
+    --card-edge: rgb(211 217 211 / 0.66);
+    --card-highlight: inset 0 1px 0 rgb(255 255 255 / 0.9);
+    --inset-bg: linear-gradient(155deg, rgb(255 255 255 / 0.55), rgb(250 246 244 / 0.4));
+    --glass-drop: 0 8px 28px rgb(20 35 35 / 0.07), 0 1px 2px rgb(20 35 35 / 0.04);
+    /* Medium glass: dashboard KPI cards and elevated panels. */
+    --glass-card: rgb(255 255 255 / 0.68);
+    --glass-card-edge: rgb(255 255 255 / 0.85);
+    --glass-card-ring: rgb(20 35 35 / 0.05);
+    --glass-card-highlight: inset 0 1px 0 rgb(255 255 255 / 0.95), inset 0 -1px 0 rgb(20 35 35 / 0.025);
+    --glass-card-shadow: 0 12px 26px rgb(35 53 49 / 0.075), 0 2px 6px rgb(35 53 49 / 0.03);
+    /* Glass tiers: strong (KPI), medium (main panels), soft (secondary panels). */
+    --glass-strong: rgb(255 255 255 / 0.78);
+    --glass-strong-shadow: 0 14px 30px rgb(35 53 49 / 0.09), 0 2px 6px rgb(35 53 49 / 0.035);
+    --glass-soft: rgb(255 255 255 / 0.56);
+    --glass-soft-shadow: 0 8px 22px rgb(35 53 49 / 0.055), 0 1px 3px rgb(35 53 49 / 0.03);
+    --glass-sheen-card: linear-gradient(165deg, rgb(255 255 255 / 0.6), rgb(255 255 255 / 0.1) 55%, rgb(255 255 255 / 0) 80%);
+    --atmo-ribbon: rgb(140 200 190 / 0.34);
+    --atmo-sand: rgb(240 200 160 / 0.32);
+    /* Ambient light fields (pre-blurred gradients, no filters). */
+    --atmo-teal: rgb(160 210 200 / 0.46);
+    --atmo-blush: rgb(240 206 198 / 0.44);
+    --atmo-white: rgb(255 255 255 / 0.55);
+    --atmo-neutral: rgb(196 222 214 / 0.38);
 
     /* Motion */
     --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+
+    /* Wide-monitor breakpoint for fluid workspaces (dashboard rebalances to 3 tracks). */
+    /* Dashboard three-track grid (approved reference: 1.7 : 1 : 1 from 1360px). */
+    --breakpoint-dash: 85rem;
+    --breakpoint-3xl: 112.5rem;
+}
+
+/*
+ * Dark theme — separately tuned graphite, not inverted. Opt-in via html[data-theme=dark]
+ * (set by the shell toggle, applied pre-paint in app.blade.php).
+ */
+:root[data-theme='dark'] {
+    color-scheme: dark;
+    --color-canvas: #0e1213;
+    --color-surface: #171c1d;
+    --color-raised: #1b2021;
+    --color-sage: #22282a;
+    --color-sage-deep: #2b3234;
+    --color-ink: #eef1ef;
+    --color-ink-muted: #aab4b2;
+    --color-ink-faint: #8d9896;
+    --color-line: #252b2c;
+    --color-line-strong: #343c3d;
+    --color-primary: #3fb8ab;
+    --color-primary-hover: #5fcabe;
+    --color-primary-fg: #061413;
+    --color-accent: #4fc0b4;
+    --color-accent-soft: #143330;
+    --color-highlight: #e8a65a;
+    --color-highlight-soft: #33250f;
+    --color-violet: #5cc0b8;
+    --color-violet-soft: #15302e;
+    --color-blue: #8db6dc;
+    --color-blue-soft: #172532;
+    --color-rose: #ec9286;
+    --color-rose-soft: #35191a;
+    --color-mint: #79c99a;
+    --color-mint-soft: #142a1e;
+    --color-amber: #e8b06c;
+    --color-amber-soft: #33250f;
+    --color-success: #79c99a;
+    --color-success-soft: #142a1e;
+    --color-warning: #e8b06c;
+    --color-warning-soft: #33250f;
+    --color-danger: #ef8e82;
+    --color-danger-soft: #36191a;
+    --color-danger-fg: #1a0907;
+    --color-info: #8db6dc;
+    --color-info-soft: #172532;
+    --color-finance-inflow: #79c99a;
+    --color-finance-inflow-soft: #142a1e;
+    --color-finance-outflow: #ef8e82;
+    --color-finance-outflow-soft: #36191a;
+    --color-finance-forecast: #8db6dc;
+    --color-finance-forecast-soft: #172532;
+    --color-finance-balance: #eef1ef;
+    --color-finance-overdue: #f39b90;
+    --shadow-card: 0 1px 2px rgb(0 0 0 / 0.4), 0 14px 30px -18px rgb(0 0 0 / 0.7);
+    --shadow-pop: 0 1px 2px rgb(0 0 0 / 0.5), 0 22px 52px -16px rgb(0 0 0 / 0.8);
+    --glass-shell: rgb(30 37 38 / 0.52);
+    --glass-popover: rgb(25 31 32 / 0.9);
+    --glass-edge: rgb(255 255 255 / 0.08);
+    --glass-line: rgb(255 255 255 / 0.08);
+    --glass-highlight: inset 0 1px 0 rgb(255 255 255 / 0.07);
+    --glass-sheen: linear-gradient(180deg, rgb(255 255 255 / 0.06), rgb(255 255 255 / 0) 45%);
+    --glass-scrim: rgb(0 0 0 / 0.55);
+    --glass-bar-edge: rgb(255 255 255 / 0.03);
+    --card-bg: rgb(24 29 30 / 0.94);
+    --card-edge: rgb(255 255 255 / 0.07);
+    --card-highlight: inset 0 1px 0 rgb(255 255 255 / 0.04);
+    --inset-bg: linear-gradient(155deg, rgb(255 255 255 / 0.035), rgb(255 255 255 / 0.015));
+    --glass-drop: 0 12px 30px rgb(0 0 0 / 0.45);
+    --glass-card: rgb(32 39 40 / 0.54);
+    --glass-strong: rgb(38 46 47 / 0.64);
+    --glass-strong-shadow: 0 14px 34px rgb(0 0 0 / 0.42), 0 2px 4px rgb(0 0 0 / 0.3);
+    --glass-soft: rgb(28 34 35 / 0.44);
+    --glass-soft-shadow: 0 8px 24px rgb(0 0 0 / 0.3), 0 1px 2px rgb(0 0 0 / 0.25);
+    --glass-sheen-card: linear-gradient(165deg, rgb(255 255 255 / 0.055), rgb(255 255 255 / 0.01) 55%, transparent 80%);
+    --atmo-ribbon: rgb(63 184 171 / 0.10);
+    --atmo-sand: rgb(200 150 100 / 0.05);
+    --glass-card-edge: rgb(255 255 255 / 0.085);
+    --glass-card-ring: rgb(0 0 0 / 0.25);
+    --glass-card-highlight: inset 0 1px 0 rgb(255 255 255 / 0.08), inset 0 -1px 0 rgb(0 0 0 / 0.22);
+    --glass-card-shadow: 0 10px 30px rgb(0 0 0 / 0.35), 0 1px 2px rgb(0 0 0 / 0.3);
+    --atmo-teal: rgb(63 184 171 / 0.13);
+    --atmo-blush: rgb(196 128 120 / 0.08);
+    --atmo-white: rgb(255 255 255 / 0.025);
+    --atmo-neutral: rgb(110 170 160 / 0.07);
+    --atmo-light: rgb(255 255 255 / 0.025);
+    --atmo-tint: rgb(63 184 171 / 0.10);
+    --atmo-warm: rgb(237 188 126 / 0.05);
+    --atmo-sweep: rgb(63 184 171 / 0.085);
+    --atmo-rule: rgb(255 255 255 / 0.012);
+    --atmo-grain-opacity: 0.06;
+
+    /* Legacy module classes (slate-*, bg-white) map onto the graphite ramp until each
+       module is migrated to semantic tokens. */
+    --color-slate-50: #1b2021;
+    --color-slate-100: #1f2526;
+    --color-slate-200: #2b3234;
+    --color-slate-300: #343c3d;
+    --color-slate-400: #7b8785;
+    --color-slate-500: #8d9896;
+    --color-slate-600: #aab4b2;
+    --color-slate-700: #c6cecc;
+    --color-slate-800: #dde3e1;
+    --color-slate-900: #eef1ef;
+    --color-slate-950: #ffffff;
+}
+
+:root[data-theme='dark'] .bg-white {
+    background-color: var(--color-surface);
 }
 
 @layer base {
+    /* Browsers centre <th> unless an explicit non-start alignment is inherited, so
+       `text-start` on a table/row had no effect. Start-align headers (RTL-aware);
+       `text-end` / `.num` utilities on a header still override this layer. */
+    th {
+        text-align: start;
+    }
+
+    /* Tailwind v4 defaults bare `border` to currentColor (near-black hairlines on
+       panels and fields). Default to the token hairlines; explicit border-* utilities
+       still win because utilities sit above this layer. */
+    *,
+    ::before,
+    ::after,
+    ::backdrop,
+    ::file-selector-button {
+        border-color: var(--color-line);
+    }
+
+    input,
+    select,
+    textarea {
+        border-color: var(--color-line-strong);
+    }
+
     html {
         -webkit-text-size-adjust: 100%;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+            animation-duration: 0.01ms !important;
+            animation-iteration-count: 1 !important;
+            transition-duration: 0.01ms !important;
+            scroll-behavior: auto !important;
+        }
     }
 
     body {
         background-color: var(--color-canvas);
         color: var(--color-ink);
-        font-feature-settings: 'cv11', 'ss01';
+        font-family: var(--font-sans);
+        font-size: 0.9375rem;
+        line-height: 1.55;
+        font-optical-sizing: auto;
+        /* Plus Jakarta's contextual alternates turn the x in "10xScale" into a
+           multiplication sign between digits — keep the product name intact. */
+        font-feature-settings: 'calt' 0;
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
+        text-rendering: optimizeLegibility;
     }
 
-    html[dir='rtl'] body {
-        font-family: 'Noto Sans Arabic', 'Segoe UI', Tahoma, Arial, sans-serif;
+    /* Arabic UI: IBM Plex Sans Arabic for shaping, Plus Jakarta for Latin runs
+       (codes, amounts). No negative tracking — it breaks Arabic joining. */
+    html[dir='rtl'] body,
+    html[lang='ar'] body {
+        font-family: var(--font-arabic);
         letter-spacing: 0;
+    }
+
+    html[dir='rtl'] [class*='tracking-'] {
+        letter-spacing: 0;
+    }
+
+    h1,
+    h2,
+    h3 {
+        text-wrap: balance;
+    }
+
+    /* Figures line up in every table and metric. */
+    table,
+    .metric-value,
+    .tabular-nums {
+        font-variant-numeric: tabular-nums;
     }
 
     /* Keep business identifiers and amounts readable inside Arabic UI. */
@@ -103,6 +352,12 @@
         outline: 2px solid var(--color-primary);
         outline-offset: 2px;
         border-radius: 4px;
+    }
+
+    /* Anchor absolutely positioned cell content (sr-only labels, badges) to the table so
+       it scrolls with its overflow-x container instead of widening the page. */
+    table {
+        position: relative;
     }
 
     ::selection {
@@ -141,8 +396,27 @@
     .control-select:disabled {
         cursor: not-allowed;
         background-color: var(--color-raised);
+        border-color: var(--color-line);
+        color: var(--color-ink-muted);
+    }
+
+    .control-base::placeholder,
+    .control-input::placeholder {
         color: var(--color-ink-faint);
-        opacity: 0.72;
+        opacity: 1;
+    }
+
+    /* Invalid state follows aria-invalid automatically (and the legacy class). */
+    .control-base[aria-invalid='true'],
+    .control-input[aria-invalid='true'],
+    .control-select[aria-invalid='true'] {
+        border-color: var(--color-danger);
+    }
+
+    .control-base[aria-invalid='true']:focus,
+    .control-input[aria-invalid='true']:focus,
+    .control-select[aria-invalid='true']:focus {
+        box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-danger) 14%, transparent);
     }
 
     .control-input,
@@ -157,7 +431,7 @@
         -webkit-appearance: none;
         -moz-appearance: none;
         padding-inline-end: 2.25rem;
-        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23656a5e' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23626c6c' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
         background-position: right 0.75rem center;
         background-size: 1rem 1rem;
         background-repeat: no-repeat;
@@ -167,21 +441,128 @@
         background-position: left 0.75rem center;
     }
 
+    /* Dense size for controls inside editing grids (order/quotation lines). */
+    .control-input.control-compact,
+    .control-select.control-compact {
+        min-height: 2.25rem;
+        padding-inline: 0.5rem;
+        font-size: 0.8125rem;
+    }
+
+    .control-select.control-compact {
+        padding-inline-end: 1.75rem;
+        background-position: right 0.4rem center;
+        background-size: 0.875rem 0.875rem;
+    }
+
+    [dir='rtl'] .control-select.control-compact {
+        background-position: left 0.4rem center;
+    }
+
+    :root[data-theme='dark'] .control-select {
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%238d9896' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    }
+
+    /* Native date/month pickers follow the theme. */
+    :root[data-theme='dark'] input::-webkit-calendar-picker-indicator {
+        filter: invert(0.85);
+    }
+
     /* Directional affordances only; semantic icons remain untouched. */
     .directional-icon {
         unicode-bidi: isolate;
     }
 
     .control-error {
-        border-color: color-mix(in srgb, var(--color-danger) 60%, transparent);
+        border-color: var(--color-danger);
+    }
+
+    /* Solid, readable surface for data — never glass. */
+    /* Solid, readable surface for data — never glass. */
+    .surface-card {
+        border: 1px solid var(--card-edge);
+        border-radius: var(--radius-card);
+        background-color: var(--card-bg);
+        box-shadow: var(--card-highlight), var(--shadow-card);
+    }
+
+    /*
+     * Medium glass (dashboard KPI cards, elevated panels). Translucent fill + backdrop
+     * blur/saturation + light edge + inner highlight + soft neutral drop. The blur acts
+     * on what is BEHIND the card only — card contents stay crisp. Dense tables/forms keep
+     * .surface-card (solid).
+     */
+    .surface-glass {
+        border: 1px solid var(--glass-card-edge);
+        border-radius: var(--radius-card);
+        background-color: var(--glass-card);
+        background-image: var(--glass-sheen-card);
+        box-shadow: var(--glass-card-highlight), 0 0 0 1px var(--glass-card-ring), var(--glass-card-shadow);
+        -webkit-backdrop-filter: blur(20px) saturate(135%);
+        backdrop-filter: blur(20px) saturate(135%);
+    }
+
+    /* Tiers: strong = primary KPI cards; soft = secondary panels. */
+    .surface-glass.glass-strong {
+        background-color: var(--glass-strong);
+        box-shadow: var(--glass-card-highlight), 0 0 0 1px var(--glass-card-ring), var(--glass-strong-shadow);
+    }
+
+    .surface-glass.glass-soft {
+        background-color: var(--glass-soft);
+        box-shadow: var(--glass-card-highlight), 0 0 0 1px var(--glass-card-ring), var(--glass-soft-shadow);
+    }
+
+    @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+        .surface-glass,
+        .surface-glass.glass-strong,
+        .surface-glass.glass-soft {
+            background-color: var(--card-bg);
+        }
+    }
+
+    @media (prefers-reduced-transparency: reduce) {
+        .surface-glass,
+        .surface-glass.glass-strong,
+        .surface-glass.glass-soft {
+            background-color: var(--card-bg);
+            -webkit-backdrop-filter: none;
+            backdrop-filter: none;
+        }
+    }
+
+    /* Quiet inset well for empty states inside a card. */
+    .surface-inset {
+        border-radius: 0.8125rem;
+        background-image: var(--inset-bg);
+    }
+
+    /*
+     * Data tables. Readable by default (13–14px, tabular numbers), dense enough
+     * for ERP work. Pages keep their own cell padding; `.num` right-aligns amounts.
+     */
+    .erp-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-variant-numeric: tabular-nums;
     }
 
     .erp-table thead {
         background-color: var(--color-raised);
         color: var(--color-ink-muted);
-        font-size: 0.75rem;
-        font-weight: 600;
-        letter-spacing: 0.025em;
+        font-size: 0.8125rem;
+        font-weight: 500;
+        letter-spacing: 0;
+    }
+
+    .erp-table thead th {
+        border-bottom: 1px solid var(--color-line-strong);
+        text-align: start;
+        white-space: nowrap;
+    }
+
+    .erp-table tbody {
+        color: var(--color-ink);
     }
 
     .erp-table tbody tr {
@@ -189,9 +570,278 @@
         transition: background-color 150ms var(--ease-out-soft);
     }
 
-    .erp-table tbody tr:hover {
-        background-color: color-mix(in srgb, var(--color-raised) 70%, transparent);
+    .erp-table tbody tr:hover,
+    .erp-table tbody tr:focus-within {
+        background-color: color-mix(in srgb, var(--color-sage) 55%, transparent);
     }
+
+    .erp-table tbody tr[aria-selected='true'] {
+        background-color: var(--color-accent-soft);
+    }
+
+    /* Amount cells often carry dir="ltr" (keeps "1 428,00 DH" in reading order). In an
+       RTL document their own `end` would be the right edge while the header's is the
+       left; pin them to the table's end edge so columns stay aligned. */
+    [dir='rtl'] .erp-table .num[dir='ltr'] {
+        text-align: left;
+    }
+
+    .erp-table .num,
+    .erp-table th.num {
+        text-align: end;
+        font-variant-numeric: tabular-nums;
+        unicode-bidi: isolate;
+        white-space: nowrap;
+    }
+
+    /* Amount cells often carry dir="ltr" (keeps "1 428,00 DH" intact), which would flip
+       `end` to the right in Arabic. Pin numeric columns to the page's end edge. */
+    [dir='rtl'] .erp-table .num {
+        text-align: left;
+    }
+
+    .erp-table--sticky thead th {
+        position: sticky;
+        top: 0;
+        z-index: 1;
+        background-color: var(--color-raised);
+    }
+
+    /* Subtle entrance for overlays; disabled by the global reduced-motion rule. */
+    .animate-overlay-in {
+        animation: overlay-in 160ms var(--ease-out-soft);
+    }
+
+    .animate-panel-in {
+        animation: panel-in 180ms var(--ease-out-soft);
+    }
+
+    .animate-drawer-in {
+        animation: drawer-in 220ms var(--ease-out-soft);
+    }
+
+    [dir='rtl'] .animate-drawer-in {
+        animation-name: drawer-in-rtl;
+    }
+
+    /* Edge reveal handle: gentle nudge only while idle; off for reduced motion. */
+    .edge-handle {
+        /* Exactly centred on the viewport (top: 50% + this); keyframes keep the same Y. */
+        transform: translateY(-50%);
+        animation: edge-handle-pulse 2.8s var(--ease-out-soft) infinite;
+    }
+
+    .edge-handle:hover,
+    .edge-handle:focus-visible {
+        animation: none;
+    }
+
+    [dir='rtl'] .edge-handle {
+        animation-name: none;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .edge-handle {
+            animation: none;
+        }
+    }
+}
+
+@keyframes edge-handle-pulse {
+    0%, 100% {
+        transform: translate(0, -50%);
+        opacity: 0.85;
+    }
+    50% {
+        transform: translate(2px, -50%);
+        opacity: 1;
+    }
+}
+
+@keyframes drawer-in {
+    from {
+        opacity: 0;
+        transform: translateX(-14px);
+    }
+}
+
+@keyframes drawer-in-rtl {
+    from {
+        opacity: 0;
+        transform: translateX(14px);
+    }
+}
+
+@keyframes overlay-in {
+    from {
+        opacity: 0;
+    }
+}
+
+@keyframes panel-in {
+    from {
+        opacity: 0;
+        transform: translateY(6px) scale(0.985);
+    }
+}
+
+/* Document previews (invoice, quotation) mirror the printed PDF: light paper in
+   both themes so configured accent colours keep their contrast. */
+.doc-paper {
+    color-scheme: light;
+    --color-surface: #ffffff;
+    --color-raised: #f9f9f7;
+    --color-sage: #f0f0ec;
+    --color-ink: #15191a;
+    --color-ink-muted: #515b5b;
+    --color-ink-faint: #626c6c;
+    --color-line: #e7e7e2;
+    --color-line-strong: #d4d6d0;
+    background-color: #ffffff;
+    color: var(--color-ink);
+}
+
+/*
+ * Canvas: warm paper under soft top light. Three quiet layers, all fixed:
+ *  1. light falling from the top edge + a faint teal/amber temperature shift
+ *     at the far corners (light, not shapes);
+ *  2. fine editorial rules (a 4px baseline rhythm at 28px) fading out under the header;
+ *  3. paper grain (SVG fractal noise) — the material that keeps flat white from looking digital.
+ */
+@utility app-canvas {
+    position: relative;
+    isolation: isolate;
+    background-color: var(--color-canvas);
+
+    /*
+     * Distributed ambient light. ONE absolutely positioned layer that spans the whole
+     * document (it follows the min-h-dvh shell, so it scrolls with the page — no fixed
+     * fullscreen layer to repaint). Oversized, highly diffused elliptical fields at
+     * different heights; each fades through a soft mid-stop to transparent well inside
+     * its own shape, so there is no circular edge, rectangle or seam. Fields placed
+     * below the end of a short page simply never paint.
+     */
+    &::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        z-index: -1;
+        pointer-events: none;
+        background:
+            /* top: neutral white light under the header */
+            radial-gradient(60rem 30rem at 34% -8rem, var(--atmo-white), color-mix(in srgb, var(--atmo-white) 40%, transparent) 40%, transparent 72%),
+            /* upper right: sea-glass / petrol teal */
+            radial-gradient(74rem 44rem at 94% -4rem, var(--atmo-teal), color-mix(in srgb, var(--atmo-teal) 45%, transparent) 38%, transparent 72%),
+            /* lower left of the first screen: warm sand */
+            radial-gradient(56rem 40rem at 6% 104vh, var(--atmo-sand), color-mix(in srgb, var(--atmo-sand) 45%, transparent) 38%, transparent 72%),
+            /* mid left: soft blush */
+            radial-gradient(64rem 54rem at -12% 64vh, var(--atmo-blush), color-mix(in srgb, var(--atmo-blush) 45%, transparent) 38%, transparent 72%),
+            /* lower right: faint teal-neutral */
+            radial-gradient(70rem 48rem at 110% 122vh, var(--atmo-neutral), color-mix(in srgb, var(--atmo-neutral) 45%, transparent) 38%, transparent 72%),
+            /* further down long pages: alternating, never identical */
+            radial-gradient(62rem 50rem at 2% 192vh, var(--atmo-blush), color-mix(in srgb, var(--atmo-blush) 45%, transparent) 36%, transparent 70%),
+            radial-gradient(68rem 46rem at 98% 262vh, var(--atmo-teal), color-mix(in srgb, var(--atmo-teal) 40%, transparent) 36%, transparent 70%),
+            radial-gradient(60rem 52rem at 8% 338vh, var(--atmo-neutral), color-mix(in srgb, var(--atmo-neutral) 45%, transparent) 36%, transparent 70%),
+            radial-gradient(66rem 48rem at 90% 418vh, var(--atmo-blush), color-mix(in srgb, var(--atmo-blush) 40%, transparent) 36%, transparent 70%);
+    }
+
+    /* Diagonal sea-glass ribbon across the upper right (reference composition). A
+       linear band limited by an elliptical mask: every edge fades, nothing is cut. */
+    &::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        z-index: -1;
+        pointer-events: none;
+        background: linear-gradient(118deg, transparent 44%, var(--atmo-ribbon) 54%, color-mix(in srgb, var(--atmo-ribbon) 35%, transparent) 60%, transparent 68%);
+        mask-image: radial-gradient(70rem 30rem at 70% 8rem, #000 0%, rgb(0 0 0 / 0.55) 45%, transparent 75%);
+        -webkit-mask-image: radial-gradient(70rem 30rem at 70% 8rem, #000 0%, rgb(0 0 0 / 0.55) 45%, transparent 75%);
+    }
+
+    @media (prefers-reduced-transparency: reduce) {
+        &::before,
+        &::after {
+            display: none;
+        }
+    }
+}
+
+/*
+ * Liquid Glass. A recipe, not a tint: translucent fill + strong backdrop blur with
+ * saturation (the content behind keeps its colour), a light sheen on the upper
+ * half, a bright top edge highlight, a fine ink hairline and a soft neutral drop.
+ */
+@utility glass-nav {
+    background-color: var(--glass-shell);
+    background-image: var(--glass-sheen);
+    border: 1px solid var(--glass-edge);
+    box-shadow: var(--glass-highlight), 0 0 0 1px var(--glass-card-ring), var(--glass-drop);
+    -webkit-backdrop-filter: blur(22px) saturate(150%);
+    backdrop-filter: blur(22px) saturate(150%);
+    @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+        background-color: var(--color-surface);
+    }
+    @media (prefers-reduced-transparency: reduce) {
+        background-color: var(--color-surface);
+        backdrop-filter: none;
+    }
+}
+
+/* Floating header controls (search, store, icon buttons). */
+@utility glass-pill {
+    background-color: var(--glass-shell);
+    background-image: var(--glass-sheen);
+    border: 1px solid var(--glass-line);
+    box-shadow: var(--glass-highlight), 0 3px 9px rgb(34 50 48 / 0.05);
+    -webkit-backdrop-filter: blur(16px) saturate(140%);
+    backdrop-filter: blur(16px) saturate(140%);
+    @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+        background-color: var(--color-surface);
+    }
+    @media (prefers-reduced-transparency: reduce) {
+        background-color: var(--color-surface);
+        backdrop-filter: none;
+    }
+}
+
+/* Floating panels: dropdowns, menus, comboboxes, drawer, command palette. */
+@utility glass-popover {
+    background-color: var(--glass-popover);
+    background-image: var(--glass-sheen);
+    border: 1px solid var(--glass-line);
+    box-shadow: var(--glass-highlight), var(--shadow-pop);
+    -webkit-backdrop-filter: blur(28px) saturate(160%);
+    backdrop-filter: blur(28px) saturate(160%);
+    @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+        background-color: var(--color-surface);
+    }
+    @media (prefers-reduced-transparency: reduce) {
+        background-color: var(--color-surface);
+        backdrop-filter: none;
+    }
+}
+
+/* Modal scrim used by the command palette and pinned drawer. */
+@utility glass-scrim {
+    background-color: var(--glass-scrim);
+    -webkit-backdrop-filter: blur(8px) saturate(1.2);
+    backdrop-filter: blur(8px) saturate(1.2);
+}
+
+/* Header bar: a long glass strip; denser than the rail so tabs stay crisp over content. */
+@utility glass-bar {
+    background-color: color-mix(in srgb, var(--color-canvas) 72%, transparent);
+    border-bottom: 1px solid var(--glass-line);
+    box-shadow: inset 0 -1px 0 var(--glass-bar-edge, rgb(255 255 255 / 0.5));
+    -webkit-backdrop-filter: blur(20px) saturate(1.8);
+    backdrop-filter: blur(20px) saturate(1.8);
+}
+
+/* Primary fill (create action, active rail item): solid petrol teal, one-tone sheen. */
+@utility btn-gradient {
+    background-color: var(--color-primary);
+    background-image: linear-gradient(160deg, color-mix(in srgb, var(--color-primary) 80%, #19b3a3), var(--color-primary) 55%, color-mix(in srgb, var(--color-primary) 85%, #003e3a));
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.2), 0 1px 2px rgb(21 25 26 / 0.16), 0 6px 14px -8px rgb(21 25 26 / 0.35);
 }
 
 @utility finance-inflow {
@@ -228,4 +878,61 @@
     padding-inline: 0.625rem;
     font-size: 0.75rem;
     color: var(--color-ink-muted);
+}
+
+/*
+ * Native selects across modules. Most pages style <select> with plain utilities
+ * (border, px-3, text-sm), which leaves the OS chevron and inconsistent spacing.
+ * This gives every single-value select the shared chevron, room for it, and the
+ * design-system hover/focus/disabled/invalid states — without JavaScript, so
+ * keyboard, screen-reader and mobile pickers stay native. Unlayered on purpose:
+ * it must win over `px-*` utilities for the chevron gutter only.
+ */
+select:not([multiple]):not([size]):not(.control-select) {
+    appearance: none;
+    -webkit-appearance: none;
+    cursor: pointer;
+    padding-inline-end: 2rem;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23626c6c' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-position: right 0.625rem center;
+    background-size: 0.875rem 0.875rem;
+    background-repeat: no-repeat;
+    transition: border-color 150ms var(--ease-out-soft), box-shadow 150ms var(--ease-out-soft);
+}
+
+[dir='rtl'] select:not([multiple]):not([size]):not(.control-select) {
+    background-position: left 0.625rem center;
+}
+
+:root[data-theme='dark'] select:not([multiple]):not([size]):not(.control-select) {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%238d9896' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+}
+
+select:not([multiple]):not([size]):not(.control-select):hover:not(:disabled) {
+    border-color: color-mix(in srgb, var(--color-primary) 36%, var(--color-line-strong));
+}
+
+select:not([multiple]):not([size]):not(.control-select):focus-visible {
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 14%, transparent);
+    outline: none;
+}
+
+select:not(.control-select):disabled {
+    cursor: not-allowed;
+    opacity: 0.7;
+}
+
+select:not(.control-select)[aria-invalid='true'] {
+    border-color: var(--color-danger);
+}
+
+/* Option lists follow the theme (Chromium/Firefox honour these on desktop). */
+select option {
+    background-color: var(--color-surface);
+    color: var(--color-ink);
+}
+
+select option:disabled {
+    color: var(--color-ink-faint);
 }

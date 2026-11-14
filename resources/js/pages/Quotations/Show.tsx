@@ -1,9 +1,10 @@
+import DatePicker from '@/components/ui/DatePicker';
 import FollowUpPanel from "@/components/followups/FollowUpPanel";
 import SandboxDocumentBadge from "@/components/SandboxDocumentBadge";
 import type { FollowUpPanelData } from "@/components/followups/types";
 import ActivityTimeline from "@/components/timeline/ActivityTimeline";
 import DocBadge from "@/components/ui/DocBadge";
-import { Button } from "@/components/ui/Button";
+import { Button, ButtonLink } from "@/components/ui/Button";
 import SendDocumentEmailModal from "@/components/documents/SendDocumentEmailModal";
 import StampDocumentAction from "@/components/documents/StampDocumentAction";
 import { useI18n } from "@/i18n";
@@ -258,11 +259,12 @@ export default function QuotationShow({
             />
 
             <div className="mb-6">
-                <Link href="/quotations" className="text-sm text-ink-muted">
-                    {direction === "rtl" ? "→" : "←"} {t("quotations.title")}
-                </Link>
-                <div className="mt-1 flex flex-wrap items-center gap-3">
-                    <h1 className="text-2xl font-semibold tracking-tight text-ink">
+                <ButtonLink href="/quotations" variant="ghost" size="sm" className="-ms-2 mb-1">
+                    <svg aria-hidden="true" className="directional-icon rtl:rotate-180" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 6 8 12l6 6" /></svg>
+                    {t("quotations.title")}
+                </ButtonLink>
+                <div className="flex flex-wrap items-center gap-2">
+                    <h1 className="me-1 min-w-0 text-2xl font-semibold tracking-[-0.02em] text-ink [overflow-wrap:anywhere] sm:text-page">
                         {heading}
                     </h1>
                     <DocBadge tone={quotationStatusTone(quotation.status)}>
@@ -272,19 +274,16 @@ export default function QuotationShow({
                         <SandboxDocumentBadge sandboxId={1} label="TEST · SANS VALEUR COMMERCIALE / LÉGALE" />
                     )}
                     {isRevision && (
-                        <span className="text-xs text-ink-muted">
-                            {t("quotations.revision")}{" "}
-                            {quotation.revision_number}
-                        </span>
+                        <DocBadge tone="info">
+                            {t("quotations.revision")} {quotation.revision_number}
+                        </DocBadge>
                     )}
                     {isPastValidity && quotation.status === "issued" && (
-                        <span className="text-xs text-warning">
-                            {t("quotations.expired")}
-                        </span>
+                        <DocBadge tone="warning">{t("quotations.expired")}</DocBadge>
                     )}
                 </div>
-                <p className="text-sm text-ink-muted">
-                    {buyerLabel}
+                <p className="mt-1 text-sm text-ink-muted">
+                    <span className="font-medium text-ink">{buyerLabel}</span>
                     {quotation.valid_until && (
                         <>
                             {" "}
@@ -296,15 +295,16 @@ export default function QuotationShow({
             </div>
 
             {isConverted && quotation.converted_sales_order && (
-                <div className="mb-4 rounded-card border border-line bg-sage/50 px-4 py-2.5 text-sm text-ink">
-                    {t("quotations.convertedTo")}{" "}
-                    <Link
-                        href={`/sales/orders/${quotation.converted_sales_order.id}`}
-                        className="font-medium underline"
-                    >
-                        commande {quotation.converted_sales_order.order_number}
-                    </Link>
-                    .
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-card border border-success/25 bg-success-soft/60 px-4 py-3 text-sm text-ink">
+                    <span>
+                        {t("quotations.convertedTo")}{" "}
+                        <span className="font-semibold">
+                            {t("invoices.order")} <bdi>{quotation.converted_sales_order.order_number}</bdi>
+                        </span>
+                    </span>
+                    <ButtonLink href={`/sales/orders/${quotation.converted_sales_order.id}`} size="sm" variant="secondary">
+                        {t("quotations.openOrder")}
+                    </ButtonLink>
                 </div>
             )}
             {quotation.status === "rejected" && quotation.rejection_reason && (
@@ -320,10 +320,9 @@ export default function QuotationShow({
                         className="font-medium underline"
                     >
                         {currentEntry.label.toLowerCase()} (
-                        {currentEntry.quotation_number ?? "en cours"})
+                        <bdi>{currentEntry.quotation_number ?? t("common.inProgress")}</bdi>)
                     </Link>
-                    . Le partage et la conversion se font depuis la version
-                    actuelle.
+                    . {t("quotations.supersededHelp")}
                 </div>
             )}
             {isRevision && isDraft && (
@@ -346,7 +345,7 @@ export default function QuotationShow({
                 </div>
             )}
             {isRevision && !isDraft && !isSuperseded && rootNumber && (
-                <div className="mb-4 rounded-card border border-line bg-surface px-4 py-2.5 text-sm text-ink-muted">
+                <div className="mb-4 surface-card px-4 py-2.5 text-sm text-ink-muted">
                     {t("quotations.revision")} {quotation.revision_number}{" "}
                     {t("quotations.of")} {t("quotations.proposal")}{" "}
                     <bdi>{rootNumber}</bdi>.
@@ -359,10 +358,10 @@ export default function QuotationShow({
                 </div>
             )}
 
-            <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
-                {/* LEFT — document */}
-                <div className="space-y-4">
-                    <section className="rounded-card border border-line bg-surface p-6">
+            <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+                {/* LEFT — document (always rendered as light paper, like the PDF) */}
+                <div className="min-w-0 space-y-4">
+                    <section className="doc-paper overflow-x-auto rounded-card border border-line bg-surface p-4 sm:p-6">
                         <div className="flex flex-wrap justify-between gap-6">
                             <div className="text-sm">
                                 <p className="text-base font-semibold uppercase text-ink">
@@ -395,7 +394,7 @@ export default function QuotationShow({
                                 style={{ borderColor: accentColor }}
                             >
                                 <p
-                                    className="text-xs font-semibold uppercase tracking-wide"
+                                    className="text-[13px] font-medium"
                                     style={{ color: accentColor }}
                                 >
                                     {t("quotations.recipient")}
@@ -683,7 +682,7 @@ export default function QuotationShow({
 
                 {/* RIGHT — status & actions */}
                 <aside className="space-y-4 lg:sticky lg:top-20 lg:self-start">
-                    <section className="rounded-card border border-line bg-surface p-5">
+                    <section className="surface-card p-5">
                         <dl className="space-y-2 text-sm">
                             <div className="flex justify-between">
                                 <dt className="text-ink-muted">
@@ -718,7 +717,7 @@ export default function QuotationShow({
                                     <dt className="text-ink-muted">
                                         {t("quotations.issued")}
                                     </dt>
-                                    <dd className="text-right text-ink">
+                                    <dd className="text-end text-ink">
                                         {quotation.issued_by?.name ?? "—"}
                                         <br />
                                         {formatDateTime(quotation.issued_at)}
@@ -901,7 +900,7 @@ export default function QuotationShow({
                                                                     : null,
                                                             )
                                                         }
-                                                        className="mt-1 w-full rounded-field border border-line-strong px-2 py-1 text-sm"
+                                                        className="control-select mt-1 w-full"
                                                     >
                                                         {warehouses.map((w) => (
                                                             <option
@@ -1047,7 +1046,7 @@ export default function QuotationShow({
                     )}
 
                     {sharing && (
-                        <section className="rounded-card border border-line bg-surface p-5">
+                        <section className="surface-card p-5">
                             <h2 className="text-sm font-semibold text-ink">
                                 {t("quotations.companyStamp")}
                             </h2>
@@ -1064,8 +1063,8 @@ export default function QuotationShow({
                     )}
 
                     {history.length > 0 && (
-                        <section className="rounded-card border border-line bg-surface p-5">
-                            <h2 className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                        <section className="surface-card p-5">
+                            <h2 className="font-semibold text-base text-ink">
                                 {t("quotations.history")}
                             </h2>
                             <ul className="mt-2 space-y-2 text-sm">
@@ -1127,7 +1126,7 @@ export default function QuotationShow({
                     )}
 
                     {editable && (
-                        <section className="rounded-card border border-line bg-surface p-5">
+                        <section className="surface-card p-5">
                             <h2 className="text-sm font-semibold text-ink">
                                 {t("quotations.variableInfo")}
                             </h2>
@@ -1137,30 +1136,10 @@ export default function QuotationShow({
                             >
                                 <div className="grid grid-cols-2 gap-2">
                                     <Field label={t("quotations.date")}>
-                                        <input
-                                            type="date"
-                                            value={header.data.quotation_date}
-                                            onChange={(e) =>
-                                                header.setData(
-                                                    "quotation_date",
-                                                    e.target.value,
-                                                )
-                                            }
-                                            className={input}
-                                        />
+                                        <DatePicker value={header.data.quotation_date} onChange={(value) => header.setData( "quotation_date", value, ) } />
                                     </Field>
                                     <Field label={t("quotations.validUntil")}>
-                                        <input
-                                            type="date"
-                                            value={header.data.valid_until}
-                                            onChange={(e) =>
-                                                header.setData(
-                                                    "valid_until",
-                                                    e.target.value,
-                                                )
-                                            }
-                                            className={input}
-                                        />
+                                        <DatePicker value={header.data.valid_until} onChange={(value) => header.setData( "valid_until", value, ) } />
                                     </Field>
                                 </div>
                                 <Field label={t("quotations.representative")}>
@@ -1376,7 +1355,7 @@ function ShareCard({
     );
 
     return (
-        <section className="rounded-card border border-line bg-surface p-5">
+        <section className="surface-card p-5">
             <h2 className="text-sm font-semibold text-ink">
                 {t("quotations.send")}
             </h2>
@@ -1417,7 +1396,7 @@ function ShareCard({
                         </p>
                     )}
                     {isTest && (
-                        <p className="text-xs font-semibold text-amber-900">
+                        <p className="text-xs font-semibold text-warning">
                             EMAIL TEST — NON ENVOYÉ : l’envoi est simulé.
                         </p>
                     )}
@@ -1454,7 +1433,7 @@ function ShareCard({
             {tab === "whatsapp" && (
                 <div className="mt-3 space-y-2 text-sm">
                     {isTest && (
-                        <p className="rounded-field border border-amber-400 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-950">
+                        <p className="rounded-field border border-warning/40 bg-warning-soft px-3 py-2 text-xs font-semibold text-ink">
                             DOCUMENT DE TEST — le lien PDF ne s’ouvre que dans votre session de test ; aucun envoi automatique.
                         </p>
                     )}

@@ -31,7 +31,7 @@ export default function VariantSuppliersSection({
     };
 
     return (
-        <section className="rounded-card border border-line bg-surface p-5 sm:p-6">
+        <section className="surface-card p-5 sm:p-6">
             <h2 className="text-base font-semibold text-ink">{t('supplierCatalog.productSection')}</h2>
             <p className="mt-1 max-w-3xl text-sm text-ink-muted">{t('supplierCatalog.productSectionHint')}</p>
             <div className="mt-4 space-y-5">

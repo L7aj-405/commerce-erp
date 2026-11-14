@@ -12,6 +12,13 @@
         <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
         <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
         <link rel="manifest" href="/site.webmanifest">
+        {{-- Apply the saved theme before first paint to avoid a light/dark flash. --}}
+        <script>
+            try { if (localStorage.getItem('erp.theme') === 'dark') document.documentElement.dataset.theme = 'dark'; } catch (e) {}
+        </script>
+
+        {{-- Self-hosted Plus Jakarta Sans + IBM Plex Sans Arabic (laravel-vite-plugin fonts): @font-face + preloads. --}}
+        @fonts
 
         @viteReactRefresh
         @vite('resources/js/app.tsx')

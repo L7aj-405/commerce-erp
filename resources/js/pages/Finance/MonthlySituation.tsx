@@ -1,3 +1,4 @@
+import DatePicker from "@/components/ui/DatePicker";
 import FinanceFilters, {
     type FinanceStore,
 } from "@/components/finance/FinanceFilters";
@@ -6,7 +7,11 @@ import { Button, ButtonLink, DownloadLink } from "@/components/ui/Button";
 import EmptyState from "@/components/ui/EmptyState";
 import { MetricCard } from "@/components/ui/MetricCard";
 import PageHeader from "@/components/ui/PageHeader";
-import Pagination from "@/components/ui/Pagination";
+import { AdvancedFilterBar, ChoiceFilter, FilterSearch } from "@/components/ui/AdvancedFilterBar";
+import type { FilterChip } from "@/components/ui/AdvancedFilterBar";
+import { Badge } from "@/components/ui/StatusBadge";
+import type { StatusVariant } from "@/components/ui/StatusBadge";
+import { TablePager } from "@/components/ui/TableShell";
 import { Sheet } from "@/components/ui/Sheet";
 import ApplicationShell from "@/layouts/ApplicationShell";
 import { useI18n } from "@/i18n";
@@ -21,6 +26,7 @@ import {
     type FormEvent,
     type InputHTMLAttributes,
     type ReactNode,
+    useEffect,
     useMemo,
     useState,
 } from "react";
@@ -318,6 +324,7 @@ export default function MonthlySituation(props: Props) {
     });
     const reopenForm = useForm({ month: period, reason: "" });
 
+    const [filtering, setFiltering] = useState(false);
     const applyFilters = (next: Record<string, string | number | undefined>) =>
         router.get(
             "/finance/situation-fin-de-mois",
@@ -330,8 +337,46 @@ export default function MonthlySituation(props: Props) {
                 search: props.filters.search ?? "",
                 ...next,
             },
-            { preserveState: true, preserveScroll: true, replace: true },
+            {
+                preserveState: true,
+                preserveScroll: true,
+                replace: true,
+                onStart: () => setFiltering(true),
+                onFinish: () => setFiltering(false),
+            },
         );
+    // Live search (debounced); the server param and validation are unchanged.
+    useEffect(() => {
+        if (search === (props.filters.search ?? "")) return;
+        const timer = window.setTimeout(() => applyFilters({ search }), 350);
+        return () => window.clearTimeout(timer);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [search]);
+    const statusOptions: Option[] = [
+        { value: "upcoming", label: t("status.upcoming") },
+        { value: "partial", label: t("status.partially_paid") },
+        { value: "paid", label: t("status.paid") },
+        { value: "overdue", label: t("status.overdue") },
+        { value: "cancelled", label: t("status.cancelled") },
+    ];
+    const supplierOptions: Option[] = suppliers.map((supplier) => ({ value: String(supplier.id), label: supplier.name }));
+    const obligationChips: FilterChip[] = [];
+    if (props.filters.search) {
+        obligationChips.push({ key: "search", label: t("filters.search"), value: props.filters.search, onRemove: () => setSearch("") });
+    }
+    const pushChip = (key: "category" | "status" | "supplier_id", label: string, options: Option[]) => {
+        const current = props.filters[key];
+        if (!current) return;
+        obligationChips.push({
+            key,
+            label,
+            value: options.find((option) => option.value === String(current))?.label ?? String(current),
+            onRemove: () => applyFilters({ [key]: "" }),
+        });
+    };
+    pushChip("category", t("finance.monthEnd.type"), categories);
+    pushChip("status", t("common.status"), statusOptions);
+    pushChip("supplier_id", t("common.supplier"), supplierOptions);
 
     const openCreate = () => {
         obligationForm.setData(emptyObligation(currencyCode));
@@ -438,13 +483,6 @@ export default function MonthlySituation(props: Props) {
         });
     };
     const hasRows = obligations.data.length > 0;
-    const filterActive = Boolean(
-        props.filters.category ||
-        props.filters.status ||
-        props.filters.supplier_id ||
-        props.filters.search ||
-        storeId,
-    );
     const exportQuery = new URLSearchParams({
         month: period,
         ...(storeId ? { store_id: String(storeId) } : {}),
@@ -535,7 +573,7 @@ export default function MonthlySituation(props: Props) {
                 }}
             />
 
-            <section className="mb-6 rounded-card border border-line bg-surface p-4">
+            <section className="surface-card mb-6 p-4">
                 <div className="flex flex-wrap items-start justify-between gap-4">
                     <div>
                         <div className="flex items-center gap-2">
@@ -735,7 +773,7 @@ export default function MonthlySituation(props: Props) {
             </div>
 
             {props.treasury.mode !== "historical" && (
-                <div className="mb-6 rounded-card border border-line bg-surface p-4 text-sm">
+                <div className="surface-card mb-6 p-4 text-sm">
                     <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
                         <span>{t("finance.monthEnd.currentBalanceShort")}</span>
                         <strong>
@@ -776,93 +814,73 @@ export default function MonthlySituation(props: Props) {
                 </div>
             )}
 
-            <section className="mb-4 rounded-card border border-line bg-surface p-4">
-                <form
-                    className="grid gap-3 lg:grid-cols-[minmax(240px,1fr)_180px_180px_220px_auto]"
-                    onSubmit={(e) => {
-                        e.preventDefault();
-                        applyFilters({ search });
+            <div className="mb-4">
+                <AdvancedFilterBar
+                    label={t("finance.monthEnd.searchPlaceholder")}
+                    search={
+                        <FilterSearch
+                            value={search}
+                            onChange={setSearch}
+                            loading={filtering && search !== (props.filters.search ?? "")}
+                            label={t("common.search")}
+                            placeholder={t("finance.monthEnd.searchPlaceholder")}
+                        />
+                    }
+                    chips={obligationChips}
+                    activeCount={obligationChips.length}
+                    loading={filtering}
+                    onReset={() => {
+                        setSearch("");
+                        applyFilters({
+                            category: "",
+                            status: "",
+                            supplier_id: "",
+                            search: "",
+                        });
                     }}
                 >
-                    <input
-                        value={search}
-                        onChange={(e) => setSearch(e.target.value)}
-                        placeholder={t("finance.monthEnd.searchPlaceholder")}
-                        className={inputClass}
+                    <ChoiceFilter
+                        label={t("finance.monthEnd.type")}
+                        allLabel={t("finance.monthEnd.allTypes")}
+                        options={categories}
+                        value={props.filters.category || undefined}
+                        onChange={(value) => applyFilters({ category: value ?? "" })}
                     />
-                    <select
-                        value={props.filters.category ?? ""}
-                        onChange={(e) =>
-                            applyFilters({ category: e.target.value })
-                        }
-                        className={selectClass}
-                    >
-                        <option value="">
-                            {t("finance.monthEnd.allTypes")}
-                        </option>
-                        {categories.map((o) => (
-                            <option key={o.value} value={o.value}>
-                                {o.label}
-                            </option>
-                        ))}
-                    </select>
-                    <select
-                        value={props.filters.status ?? ""}
-                        onChange={(e) =>
-                            applyFilters({ status: e.target.value })
-                        }
-                        className={selectClass}
-                    >
-                        <option value="">{t("common.allStatuses")}</option>
-                        <option value="upcoming">{t("status.upcoming")}</option>
-                        <option value="partial">
-                            {t("status.partially_paid")}
-                        </option>
-                        <option value="paid">{t("status.paid")}</option>
-                        <option value="overdue">{t("status.overdue")}</option>
-                        <option value="cancelled">
-                            {t("status.cancelled")}
-                        </option>
-                    </select>
-                    <select
-                        value={props.filters.supplier_id ?? ""}
-                        onChange={(e) =>
-                            applyFilters({ supplier_id: e.target.value })
-                        }
-                        className={selectClass}
-                    >
-                        <option value="">
-                            {t("finance.monthEnd.allSuppliers")}
-                        </option>
-                        {suppliers.map((s) => (
-                            <option key={s.id} value={s.id}>
-                                {s.name}
-                            </option>
-                        ))}
-                    </select>
-                    <div className="flex gap-2">
-                        <Button type="submit" variant="secondary">
-                            {t("common.search")}
-                        </Button>
-                        {filterActive && (
-                            <Button
-                                type="button"
-                                variant="ghost"
-                                onClick={() =>
-                                    router.get(
-                                        "/finance/situation-fin-de-mois",
-                                        { month: period },
-                                    )
-                                }
-                            >
-                                {t("finance.monthEnd.clear")}
-                            </Button>
-                        )}
-                    </div>
-                </form>
-            </section>
+                    <ChoiceFilter
+                        label={t("common.status")}
+                        allLabel={t("common.allStatuses")}
+                        options={statusOptions}
+                        value={props.filters.status || undefined}
+                        onChange={(value) => applyFilters({ status: value ?? "" })}
+                    />
+                    <ChoiceFilter
+                        label={t("common.supplier")}
+                        allLabel={t("finance.monthEnd.allSuppliers")}
+                        searchable={suppliers.length > 8}
+                        options={supplierOptions}
+                        value={props.filters.supplier_id ? String(props.filters.supplier_id) : undefined}
+                        onChange={(value) => applyFilters({ supplier_id: value ?? "" })}
+                    />
+                </AdvancedFilterBar>
+            </div>
 
-            {!hasRows ? (
+            {!hasRows && obligationChips.length > 0 ? (
+                <EmptyState
+                    title={t("filters.noMatch")}
+                    description={t("filters.noMatchHelp")}
+                    actions={
+                        <Button
+                            variant="secondary"
+                            onClick={() => {
+                                setSearch("");
+                                applyFilters({ category: "", status: "", supplier_id: "", search: "" });
+                            }}
+                        >
+                            {t("filters.reset")}
+                        </Button>
+                    }
+                />
+            ) : !hasRows ? (
                 <EmptyState
                     title={t("finance.monthEnd.emptyTitle")}
                     description={
@@ -901,7 +919,7 @@ export default function MonthlySituation(props: Props) {
                     }
                 />
             ) : (
-                <section className="overflow-hidden rounded-card border border-line bg-surface">
+                <section className="surface-card overflow-hidden p-0">
                     <div className="overflow-x-auto">
                         <table className="erp-table min-w-[1120px]">
                             <thead>
@@ -920,17 +938,17 @@ export default function MonthlySituation(props: Props) {
                                         t("orders.show.remaining"),
                                         t("common.status"),
                                         t("common.actions"),
-                                    ].map((h) => (
+                                    ].map((h, index) => (
                                         <th
                                             key={h}
-                                            className="px-4 py-3 font-semibold"
+                                            className={`px-4 py-3 font-semibold ${index >= 6 && index <= 8 ? "num" : ""}`}
                                         >
                                             {h}
                                         </th>
                                     ))}
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-line">
+                            <tbody>
                                 {obligations.data.map((row) => (
                                     <tr
                                         key={row.id}
@@ -951,13 +969,13 @@ export default function MonthlySituation(props: Props) {
                                         </td>
                                         <td className="px-4 py-3">
                                             <button
-                                                className="text-left font-medium text-ink hover:underline"
+                                                className="text-start font-medium text-ink hover:underline"
                                                 onClick={() => setDetail(row)}
                                             >
                                                 {row.label}
                                             </button>
                                             {row.recurring_template_id && (
-                                                <span className="ml-2 inline-flex rounded-full bg-sage px-2 py-0.5 text-[10px] font-semibold text-primary">
+                                                <span className="ms-2 inline-flex rounded-full bg-accent-soft px-2 py-0.5 text-[11px] font-semibold text-accent">
                                                     {t(
                                                         "finance.monthEnd.recurring",
                                                     )}
@@ -978,26 +996,26 @@ export default function MonthlySituation(props: Props) {
                                         <td className="px-4 py-3 text-ink-muted">
                                             {row.reference ?? "—"}
                                         </td>
-                                        <td className="px-4 py-3 text-right tabular-nums">
+                                        <td className="num px-4 py-3">
                                             {formatMoney(
                                                 row.planned_amount,
                                                 row.currency_code,
                                             )}
                                         </td>
-                                        <td className="px-4 py-3 text-right tabular-nums">
+                                        <td className="num px-4 py-3">
                                             {formatMoney(
                                                 row.paid_amount,
                                                 row.currency_code,
                                             )}
                                         </td>
-                                        <td className="px-4 py-3 text-right font-semibold tabular-nums">
+                                        <td className="num px-4 py-3 font-semibold">
                                             {formatMoney(
                                                 row.remaining_amount,
                                                 row.currency_code,
                                             )}
                                             {Number(row.committed_amount) >
                                                 0 && (
-                                                <p className="text-[10px] font-normal text-warning">
+                                                <p className="text-[11px] font-normal text-warning">
                                                     {t(
                                                         "finance.monthEnd.committed",
                                                     )}{" "}
@@ -1051,7 +1069,11 @@ export default function MonthlySituation(props: Props) {
                     </div>
                 </section>
             )}
-            <Pagination links={obligations.links} />
+            {hasRows && (
+                <div className="mt-4">
+                    <TablePager links={obligations.links} from={obligations.from} to={obligations.to} total={obligations.total} />
+                </div>
+            )}
 
             <section className="mt-7">
                 <div className="mb-3">
@@ -1063,13 +1085,11 @@ export default function MonthlySituation(props: Props) {
                     </p>
                 </div>
                 {props.expectedCollections.length === 0 ? (
-                    <div className="rounded-card border border-dashed border-line p-6 text-center text-sm text-ink-muted">
-                        {t("finance.monthEnd.noExpectedCollection")}
-                    </div>
+                    <EmptyState compact title={t("finance.monthEnd.noExpectedCollection")} />
                 ) : (
-                    <div className="overflow-x-auto rounded-card border border-line bg-surface">
-                        <table className="w-full min-w-[900px] text-sm">
-                            <thead className="bg-raised text-left text-xs uppercase text-ink-muted">
+                    <div className="surface-card overflow-x-auto p-0">
+                        <table className="erp-table min-w-[900px] text-sm">
+                            <thead>
                                 <tr>
                                     {[
                                         t("common.date"),
@@ -1080,38 +1100,38 @@ export default function MonthlySituation(props: Props) {
                                         t("orders.show.remaining"),
                                         t("common.status"),
                                         t("common.actions"),
-                                    ].map((x) => (
-                                        <th key={x} className="px-4 py-3">
+                                    ].map((x, index) => (
+                                        <th key={x} className={`px-4 py-3 ${index >= 3 && index <= 5 ? "num" : ""}`}>
                                             {x}
                                         </th>
                                     ))}
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-line">
+                            <tbody>
                                 {props.expectedCollections.map((row) => (
                                     <tr key={row.id}>
                                         <td className="px-4 py-3">
                                             {formatDate(row.expected_date)}
                                         </td>
-                                        <td className="px-4 py-3 font-medium">
+                                        <td className="bidi-isolate px-4 py-3 font-medium" dir="ltr">
                                             {row.order_number}
                                         </td>
                                         <td className="px-4 py-3">
                                             {row.customer}
                                         </td>
-                                        <td className="px-4 py-3 text-right">
+                                        <td className="num px-4 py-3">
                                             {formatMoney(
                                                 row.amount,
                                                 row.currency_code,
                                             )}
                                         </td>
-                                        <td className="px-4 py-3 text-right">
+                                        <td className="num px-4 py-3">
                                             {formatMoney(
                                                 row.matched,
                                                 row.currency_code,
                                             )}
                                         </td>
-                                        <td className="px-4 py-3 text-right font-semibold">
+                                        <td className="num px-4 py-3 font-semibold">
                                             {formatMoney(
                                                 row.remaining,
                                                 row.currency_code,
@@ -1246,9 +1266,9 @@ export default function MonthlySituation(props: Props) {
                             {t("finance.monthEnd.futureHelp")}
                         </p>
                     </div>
-                    <div className="overflow-hidden rounded-card border border-line bg-surface">
-                        <table className="w-full text-sm">
-                            <thead className="bg-raised text-left text-xs uppercase text-ink-muted">
+                    <div className="surface-card overflow-x-auto p-0">
+                        <table className="erp-table min-w-[640px] text-sm">
+                            <thead>
                                 <tr>
                                     {[
                                         t("common.date"),
@@ -1256,14 +1276,14 @@ export default function MonthlySituation(props: Props) {
                                         t("common.reference"),
                                         t("common.amount"),
                                         t("common.source"),
-                                    ].map((x) => (
-                                        <th key={x} className="px-4 py-3">
+                                    ].map((x, index) => (
+                                        <th key={x} className={`px-4 py-3 ${index === 3 ? "num" : ""}`}>
                                             {x}
                                         </th>
                                     ))}
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-line">
+                            <tbody>
                                 {props.futureObligations.map((x) => (
                                     <tr key={x.id}>
                                         <td className="px-4 py-3">
@@ -1275,7 +1295,7 @@ export default function MonthlySituation(props: Props) {
                                         <td className="px-4 py-3">
                                             {x.reference ?? "—"}
                                         </td>
-                                        <td className="px-4 py-3 text-right font-medium">
+                                        <td className="num px-4 py-3 font-medium">
                                             {formatMoney(
                                                 x.amount,
                                                 x.currency_code,
@@ -1378,7 +1398,7 @@ export default function MonthlySituation(props: Props) {
                                                         )?.label ?? p.method}
                                                     </p>
                                                 </div>
-                                                <div className="text-right">
+                                                <div className="text-end">
                                                     <p className="font-semibold">
                                                         {formatMoney(
                                                             p.amount,
@@ -1462,7 +1482,7 @@ export default function MonthlySituation(props: Props) {
                                                         )}
                                                     </p>
                                                 </div>
-                                                <div className="text-right">
+                                                <div className="text-end">
                                                     <p className="font-semibold">
                                                         {formatMoney(
                                                             i.amount,
@@ -2259,36 +2279,28 @@ function Metric({
 }) {
     return (
         <div
-            className={`rounded-card border p-4 ${tone === "danger" ? "border-danger/25 bg-danger-soft" : "border-line bg-surface"}`}
+            className={tone === "danger" ? "rounded-card border border-danger/25 bg-danger-soft p-4" : "surface-card p-4"}
         >
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
-                {label}
-            </p>
+            <p className="text-[13px] font-medium text-ink-muted">{label}</p>
             <p
-                className={`mt-2 text-xl text-ink ${strong ? "font-bold" : "font-semibold"}`}
+                className={`metric-value mt-1.5 text-xl text-ink ${strong ? "font-bold" : "font-semibold"}`}
             >
-                {value}
+                <bdi>{value}</bdi>
             </p>
             {hint && <p className="mt-1 text-xs text-ink-muted">{hint}</p>}
         </div>
     );
 }
 function Status({ value, label }: { value: string; label: string }) {
-    const tone =
+    const variant: StatusVariant =
         value === "paid" || value === "posted"
-            ? "bg-success-soft text-success"
+            ? "success"
             : value === "overdue" || value === "reversed"
-              ? "bg-danger-soft text-danger"
+              ? "danger"
               : value === "partial"
-                ? "bg-warning-soft text-warning"
-                : "bg-raised text-ink-muted";
-    return (
-        <span
-            className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${tone}`}
-        >
-            {label}
-        </span>
-    );
+                ? "warning"
+                : "neutral";
+    return <Badge variant={variant}>{label}</Badge>;
 }
 function ReviewStatus({ status }: { status: MonthReview["status"] }) {
     const { t } = useI18n();
@@ -2330,6 +2342,24 @@ function Field({
     onChange: (v: string) => void;
     error?: string;
 } & Omit<InputHTMLAttributes<HTMLInputElement>, "value" | "onChange">) {
+    if (rest.type === "date") {
+        return (
+            <label className="block">
+                <Label>{label}</Label>
+                <DatePicker
+                    aria-label={label}
+                    value={value}
+                    onChange={onChange}
+                    required={rest.required}
+                    disabled={rest.disabled}
+                    invalid={Boolean(error)}
+                    min={typeof rest.min === "string" ? rest.min : undefined}
+                    max={typeof rest.max === "string" ? rest.max : undefined}
+                />
+                {error && <p className="mt-1 text-xs text-danger">{error}</p>}
+            </label>
+        );
+    }
     return (
         <label className="block">
             <Label>{label}</Label>

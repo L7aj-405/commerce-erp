@@ -110,8 +110,8 @@ function SummaryTile({
     tone?: "neutral" | "warning";
 }) {
     return (
-        <div className="rounded-card border border-line bg-surface px-4 py-3.5">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
+        <div className="surface-card px-4 py-3.5">
+            <p className="text-[13px] font-medium text-ink-muted">
                 {title}
             </p>
             <p
@@ -138,7 +138,7 @@ function Section({
     return (
         <section
             id={id}
-            className="mb-6 scroll-mt-4 rounded-card border border-line bg-surface"
+            className="mb-6 scroll-mt-4 surface-card"
         >
             <div className="flex items-center justify-between border-b border-line px-4 py-3">
                 <h2 className="text-sm font-semibold text-ink">{title}</h2>
@@ -329,8 +329,8 @@ export default function CustomerShow({
                         {t("customers.show.noOrders")}
                     </p>
                 ) : (
-                    <table className="w-full text-start text-sm">
-                        <thead className="bg-raised text-[11px] uppercase tracking-wide text-ink-faint">
+                    <table className="erp-table w-full text-start text-sm">
+                        <thead className="bg-raised text-[13px] text-ink-muted font-medium">
                             <tr>
                                 <th className="px-4 py-2">N°</th>
                                 <th className="px-4 py-2">
@@ -405,8 +405,8 @@ export default function CustomerShow({
                         {t("customers.show.noInvoices")}
                     </p>
                 ) : (
-                    <table className="w-full text-start text-sm">
-                        <thead className="bg-raised text-[11px] uppercase tracking-wide text-ink-faint">
+                    <table className="erp-table w-full text-start text-sm">
+                        <thead className="bg-raised text-[13px] text-ink-muted font-medium">
                             <tr>
                                 <th className="px-4 py-2">N°</th>
                                 <th className="px-4 py-2">
@@ -470,8 +470,8 @@ export default function CustomerShow({
                         {t("customers.show.noPayments")}
                     </p>
                 ) : (
-                    <table className="w-full text-start text-sm">
-                        <thead className="bg-raised text-[11px] uppercase tracking-wide text-ink-faint">
+                    <table className="erp-table w-full text-start text-sm">
+                        <thead className="bg-raised text-[13px] text-ink-muted font-medium">
                             <tr>
                                 <th className="px-4 py-2">N°</th>
                                 <th className="px-4 py-2">
@@ -542,8 +542,8 @@ export default function CustomerShow({
                         {t("customers.show.noQuotations")}
                     </p>
                 ) : (
-                    <table className="w-full text-start text-sm">
-                        <thead className="bg-raised text-[11px] uppercase tracking-wide text-ink-faint">
+                    <table className="erp-table w-full text-start text-sm">
+                        <thead className="bg-raised text-[13px] text-ink-muted font-medium">
                             <tr>
                                 <th className="px-4 py-2">N°</th>
                                 <th className="px-4 py-2">
@@ -608,8 +608,8 @@ export default function CustomerShow({
                         {t("customers.show.noDeliveryNotes")}
                     </p>
                 ) : (
-                    <table className="w-full text-start text-sm">
-                        <thead className="bg-raised text-[11px] uppercase tracking-wide text-ink-faint">
+                    <table className="erp-table w-full text-start text-sm">
+                        <thead className="bg-raised text-[13px] text-ink-muted font-medium">
                             <tr>
                                 <th className="px-4 py-2">N°</th>
                                 <th className="px-4 py-2">

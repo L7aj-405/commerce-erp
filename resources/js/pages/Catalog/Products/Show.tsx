@@ -1,3 +1,4 @@
+import { useConfirm } from '@/components/ui/ConfirmDialog';
 import ProductImage from "@/components/catalog/ProductImage";
 import type { SupplierRelation } from "@/components/procurement/SupplierRelationDialog";
 import VariantSuppliersSection from "@/components/procurement/VariantSuppliersSection";
@@ -91,6 +92,7 @@ export default function ProductShow({
     };
 }) {
     const { t } = useI18n();
+    const confirm = useConfirm();
     const [descriptionOpen, setDescriptionOpen] = useState(false);
     const first = product.variants[0];
     const firstPrice = first ? priceByVariant[first.id] : undefined;
@@ -131,7 +133,7 @@ export default function ProductShow({
             />
 
             <div className="space-y-6">
-                <section className="grid gap-6 rounded-card border border-line bg-surface p-5 sm:p-6 md:grid-cols-[minmax(200px,260px)_1fr] lg:grid-cols-[minmax(240px,300px)_1fr]">
+                <section className="grid gap-6 surface-card p-5 sm:p-6 md:grid-cols-[minmax(200px,260px)_1fr] lg:grid-cols-[minmax(240px,300px)_1fr]">
                     <div className="flex items-center justify-center self-start rounded-card bg-raised p-4">
                         <ProductImage
                             name={product.name}
@@ -195,7 +197,7 @@ export default function ProductShow({
                         </dl>
                         {description !== "" && (
                             <div className="mt-5 border-t border-line pt-4">
-                                <h3 className="text-xs font-medium uppercase tracking-wide text-ink-faint">
+                                <h3 className="text-[13px] font-medium text-ink-muted">
                                     {t("common.description")}
                                 </h3>
                                 <p
@@ -219,7 +221,7 @@ export default function ProductShow({
                 </section>
 
                 {can.stock && stock && (
-                    <section className="rounded-card border border-line bg-surface p-5 sm:p-6">
+                    <section className="surface-card p-5 sm:p-6">
                         <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
                             <div className="min-w-0">
                                 <h2 className="text-base font-semibold text-ink">
@@ -283,7 +285,7 @@ export default function ProductShow({
                                             </p>
                                         </div>
                                         <div className="shrink-0 text-end">
-                                            <p className="text-[11px] font-medium uppercase tracking-wide text-ink-faint">
+                                            <p className="text-[13px] font-medium text-ink-muted">
                                                 {t("products.show.totalAvailable")}
                                             </p>
                                             <p className="text-xl font-semibold tabular-nums text-ink">
@@ -323,13 +325,13 @@ export default function ProductShow({
                     </section>
                 )}
 
-                <section className="rounded-card border border-line bg-surface p-5 sm:p-6">
+                <section className="surface-card p-5 sm:p-6">
                     <h2 className="text-base font-semibold text-ink">
                         {t("products.show.variants")}
                     </h2>
                     <div className="mt-4 overflow-x-auto rounded-field border border-line">
-                        <table className="w-full min-w-[860px] text-start text-sm">
-                            <thead className="bg-raised text-xs uppercase tracking-wide text-ink-faint">
+                        <table className="erp-table w-full min-w-[860px] text-start text-sm">
+                            <thead className="bg-raised text-[13px] text-ink-muted font-medium">
                                 <tr>
                                     <th className="w-14 px-3 py-2.5">
                                         <span className="sr-only">{t("products.show.image")}</span>
@@ -365,10 +367,10 @@ export default function ProductShow({
                                                 </span>
                                             </td>
                                             <td className="max-w-[12rem] px-3 py-2">
-                                                <bdi className="block truncate font-medium text-ink" title={variant.sku ?? undefined}>{variant.sku}</bdi>
+                                                <span className="block truncate font-medium text-ink" title={variant.sku ?? undefined}><bdi>{variant.sku}</bdi></span>
                                             </td>
                                             <td className="max-w-[12rem] px-3 py-2">
-                                                <bdi className="block truncate text-ink-muted" title={variant.reference ?? undefined}>{variant.reference ?? "—"}</bdi>
+                                                <span className="block truncate text-ink-muted" title={variant.reference ?? undefined}><bdi>{variant.reference ?? "—"}</bdi></span>
                                             </td>
                                             <td className="px-3 py-2">
                                                 <bdi className="whitespace-nowrap text-ink-muted">{variant.barcode ?? "—"}</bdi>
@@ -422,12 +424,10 @@ export default function ProductShow({
                     <Button
                         variant="danger"
                         type="button"
-                        onClick={() =>
-                            window.confirm(t("products.show.archiveConfirm")) &&
-                            router.patch(
-                                `/catalog/products/${product.id}/archive`,
-                            )
-                        }
+                        onClick={async () => {
+                            if (!(await confirm({ title: t("products.show.archiveConfirm"), danger: true }))) return;
+                            router.patch(`/catalog/products/${product.id}/archive`);
+                        }}
                     >
                         {t("products.show.archive")}
                     </Button>

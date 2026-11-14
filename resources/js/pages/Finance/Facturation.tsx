@@ -1,6 +1,7 @@
 import FinanceFilters, { type FinanceStore } from '@/components/finance/FinanceFilters';
 import PageHeader from '@/components/ui/PageHeader';
-import Pagination from '@/components/ui/Pagination';
+import EmptyState from '@/components/ui/EmptyState';
+import { TablePager, TableShell } from '@/components/ui/TableShell';
 import StatusBadge from '@/components/ui/StatusBadge';
 import { useI18n } from '@/i18n';
 import ApplicationShell from '@/layouts/ApplicationShell';
@@ -28,7 +29,7 @@ type Props = {
     periodLabel: string;
     storeId: number | null;
     stores: FinanceStore[];
-    invoices: { data: InvoiceRow[]; links: LinkData[]; total: number };
+    invoices: { data: InvoiceRow[]; links: LinkData[]; total: number; from?: number | null; to?: number | null };
 };
 
 export default function FinanceFacturation({ organization, period, periodLabel, storeId, stores, invoices }: Props) {
@@ -43,41 +44,41 @@ export default function FinanceFacturation({ organization, period, periodLabel, 
             />
             <FinanceFilters path="/finance/facturation" period={period} storeId={storeId} stores={stores} />
 
-            {invoices.data.length === 0 ? (
-                <div className="rounded-card border border-dashed border-line-strong bg-raised px-4 py-8 text-center text-sm text-ink-faint">
-                    {t('finance.billing.empty')}
-                </div>
-            ) : (
-                <>
-                    {/* Desktop/tablet: table */}
-                    <div className="hidden overflow-x-auto rounded-card border border-line bg-surface md:block">
-                        <table className="erp-table">
+            {/* Desktop/tablet: table */}
+            <TableShell
+                label={t('finance.billing.title')}
+                state={invoices.data.length === 0 ? 'empty' : 'ready'}
+                emptyTitle={t('finance.billing.empty')}
+                className="hidden md:block"
+                footer={invoices.data.length === 0 ? undefined : <TablePager links={invoices.links} from={invoices.from} to={invoices.to} total={invoices.total} />}
+            >
+                <table className="erp-table min-w-[1080px]">
                             <thead>
                                 <tr>
                                     <th className="px-4 py-2.5">{t('finance.billing.invoiceNumber')}</th>
                                     <th className="px-4 py-2.5">{t('common.date')}</th>
                                     <th className="px-4 py-2.5">{t('common.customer')}</th>
-                                    <th className="px-4 py-2.5 text-end">{t('finance.billing.grossInvoice')}</th>
-                                    <th className="px-4 py-2.5 text-end">{t('finance.billing.creditNotes')}</th>
-                                    <th className="px-4 py-2.5 text-end">{t('finance.billing.netBilled')}</th>
-                                    <th className="px-4 py-2.5 text-end">{t('finance.paid')}</th>
-                                    <th className="px-4 py-2.5 text-end">{t('finance.billing.balance')}</th>
+                                    <th className="num px-4 py-2.5">{t('finance.billing.grossInvoice')}</th>
+                                    <th className="num px-4 py-2.5">{t('finance.billing.creditNotes')}</th>
+                                    <th className="num px-4 py-2.5">{t('finance.billing.netBilled')}</th>
+                                    <th className="num px-4 py-2.5">{t('finance.paid')}</th>
+                                    <th className="num px-4 py-2.5">{t('finance.billing.balance')}</th>
                                     <th className="px-4 py-2.5">{t('common.status')}</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {invoices.data.map((invoice) => (
-                                    <tr key={invoice.id} className="border-t border-line">
+                                    <tr key={invoice.id}>
                                         <td className="bidi-isolate px-4 py-2.5 font-medium text-ink" dir="ltr">
                                             <Link href={`/invoices/${invoice.id}`}>{invoice.invoice_number}</Link>
                                         </td>
                                         <td className="px-4 py-2.5 text-ink-muted">{invoice.invoice_date}</td>
                                         <td className="px-4 py-2.5">{invoice.customer_company || invoice.customer_name || '—'}</td>
-                                        <td className="metric-value px-4 py-2.5 text-end" dir="ltr">{formatMoney(invoice.total_incl_tax)}</td>
-                                        <td className="metric-value px-4 py-2.5 text-end text-danger" dir="ltr">-{formatMoney(invoice.credited_amount)}</td>
-                                        <td className="metric-value px-4 py-2.5 text-end font-medium" dir="ltr">{formatMoney(invoice.net_total_incl_tax)}</td>
-                                        <td className="metric-value px-4 py-2.5 text-end text-ink-muted" dir="ltr">{formatMoney(invoice.paid_amount)}</td>
-                                        <td className="metric-value px-4 py-2.5 text-end" dir="ltr">{formatMoney(invoice.outstanding)}</td>
+                                        <td className="num px-4 py-2.5" dir="ltr">{formatMoney(invoice.total_incl_tax)}</td>
+                                        <td className="num px-4 py-2.5 text-danger" dir="ltr">-{formatMoney(invoice.credited_amount)}</td>
+                                        <td className="num px-4 py-2.5 font-medium" dir="ltr">{formatMoney(invoice.net_total_incl_tax)}</td>
+                                        <td className="num px-4 py-2.5 text-ink-muted" dir="ltr">{formatMoney(invoice.paid_amount)}</td>
+                                        <td className="num px-4 py-2.5" dir="ltr">{formatMoney(invoice.outstanding)}</td>
                                         <td className="px-4 py-2.5 text-ink-muted">
                                             <StatusBadge status={invoice.status}>{statusLabel(invoice.status)}</StatusBadge>
                                             {invoice.status === 'paid' && invoice.fully_paid_at && (
@@ -88,12 +89,17 @@ export default function FinanceFacturation({ organization, period, periodLabel, 
                                 ))}
                             </tbody>
                         </table>
-                    </div>
+            </TableShell>
 
-                    {/* Mobile: stacked cards */}
-                    <ul className="space-y-3 md:hidden">
+            {/* Mobile: stacked cards */}
+            <div className="space-y-3 md:hidden">
+                {invoices.data.length === 0 ? (
+                    <EmptyState compact title={t('finance.billing.empty')} />
+                ) : (
+                    <>
+                        <ul className="space-y-3">
                         {invoices.data.map((invoice) => (
-                            <li key={invoice.id} className="rounded-card border border-line bg-surface p-4">
+                            <li key={invoice.id} className="surface-card p-4">
                                 <div className="flex items-start justify-between gap-3">
                                     <div className="min-w-0">
                                         <Link href={`/invoices/${invoice.id}`} className="block truncate text-sm font-semibold text-ink">
@@ -129,9 +135,10 @@ export default function FinanceFacturation({ organization, period, periodLabel, 
                             </li>
                         ))}
                     </ul>
-                </>
-            )}
-            <Pagination links={invoices.links} />
+                        <TablePager links={invoices.links} from={invoices.from} to={invoices.to} total={invoices.total} />
+                    </>
+                )}
+            </div>
         </ApplicationShell>
     );
 }

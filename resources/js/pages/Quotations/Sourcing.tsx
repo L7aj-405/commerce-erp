@@ -329,7 +329,7 @@ export function SourcingPanel({
                 <div className="min-w-0 @3xl:col-start-1 @3xl:row-start-1">
                     <div className="flex flex-wrap items-center gap-1.5">
                         <SourcingBadge state={sourcing.state} />
-                        <span className="text-[10px] uppercase tracking-wide text-ink-faint">
+                        <span className="text-xs font-medium text-ink-muted">
                             {t("sourcing.internal")}
                         </span>
                     </div>
@@ -745,7 +745,7 @@ export function SupplierRequestDialog({
                 />
 
                 <div>
-                    <label className="block text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                    <label className="block text-[13px] font-medium text-ink-muted">
                         {t("supplierReco.otherSuppliers")}
                     </label>
                     <input
@@ -800,7 +800,7 @@ export function SupplierRequestDialog({
                         inputMode="decimal"
                         value={quantity}
                         onChange={(e) => setQuantity(e.target.value)}
-                        className="mt-1 h-9 w-32 rounded-field border border-line-strong px-2 text-right text-sm tabular-nums text-ink"
+                        className="mt-1 h-9 w-32 rounded-field border border-line-strong px-2 text-end text-sm tabular-nums text-ink"
                     />
                     {errors.requested_quantity && (
                         <span className="mt-1 block text-danger">
@@ -914,7 +914,7 @@ export function RecordResultDialog({
                             inputMode="decimal"
                             value={confirmed}
                             onChange={(e) => setConfirmed(e.target.value)}
-                            className="mt-1 h-9 w-32 rounded-field border border-line-strong px-2 text-right text-sm tabular-nums text-ink"
+                            className="mt-1 h-9 w-32 rounded-field border border-line-strong px-2 text-end text-sm tabular-nums text-ink"
                         />
                         <span className="mt-1 block font-normal text-ink-faint">
                             {t("sourcing.partialHint")}
@@ -1014,7 +1014,7 @@ export function IssueSourcingDialog({
             <div className="overflow-x-auto px-4 py-4 sm:px-6">
                 <table className="w-full min-w-[560px] text-sm">
                     <thead>
-                        <tr className="border-b border-line text-left text-xs uppercase tracking-wide text-ink-muted [&>th]:px-2 [&>th]:py-1.5 [&>th]:font-medium">
+                        <tr className="border-b border-line text-start text-[13px] text-ink-muted [&>th]:px-2 [&>th]:py-1.5 [&>th]:font-medium font-medium">
                             <th>{t("sourcing.article")}</th>
                             <th className="text-end">
                                 {t("sourcing.requested")}

@@ -54,8 +54,8 @@ export default function TransferShow({ transfer, origin = null }: { transfer: Tr
                         [t('inventory.transfers.products'), formatInteger(transfer.product_count)],
                         [t('inventory.transfers.units'), formatQuantity(transfer.unit_count)],
                     ].map(([label, value]) => (
-                        <div key={label} className="rounded-card border border-line bg-surface px-4 py-3 shadow-soft">
-                            <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-faint">{label}</p>
+                        <div key={label} className="surface-card px-4 py-3 shadow-soft">
+                            <p className="text-[13px] font-medium text-ink-muted">{label}</p>
                             <p className="mt-1 truncate text-lg font-semibold tabular-nums text-ink">{value}</p>
                         </div>
                     ))}
@@ -67,8 +67,8 @@ export default function TransferShow({ transfer, origin = null }: { transfer: Tr
                     bodyClassName=""
                 >
                     <div className="overflow-x-auto">
-                        <table className="w-full min-w-[480px] text-start text-sm">
-                            <thead className="border-b border-line bg-raised text-[11px] uppercase tracking-wide text-ink-faint">
+                        <table className="erp-table w-full min-w-[480px] text-start text-sm">
+                            <thead className="border-b border-line bg-raised text-[13px] text-ink-muted font-medium">
                                 <tr>
                                     <th scope="col" className="px-4 py-2.5 text-start font-semibold">{t('inventory.product')}</th>
                                     <th scope="col" className="px-4 py-2.5 text-start font-semibold">SKU</th>

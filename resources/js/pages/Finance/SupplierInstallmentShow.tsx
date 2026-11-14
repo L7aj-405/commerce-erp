@@ -57,9 +57,9 @@ export default function SupplierInstallmentShow({ plan }: Props) {
                     </ButtonLink>
                 }
             />
-            <section className="overflow-hidden rounded-card border border-line bg-surface">
-                <table className="w-full text-sm">
-                    <thead className="bg-raised text-start text-xs uppercase text-ink-muted">
+            <section className="overflow-hidden surface-card">
+                <table className="erp-table w-full text-sm">
+                    <thead>
                         <tr>
                             {columns.map((key) => (
                                 <th key={key} className="px-4 py-3">

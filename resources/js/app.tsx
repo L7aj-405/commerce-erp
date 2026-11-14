@@ -4,6 +4,7 @@ import { createInertiaApp } from '@inertiajs/react';
 import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers';
 import { createRoot } from 'react-dom/client';
 import { ToastProvider } from '@/components/ui/toast';
+import { ConfirmProvider } from '@/components/ui/ConfirmDialog';
 import { PRODUCT_NAME } from '@/components/ui/brand';
 import { I18nProvider, initializeLocaleDocument } from '@/i18n';
 import { FreshAuthProvider } from '@/components/auth/FreshAuthProvider';
@@ -29,7 +30,9 @@ createInertiaApp({
             <I18nProvider>
                 <FreshAuthProvider>
                     <ToastProvider>
-                        <App {...props} />
+                        <ConfirmProvider>
+                            <App {...props} />
+                        </ConfirmProvider>
                     </ToastProvider>
                 </FreshAuthProvider>
             </I18nProvider>,

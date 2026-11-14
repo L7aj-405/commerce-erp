@@ -20,7 +20,8 @@ type Props = {
     context: FollowUpContext;
 };
 
-const fieldClass = 'h-10 rounded-field border border-line-strong bg-surface px-3 text-sm text-ink outline-none transition-soft focus:border-primary';
+const fieldClass = 'control-input';
+const selectClass = 'control-select';
 
 export default function WorkRecurring({ filters, rules, context }: Props) {
     const { t, locale } = useI18n();
@@ -54,14 +55,14 @@ export default function WorkRecurring({ filters, rules, context }: Props) {
             <WorkNav current="recurring" canManageAll={context.can_manage_all} />
 
             <div className="mb-4 flex flex-wrap gap-3 rounded-card border border-line bg-raised p-4">
-                <select value={filters.status ?? ''} onChange={(e) => visit({ status: e.target.value || undefined })} className={`${fieldClass} flex-1 sm:flex-none`} aria-label={t('work.recFrequency')}>
+                <select value={filters.status ?? ''} onChange={(e) => visit({ status: e.target.value || undefined })} className={`${selectClass} flex-1 sm:flex-none`} aria-label={t('work.recFrequency')}>
                     <option value="">{t('work.tabAll')}</option>
                     <option value="active">{t('work.recStatusActive')}</option>
                     <option value="paused">{t('work.recStatusPaused')}</option>
                     <option value="ended">{t('work.recStatusEnded')}</option>
                 </select>
                 {context.can_manage_all && (
-                    <select value={filters.assigned_to ?? 'me'} onChange={(e) => visit({ assigned_to: e.target.value })} className={`${fieldClass} flex-1 sm:flex-none`} aria-label={t('work.assignee')}>
+                    <select value={filters.assigned_to ?? 'me'} onChange={(e) => visit({ assigned_to: e.target.value })} className={`${selectClass} flex-1 sm:flex-none`} aria-label={t('work.assignee')}>
                         <option value="me">{t('work.assignedMe')}</option>
                         <option value="all">{t('work.assignedAll')}</option>
                         <option value="unassigned">{t('work.assignedUnassigned')}</option>
@@ -74,7 +75,7 @@ export default function WorkRecurring({ filters, rules, context }: Props) {
                 <EmptyState title={t('work.recEmpty')} description={t('work.recEmptyHelp')}
                     actions={context.can_create ? <Button onClick={() => setCreating(true)}>+ {t('work.recNew')}</Button> : undefined} />
             ) : (
-                <ul className="divide-y divide-line rounded-card border border-line bg-surface">
+                <ul className="divide-y divide-line surface-card">
                     {rules.data.map((rule) => (
                         <li key={rule.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-start sm:justify-between">
                             <div className="min-w-0 flex-1">

@@ -16,7 +16,8 @@ import { useState } from 'react';
 type LinkData = { url: string | null; label: string; active: boolean };
 type Props = { templates: { data: FollowUpTemplate[]; links: LinkData[]; total: number } };
 
-const fieldClass = 'h-10 w-full rounded-field border border-line-strong bg-surface px-3 text-sm text-ink outline-none transition-soft focus:border-primary';
+const fieldClass = 'control-input w-full';
+const selectClass = 'control-select w-full';
 
 /** Organization follow-up templates (follow_ups.manage_all): pre-fill presets, never automation. */
 export default function WorkTemplates({ templates }: Props) {
@@ -39,7 +40,7 @@ export default function WorkTemplates({ templates }: Props) {
             {templates.data.length === 0 ? (
                 <EmptyState title={t('work.tplEmpty')} description={t('work.tplDescription')} actions={<Button onClick={() => setCreating(true)}>+ {t('work.tplNew')}</Button>} />
             ) : (
-                <ul className="divide-y divide-line rounded-card border border-line bg-surface">
+                <ul className="divide-y divide-line surface-card">
                     {templates.data.map((template) => (
                         <li key={template.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
                             <div className="min-w-0 flex-1">
@@ -106,7 +107,7 @@ function TemplateDialog({ template, onClose }: { template?: FollowUpTemplate; on
                 <div className="grid gap-3 sm:grid-cols-3">
                     <label className="block">
                         <span className="mb-1 block text-xs font-medium text-ink-muted">{t('work.priority')}</span>
-                        <select value={form.data.default_priority} onChange={(e) => form.setData('default_priority', e.target.value as FollowUpPriority)} className={fieldClass}>
+                        <select value={form.data.default_priority} onChange={(e) => form.setData('default_priority', e.target.value as FollowUpPriority)} className={selectClass}>
                             <option value="low">{t('work.priorityLow')}</option>
                             <option value="normal">{t('work.priorityNormal')}</option>
                             <option value="high">{t('work.priorityHigh')}</option>
@@ -124,7 +125,7 @@ function TemplateDialog({ template, onClose }: { template?: FollowUpTemplate; on
                 </div>
                 <label className="block">
                     <span className="mb-1 block text-xs font-medium text-ink-muted">{t('work.note')}</span>
-                    <textarea rows={3} maxLength={5000} value={form.data.default_note} onChange={(e) => form.setData('default_note', e.target.value)} className="w-full rounded-field border border-line-strong bg-surface px-3 py-2 text-sm" />
+                    <textarea rows={3} maxLength={5000} value={form.data.default_note} onChange={(e) => form.setData('default_note', e.target.value)} className="control-input w-full py-2" />
                 </label>
             </form>
         </Dialog>

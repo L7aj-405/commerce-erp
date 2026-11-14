@@ -50,7 +50,7 @@ export default function QuotationSettings({ settings, resolved, quotationNumberi
                         {t('quotationSettings.readOnly')}
                     </p>
                 )}
-                <form onSubmit={submit} className="space-y-5 rounded-card border border-line bg-surface p-6">
+                <form onSubmit={submit} className="space-y-5 surface-card p-6">
                 <fieldset disabled={!canUpdate} className="space-y-5">
                     <Field label={t('quotationSettings.validityDays')}>
                         <input
@@ -128,7 +128,8 @@ export default function QuotationSettings({ settings, resolved, quotationNumberi
     );
 }
 
-const input = 'w-full rounded-field border border-line-strong px-3 py-2 text-sm';
+const input = 'control-input w-full';
+const selectClass = 'control-select w-full';
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
     return (

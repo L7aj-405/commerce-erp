@@ -190,8 +190,10 @@ class CompletedTransfersVisibilityTest extends PosTestCase
             (int) $restored->source_warehouse_id, (int) $restored->destination_warehouse_id, $restored->status, $restored->unit_count, (int) $restored->product_count,
         ]);
         $this->assertSame($at, $restored->transferred_at->toDateTimeString());
-        $line = DB::table('stock_transfer_lines')->where('stock_transfer_id', $restored->id)->sole();
-        $this->assertSame('4.0000', (string) $line->quantity);
+        // Read through the model: the quantity contract is the `decimal:4` cast. A raw
+        // DB::table() read is driver-dependent (SQLite NUMERIC affinity returns '4').
+        $line = $restored->lines()->sole();
+        $this->assertSame('4.0000', $line->quantity);
         $this->assertSame(2, $this->movements($number), 'No movement added.');
         $this->assertSame($onHand, DB::table('inventory_balances')->where('organization_id', $this->org->id)->orderBy('id')->pluck('on_hand')->all(), 'No quantity changed.');
         $this->assertDatabaseHas('audit_logs', ['organization_id' => $this->org->id, 'event' => 'stock_transfer.restored_from_ledger', 'auditable_id' => $restored->id]);

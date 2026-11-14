@@ -1,14 +1,18 @@
 import FinanceFilters, { type FinanceStore } from '@/components/finance/FinanceFilters';
 import SoldLines, { type SoldLine } from '@/components/finance/SoldLines';
 import PageHeader from '@/components/ui/PageHeader';
-import Pagination from '@/components/ui/Pagination';
+import EmptyState from '@/components/ui/EmptyState';
+import { Dropdown } from '@/components/ui/Menu';
+import { Badge } from '@/components/ui/StatusBadge';
+import type { StatusVariant } from '@/components/ui/StatusBadge';
+import { TablePager, TableShell } from '@/components/ui/TableShell';
 import { Spinner } from '@/components/ui/Spinner';
 import { useToast } from '@/components/ui/toast';
 import ApplicationShell from '@/layouts/ApplicationShell';
 import { useI18n } from '@/i18n';
 import { formatDate, formatMoney } from '@/utils/format';
 import { Head, Link } from '@inertiajs/react';
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 
 type CaEncaisseRow = {
     id: number;
@@ -42,15 +46,15 @@ type Props = {
     storeId: number | null;
     stores: FinanceStore[];
     total: string;
-    rows: { data: CaEncaisseRow[]; links: LinkData[]; total: number };
+    rows: { data: CaEncaisseRow[]; links: LinkData[]; total: number; from?: number | null; to?: number | null };
     can: { export: boolean };
 };
 
-const STATUS_STYLES: Record<string, string> = {
-    'Paiement comptant': 'bg-success-soft text-success',
-    'Paiement complété': 'bg-success-soft text-success',
-    'Paiement partiel': 'bg-warning-soft text-warning',
-    'Solde / Reliquat': 'bg-warning-soft text-warning',
+const STATUS_VARIANTS: Record<string, StatusVariant> = {
+    'Paiement comptant': 'success',
+    'Paiement complété': 'success',
+    'Paiement partiel': 'warning',
+    'Solde / Reliquat': 'warning',
 };
 
 const completedStatuses = new Set(['Paiement comptant', 'Solde / Reliquat']);
@@ -151,21 +155,23 @@ export default function FinanceCaEncaisse({ organization, period, periodLabel, s
             />
             <FinanceFilters path="/finance/ca-encaisse" period={period} storeId={storeId} stores={stores} />
 
-            <div className="mb-4 rounded-card border border-line bg-surface p-5">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-faint">{t('finance.cash.monthTotal')}</p>
-                <p className="mt-2 text-2xl font-semibold text-ink">{formatMoney(total)}</p>
-            </div>
+            <section className="surface-card mb-4 p-5" aria-label={t('finance.cash.monthTotal')}>
+                <p className="text-[13px] font-medium text-ink-muted">{t('finance.cash.monthTotal')}</p>
+                <p className="metric-value mt-1.5 text-2xl font-semibold text-ink" dir="ltr">
+                    <bdi>{formatMoney(total)}</bdi>
+                </p>
+            </section>
 
-            {rows.data.length === 0 ? (
-                <div className="rounded-card border border-dashed border-line-strong bg-raised px-4 py-8 text-center text-sm text-ink-faint">
-                    {t('finance.cash.empty')}
-                </div>
-            ) : (
-                <>
-                    {/* Desktop/tablet: table */}
-                    <div className="hidden overflow-x-auto rounded-card border border-line bg-surface md:block">
-                        <table className="w-full text-start text-sm">
-                            <thead className="bg-raised text-[11px] uppercase tracking-wide text-ink-faint">
+            {/* Desktop/tablet: table */}
+            <TableShell
+                label={t('finance.cash.title')}
+                state={rows.data.length === 0 ? 'empty' : 'ready'}
+                emptyTitle={t('finance.cash.empty')}
+                className="hidden md:block"
+                footer={rows.data.length === 0 ? undefined : <TablePager links={rows.links} from={rows.from} to={rows.to} total={rows.total} />}
+            >
+                <table className="erp-table min-w-[1180px] text-sm">
+                            <thead>
                                 <tr>
                                     <th className="px-4 py-2.5">{t('finance.cash.paymentNumber')}</th>
                                     <th className="px-4 py-2.5">{t('finance.cash.saleDate')}</th>
@@ -175,13 +181,13 @@ export default function FinanceCaEncaisse({ organization, period, periodLabel, s
                                     <th className="px-4 py-2.5">{t('finance.cash.designation')}</th>
                                     <th className="px-4 py-2.5">{t('common.customer')}</th>
                                     <th className="px-4 py-2.5">{t('finance.cash.collectionMethod')}</th>
-                                    <th className="px-4 py-2.5 text-end">{t('finance.cash.collectedAmount')}</th>
+                                    <th className="num px-4 py-2.5">{t('finance.cash.collectedAmount')}</th>
                                     <th className="px-4 py-2.5">{t('finance.cash.paymentStatus')}</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {groups.map((group) => (
-                                    <tr key={group.id} className="border-t-2 border-line-strong align-top">
+                                    <tr key={group.id} className="align-top">
                                         <td className="px-4 py-2.5">
                                             <div className="divide-y divide-line">
                                                 {group.payments.map((payment) => (
@@ -208,9 +214,7 @@ export default function FinanceCaEncaisse({ organization, period, periodLabel, s
                                             )}
                                         </td>
                                         <td className="px-4 py-2.5">
-                                            <span className="inline-flex rounded-full bg-raised px-2.5 py-1 text-[11px] font-semibold text-ink-muted">
-                                                {natureLabels[group.nature_label] ?? group.nature_label}
-                                            </span>
+                                            <Badge variant="neutral">{natureLabels[group.nature_label] ?? group.nature_label}</Badge>
                                         </td>
                                         <td className="px-4 py-2.5">
                                             <SoldLines lines={group.lines} />
@@ -223,33 +227,34 @@ export default function FinanceCaEncaisse({ organization, period, periodLabel, s
                                                 ))}
                                             </div>
                                         </td>
-                                        <td className="px-4 py-2.5 text-end">
-                                            <p className="tabular-nums font-semibold text-ink">{formatMoney(group.amount)}</p>
+                                        <td className="num px-4 py-2.5">
+                                            <p className="font-semibold text-ink" dir="ltr">{formatMoney(group.amount)}</p>
                                             {group.payments.length > 1 && <p className="text-[11px] text-ink-faint">{t('finance.cash.collectedAmount')}</p>}
                                         </td>
                                         <td className="px-4 py-2.5">
-                                            <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold ${STATUS_STYLES[group.status_label] ?? 'bg-raised text-ink-muted'}`}>
-                                                {statusLabels[group.status_label] ?? group.status_label}
-                                            </span>
+                                            <Badge variant={STATUS_VARIANTS[group.status_label] ?? 'neutral'}>{statusLabels[group.status_label] ?? group.status_label}</Badge>
                                         </td>
                                     </tr>
                                 ))}
                             </tbody>
                         </table>
-                    </div>
+            </TableShell>
 
-                    {/* Mobile: stacked cards */}
-                    <ul className="space-y-3 md:hidden">
+            {/* Mobile: stacked cards */}
+            <div className="space-y-3 md:hidden">
+                {rows.data.length === 0 ? (
+                    <EmptyState compact title={t('finance.cash.empty')} />
+                ) : (
+                    <>
+                        <ul className="space-y-3">
                         {groups.map((group) => (
-                            <li key={group.id} className="rounded-card border border-line bg-surface p-4">
+                            <li key={group.id} className="surface-card p-4">
                                 <div className="flex items-start justify-between gap-3">
                                     <p className="min-w-0 truncate text-sm font-semibold text-ink">{group.reference}</p>
-                                    <span className={`shrink-0 inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold ${STATUS_STYLES[group.status_label] ?? 'bg-raised text-ink-muted'}`}>
-                                        {statusLabels[group.status_label] ?? group.status_label}
-                                    </span>
+                                    <Badge variant={STATUS_VARIANTS[group.status_label] ?? 'neutral'} className="shrink-0">{statusLabels[group.status_label] ?? group.status_label}</Badge>
                                 </div>
                                 <div className="mt-2.5">
-                                    <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-faint">{t('finance.cash.designation')}</p>
+                                    <p className="text-[12px] font-medium text-ink-faint">{t('finance.cash.designation')}</p>
                                     <div className="mt-1">
                                         <SoldLines lines={group.lines} />
                                     </div>
@@ -263,7 +268,7 @@ export default function FinanceCaEncaisse({ organization, period, periodLabel, s
                                             </div>
                                             <div className="text-end">
                                                 <p className="text-ink-faint">{t('finance.cash.partialAmount')}</p>
-                                                <p className="font-semibold tabular-nums text-ink">{formatMoney(payment.amount)}</p>
+                                                <p className="font-semibold tabular-nums text-ink" dir="ltr">{formatMoney(payment.amount)}</p>
                                             </div>
                                         </div>
                                     ))}
@@ -293,15 +298,16 @@ export default function FinanceCaEncaisse({ organization, period, periodLabel, s
                                     </div>
                                     <div className="min-w-0">
                                         <dt className="text-ink-faint">{t('finance.cash.collectedAmount')}</dt>
-                                        <dd className="tabular-nums font-semibold text-ink">{formatMoney(group.amount)}</dd>
+                                        <dd className="tabular-nums font-semibold text-ink" dir="ltr">{formatMoney(group.amount)}</dd>
                                     </div>
                                 </dl>
                             </li>
                         ))}
                     </ul>
-                </>
-            )}
-            <Pagination links={rows.links} />
+                        <TablePager links={rows.links} from={rows.from} to={rows.to} total={rows.total} />
+                    </>
+                )}
+            </div>
         </ApplicationShell>
     );
 }
@@ -332,28 +338,10 @@ function ExportMenu({
     packageFilename: string;
 }) {
     const { t } = useI18n();
-    const [open, setOpen] = useState(false);
     const [zipBusy, setZipBusy] = useState(false);
-    const containerRef = useRef<HTMLDivElement>(null);
     const toast = useToast();
-
-    useEffect(() => {
-        if (!open) return;
-        const onClickOutside = (event: MouseEvent) => {
-            if (containerRef.current && !containerRef.current.contains(event.target as Node)) setOpen(false);
-        };
-        const onEscape = (event: KeyboardEvent) => {
-            if (event.key === 'Escape') setOpen(false);
-        };
-        document.addEventListener('mousedown', onClickOutside);
-        window.addEventListener('keydown', onEscape);
-        return () => {
-            document.removeEventListener('mousedown', onClickOutside);
-            window.removeEventListener('keydown', onEscape);
-        };
-    }, [open]);
-
-    const itemClass = 'block rounded-field px-3 py-2.5 text-[13px] text-ink transition-soft hover:bg-sage';
+    const itemClass =
+        'flex min-h-10 w-full cursor-pointer items-center gap-2.5 rounded-lg px-3 py-2 text-start text-sm text-ink transition-soft hover:bg-sage focus-visible:bg-sage focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-60';
 
     const downloadZip = async (href: string, filename: string, errorMessage: string) => {
         if (zipBusy) return;
@@ -378,62 +366,45 @@ function ExportMenu({
             toast.error(errorMessage);
         } finally {
             setZipBusy(false);
-            setOpen(false);
         }
     };
 
     return (
-        <div ref={containerRef} className="relative">
+        <Dropdown
+            label={zipBusy ? t('finance.cash.generatingZip') : t('finance.cash.export')}
+            icon={zipBusy ? <Spinner size="xs" /> : undefined}
+            align="end"
+            width="w-64"
+            buttonClassName="inline-flex min-h-10 cursor-pointer items-center justify-center gap-1.5 rounded-field border border-line-strong bg-surface px-3.5 text-sm font-medium text-ink transition-soft hover:bg-raised"
+        >
+            <a href={xlsxHref} className={itemClass}>
+                Excel (.xlsx)
+            </a>
+            <a href={`${pdfHrefBase}&orientation=landscape`} className={itemClass}>
+                {t('finance.cash.pdfLandscape')}
+            </a>
+            <a href={`${pdfHrefBase}&orientation=portrait`} className={itemClass}>
+                {t('finance.cash.pdfPortrait')}
+            </a>
+            <div className="my-1 border-t border-line" role="separator" />
             <button
                 type="button"
-                aria-haspopup="true"
-                aria-expanded={open}
-                onClick={() => setOpen((current) => !current)}
-                className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-field border border-line-strong bg-surface px-3.5 text-sm font-medium text-ink transition-soft hover:bg-raised"
+                onClick={() => downloadZip(zipHref, zipFilename, t('finance.cash.invoiceExportFailed'))}
+                disabled={zipBusy}
+                aria-busy={zipBusy || undefined}
+                className={itemClass}
             >
-                {t('finance.cash.export')}
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="m6 9 6 6 6-6" /></svg>
+                {t('finance.cash.invoicesZip')}
             </button>
-
-            {open && (
-                <div
-                    role="menu"
-                    className="absolute end-0 top-full z-20 mt-1.5 w-64 max-w-[calc(100vw-1.5rem)] rounded-field border border-line bg-surface p-1.5 shadow-pop"
-                >
-                    <a href={xlsxHref} role="menuitem" onClick={() => setOpen(false)} className={itemClass}>
-                        Excel (.xlsx)
-                    </a>
-                    <a href={`${pdfHrefBase}&orientation=landscape`} role="menuitem" onClick={() => setOpen(false)} className={itemClass}>
-                        {t('finance.cash.pdfLandscape')}
-                    </a>
-                    <a href={`${pdfHrefBase}&orientation=portrait`} role="menuitem" onClick={() => setOpen(false)} className={itemClass}>
-                        {t('finance.cash.pdfPortrait')}
-                    </a>
-                    <div className="my-1 border-t border-line" />
-                    <button
-                        type="button"
-                        role="menuitem"
-                        onClick={() => downloadZip(zipHref, zipFilename, t('finance.cash.invoiceExportFailed'))}
-                        disabled={zipBusy}
-                        aria-busy={zipBusy || undefined}
-                        className="flex min-h-10 w-full items-center gap-2 rounded-field px-3 py-2.5 text-start text-[13px] text-ink transition-soft hover:bg-sage disabled:opacity-60"
-                    >
-                        {zipBusy && <Spinner size="xs" />}
-                        {zipBusy ? t('finance.cash.generatingZip') : t('finance.cash.invoicesZip')}
-                    </button>
-                    <button
-                        type="button"
-                        role="menuitem"
-                        onClick={() => downloadZip(packageHref, packageFilename, t('finance.cash.packageExportFailed'))}
-                        disabled={zipBusy}
-                        aria-busy={zipBusy || undefined}
-                        className="flex min-h-10 w-full items-center gap-2 rounded-field px-3 py-2.5 text-start text-[13px] text-ink transition-soft hover:bg-sage disabled:opacity-60"
-                    >
-                        {zipBusy && <Spinner size="xs" />}
-                        {t('finance.cash.fullPackage')}
-                    </button>
-                </div>
-            )}
-        </div>
+            <button
+                type="button"
+                onClick={() => downloadZip(packageHref, packageFilename, t('finance.cash.packageExportFailed'))}
+                disabled={zipBusy}
+                aria-busy={zipBusy || undefined}
+                className={itemClass}
+            >
+                {t('finance.cash.fullPackage')}
+            </button>
+        </Dropdown>
     );
 }

@@ -1,3 +1,4 @@
+import { useConfirm } from '@/components/ui/ConfirmDialog';
 import { Button } from '@/components/ui/Button';
 import { useFreshAuth } from '@/components/auth/FreshAuthProvider';
 import { FormBanner, TextField } from '@/components/ui/form';
@@ -55,11 +56,12 @@ type Props = {
 
 export default function UsersAccessIndex({ organization, memberships, roles, invitations, permissionGroups, presets, stores, warehouses, can }: Props) {
     const { t } = useI18n();
+    const confirm = useConfirm();
     const { auth, flash } = usePage<SharedPageProps>().props;
     const selectableRoles = roles.filter((role) => role.slug !== 'owner');
 
     return (
-        <ApplicationShell>
+        <ApplicationShell width="reading">
             <Head title={t('usersAccess.title')} />
             <PageHeader title={t('usersAccess.title')} description={t('usersAccess.help').replace('{organization}', organization.name)} />
 
@@ -67,7 +69,7 @@ export default function UsersAccessIndex({ organization, memberships, roles, inv
 
             {can.manageMembers && <AddMemberPanel organizationId={organization.id} roles={selectableRoles} />}
 
-            <section className="mt-8 rounded-card border border-line bg-surface">
+            <section className="mt-8 surface-card">
                 <header className="border-b border-line px-5 py-3">
                     <h2 className="text-sm font-semibold text-ink">{t('usersAccess.members')} ({memberships.length})</h2>
                 </header>
@@ -75,7 +77,7 @@ export default function UsersAccessIndex({ organization, memberships, roles, inv
                 {/* Desktop/tablet: table */}
                 <div className="hidden overflow-x-auto md:block">
                     <table className="erp-table w-full text-start text-sm">
-                        <thead className="bg-raised text-[11px] uppercase tracking-wide text-ink-faint">
+                        <thead>
                             <tr>
                                 <th className="px-4 py-2.5">{t('usersAccess.name')}</th><th className="px-4 py-2.5">{t('usersAccess.email')}</th><th className="px-4 py-2.5">{t('usersAccess.role')}</th>
                                 <th className="px-4 py-2.5">{t('common.status')}</th>{stores.length > 0 && <th className="px-4 py-2.5">{t('usersAccess.stores')}</th>}<th className="px-4 py-2.5">{t('usersAccess.defaultWarehouse')}</th>
@@ -115,7 +117,7 @@ export default function UsersAccessIndex({ organization, memberships, roles, inv
             </section>
 
             {can.manageMembers && (
-                <section className="mt-8 rounded-card border border-line bg-surface">
+                <section className="mt-8 surface-card">
                     <header className="border-b border-line px-5 py-3">
                         <h2 className="text-sm font-semibold text-ink">{t('usersAccess.pendingInvitations')} ({invitations.length})</h2>
                     </header>
@@ -124,7 +126,7 @@ export default function UsersAccessIndex({ organization, memberships, roles, inv
                     ) : (
                         <div className="overflow-x-auto">
                             <table className="erp-table w-full text-start text-sm">
-                                <thead className="bg-raised text-[11px] uppercase tracking-wide text-ink-faint">
+                                <thead>
                                     <tr>
                                         <th className="px-4 py-2.5">{t('usersAccess.email')}</th><th className="px-4 py-2.5">{t('usersAccess.role')}</th><th className="px-4 py-2.5">{t('usersAccess.expiresOn')}</th>
                                         <th className="px-4 py-2.5" />
@@ -136,13 +138,13 @@ export default function UsersAccessIndex({ organization, memberships, roles, inv
                                             <td className="px-4 py-2.5">{invitation.email}</td>
                                             <td className="px-4 py-2.5">{invitation.role.name}</td>
                                             <td className="px-4 py-2.5 text-ink-muted">{new Date(invitation.expires_at).toLocaleDateString()}</td>
-                                            <td className="px-4 py-2.5 text-right">
+                                            <td className="px-4 py-2.5 text-end">
                                                 <button
                                                     type="button"
-                                                    onClick={() =>
-                                                        window.confirm(t('usersAccess.cancelInvitation').replace('{email}', invitation.email)) &&
-                                                        router.delete(`/invitations/${invitation.id}`, { preserveScroll: true })
-                                                    }
+                                                    onClick={async () => {
+                                                        if (await confirm({ title: t('usersAccess.cancelInvitation').replace('{email}', invitation.email), danger: true }))
+                                                            router.delete(`/invitations/${invitation.id}`, { preserveScroll: true });
+                                                    }}
                                                     className="inline-flex min-h-9 items-center rounded-field px-2 text-xs text-danger hover:bg-danger-soft hover:underline"
                                                 >
                                                     {t('common.cancel')}
@@ -217,7 +219,7 @@ function AddMemberPanel({ organizationId, roles }: { organizationId: number; rol
     };
 
     return (
-        <section className="rounded-card border border-line bg-surface p-5">
+        <section className="surface-card p-5">
             <div className="mb-4 flex items-center gap-2">
                 <TabButton active={mode === 'existing'} onClick={() => setMode('existing')}>
                     {t('usersAccess.addExisting')}
@@ -329,7 +331,7 @@ function DefaultWarehouseField({
                 onChange={(e) => change(e.target.value)}
                 aria-label={t('usersAccess.defaultWarehouseFor').replace('{name}', member.user.name)}
                 title={t('usersAccess.defaultWarehouseHelp')}
-                className={`control-select text-[13px] ${fullWidth ? 'h-9 w-full' : 'py-1'}`}
+                className={`control-select ${fullWidth ? 'w-full' : 'control-compact'}`}
             >
                 <option value="">{t('usersAccess.posDefault')}</option>
                 {unavailable && (
@@ -353,6 +355,7 @@ function DefaultWarehouseField({
 /** Shared state/handlers for a membership row, reused by both the desktop `<tr>` and the mobile `<li>` card. */
 function useMemberRowActions(member: Member) {
     const { t } = useI18n();
+    const confirm = useConfirm();
     const { submit: submitProtected } = useFreshAuth();
     const [managingStores, setManagingStores] = useState(false);
 
@@ -365,8 +368,8 @@ function useMemberRowActions(member: Member) {
         void submitProtected({ method: 'patch', url: `/organization-memberships/${member.id}`, data: { status: next }, preserveScroll: true });
     };
 
-    const remove = () => {
-        if (!window.confirm(t('usersAccess.removeMemberConfirm').replace('{name}', member.user.name))) return;
+    const remove = async () => {
+        if (!(await confirm({ title: t('usersAccess.removeMemberConfirm').replace('{name}', member.user.name), danger: true }))) return;
         void submitProtected({ method: 'delete', url: `/organization-memberships/${member.id}`, preserveScroll: true });
     };
 
@@ -402,7 +405,7 @@ function MemberRow({
         useMemberRowActions(member);
 
     return (
-        <tr className="border-t border-line align-top">
+        <tr className="align-top">
             <td className="px-4 py-2.5 font-medium text-ink">{member.user.name}</td>
             <td className="px-4 py-2.5 text-ink-muted">{member.user.email}</td>
             <td className="px-4 py-2.5">
@@ -410,7 +413,8 @@ function MemberRow({
                     <select
                         value={member.role.id}
                         onChange={(e) => changeRole(Number(e.target.value))}
-                        className="control-select py-1 text-[13px]"
+                        aria-label={t('usersAccess.roleFor').replace('{name}', member.user.name)}
+                        className="control-select control-compact min-w-36"
                     >
                         {roles.map((role) => (
                             <option key={role.id} value={role.id}>
@@ -510,7 +514,7 @@ function MemberCard({
         useMemberRowActions(member);
 
     return (
-        <li className="rounded-card border border-line bg-surface p-4">
+        <li className="surface-card p-4">
             <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                     <p className="truncate text-sm font-semibold text-ink">{member.user.name}</p>
@@ -525,7 +529,8 @@ function MemberCard({
                     <select
                         value={member.role.id}
                         onChange={(e) => changeRole(Number(e.target.value))}
-                        className="control-select mt-1 h-9 w-full text-[13px]"
+                        aria-label={t('usersAccess.roleFor').replace('{name}', member.user.name)}
+                        className="control-select mt-1 w-full"
                     >
                         {roles.map((role) => (
                             <option key={role.id} value={role.id}>
@@ -667,7 +672,7 @@ function RolesSection({
                         key={role.id}
                         type="button"
                         onClick={() => setEditing(role)}
-                        className="rounded-card border border-line bg-surface p-4 text-start transition-soft hover:border-line-strong"
+                        className="surface-card p-4 text-start transition-soft hover:border-line-strong"
                     >
                         <div className="mb-1 flex items-center justify-between gap-2">
                             <span className="font-medium text-ink">{role.name}</span>
