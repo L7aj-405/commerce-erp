@@ -1,5 +1,32 @@
 # Test Mode / Sandbox — Implementation Guide
 
+## Phase 9 — Sandbox reset / cleanup
+
+**Flow.** `/test-mode` → « Réinitialiser les données test » (shown with `sandbox.manage`, in Test or Production context) → `GET /test-mode/reset` preview → type `RESET TEST` → `POST /test-mode/reset` → clean Test home with a success message. The target is always the active organization's own sandbox, resolved server-side; `sandbox_id` / `organization_id` in the request are rejected (`prohibited`). Both routes are in the Test Mode base allowlist. No migration.
+
+**Architecture.** Sandbox-specific, independent from the Production organization reset. `SandboxResetPlanner` holds one explicit child → parent step list shared by the preview and the executor; every step is pinned to `(organization_id, sandbox_id)` — routed `sandbox_*` ledgers by their own `sandbox_id`, shared roots (orders, quotations, invoice families/invoices, BL, credit notes, returns, return lines, exchanges) by their nullable `sandbox_id`, and line/history tables without `sandbox_id` (order lines, addenda, revisions, quotation / invoice / BL / credit-note lines) through their Test parent. `SandboxResetExecutor` runs everything in one transaction with foreign-key checks ON:
+1. lock the sandbox row (must belong to the organization and be active);
+2. recompute the counts and require the preview fingerprint (sha256 of org, sandbox, generation, counts) — a changed sandbox means a stale preview and is refused;
+3. preflight with the shared schema FK map (`OrganizationDataResetForeignKeyMap`): any row the plan will not delete (a table outside the plan, or a row of another sandbox / Production in a planned table) that references a Test row aborts the reset — including `SET NULL` / `CASCADE` edges the database would otherwise apply silently;
+4. delete step by step, each step must delete exactly its counted rows; self references (`quotations.revised_from/root`, `invoices.corrected_invoice_id`, `sandbox_commission_entries.source_entry_id`) and the order ↔ revision cycle (`sales_orders.current_revision_id`) are cleared on Test rows only, just before their table;
+5. verify zero Test rows remain and that each touched table's organization total dropped by exactly the deleted amount (no cascade into Production);
+6. bump `generation`, clear `inventory_initialized_at`, stamp `reset_at`, audit — then commit. Stored Test shipping proofs are removed from disk after commit.
+Any failure rolls back; the UI shows the error and « Aucune donnée n'a été supprimée », never a success state.
+
+**Deletion order.** procurement receipts → stock transfer lines → stock transfers → expected-collection matches → expected collections → exchange payments → refunds → allocations → payments → commissions → fulfillment notifications → attachments → items → fulfillments → PO lines → POs → procurements → availability requests → inventory allocations → reservations → movements → balances → credit-note lines → credit notes → exchanges → return lines → returns → BL lines → BL → invoice lines → invoices → invoice families → quotation lines → quotations → order lines → addenda → revisions → orders.
+
+**Never touched.** Products, variants, customers, suppliers, supplier catalogue, stores, warehouses, users, roles, financial accounts, commission rules, organization settings, every Production row and every Production sequence. Test Mode stays enabled.
+
+**Generation.** `generation + 1`. Session selections carry the generation, so every other Test session stops resolving (restricted until « Quitter le mode test »); the acting session is moved to the new generation. The next Test request retakes the Phase 4 inventory snapshot from current Production stock (`inventory_initialized_at` is NULL).
+
+**Numbering decision.** Kept monotonic: `sandbox_document_sequences` is organization-wide by design (Phase 3) and is not reset, so no `TEST-` reference is ever reissued across generations (next Test payment after a reset is `TEST-PAY-000002`). Test orders keep `TEST-<ULID>`.
+
+**Audit.** `sandbox.reset` (actor, organization, sandbox auditable): old `{sandbox_id, generation}`, new `{sandbox_id, generation, environment: test, deleted: per-step counts, deleted_total}`. Distinct from the Production `organization.data_reset` events.
+
+**Validation.** `SandboxResetTest` (3 tests): preview counts Test only; wrong phrase / stale fingerprint refused with nothing deleted; reset empties every planned Test table; Production transactional rows, master data and all Production + Test sequences row-identical; generation 1 → 2, `inventory_initialized_at` cleared then re-snapshotted (4.0000 = Production stock); audit content; cross-organization refused (HTTP + direct executor), `sandbox.manage` required; an unexpected Production reference (`follow_ups` → Test order) blocks and rolls back. Sandbox suite 33 / 33 passed. Additionally, an uncommitted probe ran the executor after every Phase 2–8 scenario (27): 25 reset to zero remaining rows across all domains; the 2 whose fixtures hand-insert cross-environment rows were refused by preflight with nothing deleted. Pint, `tsc --noEmit`, `vite build` passed.
+
+**Limitations.** A Test request already in flight when the reset commits could still write one row into the new generation (no global write fence). The Production organization data reset (`Settings/DataReset`) is unchanged and does not yet define its handling of Test rows.
+
 ## Phase 8 — Sandbox returns, exchanges, refunds & credit notes
 
 **Architecture.** Returns, return lines and exchanges are sandbox-owned roots in their existing tables (nullable `sandbox_id`, NULL = Production), with the same non-removable scope and link guards as sales orders / invoices / credit notes. This keeps every existing foreign key valid: Test credit notes (single table), Test refunds and Test commission entries (Phase 5) already point at `customer_returns` through composite keys. Production readers that query the tables directly filter `sandbox_id IS NULL` (executive dashboard, Production backups). The exchange <-> payment pivot is the one routed table: `sandbox_customer_exchange_payments` with a `(sandbox_id, payment_id)` key into the Test payment ledger.

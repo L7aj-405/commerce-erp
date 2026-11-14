@@ -20,6 +20,9 @@ class SandboxServiceProvider extends ServiceProvider
             Route::post('/enter', [SandboxController::class, 'enter'])->name('enter');
             Route::post('/leave', [SandboxController::class, 'leave'])->name('leave');
             Route::post('/policy', [SandboxController::class, 'policy'])->name('policy');
+            // Phase 9: dedicated Test data reset (preview, then confirmed execution).
+            Route::get('/reset', [\App\Http\Controllers\SandboxResetController::class, 'show'])->name('reset.show');
+            Route::post('/reset', [\App\Http\Controllers\SandboxResetController::class, 'execute'])->name('reset.execute');
         });
     }
 }

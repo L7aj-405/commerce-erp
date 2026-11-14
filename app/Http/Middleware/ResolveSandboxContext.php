@@ -17,7 +17,7 @@ class ResolveSandboxContext
         }
         Inertia::share('sandbox', fn () => ['active' => $context->isSandbox(), 'restricted' => $context->isRestricted(), 'id' => $context->id()]);
         // Explicit route allowlist: expand only after each domain implements real isolation.
-        $allowed = ['sandbox.show', 'sandbox.leave', 'logout'];
+        $allowed = ['sandbox.show', 'sandbox.leave', 'logout', 'sandbox.reset.show', 'sandbox.reset.execute'];
         if ($context->isSandbox()) {
             $allowed = [...$allowed, ...\App\Services\Sandbox\SandboxSalesRoutes::ALLOWED, ...\App\Services\Sandbox\SandboxDocumentRules::ROUTES, ...\App\Services\Sandbox\SandboxInventoryGuard::ROUTES, ...\App\Services\Sandbox\SandboxQuotationRules::ROUTES, ...\App\Services\Sandbox\SandboxProcurementRules::ROUTES, ...\App\Services\Sandbox\SandboxFulfillmentRules::ROUTES, ...\App\Services\Sandbox\SandboxReturnsRules::ROUTES];
         }

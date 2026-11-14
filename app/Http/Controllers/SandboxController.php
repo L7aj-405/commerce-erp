@@ -23,6 +23,9 @@ class SandboxController extends Controller
             'enabled' => (bool) (($org->settings ?? [])['sandbox_enabled'] ?? false),
             'canManage' => $request->user()->hasPermission($org, 'sandbox.manage'),
             'canSwitch' => $request->user()->hasPermission($org, 'sandbox.switch'),
+            // Phase 9: the dedicated reset flow targets this organization's own sandbox.
+            'canReset' => $request->user()->hasPermission($org, 'sandbox.manage')
+                && Sandbox::query()->where('organization_id', $org->id)->where('status', 'active')->exists(),
         ]);
     }
     public function enter(Request $request, ActiveTenantContext $tenant, AuditLogger $audit)
