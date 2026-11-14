@@ -1,5 +1,5 @@
 import { Button, ButtonLink } from '@/components/ui/Button';
-import { Badge } from '@/components/ui/StatusBadge';
+import { SandboxBadge } from '@/components/SandboxBadge';
 import { useI18n } from '@/i18n';
 import { Head, router, usePage } from '@inertiajs/react';
 import { useState } from 'react';
@@ -66,7 +66,7 @@ export default function SandboxPage({ enabled, canManage, canSwitch, canReset, c
                 {sandbox.active && current ? (
                     <>
                         <div>
-                            <Badge variant="warning">{t('sandboxPage.badge')}</Badge>
+                            <SandboxBadge kind="test" label={t('sandboxPage.badge')} />
                             <h1 className="mt-3 text-2xl font-semibold text-ink">{t('sandboxPage.currentTitle').replace('{name}', current.name)}</h1>
                             <p className="mt-1 text-sm text-ink-muted">
                                 {t('sandboxPage.currentHelp')

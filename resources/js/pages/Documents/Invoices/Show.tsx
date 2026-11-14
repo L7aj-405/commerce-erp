@@ -206,7 +206,7 @@ export default function InvoiceShow({
                         {t('invoices.invoice')} <bdi>{invoice.invoice_number ?? t('invoices.draft')}</bdi>
                     </h1>
                     <DocBadge tone={invoiceStatusTone(invoice.status)}>{label(invoiceStatusLabel, invoice.status)}</DocBadge>
-                    <SandboxDocumentBadge sandboxId={invoice.sandbox_id} />
+                    <SandboxDocumentBadge kind="invoice" sandboxId={invoice.sandbox_id} />
                 </div>
                 <p className="mt-1 text-sm font-medium text-ink">
                     {t('invoices.version')} {invoice.version} · {isCurrentVersion ? t('invoices.current') : isSuperseded ? t('invoices.replaced') : t('invoices.draft')}

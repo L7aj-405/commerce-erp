@@ -53,7 +53,7 @@ export default function CreditNoteShow({ creditNote: note, summary }: Props) {
                             <svg aria-hidden="true" className="directional-icon rtl:rotate-180" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 6 8 12l6 6" /></svg>
                             {t('invoices.invoice')} <bdi>{note.invoice.invoice_number}</bdi>{note.invoice.version > 1 ? ` · V${note.invoice.version}` : ''}
                         </ButtonLink>
-                        <h1 className="flex flex-wrap items-center gap-2 text-2xl font-semibold tracking-[-0.02em] text-ink sm:text-page">{t('creditNotes.title')} <bdi>{note.credit_note_number || t('creditNotes.draft')}</bdi> <SandboxDocumentBadge sandboxId={note.sandbox_id} /></h1>
+                        <h1 className="flex flex-wrap items-center gap-2 text-2xl font-semibold tracking-[-0.02em] text-ink sm:text-page">{t('creditNotes.title')} <bdi>{note.credit_note_number || t('creditNotes.draft')}</bdi> <SandboxDocumentBadge kind="credit" sandboxId={note.sandbox_id} /></h1>
                         <p className="text-sm text-ink-muted">
                             <Link href={`/sales/orders/${note.sales_order.id}`} className="font-medium text-ink underline-offset-2 hover:text-accent hover:underline">{t('invoices.order')} <bdi>{note.sales_order.order_number}</bdi></Link>
                             {' · '}

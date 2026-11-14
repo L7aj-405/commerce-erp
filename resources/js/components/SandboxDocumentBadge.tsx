@@ -1,12 +1,11 @@
-/** Marks a Test Mode document (sandbox_id set). Renders nothing for Production. */
-export default function SandboxDocumentBadge({ sandboxId, label = 'TEST · NON COMPTABLE' }: { sandboxId?: number | null; label?: string }) {
+import { SandboxBadge, type SandboxBadgeKind } from '@/components/SandboxBadge';
+
+/**
+ * Marks a Test Mode document (sandbox_id set) in lists and detail headers. Renders
+ * nothing for Production. The generated PDF / print keeps its own strong
+ * « DOCUMENT DE TEST » watermark: this is only the on-screen indicator.
+ */
+export default function SandboxDocumentBadge({ sandboxId, kind = 'document', label }: { sandboxId?: number | null; kind?: SandboxBadgeKind; label?: string }) {
     if (sandboxId == null) return null;
-    return (
-        <span
-            title="Document de test — non comptable, sans valeur légale ni fiscale"
-            className="inline-flex shrink-0 items-center rounded border border-amber-500 bg-amber-100 px-2 py-0.5 text-xs font-bold tracking-wide text-amber-900"
-        >
-            {label}
-        </span>
-    );
+    return <SandboxBadge kind={kind} label={label} />;
 }

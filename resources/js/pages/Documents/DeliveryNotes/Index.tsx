@@ -127,7 +127,7 @@ export default function DeliveryNoteIndex({ deliveryNotes, filters }: Props) {
                                             <Link href={`/delivery-notes/${note.id}`} className="font-semibold text-ink hover:text-accent hover:underline">
                                                 <bdi>{number(note)}</bdi>
                                             </Link>
-                                            <SandboxDocumentBadge sandboxId={note.sandbox_id} />
+                                            <SandboxDocumentBadge kind="delivery" sandboxId={note.sandbox_id} />
                                         </span>
                                     </td>
                                     <td className="px-4 py-3 whitespace-nowrap text-ink-muted tabular-nums">{formatDate(note.delivery_date)}</td>
@@ -171,7 +171,7 @@ export default function DeliveryNoteIndex({ deliveryNotes, filters }: Props) {
                                 <p className="mt-1 text-[13px] text-ink-muted">
                                     {t('deliveryNotes.order')} : {orderRef(note)} · {note.store.name}
                                 </p>
-                                <SandboxDocumentBadge sandboxId={note.sandbox_id} />
+                                <SandboxDocumentBadge kind="delivery" sandboxId={note.sandbox_id} />
                                 <ButtonLink href={`/delivery-notes/${note.id}`} size="sm" variant="outline" className="mt-3 w-full">
                                     {t('common.open')}
                                     <span className="sr-only"> {number(note)}</span>

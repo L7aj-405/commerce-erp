@@ -1,5 +1,6 @@
 import DatePicker from '@/components/ui/DatePicker';
 import FollowUpPanel from "@/components/followups/FollowUpPanel";
+import { SandboxBadge } from "@/components/SandboxBadge";
 import SandboxDocumentBadge from "@/components/SandboxDocumentBadge";
 import type { FollowUpPanelData } from "@/components/followups/types";
 import ActivityTimeline from "@/components/timeline/ActivityTimeline";
@@ -271,7 +272,7 @@ export default function QuotationShow({
                         {label(quotationStatusLabel, quotation.status)}
                     </DocBadge>
                     {isTest && (
-                        <SandboxDocumentBadge sandboxId={1} label="TEST · SANS VALEUR COMMERCIALE / LÉGALE" />
+                        <SandboxDocumentBadge sandboxId={1} kind="quotation" />
                     )}
                     {isRevision && (
                         <DocBadge tone="info">
@@ -1396,8 +1397,9 @@ function ShareCard({
                         </p>
                     )}
                     {isTest && (
-                        <p className="text-xs font-semibold text-warning">
-                            EMAIL TEST — NON ENVOYÉ : l’envoi est simulé.
+                        <p className="flex flex-wrap items-center gap-2 text-xs text-ink-muted">
+                            <SandboxBadge kind="email" />
+                            Envoi simulé : le message n’est pas envoyé.
                         </p>
                     )}
                     {!canEmail && (
@@ -1433,8 +1435,9 @@ function ShareCard({
             {tab === "whatsapp" && (
                 <div className="mt-3 space-y-2 text-sm">
                     {isTest && (
-                        <p className="rounded-field border border-warning/40 bg-warning-soft px-3 py-2 text-xs font-semibold text-ink">
-                            DOCUMENT DE TEST — le lien PDF ne s’ouvre que dans votre session de test ; aucun envoi automatique.
+                        <p className="flex flex-wrap items-center gap-2 rounded-field border border-line bg-raised px-3 py-2 text-xs text-ink-muted">
+                            <SandboxBadge kind="document" />
+                            Le lien PDF ne s’ouvre que dans votre session de test ; aucun envoi automatique.
                         </p>
                     )}
                     {usesUsername ? (

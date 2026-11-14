@@ -1,3 +1,4 @@
+import { SandboxBadge, SandboxNotice } from '@/components/SandboxBadge';
 import { usePage } from '@inertiajs/react';
 
 /**
@@ -8,17 +9,10 @@ import { usePage } from '@inertiajs/react';
 export default function SandboxProcurementBadge({ inline = false }: { inline?: boolean }) {
     const { sandbox } = usePage<{ sandbox?: { active: boolean } }>().props;
     if (!sandbox?.active) return null;
-    if (inline) {
-        return (
-            <span title="Approvisionnement test : aucun effet sur les achats, réceptions ou le stock de Production" className="ms-2 rounded border border-amber-500 bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold uppercase text-amber-900">
-                APPROVISIONNEMENT TEST
-            </span>
-        );
-    }
+    if (inline) return <SandboxBadge kind="procurement" className="ms-2" />;
     return (
-        <div role="note" className="mb-4 rounded-field border border-amber-400 bg-amber-50 px-4 py-2 text-sm text-amber-950">
-            <strong className="me-2">MODE TEST — APPROVISIONNEMENT TEST</strong>
+        <SandboxNotice kind="procurement" className="mb-4">
             Besoins, commandes fournisseurs (TEST-PO) et réceptions simulés : seul le stock test augmente, aucun fournisseur n’est contacté.
-        </div>
+        </SandboxNotice>
     );
 }

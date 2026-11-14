@@ -1,6 +1,7 @@
 import DatePicker from '@/components/ui/DatePicker';
 import { Dialog } from '@/components/ui/Dialog';
 import DocBadge from '@/components/ui/DocBadge';
+import InfoTip from '@/components/ui/InfoTip';
 import SandboxPaymentBadge from '@/components/SandboxPaymentBadge';
 import { Button, ButtonLink } from '@/components/ui/Button';
 import { Popover } from '@/components/pos/primitives';
@@ -426,17 +427,12 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
                         </ButtonLink>
                     )}
                     {!can.completePos && order.source === 'pos' && completionEligibility.code !== 'missing_permission' && (
-                        <span className="inline-flex flex-col items-start gap-1">
-                            <button
-                                type="button"
-                                disabled
-                                title={completionEligibility.reason ?? undefined}
-                                className="inline-flex min-h-10 cursor-not-allowed items-center rounded-field border border-line bg-raised px-4 text-sm font-semibold text-ink-muted"
-                            >
+                        <span className="inline-flex items-center gap-1">
+                            <Button variant="secondary" disabled>
                                 {t('orders.show.completeOrder')}
-                            </button>
+                            </Button>
                             {completionEligibility.reason && (
-                                <span className="max-w-xs text-[13px] text-ink-muted">{completionEligibility.reason}</span>
+                                <InfoTip label={t('orders.show.completeUnavailable')}>{completionEligibility.reason}</InfoTip>
                             )}
                         </span>
                     )}
