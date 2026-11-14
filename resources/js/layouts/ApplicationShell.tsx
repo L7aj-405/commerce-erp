@@ -999,7 +999,7 @@ function ProfileMenu({
             {(showUsers || showSettings || showSandbox) && <div className="my-1 border-t border-line" />}
             {showUsers && organizationId !== undefined && <MenuLink href={`/organizations/${organizationId}/users-access`}>{t('common.usersAccess')}</MenuLink>}
             {showSettings && <MenuLink href="/document-profile">{t('common.organizationSettings')}</MenuLink>}
-            {showSandbox && <MenuLink href="/test-mode">Mode test</MenuLink>}
+            {showSandbox && <MenuLink href="/test-mode">{t('sandboxPage.title')}</MenuLink>}
             <div className="my-1 border-t border-line" />
             <LocaleSwitcher />
             <div className="my-1 border-t border-line" />

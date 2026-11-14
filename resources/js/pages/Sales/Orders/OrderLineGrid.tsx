@@ -240,6 +240,7 @@ export default function OrderLineGrid({ orderId, currency, lines, searchUrl, tax
                                             }}
                                             onBlur={() => commit(line.id)}
                                             onKeyDown={(e) => e.key === 'Enter' && commit(line.id)}
+                                            aria-label={`${t('common.quantityShort')} · ${line.product_name}`}
                                             className="control-input control-compact w-14 text-end tabular-nums"
                                         />
                                     </td>
@@ -256,6 +257,7 @@ export default function OrderLineGrid({ orderId, currency, lines, searchUrl, tax
                                                             schedule(line.id);
                                                         }}
                                                         onBlur={() => commit(line.id)}
+                                                        aria-label={`${t('orders.show.unitPriceExclTax')} · ${line.product_name}`}
                                                         className="control-input control-compact w-24 text-end tabular-nums"
                                                     />
                                                     {line.line_type === 'custom' && (
@@ -270,6 +272,7 @@ export default function OrderLineGrid({ orderId, currency, lines, searchUrl, tax
                                                                 });
                                                                 commit(line.id);
                                                             }}
+                                                            aria-label={`HT / TTC · ${line.product_name}`}
                                                             className="control-select control-compact"
                                                         >
                                                             <option value="ht">HT</option>
@@ -300,6 +303,7 @@ export default function OrderLineGrid({ orderId, currency, lines, searchUrl, tax
                                                         schedule(line.id);
                                                     }}
                                                     onBlur={() => commit(line.id)}
+                                                    aria-label={`${t('orders.show.discountExclTax')} · ${line.product_name}`}
                                                     className="control-input control-compact w-14 text-end tabular-nums"
                                                 />
                                                 <select
@@ -309,6 +313,7 @@ export default function OrderLineGrid({ orderId, currency, lines, searchUrl, tax
                                                         patchDraft(line.id, { discount_unit: e.target.value as '%' | 'DH' });
                                                         commit(line.id);
                                                     }}
+                                                    aria-label={`% / DH · ${line.product_name}`}
                                                     className="control-select control-compact"
                                                 >
                                                     <option value="%">%</option>
@@ -330,9 +335,8 @@ export default function OrderLineGrid({ orderId, currency, lines, searchUrl, tax
                                                     patchDraft(line.id, { tax_rate_id: e.target.value });
                                                     commit(line.id);
                                                 }}
-                                                className={`w-full rounded-field border px-1 py-1 text-xs ${
-                                                    line.tax_unresolved ? 'border-warning text-warning' : 'border-line-strong'
-                                                }`}
+                                                aria-label={`${t('orders.show.tax')} · ${line.product_name}`}
+                                                className={`control-select control-compact w-full ${line.tax_unresolved ? 'border-warning text-warning' : ''}`}
                                             >
                                                 <option value="">{line.tax_unresolved && line.line_type === 'catalog' ? t('orders.edit.toDefine') : '0 %'}</option>
                                                 {taxRates.map((t) => (
@@ -437,9 +441,7 @@ export default function OrderLineGrid({ orderId, currency, lines, searchUrl, tax
                                                 patchDraft(line.id, { tax_rate_id: e.target.value });
                                                 commit(line.id);
                                             }}
-                                            className={`mt-0.5 h-9 w-full rounded-field border px-2 text-sm ${
-                                                line.tax_unresolved ? 'border-warning text-warning' : 'border-line-strong text-ink'
-                                            }`}
+                                            className={`control-select control-compact mt-0.5 w-full ${line.tax_unresolved ? 'border-warning text-warning' : ''}`}
                                         >
                                             <option value="">{line.tax_unresolved && line.line_type === 'catalog' ? t('orders.edit.toDefine') : '0 %'}</option>
                                             {taxRates.map((t) => (
@@ -456,7 +458,7 @@ export default function OrderLineGrid({ orderId, currency, lines, searchUrl, tax
                                 </label>
 
                                 <label className="col-span-2 block">
-                                    PU HT
+                                    {t('orders.show.unitPriceExclTax')}
                                     {priceEditable ? (
                                         <>
                                             <div className="mt-0.5 flex items-center gap-1.5">

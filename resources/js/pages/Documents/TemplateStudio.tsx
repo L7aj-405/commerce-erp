@@ -2930,6 +2930,8 @@ function ColorField({
                     value={value}
                     maxLength={7}
                     onChange={(e) => onChange(e.target.value)}
+                    aria-label={`${translate(label)} (hex)`}
+                    dir="ltr"
                     className="control-input min-w-0 flex-1"
                 />
             </div>

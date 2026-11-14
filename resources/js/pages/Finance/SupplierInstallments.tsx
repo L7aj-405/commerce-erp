@@ -158,6 +158,7 @@ export default function SupplierInstallments(props: Props) {
                     />
                     <select
                         className={`${selectClass} max-w-64`}
+                        aria-label={t("common.supplier")}
                         value={props.filters.supplier_id ?? ""}
                         onChange={(e) =>
                             router.get(
