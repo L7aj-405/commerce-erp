@@ -12,7 +12,7 @@ export default function SandboxBanner() {
     const { sandbox } = usePage<{ sandbox?: { active: boolean } }>().props;
     if (!sandbox?.active) return null;
     return (
-        <div role="status" className="sticky top-0 z-40 w-full shrink-0 lg:-ms-[5.625rem]">
+        <div role="status" className="sticky top-0 z-40 shrink-0 lg:-ms-[5.625rem]">
             <div
                 aria-hidden="true"
                 className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--color-accent)_34%,transparent)_0%,color-mix(in_srgb,var(--color-accent)_22%,transparent)_32%,color-mix(in_srgb,var(--color-accent)_10%,transparent)_62%,transparent_100%)] backdrop-blur-md [mask-image:linear-gradient(to_bottom,black_55%,transparent)]"
