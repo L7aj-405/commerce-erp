@@ -53,4 +53,11 @@ return Application::configure(basePath: dirname(__DIR__))
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*') || $request->expectsJson(),
         );
+        // Phase 10: a stale Test write (sandbox reset mid-request) is a controlled answer, not a 500.
+        $exceptions->dontReport(App\Services\Sandbox\SandboxStaleGenerationException::class);
+        $exceptions->render(fn (App\Services\Sandbox\SandboxStaleGenerationException $e, Request $request) => App\Services\Sandbox\SandboxStaleSession::respond(
+            $request, $e->sandboxId, $e->requestGeneration, $e->currentGeneration, 'write',
+        ));
+        // Phase 10.1: a record deleted by a concurrent Sandbox reset is a stale session, not a bare 404.
+        $exceptions->render(fn (Symfony\Component\HttpKernel\Exception\NotFoundHttpException $e, Request $request) => App\Services\Sandbox\SandboxStaleSession::forMissingRecord($request));
     })->create();

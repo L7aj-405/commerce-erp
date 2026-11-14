@@ -62,7 +62,7 @@ class FinanceMonthlySituationController extends Controller
 
         $paidSql = "COALESCE((SELECT SUM(pa.amount) FROM payment_allocations pa INNER JOIN payments p ON p.id=pa.payment_id AND p.organization_id=pa.organization_id WHERE pa.sales_order_id=sales_orders.id AND pa.organization_id=sales_orders.organization_id AND p.status='posted'),0)";
         $refundSql = "COALESCE((SELECT SUM(pr.amount) FROM payment_refunds pr WHERE pr.sales_order_id=sales_orders.id AND pr.organization_id=sales_orders.organization_id AND pr.status='posted'),0)";
-        $receivableOrders = SalesOrder::query()->withoutGlobalScopes()->where('organization_id', $organization->id)->whereNotIn('status', ['draft','cancelled'])
+        $receivableOrders = SalesOrder::query()->withoutGlobalScopes()->where('organization_id', $organization->id)->whereNull('sales_orders.sandbox_id')->whereNotIn('status', ['draft','cancelled'])
             ->select(['id','store_id','order_number','customer_id','total_incl_tax','currency_code'])->selectRaw("total_incl_tax - ({$paidSql} - {$refundSql}) as outstanding")
             ->whereRaw("total_incl_tax - ({$paidSql} - {$refundSql}) > 0")->with('customer:id,display_name,company_name')->orderByDesc('id')->limit(250)->get()
             ->map(fn ($order) => ['id' => $order->id, 'number' => $order->order_number, 'customer' => $order->customer?->company_name ?: $order->customer?->display_name ?: '—',

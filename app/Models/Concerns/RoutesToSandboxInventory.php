@@ -131,4 +131,20 @@ trait RoutesToSandboxInventory
     {
         return str_starts_with($table, 'sandbox_');
     }
+
+    /**
+     * Phase 10.1 — a Test-row insert / update always runs in a short transaction
+     * (a savepoint when one is already open), so SandboxGenerationFence's shared
+     * lock on the sandbox row is held until the write commits: a concurrent
+     * reset either runs after it (and deletes the row) or makes it fail on the
+     * new generation. Production saves are untouched.
+     */
+    public function save(array $options = []): bool
+    {
+        if (! \App\Services\Sandbox\SandboxGenerationFence::active()) {
+            return parent::save($options);
+        }
+
+        return $this->getConnection()->transaction(fn () => parent::save($options));
+    }
 }

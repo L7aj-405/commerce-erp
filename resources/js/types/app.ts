@@ -12,4 +12,5 @@ export type SharedPageProps = {
 
 export type AppNotification = { id: string; category: string; severity: 'info' | 'success' | 'warning' | 'critical'; title: string; message: string; action_url: string | null; metadata: Record<string, unknown>; read_at: string | null; created_at: string };
 export type NotificationPreferences = { sound_enabled: boolean; sound_volume: number; disabled_categories: string[] };
-export type NotificationSummary = { unread_count: number; recent: AppNotification[]; poll_seconds: number; preferences: NotificationPreferences };
+/** `environment: 'test'` — Test Mode session: the Production inbox is never sent (Phase 10.1). */
+export type NotificationSummary = { unread_count: number; recent: AppNotification[]; poll_seconds: number; preferences: NotificationPreferences; environment?: 'test' };

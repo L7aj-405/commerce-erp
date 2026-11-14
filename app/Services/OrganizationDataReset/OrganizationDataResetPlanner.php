@@ -3,6 +3,7 @@
 namespace App\Services\OrganizationDataReset;
 
 use App\Models\Organization;
+use App\Services\Sandbox\SandboxProductionResetGuard;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -16,6 +17,7 @@ class OrganizationDataResetPlanner
         private readonly OrganizationDataResetSequenceGuard $sequenceGuard,
         private readonly OrganizationDataResetLogicalReferenceRegistry $logicalReferences,
         private readonly OrganizationDataResetForeignKeyMap $foreignKeys,
+        private readonly SandboxProductionResetGuard $sandboxGuard,
     ) {}
 
     public function plan(Organization $organization, OrganizationDataResetScope $scope): OrganizationDataResetPlan
@@ -31,6 +33,16 @@ class OrganizationDataResetPlanner
         }
 
         $explicit = $this->blockers($organization, $scope);
+        // Phase 10: Test Mode data is never deleted by, nor left dangling by, a Production reset.
+        $touched = [];
+        foreach ($operations as $operation) {
+            $touched[] = $operation->table;
+            array_push($touched, ...OrganizationDataResetDependencyGraph::tablesDeletedBy($operation));
+        }
+        $testRows = $this->sandboxGuard->conflictingTestRows((int) $organization->getKey(), array_unique($touched));
+        if ($testRows > 0) {
+            array_unshift($explicit, new OrganizationDataResetBlocker('sandbox.test_data_present', SandboxProductionResetGuard::MESSAGE, $testRows));
+        }
         // Safety net derived from the real foreign keys: whatever the business
         // rules above did not anticipate, a retained row that still points at
         // a row this plan deletes is reported here — never discovered by the

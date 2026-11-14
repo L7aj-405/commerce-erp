@@ -366,6 +366,7 @@ function ImpactPanel({ preview, onAddCategory }: { preview: SelectivePreview; on
     const blockerText = (b: Blocker) => {
         if (b.code === 'too_large') return t('dataReset.sel.bTooLarge').replace('{count}', formatInteger(b.count)).replace('{limit}', formatInteger(b.limit ?? 0));
         if (b.code === 'receipt_reservation') return t('dataReset.sel.bReceipt').replace('{count}', formatInteger(b.count));
+        if (b.code === 'sandbox_test_data') return t('dataReset.blocker.sandbox.test_data_present');
         const key = b.code === 'outside_selection' ? 'dataReset.sel.bOutside' : b.code === 'preserved_category' ? 'dataReset.sel.bPreserved' : 'dataReset.sel.bProtected';
         return t(key as TranslationKey)
             .replace('{count}', formatInteger(b.count))

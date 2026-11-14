@@ -1,4 +1,4 @@
-import { Button } from '@/components/ui/Button';
+import { Button, ButtonLink } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/StatusBadge';
 import { useI18n } from '@/i18n';
 import { Head, router, usePage } from '@inertiajs/react';
@@ -8,7 +8,9 @@ type Props = {
     enabled: boolean;
     canManage: boolean;
     canSwitch: boolean;
-    current: { name: string; status: string; generation: number } | null;
+    canReset: boolean;
+    current: { name: string; status: string; generation: number; stockInitializedAt: string | null } | null;
+    stale: boolean;
     modules: { label: string; href: string; hint: string }[];
     unavailable: string[];
 };
@@ -18,15 +20,26 @@ type Props = {
  * session is in an isolated sandbox context, so it must not depend on the production navigation.
  * Same routes and POSTs as before; presentation only.
  */
-export default function SandboxPage({ enabled, canManage, canSwitch, current, modules, unavailable }: Props) {
+export default function SandboxPage({ enabled, canManage, canSwitch, canReset, current, stale, modules, unavailable }: Props) {
     const { t } = useI18n();
-    const { sandbox } = usePage<{ sandbox: { active: boolean; restricted: boolean; id: number | null } }>().props;
+    const { sandbox, flash } = usePage<{ sandbox: { active: boolean; restricted: boolean; id: number | null }; flash?: { success?: string | null } }>().props;
     const [busy, setBusy] = useState(false);
     const submit = (path: string, data = {}) => {
         if (busy) return;
         setBusy(true);
         router.post(path, data, { onFinish: () => setBusy(false) });
     };
+    const resetSection = canReset && (
+        <section aria-labelledby="reset" className="surface-card p-4">
+            <h2 id="reset" className="text-base font-semibold text-ink">
+                {t('sandboxPage.resetTitle')}
+            </h2>
+            <p className="mt-1 text-sm text-ink-muted">{t('sandboxPage.resetHelp')}</p>
+            <ButtonLink href="/test-mode/reset" variant="danger" size="sm" className="mt-3">
+                {t('sandboxPage.resetLink')}
+            </ButtonLink>
+        </section>
+    );
 
     return (
         <main className="app-canvas min-h-dvh bg-canvas text-ink">
@@ -45,6 +58,11 @@ export default function SandboxPage({ enabled, canManage, canSwitch, current, mo
                 </p>
             </header>
             <section className="mx-auto max-w-3xl space-y-6 px-4 py-8 sm:px-6">
+                {flash?.success && (
+                    <p role="status" className="rounded-card border border-success/40 bg-success-soft p-4 text-sm font-semibold text-ink">
+                        {flash.success}
+                    </p>
+                )}
                 {sandbox.active && current ? (
                     <>
                         <div>
@@ -56,6 +74,27 @@ export default function SandboxPage({ enabled, canManage, canSwitch, current, mo
                                     .replace('{status}', current.status)
                                     .replace('{generation}', String(current.generation))}
                             </p>
+                            <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
+                                <div className="surface-card p-3">
+                                    <dt className="text-ink-muted">{t('sandboxPage.generation')}</dt>
+                                    <dd className="font-semibold tabular-nums text-ink">{current.generation}</dd>
+                                </div>
+                                <div className="surface-card p-3">
+                                    <dt className="text-ink-muted">{t('sandboxPage.stock')}</dt>
+                                    <dd className="font-semibold text-ink">
+                                        {current.stockInitializedAt ? (
+                                            <>
+                                                {t('sandboxPage.stockInitialized')}{' '}
+                                                <time dateTime={current.stockInitializedAt}>
+                                                    {new Date(current.stockInitializedAt).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })}
+                                                </time>
+                                            </>
+                                        ) : (
+                                            t('sandboxPage.stockNotInitialized')
+                                        )}
+                                    </dd>
+                                </div>
+                            </dl>
                         </div>
                         <section aria-labelledby="available">
                             <h2 id="available" className="mb-3 text-base font-semibold text-ink">
@@ -84,6 +123,7 @@ export default function SandboxPage({ enabled, canManage, canSwitch, current, mo
                                 </ul>
                             </section>
                         )}
+                        {resetSection}
                         <Button variant="secondary" loading={busy} onClick={() => submit('/test-mode/leave')}>
                             {t('sandboxPage.leave')}
                         </Button>
@@ -92,7 +132,24 @@ export default function SandboxPage({ enabled, canManage, canSwitch, current, mo
                     <div className="surface-card space-y-4 p-6">
                         <h1 className="text-2xl font-semibold text-ink">{t('sandboxPage.title')}</h1>
                         {sandbox.restricted ? (
-                            <p className="text-sm text-ink-muted">{t('sandboxPage.contextGone')}</p>
+                            stale ? (
+                                <div role="alert" className="space-y-3 rounded-card border border-warning/40 bg-warning-soft p-4">
+                                    <p className="text-sm font-semibold text-ink">{t('sandboxPage.stale')}</p>
+                                    <p className="text-sm text-ink-muted">{t('sandboxPage.staleHelp')}</p>
+                                    <div className="flex flex-wrap gap-2">
+                                        {enabled && canSwitch && (
+                                            <Button loading={busy} onClick={() => submit('/test-mode/enter')}>
+                                                {t('sandboxPage.reenter')}
+                                            </Button>
+                                        )}
+                                        <Button variant="secondary" loading={busy} onClick={() => submit('/test-mode/leave')}>
+                                            {t('sandboxPage.leave')}
+                                        </Button>
+                                    </div>
+                                </div>
+                            ) : (
+                                <p className="text-sm text-ink-muted">{t('sandboxPage.contextGone')}</p>
+                            )
                         ) : (
                             <>
                                 <p className="text-sm text-ink-muted">{enabled ? t('sandboxPage.productionAllowed') : t('sandboxPage.productionDisabled')}</p>
@@ -108,6 +165,7 @@ export default function SandboxPage({ enabled, canManage, canSwitch, current, mo
                                         </Button>
                                     )}
                                 </div>
+                                {resetSection}
                                 <a className="inline-flex text-sm font-medium text-ink underline-offset-4 hover:underline" href="/platform">
                                     {t('sandboxPage.backToProduction')}
                                 </a>

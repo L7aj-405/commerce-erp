@@ -6,6 +6,7 @@ use App\Enums\NotificationCategory;
 use App\Models\Organization;
 use App\Models\User;
 use App\Models\UserNotification;
+use App\Services\Sandbox\SandboxContext;
 use App\Support\SensitiveDataRedactor;
 use Illuminate\Database\Eloquent\Builder;
 
@@ -18,6 +19,11 @@ final class NotificationFeed
     {
         if (! $organization) {
             return ['unread_count' => 0, 'recent' => [], 'poll_seconds' => $this->pollSeconds(), 'preferences' => $this->preferenceData($user)];
+        }
+        // Phase 10.1: a session in Test Mode (active or stale) never sees the Production
+        // inbox. There is no Test notification ledger: the bell shows an empty Test state.
+        if (app()->bound(SandboxContext::class) && app(SandboxContext::class)->isRestricted()) {
+            return ['unread_count' => 0, 'recent' => [], 'poll_seconds' => $this->pollSeconds(), 'preferences' => $this->preferenceData($user), 'environment' => 'test'];
         }
 
         $query = $this->query($user, $organization);
