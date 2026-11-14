@@ -361,6 +361,7 @@ export default function CommissionRules({
                                             <td className="py-2">
                                                 <input
                                                     className={smallInput}
+                                                    aria-label={`${t("commissions.rules.minMargin")} · ${index + 1}`}
                                                     placeholder="−∞"
                                                     value={
                                                         tier.min_margin_rate ??
@@ -378,6 +379,7 @@ export default function CommissionRules({
                                             <td>
                                                 <input
                                                     className={smallInput}
+                                                    aria-label={`${t("commissions.rules.maxMargin")} · ${index + 1}`}
                                                     placeholder="+∞"
                                                     value={
                                                         tier.max_margin_rate ??
@@ -395,6 +397,7 @@ export default function CommissionRules({
                                             <td>
                                                 <input
                                                     className={smallInput}
+                                                    aria-label={`${t("commissions.rules.commission")} · ${index + 1}`}
                                                     value={tier.commission_rate}
                                                     onChange={(e) =>
                                                         changeTier(

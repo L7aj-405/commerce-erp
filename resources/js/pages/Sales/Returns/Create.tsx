@@ -267,6 +267,7 @@ export default function ReturnCreate({
                                                 disabled={
                                                     Number(line.returnable) <= 0
                                                 }
+                                                aria-label={`${t("returns.column.quantity")} · ${line.product_name}`}
                                                 className="control-input w-28"
                                             />
                                         </td>

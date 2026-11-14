@@ -214,6 +214,7 @@ export default function RecurringObligations(props: Props) {
                     />
                     <select
                         className={selectClass}
+                        aria-label={t("common.status")}
                         value={props.filters.status ?? ""}
                         onChange={(e) =>
                             applyFilters({ status: e.target.value })
@@ -229,6 +230,7 @@ export default function RecurringObligations(props: Props) {
                     </select>
                     <select
                         className={selectClass}
+                        aria-label={t("common.type")}
                         value={props.filters.category ?? ""}
                         onChange={(e) =>
                             applyFilters({ category: e.target.value })
@@ -243,6 +245,7 @@ export default function RecurringObligations(props: Props) {
                     </select>
                     <select
                         className={selectClass}
+                        aria-label={t("common.store")}
                         value={props.filters.store_id ?? ""}
                         onChange={(e) =>
                             applyFilters({ store_id: e.target.value })
@@ -257,6 +260,7 @@ export default function RecurringObligations(props: Props) {
                     </select>
                     <select
                         className={selectClass}
+                        aria-label={t("common.supplier")}
                         value={props.filters.supplier_id ?? ""}
                         onChange={(e) =>
                             applyFilters({ supplier_id: e.target.value })

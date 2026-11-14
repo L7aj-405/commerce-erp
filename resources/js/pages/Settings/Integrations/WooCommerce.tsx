@@ -314,8 +314,9 @@ export default function WooCommerceSettings({ integration, runs, warehouses, sto
                     <div className="border-t border-line pt-4">
                         <h2 className="text-sm font-semibold text-ink">{t('woo.configuration')}</h2>
 
-                        <label className="mt-3 block text-[13px] font-medium text-ink">{t('woo.priceEntryMode')}</label>
+                        <label htmlFor="woo-price-entry-mode" className="mt-3 block text-[13px] font-medium text-ink">{t('woo.priceEntryMode')}</label>
                         <select
+                            id="woo-price-entry-mode"
                             value={priceModeValue(form.data.prices_include_tax)}
                             onChange={(e) => form.setData('prices_include_tax', e.target.value === '' ? null : e.target.value === 'ttc')}
                             className="control-select mt-1 w-full"

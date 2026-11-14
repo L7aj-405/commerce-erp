@@ -32,7 +32,9 @@ Test column: `tsc` = `npx tsc --noEmit`, `build` = `npm run build`. The repo has
 | 5 | Finance and Payments | VERIFIED (page level: 13 pages, 390–1920, FR light + AR dark); row-level states partly NOT VERIFIED (no local payments) | §10 |
 | 6 | Contacts and Organization | VERIFIED (page level: 5 pages, 390–1920, FR light + AR dark); contact rows/show NOT VERIFIED (no local contacts) | §11 |
 | 7 | Users, Settings, Integrations | VERIFIED (page level: 13 pages, 390–1920, FR light + AR dark) | §12 |
-| 8 | Remaining pages (Work, Notifications, Activity, Admin, Sandbox, error pages, Auth/Legal) | VERIFIED (page level: 12 routes at 1440 FR light + 390 AR dark); other widths not run (browser memory) | §13 |
+| 8 | Remaining pages (Work, Notifications, Activity, Admin, Sandbox, error pages, Auth/Legal) | VERIFIED (page level: 12 routes at 1440 FR light + 390 AR dark; 768/1024/1920 added in the final QA) | §13 |
+| QA | Final application-wide QA (2026-11-14) | 89 VERIFIED · 7 IMPLEMENTED — NOT FULLY VERIFIED · 11 BLOCKED (no local record) · 3 APPROVED EXCEPTION, out of 110 page components. 8 P1 accessible-name defects fixed and verified. | §14, `ERP_UI_FINAL_QA.md` |
+| V1 | Release readiness and staging plan (2026-11-14) | Staging: GO. Production: NO-GO until the staging checklist and the dependency advisories are cleared. 3 hard-coded labels moved to existing translation keys. | `ERP_V1_RELEASE_READINESS.md` |
 
 ## 1. Shared controls
 
@@ -129,13 +131,13 @@ Columns: Module · Route/page · Components used · Design status · Issues · P
 | Finance | RecurringObligations, SupplierInstallments, SupplierInstallmentShow | DatePicker, Sheet, shared controls | Swept (not rebuilt) | Legacy pagination remains | P2 | VERIFIED (probe: first two) / IMPLEMENTED (Show) | 1440 FR + 390 AR | tsc/build |
 | Payments | Payments/Index (rebuilt), Payments/Show (tokenised), FinancialAccounts/Index (swept) | AdvancedFilterBar, TableShell/TablePager, Badge | Migrated / tokenised | No local payments: rows, Show page, reverse flow not rendered | P2 | VERIFIED (Index page + filters, FinancialAccounts probe); Show NOT VERIFIED | AR dark chips/remove | tsc/build |
 | Contacts | Contacts/Index, Show, Form | AdvancedFilterBar, TableShell/TablePager, form.tsx fields, Badge, Button/ButtonLink, useConfirm | Migrated | No local contacts: rows, Show page and the archive confirm not rendered | P2 | VERIFIED (Index + Form) / IMPLEMENTED (Show) | 5 widths, FR light + AR dark; type filter, chip, filtered empty | tsc/build |
-| Admin | Settings/UsersAccess/Index, RoleEditor | useConfirm | Partial | Native selects in rows; RoleEditor never opened | P2 | IN PROGRESS (P1 fixed) | Not re-checked | tsc/build |
-| Admin | Activity/Index | DatePicker | Legacy | Legacy list; English backend action labels | P2 | IN PROGRESS (P1 fixed) | This session (dark) | tsc/build |
-| Settings | Stores (migrated in batch 6, see §11), DocumentProfile, TemplateStudio, DocumentStamp, EmailConfiguration, QuotationSettings, ReturnPolicy, NotificationPreferences, Profile, Security, Sessions | — | Legacy / Partial | Legacy cards, native selects | P2 | NOT STARTED | Partial (earlier) | — |
-| Integrations | WooCommerce, WooCommerceStockTasks | — | Legacy | 33 hard-coded colours on StockTasks | P2 | IN PROGRESS (P1 X1 fixed on StockTasks) | Not re-checked | tsc/build |
-| Admin | OrganizationBackups, DataReset, AiMcp, SystemHealth, Sandbox | DatePicker (DataReset) | Legacy | Wrong layouts (Backups, Sandbox) | P2 | NOT STARTED | Source only | — |
-| Work | Work/Index, Attention, Recurring, Team, TeamMember, Templates; Notifications | DatePicker | Legacy | Legacy pagination, native selects | P2 | IN PROGRESS (dates done) | Not checked | tsc/build |
-| Auth / Legal | Auth/*, Legal/* | AuthLayout | N/A | Uppercase labels | P2 | NOT STARTED (approved out-of-workspace) | Source | — |
+| Admin | Settings/UsersAccess/Index, RoleEditor | useConfirm, control sweep, named role selects | Migrated (batch 7) | RoleEditor permission labels are English backend strings | P2 | VERIFIED (Index); RoleEditor opened read-only in final QA | 5 widths (batch 7); RoleEditor FR light 1440 | tsc/build |
+| Admin | Activity/Index | DatePicker, control sweep | Migrated (batch 8) except pager | Legacy numbered pager; English backend action labels | P2 | VERIFIED | 390/768/1024/1440/1920; pager keeps filters | tsc/build |
+| Settings | Stores, DocumentProfile, TemplateStudio, DocumentStamp, EmailConfiguration, QuotationSettings, ReturnPolicy, NotificationPreferences, Profile, Security, Sessions | shared controls, surface-card | Migrated (batches 6–7) | Native file inputs unnamed (Profile, Stamp) | P2 | VERIFIED (page level) | 390–1920 FR/AR (batch 7); a11y sweep in final QA | tsc/build |
+| Integrations | WooCommerce, WooCommerceStockTasks | AdvancedFilterBar, TableShell/TablePager (StockTasks) | Migrated (batch 7) | Price-mode select was unnamed — fixed in final QA | — | VERIFIED (page level); task rows not rendered (no data) | 390–1920 | tsc/build |
+| Admin | OrganizationBackups, DataReset, AiMcp, SystemHealth, Sandbox | ApplicationShell reading (Backups), Button/tokens (Sandbox), control sweep | Migrated (batches 6, 8); Sandbox standalone by design | SelectiveReset keeps legacy SearchInput/FilterSelect | P2 | VERIFIED (page level) | 390/768/1024/1440/1920 | tsc/build |
+| Work | Work/Index, Attention, Recurring, Team, TeamMember, Templates; Notifications | AdvancedFilterBar (Index, Team, Notifications), DatePicker | Migrated (batch 8) | Legacy numbered pager on 5 Work pages | P2 | VERIFIED (page level); rows not rendered (no data) | 390/768/1024/1440/1920; TeamMember 1440/390 | tsc/build |
+| Auth / Legal | Auth/*, Legal/* | AuthLayout, LegalLayout | Brand pass (batch 8) | Legal content French-only under AR | P2 | VERIFIED: Login, Register, ForgotPassword, Privacy, Terms. IMPLEMENTED — NOT FULLY VERIFIED: token/state-gated screens | 390 AR dark + 1440 FR light | — |
 
 ## 6. Open P0/P1 after this pass
 
@@ -478,3 +480,35 @@ No range, sort or other new filter was added. Payments keeps a single-day `DateF
 - **Other error codes:** 403/419/429/500/503 views were not triggered (only the 404 was).
 - **Auth pages:** not opened in the browser. The change is two class edits.
 - **Data reset:** the selectable cards keep their state-coloured borders by design (not converted to `surface-card`).
+
+## 14. Final application-wide QA (2026-11-14)
+
+Full report: `ERP_UI_FINAL_QA.md`. Screenshots: `docs/design/final-qa/`.
+
+**Coverage (110 rendered page components):**
+
+| Status | Count |
+| --- | ---: |
+| VERIFIED | 89 |
+| IMPLEMENTED — NOT FULLY VERIFIED | 7 (token- or state-gated auth screens, AiMcpAuthorize) |
+| BLOCKED | 11 (no local record: Invoices/DeliveryNotes/CreditNotes/Returns/Exchanges/Transfers/Payments/Contacts Show, ProductCosts/ImportPreview, SupplierInstallmentShow, CommissionEntryShow) |
+| APPROVED EXCEPTION | 3 (Pos/Index, Home, Dev/UiGallery) |
+
+**Previously untracked, now probed:** `catalog/tax-rates`, `catalog/units`, `finance/commissions/salespeople/{id}`, `work/team/{member}`. **Untracked sub-components:** `Quotations/Sourcing`, `Quotations/SupplierRecommendations` (10px labels, P2) and `Legal/LegalLayout`.
+
+**Responsive QA:** 56 pages at 768 AR dark, 1024 FR dark and 1920 FR light (batch 8, Sales, Catalogue/Inventory, Procurement + POS), plus Auth at 390/1440. The only findings are the bespoke POS fields (approved exception).
+
+**Defects fixed (P1, accessible names; frontend only):**
+- WooCommerce price-mode select.
+- `OrderLineGrid` and `Quotations/LineGrid` desktop cell controls. The `OrderLineGrid` tax select also moved to `control-select control-compact`.
+- Returns/Create quantity input.
+- RecurringObligations filter selects (4) and the SupplierInstallments supplier filter.
+- CommissionRules tier inputs.
+- PDF Studio hex colour input.
+
+All were re-checked in the browser.
+
+**Tests:**
+- `npx tsc --noEmit -p .` pass.
+- `npm run build` pass.
+- `php artisan test` (full, serial): 2150 passed, 16175 assertions. It ran before the frontend-only fixes.

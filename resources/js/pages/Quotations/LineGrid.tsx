@@ -316,6 +316,7 @@ export default function LineGrid({
                                                 e.key === "Enter" &&
                                                 commit(line.id)
                                             }
+                                            aria-label={`${t("quotations.quantityShort")} · ${articleName}`}
                                             className="control-input control-compact w-14 text-end tabular-nums"
                                         />
                                     </td>
@@ -333,6 +334,7 @@ export default function LineGrid({
                                                     schedule(line.id);
                                                 }}
                                                 onBlur={() => commit(line.id)}
+                                                aria-label={`${t("quotations.unitPrice")} · ${articleName}`}
                                                 className="control-input control-compact w-24 text-end tabular-nums"
                                             />
                                             <select
@@ -346,6 +348,7 @@ export default function LineGrid({
                                                     });
                                                     commit(line.id);
                                                 }}
+                                                aria-label={`HT / TTC · ${articleName}`}
                                                 className="control-select control-compact"
                                             >
                                                 <option value="ht">HT</option>
@@ -373,6 +376,7 @@ export default function LineGrid({
                                                     schedule(line.id);
                                                 }}
                                                 onBlur={() => commit(line.id)}
+                                                aria-label={`${t("quotations.discount")} · ${articleName}`}
                                                 className="control-input control-compact w-14 text-end tabular-nums"
                                             />
                                             <select
@@ -386,6 +390,7 @@ export default function LineGrid({
                                                     });
                                                     commit(line.id);
                                                 }}
+                                                aria-label={`% / DH · ${articleName}`}
                                                 className="control-select control-compact"
                                             >
                                                 <option value="%">%</option>
@@ -554,7 +559,7 @@ export default function LineGrid({
                                 </label>
 
                                 <label className="col-span-2 block">
-                                    Prix unitaire
+                                    {t("quotations.unitPrice")}
                                     <div className="mt-0.5 flex items-center gap-1.5">
                                         <input
                                             inputMode="decimal"

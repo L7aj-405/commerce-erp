@@ -251,3 +251,9 @@ Remaining families after that: Payments, Contacts, Work, Settings/Integrations, 
 > **Batch 8 (2026-11-14):** the remaining pages are migrated (tracker §13).
 > - **Fixed:** /notifications rendered a blank page (header bell crash), the unstyled Laravel error pages are replaced by branded FR/AR views, and the Sandbox page now uses tokens, `Button` and fr/ar copy.
 > - **X7 (Sandbox):** its standalone layout is kept on purpose.
+
+> **Final QA (2026-11-14):** see `ERP_UI_FINAL_QA.md` and tracker §14.
+> - **Coverage:** 89 of 110 rendered page components are browser-VERIFIED, 11 are BLOCKED by missing local records, 7 are state-gated auth screens (IMPLEMENTED), and 3 are approved exceptions (POS, Home, Dev gallery).
+> - **New P1, fixed and verified:** form controls without an accessible name on WooCommerce, the Orders/Quotations desktop line grids, Returns/Create, Recurring obligations, Supplier installments, Commission rules and PDF Studio.
+> - **Open:** no P0 or P1 is known. The P2 backlog (legacy pager on 11 pages, untranslated backend labels, a few hard-coded palettes and micro-labels) is listed in the final QA §7.
+> - **Tests:** the full backend suite passes (2150 tests); tsc and build pass.
