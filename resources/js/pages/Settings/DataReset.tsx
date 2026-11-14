@@ -97,6 +97,7 @@ const blockerKeys: Record<string, TranslationKey> = {
     'suppliers.inventory_dependencies': 'dataReset.blocker.suppliers.inventory_dependencies',
     'suppliers.recurring_configuration': 'dataReset.blocker.suppliers.recurring_configuration',
     'access.owner_custom_role': 'dataReset.blocker.access.owner_custom_role',
+    'sandbox.test_data_present': 'dataReset.blocker.sandbox.test_data_present',
 };
 
 const preservedKeys: Record<string, TranslationKey> = {

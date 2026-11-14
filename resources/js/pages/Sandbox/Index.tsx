@@ -6,12 +6,15 @@ type Props = {
     canManage: boolean;
     canSwitch: boolean;
     canReset: boolean;
-    current: { name: string; status: string; generation: number } | null;
+    current: { name: string; status: string; generation: number; stockInitializedAt: string | null } | null;
+    stale: boolean;
     modules: { label: string; href: string; hint: string }[];
     unavailable: string[];
 };
 
-export default function SandboxPage({ enabled, canManage, canSwitch, canReset, current, modules, unavailable }: Props) {
+const STALE_MESSAGE = 'Le Mode Test a été réinitialisé. Veuillez entrer à nouveau en Mode Test.';
+
+export default function SandboxPage({ enabled, canManage, canSwitch, canReset, current, stale, modules, unavailable }: Props) {
     const { sandbox, flash } = usePage<{ sandbox: { active: boolean; restricted: boolean; id: number | null }; flash?: { success?: string | null } }>().props;
     const resetLink = canReset && <section aria-labelledby="reset" className="rounded-card border border-line bg-surface p-4">
         <h2 id="reset" className="font-semibold">Réinitialiser les données test</h2>
@@ -37,7 +40,14 @@ export default function SandboxPage({ enabled, canManage, canSwitch, canReset, c
                 <div>
                     <p className="inline-block rounded border border-amber-500 bg-amber-100 px-2 py-0.5 text-xs font-bold tracking-wide text-amber-900">MODE TEST</p>
                     <h1 className="mt-2 text-2xl font-semibold">Mode test — {current.name}</h1>
-                    <p className="text-sm text-ink-muted">Bac à sable n°{sandbox.id} · état : {current.status} · génération {current.generation}. Stock, documents et paiements sont simulés et indépendants de la Production.</p>
+                    <p className="text-sm text-ink-muted">Stock, documents et paiements sont simulés et indépendants de la Production.</p>
+                    <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-3">
+                        <div className="rounded-card border border-line bg-surface p-3"><dt className="text-ink-muted">Bac à sable actif</dt><dd className="font-semibold">{current.name} · n°{sandbox.id} · {current.status === 'active' ? 'actif' : current.status}</dd></div>
+                        <div className="rounded-card border border-line bg-surface p-3"><dt className="text-ink-muted">Génération</dt><dd className="font-semibold tabular-nums">{current.generation}</dd></div>
+                        <div className="rounded-card border border-line bg-surface p-3"><dt className="text-ink-muted">Stock test</dt><dd className="font-semibold">{current.stockInitializedAt
+                            ? <>Initialisé le <time dateTime={current.stockInitializedAt}>{new Date(current.stockInitializedAt).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}</time></>
+                            : 'Non initialisé'}</dd></div>
+                    </dl>
                 </div>
                 <section aria-labelledby="available">
                     <h2 id="available" className="mb-2 text-sm font-semibold uppercase tracking-wide text-ink-muted">Modules disponibles</h2>
@@ -60,7 +70,14 @@ export default function SandboxPage({ enabled, canManage, canSwitch, canReset, c
                 <button disabled={busy} className="control-input" onClick={() => submit('/test-mode/leave')}>Quitter le mode test</button>
             </> : <>
                 <h1 className="text-2xl font-semibold">Mode test</h1>
-                {sandbox.restricted ? <p>Ce contexte n’est plus disponible. Quittez le mode test pour continuer.</p> : <>
+                {sandbox.restricted ? (stale ? <div role="alert" className="space-y-3 rounded-card border border-warning bg-warning-soft p-4">
+                    <p className="font-semibold">{STALE_MESSAGE}</p>
+                    <p className="text-sm text-ink-muted">Les données test de cette session ont été supprimées par une réinitialisation. Aucune opération n’a été enregistrée sur l’ancien bac à sable.</p>
+                    <div className="flex flex-wrap gap-3">
+                        {enabled && canSwitch && <button disabled={busy} className="control-input" onClick={() => submit('/test-mode/enter')}>Entrer à nouveau en Mode Test</button>}
+                        <button disabled={busy} className="control-input" onClick={() => submit('/test-mode/leave')}>Quitter le mode test</button>
+                    </div>
+                </div> : <p>Ce contexte n’est plus disponible. Quittez le mode test pour continuer.</p>) : <>
                     <p>Votre session est en Production. Le mode test est {enabled ? 'autorisé' : 'désactivé'} pour cette organisation.</p>
                     {canManage && <button disabled={busy} className="control-input" onClick={() => submit('/test-mode/policy', { enabled: !enabled })}>{enabled ? 'Désactiver' : 'Autoriser'} le mode test pour l’organisation</button>}
                     {enabled && canSwitch && <button disabled={busy} className="control-input" onClick={() => submit('/test-mode/enter')}>Entrer en mode test</button>}

@@ -1135,6 +1135,7 @@ export const fr = {
     "dataReset.blocker.suppliers.recurring_configuration": "Des modèles de charges récurrentes conservés référencent ces fournisseurs.",
     "dataReset.blocker.access.owner_custom_role": "Le propriétaire principal utilise un rôle personnalisé qui serait supprimé.",
     "dataReset.blocker.unknown": "Une dépendance conservée empêche cette réinitialisation.",
+    "dataReset.blocker.sandbox.test_data_present": "Des données du Mode Test existent encore. Réinitialisez d’abord les données Test avant de réinitialiser les données de Production.",
 
     "finance.monthlyOverview": "Situation mensuelle",
     "finance.netCollected": "Net encaissé",
@@ -6008,6 +6009,7 @@ export const ar: Record<TranslationKey, string> = {
     "dataReset.blocker.suppliers.recurring_configuration": "نماذج نفقات متكررة محفوظة تشير إلى هؤلاء الموردين.",
     "dataReset.blocker.access.owner_custom_role": "يستخدم المالك الرئيسي دوراً مخصصاً ستتم إزالته.",
     "dataReset.blocker.unknown": "تمنع تبعية محفوظة تنفيذ هذه التهيئة.",
+    "dataReset.blocker.sandbox.test_data_present": "لا تزال بيانات وضع الاختبار موجودة. أعد تهيئة بيانات الاختبار أولاً قبل إعادة تهيئة بيانات الإنتاج.",
     "finance.monthlyOverview": "الوضعية الشهرية",
     "finance.netCollected": "صافي التحصيل",
     "finance.netCollectedHelp": "التحصيلات − المبالغ المستردة",

@@ -10,11 +10,15 @@ class SandboxServiceProvider extends ServiceProvider
     public function boot(): void
     {
         // Phase 4: Production inventory tables are unreachable from Test requests.
+        // Phase 10: Test writes are fenced on the generation the request started with.
         foreach (\Illuminate\Support\Facades\DB::getConnections() as $connection) {
             \App\Services\Sandbox\SandboxInventoryGuard::register($connection);
+            \App\Services\Sandbox\SandboxGenerationFence::register($connection);
         }
-        \Illuminate\Support\Facades\Event::listen(\Illuminate\Database\Events\ConnectionEstablished::class,
-            fn ($event) => \App\Services\Sandbox\SandboxInventoryGuard::register($event->connection));
+        \Illuminate\Support\Facades\Event::listen(\Illuminate\Database\Events\ConnectionEstablished::class, function ($event) {
+            \App\Services\Sandbox\SandboxInventoryGuard::register($event->connection);
+            \App\Services\Sandbox\SandboxGenerationFence::register($event->connection);
+        });
         Route::middleware(['web', 'auth', 'two-factor.policy'])->prefix('test-mode')->name('sandbox.')->group(function () {
             Route::get('/', [SandboxController::class, 'show'])->name('show');
             Route::post('/enter', [SandboxController::class, 'enter'])->name('enter');

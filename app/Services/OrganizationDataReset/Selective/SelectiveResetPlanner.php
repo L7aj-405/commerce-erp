@@ -13,6 +13,7 @@ use App\Services\OrganizationDataReset\OrganizationDataResetForeignKeyMap;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
+use App\Services\Sandbox\SandboxProductionResetGuard;
 use Illuminate\Support\Facades\Schema;
 
 /**
@@ -193,6 +194,12 @@ class SelectiveResetPlanner
         }
 
         $blockers = $this->blockers($organizationId, $blocked, $selectedCategories);
+        // Phase 10: Test Mode data is never deleted by, nor left dangling by, a Production cleanup.
+        $testRows = app(SandboxProductionResetGuard::class)->conflictingTestRows($organizationId,
+            [...array_keys($doomed), ...array_map(fn (string $key) => explode('.', $key)[0], array_keys($unlink))]);
+        if ($testRows > 0) {
+            array_unshift($blockers, ['code' => 'sandbox_test_data', 'count' => $testRows, 'message' => SandboxProductionResetGuard::MESSAGE]);
+        }
         $release = array_values($doomed['inventory_reservations'] ?? []);
         $total = array_sum(array_map('count', $doomed));
         if ($total > self::MAX_ROWS) {

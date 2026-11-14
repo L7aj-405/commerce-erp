@@ -53,4 +53,9 @@ return Application::configure(basePath: dirname(__DIR__))
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*') || $request->expectsJson(),
         );
+        // Phase 10: a stale Test write (sandbox reset mid-request) is a controlled answer, not a 500.
+        $exceptions->dontReport(App\Services\Sandbox\SandboxStaleGenerationException::class);
+        $exceptions->render(fn (App\Services\Sandbox\SandboxStaleGenerationException $e, Request $request) => App\Services\Sandbox\SandboxStaleSession::respond(
+            $request, $e->sandboxId, $e->requestGeneration, $e->currentGeneration, 'write',
+        ));
     })->create();
