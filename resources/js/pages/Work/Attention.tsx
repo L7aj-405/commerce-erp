@@ -18,7 +18,8 @@ type Props = {
     owners: AttentionOwner[];
 };
 
-const fieldClass = 'h-10 rounded-field border border-line-strong bg-surface px-3 text-sm text-ink outline-none transition-soft focus:border-primary';
+const fieldClass = 'control-input';
+const selectClass = 'control-select';
 
 /** W4.1 Attention: detected quotation situations; every action is a human decision. */
 export default function WorkAttention({ filters, items, context, owners }: Props) {
@@ -50,7 +51,7 @@ export default function WorkAttention({ filters, items, context, owners }: Props
             )}
 
             <div className="mb-4 flex flex-wrap gap-3 rounded-card border border-line bg-raised p-4">
-                <select value={filters.type ?? ''} onChange={(e) => visit({ type: e.target.value || undefined })} className={`${fieldClass} flex-1 sm:flex-none`} aria-label={t('attention.allTypes')}>
+                <select value={filters.type ?? ''} onChange={(e) => visit({ type: e.target.value || undefined })} className={`${selectClass} flex-1 sm:flex-none`} aria-label={t('attention.allTypes')}>
                     <option value="">{t('attention.allTypes')}</option>
                     <option value="quotation_sent_undecided">{t('attention.typeSent')}</option>
                     <option value="quotation_expiring_soon">{t('attention.typeExpiring')}</option>
@@ -69,13 +70,13 @@ export default function WorkAttention({ filters, items, context, owners }: Props
                     <option value="invoice_overdue_partial">{t('attention.typeInvoicePartial')}</option>
                     <option value="invoice_payment_followup_backlog">{t('attention.typeInvoiceBacklog')}</option>
                 </select>
-                <select value={filters.domain ?? ''} onChange={(e) => visit({ domain: e.target.value || undefined })} className={`${fieldClass} flex-1 sm:flex-none`} aria-label={t('attention.domain')}>
+                <select value={filters.domain ?? ''} onChange={(e) => visit({ domain: e.target.value || undefined })} className={`${selectClass} flex-1 sm:flex-none`} aria-label={t('attention.domain')}>
                     <option value="">{t('attention.domainAll')}</option>
                     <option value="quotation">{t('attention.domainQuotations')}</option>
                     <option value="sales_order">{t('attention.domainOrders')}</option>
                     <option value="invoice">{t('attention.domainInvoices')}</option>
                 </select>
-                <select value={filters.assigned ?? ''} onChange={(e) => visit({ assigned: e.target.value })} className={`${fieldClass} flex-1 sm:flex-none`} aria-label={t('attention.owner')}>
+                <select value={filters.assigned ?? ''} onChange={(e) => visit({ assigned: e.target.value })} className={`${selectClass} flex-1 sm:flex-none`} aria-label={t('attention.owner')}>
                     <option value="mine_or_unassigned">{t('attention.ownerMineOrUnassigned')}</option>
                     <option value="mine">{t('attention.ownerMine')}</option>
                     <option value="unassigned">{t('attention.ownerUnassigned')}</option>
@@ -86,7 +87,7 @@ export default function WorkAttention({ filters, items, context, owners }: Props
                     <input type="checkbox" checked={Boolean(filters.escalated) && filters.escalated !== '0'} onChange={(e) => visit({ escalated: e.target.checked ? 1 : undefined })} />
                     {t('attention.escalatedOnly')}
                 </label>
-                <select value={filters.severity ?? ''} onChange={(e) => visit({ severity: e.target.value || undefined })} className={`${fieldClass} flex-1 sm:flex-none`} aria-label={t('attention.allSeverities')}>
+                <select value={filters.severity ?? ''} onChange={(e) => visit({ severity: e.target.value || undefined })} className={`${selectClass} flex-1 sm:flex-none`} aria-label={t('attention.allSeverities')}>
                     <option value="">{t('attention.allSeverities')}</option>
                     <option value="critical">{t('attention.severityCritical')}</option>
                     <option value="warning">{t('attention.severityWarning')}</option>

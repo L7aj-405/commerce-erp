@@ -5,12 +5,13 @@ import type { FollowUpContext, FollowUpItem } from '@/components/followups/types
 import { Button } from '@/components/ui/Button';
 import EmptyState from '@/components/ui/EmptyState';
 import PageHeader from '@/components/ui/PageHeader';
-import Pagination from '@/components/ui/Pagination';
+import { AdvancedFilterBar, ChoiceFilter, FilterSearch } from '@/components/ui/AdvancedFilterBar';
+import type { FilterChip } from '@/components/ui/AdvancedFilterBar';
+import { TablePager } from '@/components/ui/TableShell';
 import { useI18n } from '@/i18n';
 import ApplicationShell from '@/layouts/ApplicationShell';
 import { Head, Link, router } from '@inertiajs/react';
-import type { FormEvent } from 'react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 type Tab = 'today' | 'overdue' | 'upcoming' | 'completed' | 'all';
 type LinkData = { url: string | null; label: string; active: boolean };
@@ -22,7 +23,6 @@ type Props = {
     context: FollowUpContext;
 };
 
-const fieldClass = 'h-10 rounded-field border border-line-strong bg-surface px-3 text-sm text-ink outline-none transition-soft focus:border-primary';
 
 export default function WorkIndex({ tab, filters, followUps, counts, context }: Props) {
     const { t } = useI18n();
@@ -38,10 +38,38 @@ export default function WorkIndex({ tab, filters, followUps, counts, context }: 
         { key: 'all', label: t('work.tabAll') },
     ];
 
-    const submit = (event: FormEvent) => {
-        event.preventDefault();
-        visit({ query: query.trim() || undefined });
-    };
+    const [filtering, setFiltering] = useState(false);
+    // Live search (debounced) on the same `query` param FollowUpQuery validates.
+    useEffect(() => {
+        if (query.trim() === (filters.query ?? '')) return;
+        const timer = window.setTimeout(
+            () =>
+                router.get('/work', { tab, ...filters, query: query.trim() || undefined, focus: undefined, page: undefined }, {
+                    preserveState: true,
+                    replace: true,
+                    onStart: () => setFiltering(true),
+                    onFinish: () => setFiltering(false),
+                }),
+            300,
+        );
+        return () => window.clearTimeout(timer);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [query]);
+    const assigneeOptions = [
+        { value: 'all', label: t('work.assignedAll') },
+        { value: 'unassigned', label: t('work.assignedUnassigned') },
+        ...context.assignees.filter((user) => user.id !== context.current_user_id).map((user) => ({ value: String(user.id), label: user.name })),
+    ];
+    const chips: FilterChip[] = [];
+    if (filters.query) chips.push({ key: 'query', label: t('filters.search'), value: filters.query, onRemove: () => setQuery('') });
+    if (context.can_manage_all && filters.assigned_to && filters.assigned_to !== 'me') {
+        chips.push({
+            key: 'assigned_to',
+            label: t('work.assignee'),
+            value: assigneeOptions.find((option) => option.value === String(filters.assigned_to))?.label ?? String(filters.assigned_to),
+            onRemove: () => visit({ assigned_to: undefined }),
+        });
+    }
 
     return (
         <ApplicationShell>
@@ -83,30 +111,60 @@ export default function WorkIndex({ tab, filters, followUps, counts, context }: 
                 </div>
             )}
 
-            <form onSubmit={submit} className="mb-4 flex flex-wrap gap-3 rounded-card border border-line bg-raised p-4">
-                <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t('work.searchPlaceholder')} className={`${fieldClass} w-full min-w-0 flex-1 sm:min-w-72 sm:w-auto`} />
-                {context.can_manage_all && (
-                    <select value={filters.assigned_to ?? 'me'} onChange={(e) => visit({ assigned_to: e.target.value })} className={`${fieldClass} flex-1 sm:flex-none`} aria-label={t('work.assignee')}>
-                        <option value="me">{t('work.assignedMe')}</option>
-                        <option value="all">{t('work.assignedAll')}</option>
-                        <option value="unassigned">{t('work.assignedUnassigned')}</option>
-                        {context.assignees.filter((user) => user.id !== context.current_user_id).map((user) => <option key={user.id} value={String(user.id)}>{user.name}</option>)}
-                    </select>
-                )}
-                <button type="submit" className="inline-flex min-h-10 flex-1 items-center justify-center rounded-field border border-line-strong bg-surface px-4 text-sm font-medium text-ink transition-soft hover:bg-raised sm:flex-none">{t('common.search')}</button>
-            </form>
+            <div className="mb-4">
+                <AdvancedFilterBar
+                    label={t('work.title')}
+                    search={<FilterSearch value={query} onChange={setQuery} loading={filtering && query.trim() !== (filters.query ?? '')} label={t('common.search')} placeholder={t('work.searchPlaceholder')} />}
+                    chips={chips}
+                    activeCount={chips.length}
+                    loading={filtering}
+                    onReset={() => {
+                        setQuery('');
+                        visit({ query: undefined, assigned_to: undefined });
+                    }}
+                >
+                    {context.can_manage_all && (
+                        <ChoiceFilter
+                            label={t('work.assignee')}
+                            allLabel={t('work.assignedMe')}
+                            searchable={assigneeOptions.length > 8}
+                            options={assigneeOptions}
+                            value={filters.assigned_to && filters.assigned_to !== 'me' ? String(filters.assigned_to) : undefined}
+                            onChange={(value) => visit({ assigned_to: value })}
+                        />
+                    )}
+                </AdvancedFilterBar>
+            </div>
 
             {followUps.data.length === 0 ? (
                 <EmptyState
-                    title={filters.focus ? t('work.focusUnavailable') : tab === 'today' ? t('work.emptyToday') : t('work.empty')}
-                    description={t('work.emptyHelp')}
-                    actions={context.can_create ? <Button onClick={() => setCreating(true)}>+ {t('work.new')}</Button> : undefined}
+                    title={filters.focus ? t('work.focusUnavailable') : chips.length > 0 ? t('filters.noMatch') : tab === 'today' ? t('work.emptyToday') : t('work.empty')}
+                    description={chips.length > 0 ? t('filters.noMatchHelp') : t('work.emptyHelp')}
+                    actions={
+                        chips.length > 0 ? (
+                            <Button
+                                variant="secondary"
+                                onClick={() => {
+                                    setQuery('');
+                                    visit({ query: undefined, assigned_to: undefined });
+                                }}
+                            >
+                                {t('filters.reset')}
+                            </Button>
+                        ) : context.can_create ? (
+                            <Button onClick={() => setCreating(true)}>+ {t('work.new')}</Button>
+                        ) : undefined
+                    }
                 />
             ) : (
                 <FollowUpList items={followUps.data} context={context} showAssignee={context.can_manage_all && filters.assigned_to !== 'me'} />
             )}
 
-            <Pagination links={followUps.links} />
+            {followUps.data.length > 0 && (
+                <div className="mt-4">
+                    <TablePager links={followUps.links} total={followUps.total} />
+                </div>
+            )}
 
             {creating && <FollowUpFormDialog open onClose={() => setCreating(false)} context={context} />}
         </ApplicationShell>

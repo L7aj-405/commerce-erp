@@ -1,0 +1,6 @@
+@extends('errors.layout')
+@section('code', '403')
+@section('title_fr', 'Accès refusé')
+@section('title_ar', 'تم رفض الوصول')
+@section('message_fr', 'Votre rôle ne permet pas d’ouvrir cette page. Demandez l’accès à un administrateur de votre organisation.')
+@section('message_ar', 'دورك لا يسمح بفتح هذه الصفحة. اطلب الوصول من مسؤول مؤسستك.')

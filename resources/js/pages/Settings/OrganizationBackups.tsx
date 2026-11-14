@@ -2,7 +2,7 @@ import { Button } from '@/components/ui/Button';
 import { useFreshAuth } from '@/components/auth/FreshAuthProvider';
 import PageHeader from '@/components/ui/PageHeader';
 import { useI18n } from '@/i18n';
-import SalesLayout from '@/layouts/SalesLayout';
+import ApplicationShell from '@/layouts/ApplicationShell';
 import { formatDateTime } from '@/utils/format';
 import { Head, router, useForm, usePage } from '@inertiajs/react';
 import type { FormEvent } from 'react';
@@ -136,9 +136,9 @@ export default function OrganizationBackups({ organization, validatedBackup, set
     };
 
     return (
-        <SalesLayout>
+        <ApplicationShell width="reading">
             <Head title={t('backups.title')} />
-            <div className="mx-auto max-w-5xl space-y-6">
+            <div className="space-y-6">
                 <PageHeader
                     title={t('backups.title')}
                     description={t('backups.description').replace('{organization}', organization.name)}
@@ -155,7 +155,7 @@ export default function OrganizationBackups({ organization, validatedBackup, set
                     </div>
                 )}
 
-                <section className="rounded-card border border-line bg-surface p-6">
+                <section className="surface-card p-6">
                     <div className="flex flex-wrap items-start justify-between gap-4">
                         <div>
                             <h2 className="text-lg font-semibold text-ink">{t('backups.manual')}</h2>
@@ -173,7 +173,7 @@ export default function OrganizationBackups({ organization, validatedBackup, set
                     {!can.create && <p className="mt-3 text-sm text-ink-muted">{t('backups.noCreatePermission')}</p>}
                 </section>
 
-                <section className="rounded-card border border-line bg-surface p-6">
+                <section className="surface-card p-6">
                     <div className="flex flex-wrap items-start justify-between gap-4">
                         <div>
                             <h2 className="text-lg font-semibold text-ink">{t('backups.automatic')}</h2>
@@ -199,7 +199,7 @@ export default function OrganizationBackups({ organization, validatedBackup, set
                                 type="checkbox"
                                 checked={scheduleForm.data.enabled}
                                 onChange={(event) => scheduleForm.setData('enabled', event.currentTarget.checked)}
-                                className="rounded border-line-strong"
+                                className="size-[18px] shrink-0 cursor-pointer rounded border-line-strong accent-primary"
                                 disabled={!can.create}
                             />
                             {t('backups.enableAutomatic')}
@@ -210,7 +210,7 @@ export default function OrganizationBackups({ organization, validatedBackup, set
                             <select
                                 value={scheduleForm.data.frequency}
                                 onChange={(event) => scheduleForm.setData('frequency', event.currentTarget.value as 'daily' | 'weekly')}
-                                className="mt-1 block w-full rounded-field border border-line-strong bg-surface px-3 py-2 text-sm"
+                                className="control-select mt-1 block w-full"
                                 disabled={!can.create}
                             >
                                 <option value="daily">{t('backups.daily')}</option>
@@ -224,7 +224,7 @@ export default function OrganizationBackups({ organization, validatedBackup, set
                                 type="time"
                                 value={scheduleForm.data.time_of_day}
                                 onChange={(event) => scheduleForm.setData('time_of_day', event.currentTarget.value)}
-                                className="mt-1 block w-full rounded-field border border-line-strong bg-surface px-3 py-2 text-sm"
+                                className="control-input mt-1 block w-full"
                                 disabled={!can.create}
                             />
                         </label>
@@ -235,7 +235,7 @@ export default function OrganizationBackups({ organization, validatedBackup, set
                                 <select
                                     value={scheduleForm.data.day_of_week}
                                     onChange={(event) => scheduleForm.setData('day_of_week', Number(event.currentTarget.value))}
-                                    className="mt-1 block w-full rounded-field border border-line-strong bg-surface px-3 py-2 text-sm"
+                                    className="control-select mt-1 block w-full"
                                     disabled={!can.create}
                                 >
                                     <option value={1}>{t('backups.monday')}</option>
@@ -255,7 +255,7 @@ export default function OrganizationBackups({ organization, validatedBackup, set
                                 type="text"
                                 value={scheduleForm.data.timezone}
                                 onChange={(event) => scheduleForm.setData('timezone', event.currentTarget.value)}
-                                className="mt-1 block w-full rounded-field border border-line-strong bg-surface px-3 py-2 text-sm"
+                                className="control-input mt-1 block w-full"
                                 disabled={!can.create}
                                 placeholder="Africa/Casablanca"
                             />
@@ -269,7 +269,7 @@ export default function OrganizationBackups({ organization, validatedBackup, set
                                 max={90}
                                 value={scheduleForm.data.retention_count}
                                 onChange={(event) => scheduleForm.setData('retention_count', Number(event.currentTarget.value))}
-                                className="mt-1 block w-full rounded-field border border-line-strong bg-surface px-3 py-2 text-sm"
+                                className="control-input mt-1 block w-full"
                                 disabled={!can.create}
                             />
                             <span className="mt-1 block text-xs text-ink-muted">{t('backups.retentionHelp')}</span>
@@ -280,7 +280,7 @@ export default function OrganizationBackups({ organization, validatedBackup, set
                                 type="checkbox"
                                 checked={scheduleForm.data.notify_on_failure}
                                 onChange={(event) => scheduleForm.setData('notify_on_failure', event.currentTarget.checked)}
-                                className="rounded border-line-strong"
+                                className="size-[18px] shrink-0 cursor-pointer rounded border-line-strong accent-primary"
                                 disabled={!can.create}
                             />
                             {t('backups.notifyFailure')}
@@ -294,10 +294,10 @@ export default function OrganizationBackups({ organization, validatedBackup, set
                     </form>
                 </section>
 
-                <section className="rounded-card border border-line bg-surface p-6">
+                <section className="surface-card p-6">
                     <div className="flex flex-wrap items-start justify-between gap-4">
                         <div>
-                            <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">{t('backups.personalStorage')}</p>
+                            <p className="text-xs font-semibold text-ink-muted">{t('backups.personalStorage')}</p>
                             <h2 className="mt-1 text-lg font-semibold text-ink">Google Drive</h2>
                             <p className="mt-1 max-w-3xl text-sm text-ink-muted">
                                 {t('backups.driveHelp')}
@@ -338,7 +338,7 @@ export default function OrganizationBackups({ organization, validatedBackup, set
                     )}
                 </section>
 
-                <section className="rounded-card border border-line bg-surface p-6">
+                <section className="surface-card p-6">
                     <h2 className="text-lg font-semibold text-ink">{t('backups.restoreTitle')}</h2>
                     <p className="mt-1 max-w-3xl text-sm text-ink-muted">
                         {t('backups.restoreHelp')}
@@ -411,47 +411,47 @@ export default function OrganizationBackups({ organization, validatedBackup, set
                     )}
                 </section>
 
-                <section className="rounded-card border border-line bg-surface p-6">
+                <section className="surface-card p-6">
                     <h2 className="text-lg font-semibold text-ink">{t('backups.history')}</h2>
                     <p className="mt-1 text-sm text-ink-muted">{t('backups.historyHelp')}</p>
 
                     <div className="mt-5 overflow-x-auto">
-                        <table className="min-w-full text-start text-sm">
-                            <thead className="border-b border-line text-xs uppercase tracking-wide text-ink-muted">
+                        <table className="erp-table min-w-[860px] text-sm">
+                            <thead>
                                 <tr>
-                                    <th className="py-3 pe-4">{t('common.date')}</th>
-                                    <th className="py-3 pe-4">{t('backups.type')}</th>
-                                    <th className="py-3 pe-4">{t('common.status')}</th>
-                                    <th className="py-3 pe-4">{t('backups.size')}</th>
-                                    <th className="py-3 pe-4">{t('backups.storage')}</th>
-                                    <th className="py-3 pr-4">Google Drive</th>
-                                    <th className="py-3 pe-4 text-end">{t('backups.action')}</th>
+                                    <th className="px-4 py-3">{t('common.date')}</th>
+                                    <th className="px-4 py-3">{t('backups.type')}</th>
+                                    <th className="px-4 py-3">{t('common.status')}</th>
+                                    <th className="px-4 py-3">{t('backups.size')}</th>
+                                    <th className="px-4 py-3">{t('backups.storage')}</th>
+                                    <th className="px-4 py-3">Google Drive</th>
+                                    <th className="px-4 py-3 text-end">{t('backups.action')}</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-line">
+                            <tbody>
                                 {history.length === 0 && (
                                     <tr>
-                                        <td colSpan={7} className="py-6 text-center text-ink-muted">
+                                        <td colSpan={7} className="px-4 py-6 text-center text-ink-muted">
                                             {t('backups.empty')}
                                         </td>
                                     </tr>
                                 )}
                                 {history.map((backup) => (
                                     <tr key={backup.id}>
-                                        <td className="py-3 pe-4">{backup.completed_at || backup.scheduled_for || backup.created_at ? formatDateTime(backup.completed_at ?? backup.scheduled_for ?? backup.created_at ?? '') : '—'}</td>
-                                        <td className="py-3 pe-4">{backup.type === 'scheduled' ? t('backups.scheduled') : backup.type === 'pre_restore' ? t('backups.preRestore') : t('backups.manualType')}</td>
-                                        <td className="py-3 pr-4">
+                                        <td className="px-4 py-3">{backup.completed_at || backup.scheduled_for || backup.created_at ? formatDateTime(backup.completed_at ?? backup.scheduled_for ?? backup.created_at ?? '') : '—'}</td>
+                                        <td className="px-4 py-3">{backup.type === 'scheduled' ? t('backups.scheduled') : backup.type === 'pre_restore' ? t('backups.preRestore') : t('backups.manualType')}</td>
+                                        <td className="px-4 py-3">
                                             <Status status={backup.status} />
                                             {backup.failure_message && <div className="mt-1 text-xs text-danger">{backup.failure_message}</div>}
                                         </td>
-                                        <td className="py-3 pe-4">{backup.size_bytes ? formatBytes(backup.size_bytes, t) : '—'}</td>
-                                        <td className="py-3 pe-4">{backup.storage === 'external' ? t('backups.privateStorage') : '—'}</td>
-                                        <td className="py-3 pr-4">
+                                        <td className="px-4 py-3">{backup.size_bytes ? formatBytes(backup.size_bytes, t) : '—'}</td>
+                                        <td className="px-4 py-3">{backup.storage === 'external' ? t('backups.privateStorage') : '—'}</td>
+                                        <td className="px-4 py-3">
                                             <CloudStatus copy={backup.google_drive} />
                                         </td>
-                                        <td className="py-3 pe-4 text-end">
+                                        <td className="px-4 py-3 text-end">
                                             {backup.downloadable ? (
-                                                <div className="flex flex-wrap justify-end gap-2 rtl:justify-start">
+                                                <div className="flex flex-wrap justify-end gap-2">
                                                     <a href={`/organization-backups/${backup.id}/download`} className="text-sm font-semibold text-primary hover:underline">
                                                         {t('backups.download')}
                                                     </a>
@@ -507,7 +507,7 @@ export default function OrganizationBackups({ organization, validatedBackup, set
                     </div>
                 </section>
             </div>
-        </SalesLayout>
+        </ApplicationShell>
     );
 }
 

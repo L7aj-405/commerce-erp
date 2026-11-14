@@ -29,10 +29,10 @@ Test column: `tsc` = `npx tsc --noEmit`, `build` = `npm run build`. The repo has
 | 2 | Remaining Sales/Documents pages | VERIFIED for pages with local live data; IMPLEMENTED for sandbox-only/empty records | §7 |
 | 3 | Catalogue and Inventory remainder | VERIFIED (15 pages, FR light 1440 + AR dark 390); Transfers/Show IMPLEMENTED | §8 |
 | 4 | Procurement | VERIFIED (8 pages, FR light 1440 + AR dark 390); row-level states partly IMPLEMENTED | §9 |
-| 5 | Finance and Payments lists (AdvancedFilterBar/TablePager) | NOT STARTED | — |
-| 6 | Contacts and Organization | NOT STARTED | — |
-| 7 | Users, Settings, Integrations | NOT STARTED | — |
-| 8 | Remaining pages (Work, Notifications, Activity list, Admin, Auth brand pass) | NOT STARTED | — |
+| 5 | Finance and Payments | VERIFIED (page level: 13 pages, 390–1920, FR light + AR dark); row-level states partly NOT VERIFIED (no local payments) | §10 |
+| 6 | Contacts and Organization | VERIFIED (page level: 5 pages, 390–1920, FR light + AR dark); contact rows/show NOT VERIFIED (no local contacts) | §11 |
+| 7 | Users, Settings, Integrations | VERIFIED (page level: 13 pages, 390–1920, FR light + AR dark) | §12 |
+| 8 | Remaining pages (Work, Notifications, Activity, Admin, Sandbox, error pages, Auth/Legal) | VERIFIED (page level: 12 routes at 1440 FR light + 390 AR dark); other widths not run (browser memory) | §13 |
 
 ## 1. Shared controls
 
@@ -78,7 +78,7 @@ Not yet checked in the browser: 768/1024/2560 widths, the DateRangeFilter (used 
 | Finance | MonthlySituation (5 date fields via its `Field` helper) | payment, issue, maturity, expected, due | IMPLEMENTED | tsc/build |
 | Finance | RecurringObligations | start, optional end | VERIFIED (start, in Sheet) | Browser FR light |
 | Finance | SupplierInstallments | per-row due date | IMPLEMENTED | tsc/build |
-| Payments | Payments/Index | date filter (classic form, `name="date"`) | IMPLEMENTED | tsc/build |
+| Payments | Payments/Index | date filter → `DateFilter` in AdvancedFilterBar (same `date` param) | VERIFIED | Browser AR dark |
 | Payments | FinancialAccounts/Index | opening reference date (required) | IMPLEMENTED | tsc/build |
 | Sales | Orders/Index, Quotations/Index, Invoices/Index, DeliveryNotes/Index | DateFilter | VERIFIED (Orders) / IMPLEMENTED (others, same component) | Browser FR light |
 | Sales | Quotations/Create | quotation date, valid until | VERIFIED | Browser FR light |
@@ -123,15 +123,15 @@ Columns: Module · Route/page · Components used · Design status · Issues · P
 | Inventory | Transfers/Show | erp-table | Migrated | No live transfer exists locally | — | IMPLEMENTED | Not checked | tsc/build |
 | Procurement | Index, PurchaseOrders (Index, Show), SupplierRequests, Suppliers (Index, Show) | AdvancedFilterBar, TableShell/TablePager, Sheet (supplier form), shared Dropdown menu, Buttons | Migrated | — | — | VERIFIED | FR light 1440; AR dark 390; filters, sheet, menu | tsc/build |
 | Procurement | OutOfStockArticles/Index | AdvancedFilterBar + accessible segmented status, TableShell/TablePager, compact resolve form | Migrated | No local articles (rows/resolve form not rendered) | — | VERIFIED (page, tabs, dark contrast) | AR dark: active tab near-black on teal | tsc/build |
-| Finance | Situation, Ventes, CaEncaisse, Creances, Encaissements, Facturation, Journal | FinanceFilters → MonthPicker | Legacy lists | Legacy pagination, cards | P2 | IN PROGRESS (period control done) | Ventes this session | tsc/build |
-| Finance | MonthlySituation | DatePicker | Legacy | 2640 lines; native selects | P2 | IN PROGRESS (dates, X6 done) | Earlier (top section) | tsc/build |
-| Finance | Commission Dashboard/Ledger/Rules/Salesperson/EntryShow | DatePicker | Legacy | Raw tables, uppercase labels | P2 | IN PROGRESS (dates, X6 done) | Dashboard/Ledger this session | tsc/build |
-| Finance | RecurringObligations, SupplierInstallments, SupplierInstallmentShow | DatePicker, Sheet | Legacy | Native selects, legacy pagination | P2 | IN PROGRESS (dates done) | RecurringObligations this session | tsc/build |
-| Payments | Payments/Index, Payments/Show, FinancialAccounts/Index | DatePicker | Legacy | Legacy filter form; Show has 18 hard-coded colours | P2 | IN PROGRESS (P1 X1 + dates done) | Not re-checked | tsc/build |
-| Contacts | Contacts/Index, Show, Form | useConfirm (Show) | Legacy | Legacy list/form | P2 | IN PROGRESS (P1 fixed) | Not re-checked | tsc/build |
+| Finance | Situation, Ventes, CaEncaisse, Creances, Encaissements, Facturation, Journal | FinanceFilters on AdvancedFilterBar (MonthPicker + store ChoiceFilter), TableShell/TablePager, EmptyState, shared Dropdown export menu | Migrated | — (pagination query fix applied 2026-11-14, see §10) | P2 | VERIFIED (page level) | 390/768/1024/1440/1920, FR light + AR dark; store filter, chip, reset; RTL amounts | tsc/build; 274 Finance/Payments/Sandbox tests |
+| Finance | MonthlySituation | AdvancedFilterBar (live search, type/status/supplier), TablePager, Badge, numeric columns | Migrated (presentation pass) | No local obligations: table rows, sheets, payment/instrument flows not exercised | P2 | VERIFIED (page, filters) | 5 widths; AR dark status filter, filtered empty + reset, live search | tsc/build |
+| Finance | Commission Dashboard/Ledger/Rules/Salesperson/EntryShow | DatePicker, control/table sweep | Swept (not rebuilt) | Rules/Ledger keep their own list layouts | P2 | VERIFIED (probe: Rules, Ledger) / IMPLEMENTED (rest) | Rules 390 AR overflow fixed | tsc/build |
+| Finance | RecurringObligations, SupplierInstallments, SupplierInstallmentShow | DatePicker, Sheet, shared controls | Swept (not rebuilt) | Legacy pagination remains | P2 | VERIFIED (probe: first two) / IMPLEMENTED (Show) | 1440 FR + 390 AR | tsc/build |
+| Payments | Payments/Index (rebuilt), Payments/Show (tokenised), FinancialAccounts/Index (swept) | AdvancedFilterBar, TableShell/TablePager, Badge | Migrated / tokenised | No local payments: rows, Show page, reverse flow not rendered | P2 | VERIFIED (Index page + filters, FinancialAccounts probe); Show NOT VERIFIED | AR dark chips/remove | tsc/build |
+| Contacts | Contacts/Index, Show, Form | AdvancedFilterBar, TableShell/TablePager, form.tsx fields, Badge, Button/ButtonLink, useConfirm | Migrated | No local contacts: rows, Show page and the archive confirm not rendered | P2 | VERIFIED (Index + Form) / IMPLEMENTED (Show) | 5 widths, FR light + AR dark; type filter, chip, filtered empty | tsc/build |
 | Admin | Settings/UsersAccess/Index, RoleEditor | useConfirm | Partial | Native selects in rows; RoleEditor never opened | P2 | IN PROGRESS (P1 fixed) | Not re-checked | tsc/build |
 | Admin | Activity/Index | DatePicker | Legacy | Legacy list; English backend action labels | P2 | IN PROGRESS (P1 fixed) | This session (dark) | tsc/build |
-| Settings | Stores, DocumentProfile, TemplateStudio, DocumentStamp, EmailConfiguration, QuotationSettings, ReturnPolicy, NotificationPreferences, Profile, Security, Sessions | — | Legacy / Partial | Legacy cards, native selects | P2 | NOT STARTED | Partial (earlier) | — |
+| Settings | Stores (migrated in batch 6, see §11), DocumentProfile, TemplateStudio, DocumentStamp, EmailConfiguration, QuotationSettings, ReturnPolicy, NotificationPreferences, Profile, Security, Sessions | — | Legacy / Partial | Legacy cards, native selects | P2 | NOT STARTED | Partial (earlier) | — |
 | Integrations | WooCommerce, WooCommerceStockTasks | — | Legacy | 33 hard-coded colours on StockTasks | P2 | IN PROGRESS (P1 X1 fixed on StockTasks) | Not re-checked | tsc/build |
 | Admin | OrganizationBackups, DataReset, AiMcp, SystemHealth, Sandbox | DatePicker (DataReset) | Legacy | Wrong layouts (Backups, Sandbox) | P2 | NOT STARTED | Source only | — |
 | Work | Work/Index, Attention, Recurring, Team, TeamMember, Templates; Notifications | DatePicker | Legacy | Legacy pagination, native selects | P2 | IN PROGRESS (dates done) | Not checked | tsc/build |
@@ -269,3 +269,212 @@ The printed document paper (Invoices/Quotations `.doc-paper`) is untouched on pu
 - Procurement-index rows: the default list has data, but individual row states were not exercised.
 - The supplier-requests overflow menu in RTL: it relies on the shared hook, which was RTL-verified in earlier passes, but it was not re-checked here.
 - **Environment note:** the first direct load after edits sometimes stalled while Vite re-bundled. A second tab loaded normally. This is not an app defect.
+
+## 10. Batch 5 — Finance and Payments (2026-11-13)
+
+**Inventory and parameters.** Each page sends only what its controller validates:
+
+| Page | Route | Parameters |
+| --- | --- | --- |
+| Finance overview | `/finance` | `month`, `store_id` |
+| Ventes, Facturation, Encaissements, Créances, Journal, CA encaissé | `/finance/*` | `month` (Y-m, server default = current month), `store_id`; Encaissements also `refund_page` |
+| Month-end situation | `/finance/situation-fin-de-mois` | `month`, `store_id`, `category`, `status` (upcoming\|partial\|paid\|overdue\|cancelled), `supplier_id`, `search` |
+| Payments | `/payments` | `search`, `date` (single day), `method` (cash\|card\|bank_transfer\|cheque), `status` (posted\|reversed), `account` |
+
+No range, sort or other new filter was added. Payments keeps a single-day `DateFilter`, and Finance keeps a month picker.
+
+**Changes.**
+- **Shared `FinanceFilters`:**
+  - Moved onto `AdvancedFilterBar`: the MonthPicker plus a store `ChoiceFilter` (searchable above 8 stores).
+  - Chips appear for a non-current month (localised label) and for a store. Reset returns to the current month and all stores.
+  - A loading indicator shows during visits, and page-specific `extra` params pass through unchanged.
+- **Six report lists and the overview:**
+  - `TableShell` + `TablePager` ("x–y sur n") replace the legacy pagination and dashed empty boxes, with `EmptyState` on mobile.
+  - Amount columns use `.num`: tabular, end-aligned and pinned in RTL.
+  - Journal events and Encaissements refunds use their own `TableShell`. The CA encaissé total card uses tokens, and its status/nature pills are `Badge` with the same colour mapping.
+  - CA encaissé export menu → shared `Dropdown` (portal, RTL placement, keyboard). Excel/PDF stay plain `<a>` downloads and the ZIP keeps its fetch-and-toast error flow, with the busy state now on the trigger.
+- **Overview reconciliation:** the `<table>` became a label/amount `<dl>`. Before, the closing-position row was `text-end` without `dir="ltr"` while the other rows had it, so in Arabic one amount sat on the opposite edge.
+- **Payments:**
+  - The legacy GET form with its "Filtrer" button → live `AdvancedFilterBar`: debounced search, date, method, status and account, with chips and reset.
+  - `TableShell` + `TablePager`, filtered vs empty states, and mobile cards with a pager.
+  - The method pill became a neutral `Badge`, and reversed amounts are muted.
+  - Payments/Show: 15 hard-coded palette classes tokenised (danger/warning/ink).
+- **Month-end situation:** an incremental presentation pass only. No calculation, form or state-transition code was touched.
+  - The obligation filter form → `AdvancedFilterBar`, with debounced search. Applying filters keeps `month` and `store_id`.
+  - The filtered empty state offers a reset. Before, an empty search showed "add an obligation".
+  - `Pagination` → `TablePager`.
+  - **Header alignment fix:** the amount headers in all three tables were start-aligned while their cells were end-aligned. They now share `.num`.
+  - Expected collections and future due dates became `erp-table`, and the dashed empty box became `EmptyState`.
+  - `Metric` uses tokens with a sentence-case label. `Status` uses `Badge` with the same variant mapping.
+- **Sweep of the remaining Finance pages:** RecurringObligations, SupplierInstallments(+Show), CommissionRules, CommissionLedger, CommissionDashboard/Salesperson/EntryShow and FinancialAccounts.
+  - Class constants now point to `control-input` / `control-select` (a select variant was added where one constant served both).
+  - Raw tables → `erp-table`, and uppercase labels removed.
+  - CommissionRules overflowed by 203px at 390px (Arabic and French) because a grid item took the 520px width of its table. That was already the case before this batch. Fixed with `[&>*]:min-w-0` on the grid.
+
+**Tests.**
+
+| Check | Result |
+| --- | --- |
+| `npx tsc --noEmit -p .` | Pass |
+| `npm run build` | Pass |
+| `php artisan test tests/Feature/Finance tests/Feature/Payments tests/Feature/Sandbox` | 274 passed, 2944 assertions. Backend only: totals, permissions and sandbox exclusion. Not proof of UI behaviour. |
+
+**Browser QA.** Chrome, local org 2.
+
+| Check | Result |
+| --- | --- |
+| Iframe probe | 13 pages (overview, 6 reports, payments, month-end, recurring, installments, commission rules, ledger, financial accounts) at 390/768/1024/1440/1920, FR light and AR dark: 0 horizontal overflow (after the CommissionRules fix), 0 un-migrated fields, 0 raw tables, 0 uppercase-transformed elements. |
+| Créances (4 rows) | Store filter → `?month=2026-11&store_id=2` with a chip. The total stays 21 096,00 DH. Reset clears `store_id`. |
+| Ventes, AR | Every amount column's text starts at the same offset as its header (pinned to the left edge in RTL). |
+| Month-end, AR dark | Status "متأخر" → `status=overdue` with `month` kept, a chip, and the filtered empty state with reset. Reset clears it. Typing "loyer" applies `search=loyer` live without losing focus. |
+| Payments, AR dark | `?method=cash&status=posted` shows two chips and the filtered empty state. Removing the method chip leaves `?status=posted`. |
+| CA encaissé export | The menu opens end-aligned under "Exporter" with the 5 entries. Escape closes it and returns focus. Export URLs are unchanged. |
+
+**Not verified.**
+- **No local data:** there are no local payments, collections, invoices or obligations, so these did not render:
+  - Payments rows and Payments/Show (including reversal).
+  - Encaissements, Journal, CA encaissé and Facturation rows.
+  - Month-end obligation rows, the pay/instrument/expected-collection sheets, and the month close/reopen actions.
+- **Downloads:** export downloads (xlsx/pdf/zip) were not triggered.
+- **Sandbox exclusion:** relies on the 274 backend tests. It was not re-observed in the UI.
+- **Commission pages:** Dashboard, Salesperson and EntryShow were swept but not re-probed in this batch.
+- **No real financial transaction** was created or changed.
+
+**Findings needing approval (backend).**
+- **Pagination drops filters — FIXED 2026-11-14 (approved by the user).** `->withQueryString()` added to the 5 paginators: `ventesBreakdown` and the Encaissements payments paginator in `FinanceMonthlyReportService`, `FinanceInvoiceReadModel`, `FinanceJournalService` and `FinanceCaEncaisseService` (5 lines, no calculation change). 274 Finance/Payments/Sandbox tests pass. Checked through Inertia responses: with `?month=2026-10&store_id=2`, the page links on Ventes, Facturation, Encaissements, Journal, CA encaissé and Créances all carry `month=2026-10&store_id=2`.
+- **French label in Arabic:** the server `periodLabel` is French-only ("Novembre 2026" in the Arabic month-end review heading). The filter chip now formats the month on the client instead.
+
+## 11. Batch 6 — Contacts and Organization (2026-11-13)
+
+**Scope.**
+- **Contacts:** Index, Show and Form (`/contacts`).
+- **Stores:** Settings › Stores (`/settings/stores`).
+- **Organization backups:** `/organization-backups` (audit X7).
+- **Excluded:** the organization dashboard (`Platform/Index`) is the approved dashboard and stays unchanged, and the remaining organization settings pages belong to batch 7.
+
+**Contacts.**
+- **Index** rebuilt on `useQueryFilters` + `AdvancedFilterBar` + `TableShell` + `TablePager`. The params are exactly what the controller validates: `search`, `contact_type`, `active` (1|0).
+  - The "Rechercher" submit button is gone: search is debounced and the selects apply live.
+  - Chips, filtered vs empty states, and mobile cards with a pager.
+  - **Defect fixed:** the Index type labels had no `transport` entry, so transport contacts showed the raw value "transport". The type options now cover all 5 `OrganizationContact::TYPES`.
+- **Form** rebuilt on the shared `TextField` / `SelectField` / `TextAreaField` / `Checkbox` / `FormBanner` and `Button`, with the same fields, payload and POST/PATCH.
+  - Labels are now sentence case and linked to their fields, and errors are linked to their fields.
+  - Email, phone and WhatsApp fields use `dir="ltr"` and `autocomplete`.
+- **Show:**
+  - Uppercase `dt` labels → sentence case. `DocBadge` → `Badge`.
+  - Hand-rolled links/buttons → `ButtonLink`/`Button`, and archive → a danger `Button` that keeps the `useConfirm` flow.
+  - Email/phone values isolated with `bdi dir=ltr`, and the grid column gets `minmax(0,1fr)` so long values wrap.
+- **Layout:** all three pages use `ApplicationShell` directly instead of the `SalesLayout` pass-through. The navigation context comes from the route registry (Clients › Contacts), so nothing changes there.
+
+**Stores.** The default-location select `control-input` → `control-select` (chevron), the uppercase store code → mono LTR, cards → `surface-card`, and an empty state is added when an organization has no store.
+
+**Organization backups (closes audit X7 for this page).**
+- **Layout:** `SalesLayout` + `mx-auto max-w-5xl` → `ApplicationShell width="reading"`. It now sits in the reading column under Settings.
+- **Controls:**
+  - Swept to `control-input` / `control-select`, with tokenised checkboxes.
+  - The history table → `erp-table` with logical cell padding (3 physical `pr-4` removed), and uppercase labels/thead removed.
+- **RTL defect fixed:** the row-actions cell used `justify-end rtl:justify-start`. Flex `justify-end` is already direction-aware, so in Arabic the actions were pushed to the start edge, away from the end-aligned header.
+
+**Tests.** `npx tsc --noEmit -p .` and `npm run build` pass. No backend code changed, so no backend tests were run for this batch.
+
+**Browser QA.** Chrome, local org 2.
+
+| Check | Result |
+| --- | --- |
+| Iframe probe | 4 routes (`/contacts`, `/contacts/create`, `/settings/stores`, `/organization-backups`) at 390/768/1024/1440/1920, FR light/dark and AR dark (20 combinations): 0 overflow, 0 un-migrated fields, 0 raw tables, 0 uppercase-transformed elements. |
+| Contacts filter | Type → "Transport" sets `?contact_type=transport`, adds a chip, and shows the filtered empty state with reset. |
+| Contact form | Two-column layout, required marker on Nom complet, hint under the WhatsApp user field, shared checkbox. |
+| Backups and Stores, AR dark | Rendered (screenshots …-43 and …-44). |
+
+**Not verified.**
+- **No local contacts:** nothing was created for QA, so the contact rows, Contacts/Show, the archive confirm and form submission or validation errors were not rendered.
+- **Stores:** save and activate/deactivate were not clicked.
+- **Backups:** no backup history exists, so the table rows and row actions were not rendered. Create/restore/Google Drive actions were not triggered.
+
+## 12. Batch 7 — Users, Settings and Integrations (2026-11-13/14)
+
+**Scope (13 pages).** Users & access (+ RoleEditor, swept), Profile, Security, Sessions, Notification preferences, Document profile, PDF Studio, Document stamp, Email configuration, Quotation settings, Return policy, WooCommerce and WooCommerce stock tasks. AiMcp and DataReset stay in batch 8 (Admin).
+
+**Changes.**
+- **Shared controls:** a control/table sweep on all 14 files, tokenised palettes (Security, Studio, StockTasks), and uppercase labels/theads removed.
+  - Class constants in QuotationSettings and ReturnPolicy now point to `control-input` / `control-select`.
+  - The Studio's number-with-unit fields became `control-input control-compact`.
+- **Users & access:**
+  - Role selects in member rows and cards had no accessible name. They now have `aria-label` "Rôle de {name}" (new fr/ar key `usersAccess.roleFor`) and use `control-compact`.
+  - Role changes still go through `submitProtected` (fresh auth).
+- **Defects fixed:**
+  - **PDF Studio:** used the undefined token `text-ink-subtle` (3×), so those labels got no designed colour. Now `text-ink-faint`. Canvas backdrop `bg-slate-*` → `bg-line` tokens.
+  - **Document profile:** overflowed at 390px (123px in French, 60px in Arabic). One cause was a `<fieldset>` with its default `min-width: min-content`, fixed with `min-w-0`. The other was native file inputs with intrinsic width, also on Document stamp (32px), fixed with full width plus a design-system file button.
+  - **Sweep script bug:** it turned `bg-surface/95` into an invalid `surface-card/95` on Document profile's sticky save bar, so the bar lost its background. Fixed. A repo-wide search found no other instance, and the script now requires a class boundary.
+- **WooCommerce stock tasks:**
+  - Rebuilt on `useQueryFilters` + `AdvancedFilterBar`, with an accessible segmented status control (`aria-pressed`) and the same `search`/`status` params (default `pending`, cleared on reset).
+  - Also `TableShell` + `TablePager`, `Badge`, `Button`/`ButtonLink`, and a numeric movement column.
+
+**Tests.** `npx tsc --noEmit -p .` and `npm run build` pass. No backend code changed.
+
+**Browser QA.** Chrome, local org 2.
+
+| Check | Result |
+| --- | --- |
+| Iframe probe | 13 pages at 390 (FR light and AR dark), 768 AR dark, 1024 FR dark, 1440 and 1920 FR light: 0 overflow (after the fixes), 0 un-migrated fields, 0 raw tables, 0 uppercase. |
+| Users & access | Every select has an accessible name. The "Retirer" confirm (audit X2) opens with focus on Annuler, and Escape cancels: dialog closed, focus back on Retirer, 3 members unchanged. |
+| WooCommerce stock tasks, dark (before the rebuild) | Active tab rgb(6,20,19) on rgb(63,184,171): the X1 fix is confirmed. |
+| PDF Studio | Renders, with the canvas in tokens. |
+
+**Not verified.**
+- **WooCommerce stock tasks rows:** there are no local tasks, so rows and "Marquer comme fait" were not rendered. The rebuilt page itself was re-checked on 2026-11-14: "Mis à jour" sets `?status=completed` with `aria-pressed` and a chip, and reset returns to `pending` with no query string. 0 overflow at 390 FR/AR and 768 AR.
+- **No form submitted:** none on any settings page. Profile, security, 2FA, email test, stamp upload and Studio publish were not exercised.
+- **RoleEditor:** not opened.
+
+## 13. Batch 8 — Remaining pages (2026-11-14)
+
+**Scope.**
+- **Work:** Index, Attention, Recurring, Team, TeamMember, Templates.
+- **Others:** Notifications, Activity, System health, Data reset, AI & MCP (+ Authorize), Sandbox (`/test-mode`).
+- **New:** branded HTTP error pages.
+- **Brand pass:** Auth/Legal.
+
+**Defects fixed.**
+- **/notifications was a blank page.** The page sends its paginated list as the `notifications` prop, which overwrites the shared `notifications` summary. The header `NotificationBell` then crashed on `initial.recent.filter` (`TypeError`), so the page never rendered. This was already broken before this batch; the feature test only checks props, not the UI.
+  - **Fix:** `ApplicationShell` only passes a value with a `recent` array to the bell, and otherwise uses the empty default (the bell fills itself from `/notifications/feed`). No backend change; the page prop name the test asserts is unchanged.
+- **Notifications page:**
+  - **Filters:** status buttons → an accessible segmented control (`aria-pressed`). Category/priority → `ChoiceFilter`, with chips, reset and a filtered empty state.
+  - **Translations:** priority values showed raw English ("critical"); fr/ar labels added (`notifications.severity.*`, `notifications.priority`, `notifications.category`).
+  - **Badges:** severity → `Badge` variants.
+  - **Screen readers:** the unread dot now has a screen-reader label.
+- **Error pages:** 403/404/419/429/500/503 showed the unstyled Laravel default. New `resources/views/errors/*.blade.php` use a self-contained branded layout:
+  - Design-token colours, the saved theme and language applied before paint, and FR/AR copy with RTL.
+  - "Retour au tableau de bord" and "Page précédente" actions.
+  - No exception-handling, routing or status-code change.
+- **Sandbox:**
+  - **Actions:** buttons were styled as text inputs (`control-input`) → `Button`.
+  - **Colours:** hard-coded amber palette → warning tokens / `Badge`.
+  - **Copy:** French-only → fr/ar keys (`sandboxPage.*`).
+  - **Layout:** kept standalone on purpose (it runs inside the isolated test context), with the same POSTs.
+- **Work Index and Team:** the "Rechercher" submit forms → `AdvancedFilterBar`, with debounced `query` and live assignee / store / scope / signal filters, chips, reset and a filtered empty state. Same params; `assigned_to` still defaults to `me` on the server.
+  - The Work Index pager is now `TablePager`.
+- **Shared controls:** the `fieldClass` constant on all six Work pages and `inputClass` on Activity now point to `control-input` / `control-select`, with a select variant.
+- **Sweep:** control/table sweep and uppercase removal across Activity, System health, Data reset (+ SelectiveReset), AI & MCP, and the followups/attention components.
+- **Auth/Legal:** the uppercase "ou" divider on Login/Register and the tracked uppercase eyebrow on Legal pages → sentence case.
+
+**Tests.**
+- `npx tsc --noEmit -p .` and `npm run build` pass.
+- `php artisan test tests/Feature/Notifications tests/Feature/FollowUps tests/Feature/WorkCenter tests/Feature/Sandbox`: 92 passed, 1825 assertions.
+
+**Browser QA.** Chrome, local org 2.
+
+| Check | Result |
+| --- | --- |
+| Iframe probe | 12 routes (6 Work/Notifications, Activity, System health, Data reset, AI & MCP, `/test-mode`, a 404) at 1440 FR light and 390 AR dark: all render, 0 overflow, 0 un-migrated fields, 0 raw tables, 0 uppercase. |
+| Notifications | Renders again, with the filter bar. |
+| 404 | Branded page in FR light, and in AR dark with RTL; no overflow. |
+| Sandbox (Production state) | Renders with the new layout. The policy button was not clicked (it changes an org setting). |
+| Work | Typing "relance" applies `query=relance` live with the tab kept, adds a chip, and shows the filtered empty state. |
+
+**Not verified.**
+- **Widths:** 768/1024/1920 were not run for this batch. The browser renderer froze under memory pressure, so the probe was limited to 1440 and 390.
+- **No local data:** no follow-ups, notifications, activity rows or attention items exist locally, so the row-level UI was not rendered.
+- **Sandbox active state:** not entered.
+- **Other error codes:** 403/419/429/500/503 views were not triggered (only the 404 was).
+- **Auth pages:** not opened in the browser. The change is two class edits.
+- **Data reset:** the selectable cards keep their state-coloured borders by design (not converted to `surface-card`).

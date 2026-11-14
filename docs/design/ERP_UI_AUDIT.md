@@ -46,6 +46,17 @@ Pages that only received source inspection are **not** claimed as visually check
 
 > **Batch 4 (2026-11-13):** Procurement is migrated (tracker §9). The Articles hors stock dark-mode P1 is browser-verified fixed, and every hard-coded palette class in Procurement is tokenised (99 removed, 0 remaining).
 
+> **Batch 5 (2026-11-13):** Finance and Payments are migrated (tracker §10).
+> - **Rebuilt:** six report lists, the overview and Payments now use the standard filter bar and table shell; the month-end situation got an incremental presentation pass.
+> - **RTL fixes:** the misaligned amount headers on the month-end tables and the overview reconciliation amount are fixed.
+> - **Overflow fix:** CommissionRules no longer overflows at 390px.
+> - **Backend item:** Finance pagination links dropped `month`/`store_id`. Fixed 2026-11-14 with the user's approval (`withQueryString()` on 5 paginators).
+
+> **Batch 6 (2026-11-13):** Contacts, Stores and Organization backups are migrated (tracker §11).
+> - **X7:** closed for OrganizationBackups, which now uses `ApplicationShell` in reading width. Sandbox is still open.
+> - **Fixed:** the Contacts list showed the raw value "transport" for that contact type.
+> - **Fixed:** in Arabic, the backups row actions sat on the wrong edge.
+
 - **Migration coverage:** 12 of 108 rendered pages use `AdvancedFilterBar` and 13 use `TableShell`. These are the Sales, Catalogue and Inventory index pages plus My Commissions. About 30 more carry the V1.0 token sweep (Partial).
 - **No P0 defect was found** on any page opened in the browser. Every page loads, and its main actions are reachable.
 - **P1, dark-mode illegible controls (5 files, browser-confirmed on 2 of them).** `bg-ink … text-white` and `bg-slate-900 text-white` invert in dark mode: `ink`/`slate-900` become near-white, so the label turns white on white.
@@ -231,3 +242,12 @@ Remaining families after that: Payments, Contacts, Work, Settings/Integrations, 
 - Mobile (390px) and Arabic were checked on the migrated Sales/Catalogue/Inventory pages and the shell. Legacy families were checked at 1920px in French only, unless the QA column says otherwise.
 - Screen-reader behaviour was checked through accessible names and roles in the DOM, not with an actual screen reader.
 - POS sub-components and the RoleEditor were not opened.
+
+> **Batch 7 (2026-11-14):** Users, Settings and Integrations are migrated (tracker §12).
+> - **X2 (Users & access remove-member confirm):** browser-verified.
+> - **X1 (WooCommerce stock tasks dark tab):** browser-verified.
+> - **Fixed:** an undefined token in the Studio, Document profile and Document stamp overflow at 390px, and unnamed role selects.
+
+> **Batch 8 (2026-11-14):** the remaining pages are migrated (tracker §13).
+> - **Fixed:** /notifications rendered a blank page (header bell crash), the unstyled Laravel error pages are replaced by branded FR/AR views, and the Sandbox page now uses tokens, `Button` and fr/ar copy.
+> - **X7 (Sandbox):** its standalone layout is kept on purpose.

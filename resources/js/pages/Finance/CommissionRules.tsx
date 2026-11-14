@@ -159,8 +159,8 @@ export default function CommissionRules({
             />
             <CommissionTabs active="rules" />
 
-            <div className="grid gap-6 xl:grid-cols-[1.15fr_.85fr]">
-                <section className="rounded-card border border-line bg-surface p-5">
+            <div className="grid gap-6 xl:grid-cols-[1.15fr_.85fr] [&>*]:min-w-0">
+                <section className="surface-card p-5">
                     <div className="mb-4 flex items-center justify-between">
                         <h2 className="font-semibold text-ink">
                             {t("commissions.rules.versions")}
@@ -291,7 +291,7 @@ export default function CommissionRules({
                 </section>
 
                 {can.manage && (
-                    <section className="rounded-card border border-line bg-surface p-5">
+                    <section className="surface-card p-5">
                         <h2 className="font-semibold text-ink">
                             {editing
                                 ? `${t("common.edit")} · ${editing.name}`
@@ -337,7 +337,7 @@ export default function CommissionRules({
                             />
                         </Field>
                         <div className="mt-4 overflow-x-auto">
-                            <table className="w-full min-w-[520px] text-sm">
+                            <table className="erp-table w-full min-w-[520px] text-sm">
                                 <thead>
                                     <tr className="border-b border-line text-start text-xs text-ink-muted">
                                         <th className="py-2">
@@ -459,7 +459,7 @@ export default function CommissionRules({
             </div>
 
             {can.simulate && (
-                <section className="mt-6 rounded-card border border-line bg-surface p-5">
+                <section className="mt-6 surface-card p-5">
                     <h2 className="font-semibold text-ink">
                         {t("commissions.rules.historicalSimulation")}
                     </h2>
@@ -469,7 +469,7 @@ export default function CommissionRules({
                     <div className="mt-4 grid gap-3 md:grid-cols-5">
                         <Field label={t("commissions.dashboard.rule")}>
                             <select
-                                className={inputClass}
+                                className={selectClass}
                                 value={simulationSet ?? ""}
                                 onChange={(e) =>
                                     setSimulationSet(Number(e.target.value))
@@ -509,7 +509,7 @@ export default function CommissionRules({
                         </Field>
                         <Field label={t("common.store")}>
                             <select
-                                className={inputClass}
+                                className={selectClass}
                                 value={sim.data.store_id}
                                 onChange={(e) =>
                                     sim.setData("store_id", e.target.value)
@@ -525,7 +525,7 @@ export default function CommissionRules({
                         </Field>
                         <Field label={t("commissions.dashboard.salesperson")}>
                             <select
-                                className={inputClass}
+                                className={selectClass}
                                 value={sim.data.salesperson_id}
                                 onChange={(e) =>
                                     sim.setData(
@@ -649,7 +649,7 @@ function Breakdown({ title, rows }: { title: string; rows: any[] }) {
         <div>
             <h3 className="mb-2 text-sm font-semibold text-ink">{title}</h3>
             <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+                <table className="erp-table w-full text-sm">
                     <thead>
                         <tr className="border-b border-line text-start text-xs text-ink-muted">
                             <th className="py-2">
@@ -684,7 +684,7 @@ function Breakdown({ title, rows }: { title: string; rows: any[] }) {
 function Metric({ label, value }: { label: string; value: string }) {
     return (
         <div className="rounded-field bg-raised p-3">
-            <p className="text-[11px] uppercase tracking-wide text-ink-faint">
+            <p className="text-[11px] text-ink-faint">
                 {label}
             </p>
             <p className="mt-1 font-semibold text-ink">{value}</p>
@@ -721,8 +721,7 @@ function Field({
         </label>
     );
 }
-const inputClass =
-    "w-full rounded-field border border-line-strong bg-surface px-3 py-2 text-sm text-ink focus:border-primary focus:outline-none";
-const smallInput =
-    "w-32 rounded-field border border-line-strong bg-surface px-2 py-1.5 text-sm text-ink focus:border-primary focus:outline-none";
+const inputClass = 'control-input w-full';
+const selectClass = 'control-select w-full';
+const smallInput = "control-input control-compact w-32";
 const dateOnly = (value: string | null) => (value ? value.slice(0, 10) : "");

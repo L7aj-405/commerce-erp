@@ -51,9 +51,9 @@ export default function CommissionSalesperson({ organization, salesperson, filte
                 <CommissionMetric label={t('commissions.pending')} value={formatMoney(kpis.pending)} /><CommissionMetric label={t('commissions.approved')} value={formatMoney(kpis.approved)} /><CommissionMetric label={t('commissions.paid')} value={formatMoney(kpis.paid)} />
             </section>
 
-            <section className="overflow-x-auto rounded-card border border-line bg-surface">
+            <section className="overflow-x-auto surface-card">
                 <table className="erp-table w-full min-w-[1000px] text-start text-sm">
-                    <thead className="bg-raised text-[11px] uppercase tracking-wide text-ink-faint">
+                    <thead>
                         <tr>
                             <th className="px-3 py-2">{t('common.date')}</th><th className="px-3 py-2">{t('invoices.order')}</th><th className="px-3 py-2">{t('commissions.productLine')}</th>
                             <th className="px-3 py-2 text-end">{t('commissions.revenueExcl')}</th>{can.costs && <th className="px-3 py-2 text-end">{t('commissions.margin')}</th>}

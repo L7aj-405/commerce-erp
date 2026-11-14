@@ -58,7 +58,7 @@ export default function PaymentShow({ payment, can }: Props) {
         <PaymentsLayout>
             <Head title={payment.payment_number} />
             <div className="mb-6">
-                <Link href="/payments" className="text-sm text-slate-500">
+                <Link href="/payments" className="text-sm text-ink-muted">
                     ← {t("payments.register")}
                 </Link>
                 <h2 className="mt-2 text-xl font-semibold">
@@ -66,7 +66,7 @@ export default function PaymentShow({ payment, can }: Props) {
                     <SandboxPaymentBadge inline />
                 </h2>
             </div>
-            <section className="mb-6 grid gap-4 rounded-lg bg-slate-50 p-5 md:grid-cols-4">
+            <section className="mb-6 grid gap-4 rounded-lg bg-raised p-5 md:grid-cols-4">
                 <div>
                     {t("payments.businessDate")}
                     <br />
@@ -144,7 +144,7 @@ export default function PaymentShow({ payment, can }: Props) {
                                 <bdi>{allocation.sales_order.order_number}</bdi>
                             </Link>
                             <br />
-                            <span className="text-sm text-slate-500">
+                            <span className="text-sm text-ink-muted">
                                 {allocation.sales_order.customer_name ??
                                     allocation.sales_order.customer_company ??
                                     t("common.counterCustomer")}
@@ -160,28 +160,28 @@ export default function PaymentShow({ payment, can }: Props) {
                 ))}
             </section>
             {payment.refunds.length > 0 && (
-                <section className="mb-6 rounded-lg border border-red-200 bg-red-50 p-5">
-                    <h3 className="mb-3 font-semibold text-red-900">
+                <section className="mb-6 rounded-lg border border-danger/30 bg-danger-soft p-5">
+                    <h3 className="mb-3 font-semibold text-danger">
                         {t("payments.refunds")}
                     </h3>
                     {payment.refunds.map((refund) => (
                         <div
                             key={refund.id}
-                            className="flex flex-wrap justify-between gap-3 border-t border-red-100 py-2 first:border-0"
+                            className="flex flex-wrap justify-between gap-3 border-t border-danger/30 py-2 first:border-0"
                         >
                             <div>
                                 <strong>
                                     <bdi>{refund.refund_number}</bdi>
                                 </strong>
                                 <br />
-                                <span className="text-sm text-slate-600">
+                                <span className="text-sm text-ink-muted">
                                     {formatDate(refund.refund_date)} ·{" "}
                                     {refund.reason} ·{" "}
                                     {refund.refunded_by?.name ??
                                         t("payments.deletedUser")}
                                 </span>
                             </div>
-                            <strong className="text-red-800">
+                            <strong className="text-danger">
                                 −{" "}
                                 {formatMoney(
                                     refund.amount,
@@ -211,10 +211,10 @@ export default function PaymentShow({ payment, can }: Props) {
                 </section>
             )}
             {payment.status === "reversed" && (
-                <section className="rounded-lg border border-amber-200 bg-amber-50 p-5">
+                <section className="rounded-lg border border-warning/30 bg-warning-soft p-5">
                     <h3 className="font-semibold">{t("payments.reversed")}</h3>
                     <p className="mt-2">{payment.reversal_reason}</p>
-                    <p className="mt-1 text-sm text-slate-500">
+                    <p className="mt-1 text-sm text-ink-muted">
                         {t("payments.by")}{" "}
                         {payment.reversed_by?.name ?? t("payments.unknown")}
                         {payment.reversed_at
@@ -226,12 +226,12 @@ export default function PaymentShow({ payment, can }: Props) {
             {payment.status === "posted" && can.reverse && (
                 <form
                     onSubmit={reverse}
-                    className="max-w-xl space-y-3 rounded-lg border border-red-200 p-5"
+                    className="max-w-xl space-y-3 rounded-lg border border-danger/30 p-5"
                 >
-                    <h3 className="font-semibold text-red-800">
+                    <h3 className="font-semibold text-danger">
                         {t("payments.reverse")}
                     </h3>
-                    <p className="text-sm text-slate-600">
+                    <p className="text-sm text-ink-muted">
                         {t("payments.reverseHelp")}
                     </p>
                     <textarea
@@ -245,13 +245,13 @@ export default function PaymentShow({ payment, can }: Props) {
                         className="w-full rounded border px-3 py-2"
                     />
                     {reversal.errors.reason && (
-                        <p className="text-sm text-red-600">
+                        <p className="text-sm text-danger">
                             {reversal.errors.reason}
                         </p>
                     )}
                     <button
                         disabled={reversal.processing}
-                        className="rounded border border-red-300 px-4 py-2 text-red-800 disabled:opacity-50"
+                        className="rounded border border-danger/30 px-4 py-2 text-danger disabled:opacity-50"
                     >
                         {t("payments.reverse")}
                     </button>

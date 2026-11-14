@@ -1,0 +1,6 @@
+@extends('errors.layout')
+@section('code', '404')
+@section('title_fr', 'Page introuvable')
+@section('title_ar', 'الصفحة غير موجودة')
+@section('message_fr', 'Cette adresse n’existe pas ou l’élément a été supprimé ou archivé.')
+@section('message_ar', 'هذا العنوان غير موجود أو تم حذف العنصر أو أرشفته.')

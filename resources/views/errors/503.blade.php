@@ -1,0 +1,6 @@
+@extends('errors.layout')
+@section('code', '503')
+@section('title_fr', 'Maintenance en cours')
+@section('title_ar', 'صيانة جارية')
+@section('message_fr', 'Le service est momentanément indisponible. Réessayez dans quelques minutes.')
+@section('message_ar', 'الخدمة غير متاحة مؤقتًا. أعد المحاولة بعد بضع دقائق.')

@@ -262,7 +262,7 @@ class FinanceMonthlyReportService
             ->where('status', SalesOrderStatus::Confirmed->value)
             ->whereBetween('sale_date', [$period->start->toDateString(), $period->end->toDateString()])
             ->orderBy('sale_date')->orderBy('id')
-            ->paginate($perPage);
+            ->paginate($perPage)->withQueryString();
         $summaries = $this->payments->summaries($orders->getCollection());
 
         return $orders->through(function (SalesOrder $order) use ($summaries) {
@@ -295,7 +295,7 @@ class FinanceMonthlyReportService
             ->whereDate('payment_date', '<=', $period->end->toDateString())
             ->with(['financialAccount:id,name,code,type', 'allocations.salesOrder:id,order_number,customer_name,customer_company'])
             ->orderBy('payment_date')->orderBy('id')
-            ->paginate($perPage)
+            ->paginate($perPage)->withQueryString()
             ->through(fn(Payment $payment) => [
                 'id' => $payment->id,
                 'payment_number' => $payment->payment_number,

@@ -1,5 +1,9 @@
 import { router } from '@inertiajs/react';
-import MonthPicker from '@/components/ui/MonthPicker';
+import { useEffect, useState } from 'react';
+import type { ReactNode } from 'react';
+import { AdvancedFilterBar, ChoiceFilter } from '@/components/ui/AdvancedFilterBar';
+import type { FilterChip } from '@/components/ui/AdvancedFilterBar';
+import MonthPicker, { currentMonthValue } from '@/components/ui/MonthPicker';
 import { useI18n } from '@/i18n';
 
 export type FinanceStore = { id: number; name: string; code: string };
@@ -10,11 +14,28 @@ type Props = {
     storeId: number | null;
     stores: FinanceStore[];
     extra?: Record<string, string | number | undefined>;
+    /** Page-level actions (exports…) rendered at the end of the bar. */
+    actions?: ReactNode;
 };
 
-/** Shared month + store filter bar for every Finance page. Navigating keeps the user's global active store untouched — this is Finance's own, independent filter. */
-export default function FinanceFilters({ path, period, storeId, stores, extra }: Props) {
-    const { t } = useI18n();
+/** Localised "novembre 2026" / Arabic month label for the period chip. */
+const monthLabel = (month: string, intlLocale: string) => {
+    const [year, m] = month.split('-').map(Number);
+    if (!year || !m) return month;
+    return new Intl.DateTimeFormat(intlLocale, { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(Date.UTC(year, m - 1, 1)));
+};
+
+/**
+ * Shared month + store filter bar for every Finance page. The backend accepts only
+ * `month` (Y-m, defaults to the current month) and `store_id` (all stores when empty);
+ * `extra` carries page-specific params unchanged. Navigating keeps the user's global
+ * active store untouched — this is Finance's own, independent filter.
+ */
+export default function FinanceFilters({ path, period, storeId, stores, extra, actions }: Props) {
+    const { t, locale } = useI18n();
+    const [loading, setLoading] = useState(false);
+    useEffect(() => () => setLoading(false), []);
+
     const go = (next: { month?: string; store_id?: string }) => {
         router.get(
             path,
@@ -23,31 +44,45 @@ export default function FinanceFilters({ path, period, storeId, stores, extra }:
                 store_id: next.store_id ?? (storeId ? String(storeId) : ''),
                 ...extra,
             },
-            { preserveState: true, preserveScroll: true },
+            {
+                preserveState: true,
+                preserveScroll: true,
+                onStart: () => setLoading(true),
+                onFinish: () => setLoading(false),
+            },
         );
     };
 
+    const store = stores.find((s) => s.id === storeId);
+    const current = currentMonthValue();
+    const chips: FilterChip[] = [];
+    if (period !== current) {
+        chips.push({ key: 'month', label: t('common.period'), value: monthLabel(period, locale === 'ar' ? 'ar-MA' : 'fr-FR'), onRemove: () => go({ month: current }) });
+    }
+    if (storeId) {
+        chips.push({ key: 'store', label: t('common.store'), value: store ? `${store.name} · ${store.code}` : String(storeId), onRemove: () => go({ store_id: '' }) });
+    }
+
     return (
-        <div className="mb-6 flex flex-wrap items-end gap-3 rounded-card border border-line bg-surface p-4">
-            <div className="block">
-                <span aria-hidden="true" className="mb-1.5 block text-[13px] font-medium text-ink">{t('common.period')}</span>
+        <div className="mb-6">
+            <AdvancedFilterBar
+                label={t('filters.title')}
+                chips={chips}
+                activeCount={chips.length}
+                loading={loading}
+                onReset={() => go({ month: current, store_id: '' })}
+                actions={actions}
+            >
                 <MonthPicker label={t('common.period')} value={period} onChange={(month) => month && go({ month })} />
-            </div>
-            <label className="block">
-                <span className="mb-1.5 block text-[13px] font-medium text-ink">{t('common.store')}</span>
-                <select
-                    value={storeId ?? ''}
-                    onChange={(e) => go({ store_id: e.target.value })}
-                    className="control-select h-10 min-w-56"
-                >
-                    <option value="">{t('common.allStores')}</option>
-                    {stores.map((store) => (
-                        <option key={store.id} value={store.id}>
-                            {store.name} · {store.code}
-                        </option>
-                    ))}
-                </select>
-            </label>
+                <ChoiceFilter
+                    label={t('common.store')}
+                    allLabel={t('common.allStores')}
+                    searchable={stores.length > 8}
+                    options={stores.map((s) => ({ value: String(s.id), label: `${s.name} · ${s.code}` }))}
+                    value={storeId ? String(storeId) : undefined}
+                    onChange={(value) => go({ store_id: value ?? '' })}
+                />
+            </AdvancedFilterBar>
         </div>
     );
 }

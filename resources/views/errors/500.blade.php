@@ -1,0 +1,6 @@
+@extends('errors.layout')
+@section('code', '500')
+@section('title_fr', 'Erreur du serveur')
+@section('title_ar', 'خطأ في الخادم')
+@section('message_fr', 'Un problème inattendu est survenu. Réessayez dans un instant ; si cela persiste, contactez le support.')
+@section('message_ar', 'حدثت مشكلة غير متوقعة. أعد المحاولة بعد قليل؛ وإذا استمرت، تواصل مع الدعم.')

@@ -315,7 +315,7 @@ export default function CommissionDashboard(props: Props) {
                             />
                         </section>
                     ) : (
-                        <p className="mb-6 rounded-card border border-line bg-surface p-3 text-xs text-ink-muted">
+                        <p className="mb-6 surface-card p-3 text-xs text-ink-muted">
                             {t("commissions.dashboard.coveredRevenue")} :{" "}
                             <strong>{formatMoney(kpis.revenue)}</strong> ·{" "}
                             {t("commissions.dashboard.costPermissionHelp")}
@@ -511,8 +511,8 @@ function RankingTable({
 
     return (
         <div className="overflow-x-auto">
-            <table className="w-full min-w-[1100px] text-start text-sm">
-                <thead className="bg-raised text-[11px] uppercase tracking-wide text-ink-faint">
+            <table className="erp-table w-full min-w-[1100px] text-start text-sm">
+                <thead>
                     <tr>
                         <Th k="salesperson_name" right={false}>
                             {t("commissions.dashboard.salesperson")}
@@ -625,8 +625,8 @@ function TrendTable({ points }: { points: Props["trend"]["points"] }) {
     );
     return (
         <div className="max-h-80 overflow-y-auto">
-            <table className="w-full text-sm">
-                <thead className="sticky top-0 bg-surface text-[11px] uppercase tracking-wide text-ink-faint">
+            <table className="erp-table w-full text-sm">
+                <thead className="sticky top-0 bg-surface text-[11px] text-ink-faint">
                     <tr>
                         <th className="py-2 text-start">
                             {t("common.period")}
@@ -750,8 +750,8 @@ function AdjustmentsPanel({
                     </span>
                 ))}
             </div>
-            <table className="w-full text-sm">
-                <thead className="text-[11px] uppercase tracking-wide text-ink-faint">
+            <table className="erp-table w-full text-sm">
+                <thead className="text-[11px] text-ink-faint">
                     <tr>
                         <th className="py-1 text-start">
                             {t("commissions.dashboard.salesperson")}
@@ -800,7 +800,7 @@ function AdjustmentsPanel({
                 </tbody>
             </table>
             <div>
-                <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-ink-faint">
+                <p className="mb-1 text-xs font-semibold text-ink-faint">
                     {t("commissions.dashboard.latestReversals")}
                 </p>
                 <ul className="divide-y divide-line text-sm">
@@ -860,8 +860,8 @@ function TierTable({ tiers, canCosts }: { tiers: Tier[]; canCosts: boolean }) {
         );
     return (
         <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-                <thead className="text-[11px] uppercase tracking-wide text-ink-faint">
+            <table className="erp-table w-full text-sm">
+                <thead className="text-[11px] text-ink-faint">
                     <tr>
                         <th className="py-1 text-start">
                             {t("commissions.dashboard.rule")}
@@ -926,8 +926,8 @@ function StoreTable({
 }) {
     const { t } = useI18n();
     return (
-        <table className="w-full text-sm">
-            <thead className="text-[11px] uppercase tracking-wide text-ink-faint">
+        <table className="erp-table w-full text-sm">
+            <thead className="text-[11px] text-ink-faint">
                 <tr>
                     <th className="py-1 text-start">{t("common.store")}</th>
                     <th className="py-1 text-end">

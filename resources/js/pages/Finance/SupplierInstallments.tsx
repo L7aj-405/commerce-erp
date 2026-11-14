@@ -49,8 +49,8 @@ type Props = {
     currencyCode: string;
     canManage: boolean;
 };
-const input =
-    "h-10 w-full rounded-field border border-line-strong bg-surface px-3 text-sm outline-none focus:border-primary";
+const input = 'control-input w-full';
+const selectClass = 'control-select w-full';
 const blank = (currency: string) => ({
     supplier_id: "",
     sales_order_procurement_id: "",
@@ -133,7 +133,7 @@ export default function SupplierInstallments(props: Props) {
                     </>
                 }
             />
-            <section className="mb-5 rounded-card border border-line bg-surface p-4">
+            <section className="mb-5 surface-card p-4">
                 <form
                     className="flex flex-wrap gap-3"
                     onSubmit={(e) => {
@@ -157,7 +157,7 @@ export default function SupplierInstallments(props: Props) {
                         )}
                     />
                     <select
-                        className={`${input} max-w-64`}
+                        className={`${selectClass} max-w-64`}
                         value={props.filters.supplier_id ?? ""}
                         onChange={(e) =>
                             router.get(
@@ -191,10 +191,10 @@ export default function SupplierInstallments(props: Props) {
                     }
                 />
             ) : (
-                <section className="overflow-hidden rounded-card border border-line bg-surface">
+                <section className="overflow-hidden surface-card">
                     <div className="overflow-x-auto">
-                        <table className="w-full min-w-[1100px] text-sm">
-                            <thead className="bg-raised text-start text-xs uppercase text-ink-muted">
+                        <table className="erp-table w-full min-w-[1100px] text-sm">
+                            <thead>
                                 <tr>
                                     {[
                                         "plan",
@@ -584,7 +584,7 @@ function Select({
         <label>
             <span className="mb-1 block text-sm font-medium">{label}</span>
             <select
-                className={input}
+                className={selectClass}
                 value={value}
                 onChange={(e) => onChange(e.target.value)}
             >

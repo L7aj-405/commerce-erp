@@ -465,11 +465,11 @@ function PreviewPanel({ preview }: { preview: ResetPreview }) {
 }
 
 function InfoBlock({ label, value, danger = false }: { label: string; value: string; danger?: boolean }) {
-    return <div className="rounded-field bg-raised p-3"><dt className={`text-xs font-semibold uppercase tracking-wide ${danger ? 'text-danger' : 'text-ink-faint'}`}>{label}</dt><dd className="mt-1 text-sm leading-5 text-ink-muted">{value}</dd></div>;
+    return <div className="rounded-field bg-raised p-3"><dt className={`text-[13px] font-medium ${danger ? 'text-danger' : 'text-ink-faint'}`}>{label}</dt><dd className="mt-1 text-sm leading-5 text-ink-muted">{value}</dd></div>;
 }
 
 function Metric({ label, value, danger = false }: { label: string; value: number; danger?: boolean }) {
-    return <div className="rounded-field bg-raised p-4"><p className="text-xs font-semibold uppercase tracking-wide text-ink-faint">{label}</p><p className={`mt-2 text-2xl font-semibold tabular-nums ${danger ? 'text-danger' : 'text-ink'}`}>{formatInteger(value)}</p></div>;
+    return <div className="rounded-field bg-raised p-4"><p className="text-xs font-semibold text-ink-faint">{label}</p><p className={`mt-2 text-2xl font-semibold tabular-nums ${danger ? 'text-danger' : 'text-ink'}`}>{formatInteger(value)}</p></div>;
 }
 
 function ResetIcon() { return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M4 4v6h6M20 20v-6h-6"/><path d="M5.5 15a8 8 0 0 0 13-3M18.5 9a8 8 0 0 0-13 3"/></svg>; }

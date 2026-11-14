@@ -55,32 +55,32 @@ export default function ActivityIndex({ logs, detail, filters, organizations, us
             <Head title={t('activity.title')} />
             <PageHeader title={t('activity.title')} description={t('activity.description')} />
 
-            <form onSubmit={submit} className="mb-5 rounded-card border border-line bg-surface p-4 shadow-soft">
+            <form onSubmit={submit} className="mb-5 surface-card p-4">
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
                     <Field label={t('activity.search')} className="sm:col-span-2">
                         <input name="search" defaultValue={String(filters.search ?? '')} placeholder={t('activity.searchPlaceholder')} className={inputClass} />
                     </Field>
                     {organizations.length > 1 && (
                         <Field label={t('common.organization')}>
-                            <select name="organization_id" defaultValue={String(filters.organization_id ?? '')} className={inputClass}>
+                            <select name="organization_id" defaultValue={String(filters.organization_id ?? '')} className={selectClass}>
                                 {organizations.map((organization) => <option key={organization.id} value={organization.id}>{organization.name}</option>)}
                             </select>
                         </Field>
                     )}
                     <Field label={t('activity.user')}>
-                        <select name="user_id" defaultValue={String(filters.user_id ?? '')} className={inputClass}>
+                        <select name="user_id" defaultValue={String(filters.user_id ?? '')} className={selectClass}>
                             <option value="">{t('activity.all')}</option>
                             {users.map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}
                         </select>
                     </Field>
                     <Field label={t('activity.module')}>
-                        <select name="module" defaultValue={String(filters.module ?? '')} className={inputClass}>
+                        <select name="module" defaultValue={String(filters.module ?? '')} className={selectClass}>
                             <option value="">{t('activity.all')}</option>
                             {modules.map((module) => <option key={module.key} value={module.key}>{module.label}</option>)}
                         </select>
                     </Field>
                     <Field label={t('activity.action')}>
-                        <select name="event" defaultValue={String(filters.event ?? '')} className={inputClass}>
+                        <select name="event" defaultValue={String(filters.event ?? '')} className={selectClass}>
                             <option value="">{t('activity.allFeminine')}</option>
                             {events.map((event) => <option key={event.key} value={event.key}>{event.label}</option>)}
                         </select>
@@ -102,9 +102,9 @@ export default function ActivityIndex({ logs, detail, filters, organizations, us
                 <EmptyState title={t('activity.empty')} description={t('activity.emptyHelp')} />
             ) : (
                 <>
-                    <div className="hidden overflow-x-auto rounded-card border border-line bg-surface shadow-soft lg:block">
+                    <div className="hidden overflow-x-auto surface-card lg:block">
                         <table className="erp-table w-full min-w-[1050px] text-start text-sm">
-                            <thead className="bg-raised text-[11px] uppercase tracking-wide text-ink-faint">
+                            <thead>
                                 <tr>
                                     <th className="px-4 py-3">{t('common.date')}</th><th className="px-4 py-3">{t('activity.user')}</th><th className="px-4 py-3">{t('activity.module')}</th><th className="px-4 py-3">{t('activity.action')}</th><th className="px-4 py-3">{t('activity.target')}</th><th className="px-4 py-3">{t('activity.organizationStore')}</th><th className="px-4 py-3">IP</th><th className="px-4 py-3 text-end">{t('activity.details')}</th>
                                 </tr>
@@ -117,7 +117,7 @@ export default function ActivityIndex({ logs, detail, filters, organizations, us
 
                     <ul className="space-y-3 lg:hidden">
                         {logs.data.map((entry) => (
-                            <li key={entry.id} className="rounded-card border border-line bg-surface p-4 shadow-soft">
+                            <li key={entry.id} className="surface-card p-4">
                                 <div className="flex items-start justify-between gap-3">
                                     <div className="min-w-0">
                                         <ModuleBadge module={entry.module} />
@@ -163,7 +163,7 @@ function DetailDrawer({ entry, closeUrl }: { entry: AuditEntry; closeUrl: string
             <Link href={closeUrl} preserveScroll aria-label={t('activity.closeDetails')} className="absolute inset-0" />
             <aside role="dialog" aria-modal="true" aria-labelledby="audit-detail-title" className="relative h-full w-full max-w-2xl overflow-y-auto border-e border-line bg-surface p-5 shadow-pop sm:p-7">
                 <div className="flex items-start justify-between gap-4">
-                    <div><p className="text-xs font-semibold uppercase tracking-wide text-ink-faint">{t('activity.event')} <bdi>#{entry.id}</bdi></p><h2 id="audit-detail-title" className="mt-1 text-xl font-semibold text-ink">{entry.action_label}</h2></div>
+                    <div><p className="text-xs font-semibold text-ink-faint">{t('activity.event')} <bdi>#{entry.id}</bdi></p><h2 id="audit-detail-title" className="mt-1 text-xl font-semibold text-ink">{entry.action_label}</h2></div>
                     <Link href={closeUrl} preserveScroll className="grid size-9 place-items-center rounded-full border border-line text-xl text-ink-muted hover:bg-raised" aria-label={t('common.close')}>×</Link>
                 </div>
                 <dl className="mt-6 grid gap-4 rounded-card border border-line bg-raised p-4 sm:grid-cols-2">
@@ -188,7 +188,7 @@ function ValueSection({ title, values }: { title: string; values: Record<string,
                 <dl className="mt-2 divide-y divide-line rounded-card border border-line">
                     {entries.map(([key, value]) => (
                         <div key={key} className="grid gap-1 px-4 py-3 sm:grid-cols-[11rem_1fr] sm:gap-4">
-                            <dt className="text-xs font-semibold uppercase tracking-wide text-ink-faint">{humanKey(key)}</dt>
+                            <dt className="text-xs font-semibold text-ink-faint">{humanKey(key)}</dt>
                             <dd className="break-words text-sm text-ink"><Value value={value} /></dd>
                         </div>
                     ))}
@@ -206,9 +206,10 @@ function Value({ value }: { value: AuditValue }) {
     return <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded-field bg-raised p-3 text-xs leading-relaxed">{JSON.stringify(value, null, 2)}</pre>;
 }
 
-const inputClass = 'w-full rounded-field border border-line-strong bg-surface px-3 py-2 text-sm';
-function Field({ label, children, className = '' }: { label: string; children: ReactNode; className?: string }) { return <label className={`block ${className}`}><span className="mb-1 block text-xs font-medium uppercase tracking-wide text-ink-faint">{label}</span>{children}</label>; }
-function Info({ label, value }: { label: string; value: string }) { return <div><dt className="text-xs font-medium uppercase tracking-wide text-ink-faint">{label}</dt><dd className="mt-1 break-words text-sm text-ink">{value}</dd></div>; }
+const inputClass = 'control-input w-full';
+const selectClass = 'control-select w-full';
+function Field({ label, children, className = '' }: { label: string; children: ReactNode; className?: string }) { return <label className={`block ${className}`}><span className="mb-1 block text-xs font-medium text-ink-faint">{label}</span>{children}</label>; }
+function Info({ label, value }: { label: string; value: string }) { return <div><dt className="text-xs font-medium text-ink-faint">{label}</dt><dd className="mt-1 break-words text-sm text-ink">{value}</dd></div>; }
 function ModuleBadge({ module }: { module: NamedOption }) { return <span className="inline-flex rounded-full bg-sage px-2.5 py-1 text-xs font-semibold text-ink">{module.label}</span>; }
 function targetText(entry: AuditEntry) { return [entry.target.type, entry.target.reference].filter(Boolean).join(' · ') || '—'; }
 function humanKey(key: string) { return key.replaceAll('_', ' ').replace(/^./, (letter) => letter.toUpperCase()); }

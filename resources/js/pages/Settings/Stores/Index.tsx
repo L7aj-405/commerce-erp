@@ -1,4 +1,5 @@
 import { Button, ButtonLink } from '@/components/ui/Button';
+import EmptyState from '@/components/ui/EmptyState';
 import PageHeader from '@/components/ui/PageHeader';
 import StatusBadge from '@/components/ui/StatusBadge';
 import { useI18n } from '@/i18n';
@@ -54,13 +55,14 @@ export default function StoresIndex({ stores, warehouses, usersAccessUrl, can }:
             />
 
             <section className="grid max-w-5xl gap-4">
+                {stores.length === 0 && <EmptyState compact title={t('stores.title')} description={t('stores.description')} />}
                 {stores.map((store) => (
                     <StoreCard key={store.id} store={store} warehouses={warehouses} canUpdate={can.update} />
                 ))}
             </section>
 
             {can.create && (
-                <section className="mt-8 max-w-5xl rounded-card border border-line bg-surface p-6">
+                <section className="surface-card mt-8 max-w-5xl p-6">
                     <h2 className="text-base font-semibold text-ink">{t('stores.add')}</h2>
                     <form onSubmit={create} className="mt-4 grid gap-4 md:grid-cols-[1fr_12rem_auto] md:items-end">
                         <label className="text-[13px] font-medium text-ink">
@@ -100,13 +102,13 @@ function StoreCard({ store, warehouses, canUpdate }: { store: StoreRow; warehous
     };
 
     return (
-        <article className="rounded-card border border-line bg-surface p-5">
+        <article className="surface-card p-5">
             <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                     <h2 className="text-base font-semibold text-ink">{store.name}</h2>
-                    <p className="mt-0.5 text-[12px] font-medium uppercase tracking-wide text-ink-faint">{store.code}</p>
+                    <p className="mt-0.5 font-mono text-[12px] font-medium text-ink-faint" dir="ltr">{store.code}</p>
                 </div>
-                <div className="flex items-center gap-2 text-[12px] text-ink-muted">
+                <div className="flex flex-wrap items-center gap-2 text-[13px] text-ink-muted">
                     <span>{t('stores.members').replace('{count}', String(store.members_count))}</span>
                     <StatusBadge status={store.status} />
                 </div>
@@ -136,7 +138,7 @@ function StoreCard({ store, warehouses, canUpdate }: { store: StoreRow; warehous
                         <select
                             value={form.data.default_warehouse_id ?? ''}
                             onChange={(e) => form.setData('default_warehouse_id', e.target.value ? Number(e.target.value) : null)}
-                            className="control-input mt-1.5 w-full"
+                            className="control-select mt-1.5 w-full"
                         >
                             <option value="">{t('stores.noDefaultLocation')}</option>
                             {candidates.map((w) => (

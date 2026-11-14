@@ -144,7 +144,7 @@ export default function EmailConfiguration({ organization, setting, status, canU
                                         value={form.data.smtp_password}
                                         onChange={(e) => form.setData('smtp_password', e.target.value)}
                                         placeholder={setting?.has_password ? '••••••••' : ''}
-                                        className="w-full rounded-field border border-line-strong px-3 py-2 text-sm"
+                                        className="control-input w-full"
                                     />
                                     {form.errors.smtp_password && <span className="mt-1 block text-xs text-danger">{form.errors.smtp_password}</span>}
                                 </label>
@@ -185,7 +185,7 @@ export default function EmailConfiguration({ organization, setting, status, canU
                     </fieldset>
                 </form>
 
-                <section className="mt-8 rounded-card border border-line bg-surface p-5">
+                <section className="mt-8 surface-card p-5">
                     <h2 className="text-sm font-semibold text-ink">{t('emailSettings.testTitle')}</h2>
                     <p className="mt-1 text-xs text-ink-muted">{t('emailSettings.testHelp')}</p>
                     {!setting && (
@@ -200,7 +200,7 @@ export default function EmailConfiguration({ organization, setting, status, canU
                                 onChange={(e) => setTestEmail(e.target.value)}
                                 placeholder="vous@exemple.ma"
                                 disabled={!canUpdate || !setting}
-                                className="w-64 rounded-field border border-line-strong px-3 py-2 text-sm"
+                                className="control-input w-64"
                             />
                         </label>
                         <Button
@@ -230,7 +230,7 @@ export default function EmailConfiguration({ organization, setting, status, canU
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
     return (
-        <section className="rounded-card border border-line bg-surface p-5">
+        <section className="surface-card p-5">
             <h2 className="mb-3 text-sm font-semibold text-ink">{title}</h2>
             <div className="space-y-3">{children}</div>
         </section>
@@ -252,7 +252,7 @@ function TextField({ form, name, label: l, type = 'text', required = false, plac
                 value={form.data[name] ?? ''}
                 placeholder={placeholder}
                 onChange={(e) => form.setData(name, type === 'number' ? Number(e.target.value) : e.target.value)}
-                className="w-full rounded-field border border-line-strong px-3 py-2 text-sm"
+                className="control-input w-full"
             />
             {form.errors[name] && <span className="mt-1 block text-xs text-danger">{form.errors[name]}</span>}
         </label>

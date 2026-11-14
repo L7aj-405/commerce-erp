@@ -104,7 +104,7 @@ function AccountForm({
     return (
         <form
             onSubmit={submit}
-            className="space-y-4 rounded-card border border-line bg-surface p-5"
+            className="space-y-4 surface-card p-5"
         >
             <h3 className="text-sm font-semibold text-ink">
                 {account
@@ -419,7 +419,7 @@ export default function FinancialAccounts({
             <div
                 className={`mb-5 rounded-card border p-4 ${positions.complete ? "border-line bg-surface" : "border-warning/30 bg-warning-soft"}`}
             >
-                <p className="text-xs font-semibold uppercase tracking-wide text-ink-faint">
+                <p className="text-xs font-semibold text-ink-faint">
                     {t("financialAccounts.cashPosition")} {positions.as_of}
                 </p>
                 <p className="mt-1 text-xl font-bold">
@@ -463,9 +463,9 @@ export default function FinancialAccounts({
                     }
                 />
             ) : (
-                <div className="overflow-x-auto rounded-card border border-line bg-surface">
-                    <table className="w-full text-start text-sm">
-                        <thead className="bg-raised text-[11px] uppercase tracking-wide text-ink-faint">
+                <div className="overflow-x-auto surface-card">
+                    <table className="erp-table w-full text-start text-sm">
+                        <thead>
                             <tr>
                                 <th className="px-4 py-2.5">
                                     {t("financialAccounts.account")}
@@ -505,7 +505,7 @@ export default function FinancialAccounts({
                                                         <p className="font-medium text-ink">
                                                             {account.name}
                                                         </p>
-                                                        <p className="text-[12px] uppercase tracking-wide text-ink-faint">
+                                                        <p className="text-[12px] text-ink-faint">
                                                             {account.code}
                                                         </p>
                                                     </td>

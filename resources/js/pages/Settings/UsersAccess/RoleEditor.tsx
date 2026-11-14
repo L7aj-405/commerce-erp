@@ -154,7 +154,7 @@ export default function RoleEditor({ permissionGroups, presets, actorPermissions
     };
 
     return (
-        <div className="rounded-card border border-line bg-surface p-5">
+        <div className="surface-card p-5">
             <div className="mb-4 flex items-start justify-between gap-3">
                 <h3 className="text-sm font-semibold text-ink">{isCreate ? t('roles.new') : role!.name}</h3>
                 <button type="button" onClick={onClose} className="text-xs text-ink-muted hover:text-ink">
@@ -223,7 +223,7 @@ export default function RoleEditor({ permissionGroups, presets, actorPermissions
                     <div className="max-h-96 space-y-4 overflow-y-auto rounded-field border border-line p-3">
                         {Object.entries(permissionGroups).map(([group, rows]) => (
                             <div key={group}>
-                                <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
+                                <p className="mb-1.5 text-[12px] font-medium text-ink-muted">
                                     {groupLabels[group] ?? group.replace(/_/g, ' ')}
                                 </p>
                                 <div className="grid gap-1 sm:grid-cols-2">

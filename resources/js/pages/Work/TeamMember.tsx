@@ -28,7 +28,8 @@ type Props = {
     completedDays: number;
 };
 
-const fieldClass = 'h-10 rounded-field border border-line-strong bg-surface px-3 text-sm text-ink outline-none transition-soft focus:border-primary';
+const fieldClass = 'control-input';
+const selectClass = 'control-select';
 
 /** W5 one member's operational work (or Unassigned work), through the canonical follow-up and attention lists and actions. */
 export default function WorkTeamMember({ member, tab, filters, followUps, attention, context, owners, stores, completedDays }: Props) {
@@ -62,12 +63,12 @@ export default function WorkTeamMember({ member, tab, filters, followUps, attent
 
             <div className="mb-4 flex flex-wrap gap-3 rounded-card border border-line bg-raised p-4">
                 {stores.length > 1 && (
-                    <select value={String(filters.store_id ?? '')} onChange={(e) => visit({ store_id: e.target.value || undefined })} className={`${fieldClass} flex-1 sm:flex-none`} aria-label={t('team.store')}>
+                    <select value={String(filters.store_id ?? '')} onChange={(e) => visit({ store_id: e.target.value || undefined })} className={`${selectClass} flex-1 sm:flex-none`} aria-label={t('team.store')}>
                         <option value="">{t('team.allStores')}</option>
                         {stores.map((store) => <option key={store.id} value={store.id}>{store.name}</option>)}
                     </select>
                 )}
-                <select value={filters.priority ?? ''} onChange={(e) => visit({ priority: e.target.value || undefined })} className={`${fieldClass} flex-1 sm:flex-none`} aria-label={t('team.priority')}>
+                <select value={filters.priority ?? ''} onChange={(e) => visit({ priority: e.target.value || undefined })} className={`${selectClass} flex-1 sm:flex-none`} aria-label={t('team.priority')}>
                     <option value="">{t('team.allPriorities')}</option>
                     <option value="high">{t('work.priorityHigh')}</option>
                     <option value="normal">{t('work.priorityNormal')}</option>
@@ -83,7 +84,7 @@ export default function WorkTeamMember({ member, tab, filters, followUps, attent
                 </label>
                 {attention !== null && (
                     <>
-                        <select value={filters.severity ?? ''} onChange={(e) => visit({ severity: e.target.value || undefined })} className={`${fieldClass} flex-1 sm:flex-none`} aria-label={t('attention.allSeverities')}>
+                        <select value={filters.severity ?? ''} onChange={(e) => visit({ severity: e.target.value || undefined })} className={`${selectClass} flex-1 sm:flex-none`} aria-label={t('attention.allSeverities')}>
                             <option value="">{t('attention.allSeverities')}</option>
                             <option value="critical">{t('attention.severityCritical')}</option>
                             <option value="warning">{t('attention.severityWarning')}</option>

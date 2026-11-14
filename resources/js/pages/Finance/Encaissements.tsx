@@ -1,6 +1,7 @@
 import FinanceFilters, { type FinanceStore } from '@/components/finance/FinanceFilters';
 import PageHeader from '@/components/ui/PageHeader';
-import Pagination from '@/components/ui/Pagination';
+import EmptyState from '@/components/ui/EmptyState';
+import { TablePager, TableShell } from '@/components/ui/TableShell';
 import { useI18n } from '@/i18n';
 import ApplicationShell from '@/layouts/ApplicationShell';
 import { formatMoney } from '@/utils/format';
@@ -34,8 +35,8 @@ type Props = {
     periodLabel: string;
     storeId: number | null;
     stores: FinanceStore[];
-    payments: { data: PaymentRow[]; links: LinkData[]; total: number };
-    refunds: { data: RefundRow[]; links: LinkData[]; total: number };
+    payments: { data: PaymentRow[]; links: LinkData[]; total: number; from?: number | null; to?: number | null };
+    refunds: { data: RefundRow[]; links: LinkData[]; total: number; from?: number | null; to?: number | null };
 };
 
 export default function FinanceEncaissements({ organization, period, periodLabel, storeId, stores, payments, refunds }: Props) {
@@ -46,15 +47,15 @@ export default function FinanceEncaissements({ organization, period, periodLabel
             <PageHeader title={t('finance.collections.title')} description={`${organization.name} · ${periodLabel} · ${payments.total} ${t('finance.collections.paymentCount')}`} />
             <FinanceFilters path="/finance/encaissements" period={period} storeId={storeId} stores={stores} />
 
-            {payments.data.length === 0 ? (
-                <div className="rounded-card border border-dashed border-line-strong bg-raised px-4 py-8 text-center text-sm text-ink-faint">
-                    {t('finance.collections.empty')}
-                </div>
-            ) : (
-                <>
-                    {/* Desktop/tablet: table */}
-                    <div className="hidden overflow-x-auto rounded-card border border-line bg-surface md:block">
-                        <table className="erp-table">
+            {/* Desktop/tablet: table */}
+            <TableShell
+                label={t('finance.collections.title')}
+                state={payments.data.length === 0 ? 'empty' : 'ready'}
+                emptyTitle={t('finance.collections.empty')}
+                className="hidden md:block"
+                footer={payments.data.length === 0 ? undefined : <TablePager links={payments.links} from={payments.from} to={payments.to} total={payments.total} />}
+            >
+                <table className="erp-table min-w-[860px]">
                             <thead>
                                 <tr>
                                     <th className="px-4 py-2.5">{t('finance.collections.paymentNumber')}</th>
@@ -63,12 +64,12 @@ export default function FinanceEncaissements({ organization, period, periodLabel
                                     <th className="px-4 py-2.5">{t('finance.collections.account')}</th>
                                     <th className="px-4 py-2.5">{t('finance.collections.order')}</th>
                                     <th className="px-4 py-2.5">{t('common.customer')}</th>
-                                    <th className="px-4 py-2.5 text-end">{t('finance.collections.amount')}</th>
+                                    <th className="num px-4 py-2.5">{t('finance.collections.amount')}</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {payments.data.map((payment) => (
-                                    <tr key={payment.id} className="border-t border-line">
+                                    <tr key={payment.id}>
                                         <td className="bidi-isolate px-4 py-2.5 font-medium text-ink" dir="ltr">
                                             <Link href={`/payments/${payment.id}`}>{payment.payment_number}</Link>
                                         </td>
@@ -79,17 +80,22 @@ export default function FinanceEncaissements({ organization, period, periodLabel
                                             {payment.order ? <Link href={`/sales/orders/${payment.order.id}`}>{payment.order.order_number}</Link> : '—'}
                                         </td>
                                         <td className="px-4 py-2.5">{payment.order?.customer_company || payment.order?.customer_name || '—'}</td>
-                                        <td className="metric-value px-4 py-2.5 text-end" dir="ltr">{formatMoney(payment.amount)}</td>
+                                        <td className="num px-4 py-2.5" dir="ltr">{formatMoney(payment.amount)}</td>
                                     </tr>
                                 ))}
                             </tbody>
                         </table>
-                    </div>
+            </TableShell>
 
-                    {/* Mobile: stacked cards */}
-                    <ul className="space-y-3 md:hidden">
+            {/* Mobile: stacked cards */}
+            <div className="space-y-3 md:hidden">
+                {payments.data.length === 0 ? (
+                    <EmptyState compact title={t('finance.collections.empty')} />
+                ) : (
+                    <>
+                        <ul className="space-y-3">
                         {payments.data.map((payment) => (
-                            <li key={payment.id} className="rounded-card border border-line bg-surface p-4">
+                            <li key={payment.id} className="surface-card p-4">
                                 <div className="flex items-start justify-between gap-3">
                                     <div className="min-w-0">
                                         <Link href={`/payments/${payment.id}`} className="block truncate text-sm font-semibold text-ink">
@@ -124,19 +130,20 @@ export default function FinanceEncaissements({ organization, period, periodLabel
                             </li>
                         ))}
                     </ul>
-                </>
-            )}
-            <Pagination links={payments.links} />
+                        <TablePager links={payments.links} from={payments.from} to={payments.to} total={payments.total} />
+                    </>
+                )}
+            </div>
 
-            <section className="mt-8">
-                <h2 className="mb-3 text-sm font-semibold text-ink">{t('finance.collections.refunds')} · {refunds.total}</h2>
-                {refunds.data.length === 0 ? (
-                    <div className="rounded-card border border-dashed border-line-strong bg-raised px-4 py-6 text-center text-sm text-ink-faint">
-                        {t('finance.collections.noRefund')}
-                    </div>
-                ) : (
-                    <div className="overflow-x-auto rounded-card border border-line bg-surface">
-                        <table className="erp-table min-w-[820px]">
+            <section className="mt-8" aria-labelledby="refunds-title">
+                <h2 id="refunds-title" className="mb-3 text-base font-semibold text-ink">{t('finance.collections.refunds')} · <span className="tabular-nums">{refunds.total}</span></h2>
+                <TableShell
+                    label={t('finance.collections.refunds')}
+                    state={refunds.data.length === 0 ? 'empty' : 'ready'}
+                    emptyTitle={t('finance.collections.noRefund')}
+                    footer={refunds.data.length === 0 ? undefined : <TablePager links={refunds.links} from={refunds.from} to={refunds.to} total={refunds.total} />}
+                >
+                    <table className="erp-table min-w-[820px]">
                             <thead>
                                 <tr>
                                     <th className="px-4 py-2.5">{t('finance.collections.refundNumber')}</th>
@@ -145,26 +152,24 @@ export default function FinanceEncaissements({ organization, period, periodLabel
                                     <th className="px-4 py-2.5">{t('finance.collections.methodAccount')}</th>
                                     <th className="px-4 py-2.5">{t('finance.collections.order')}</th>
                                     <th className="px-4 py-2.5">{t('finance.collections.reason')}</th>
-                                    <th className="px-4 py-2.5 text-end">{t('finance.collections.outflow')}</th>
+                                    <th className="num px-4 py-2.5">{t('finance.collections.outflow')}</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {refunds.data.map((refund) => (
-                                    <tr key={refund.id} className="border-t border-line">
+                                    <tr key={refund.id}>
                                         <td className="bidi-isolate px-4 py-2.5 font-medium text-ink" dir="ltr">{refund.refund_number}</td>
                                         <td className="px-4 py-2.5 text-ink-muted">{refund.refund_date}</td>
                                         <td className="px-4 py-2.5 text-ink-muted">{refund.original_payment?.payment_number ?? '—'}</td>
                                         <td className="px-4 py-2.5 text-ink-muted">{label(paymentMethodLabel, refund.method)} · {refund.financial_account?.name ?? '—'}</td>
                                         <td className="px-4 py-2.5">{refund.order ? <Link href={`/sales/orders/${refund.order.id}`}>{refund.order.order_number}</Link> : '—'}</td>
                                         <td className="px-4 py-2.5 text-ink-muted">{refund.reason}</td>
-                                        <td className="metric-value px-4 py-2.5 text-end font-medium text-danger" dir="ltr">− {formatMoney(refund.amount)}</td>
+                                        <td className="num px-4 py-2.5 font-medium text-danger" dir="ltr">− {formatMoney(refund.amount)}</td>
                                     </tr>
                                 ))}
                             </tbody>
                         </table>
-                    </div>
-                )}
-                <Pagination links={refunds.links} />
+                </TableShell>
             </section>
         </ApplicationShell>
     );

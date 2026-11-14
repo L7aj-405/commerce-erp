@@ -48,7 +48,7 @@ class FinanceCaEncaisseService
         $paginator = $this->baseQuery($organization, $period, $store)
             ->select($this->columns())
             ->orderBy('payments.payment_date')->orderBy('payment_allocations.id')
-            ->paginate($perPage);
+            ->paginate($perPage)->withQueryString();
 
         $enrichedById = $this->enrich($organization, collect($paginator->items()));
 

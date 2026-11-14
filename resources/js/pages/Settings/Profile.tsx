@@ -48,7 +48,7 @@ export default function Profile({ user, emailVerified, status }: Props) {
                 </p>
             )}
 
-            <section className="mt-6 rounded-card border border-line bg-surface p-4 sm:p-6">
+            <section className="mt-6 surface-card p-4 sm:p-6">
                 <form onSubmit={submit} className="space-y-4">
                     <TextField
                         label={t('profile.name')}

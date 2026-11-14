@@ -284,7 +284,7 @@ export default function WooCommerceSettings({ integration, runs, warehouses, sto
 
             <div className="grid max-w-5xl gap-6 lg:grid-cols-[1.4fr_1fr]">
                 {/* Connection + configuration */}
-                <form onSubmit={submit} className="space-y-4 rounded-card border border-line bg-surface p-5 shadow-card">
+                <form onSubmit={submit} className="space-y-4 surface-card p-5 shadow-card">
                     <h2 className="text-sm font-semibold text-ink">{t('woo.connection')}</h2>
 
                     <TextField label={t('woo.integrationName')} required value={form.data.name}
@@ -318,7 +318,7 @@ export default function WooCommerceSettings({ integration, runs, warehouses, sto
                         <select
                             value={priceModeValue(form.data.prices_include_tax)}
                             onChange={(e) => form.setData('prices_include_tax', e.target.value === '' ? null : e.target.value === 'ttc')}
-                            className="mt-1 w-full rounded-field border border-line-strong bg-surface px-3 py-2 text-sm"
+                            className="control-select mt-1 w-full"
                         >
                             <option value="">{t('woo.detectAutomatically')}</option>
                             <option value="ttc">{t('woo.inclTax')}</option>
@@ -333,7 +333,7 @@ export default function WooCommerceSettings({ integration, runs, warehouses, sto
                             <select
                                 value={form.data.default_store_id ?? ''}
                                 onChange={(e) => form.setData('default_store_id', e.target.value ? Number(e.target.value) : null)}
-                                className="mt-1 w-full rounded-field border border-line-strong bg-surface px-3 py-2 text-sm"
+                                className="control-select mt-1 w-full"
                             >
                                 <option value="">{t('woo.firstActiveStore')}</option>
                                 {stores.map((s) => <option key={s.id} value={s.id}>{s.name}{s.code ? ` · ${s.code}` : ''}</option>)}
@@ -356,7 +356,7 @@ export default function WooCommerceSettings({ integration, runs, warehouses, sto
                             <label className="mt-2 block text-[13px] font-medium text-ink">
                                 {t('woo.targetWarehouse')}
                                 <select value={form.data.default_warehouse_id ?? ''} onChange={(e) => form.setData('default_warehouse_id', e.target.value ? Number(e.target.value) : null)}
-                                    className="mt-1 w-full rounded-field border border-line-strong bg-surface px-3 py-2 text-sm">
+                                    className="control-select mt-1 w-full">
                                     <option value="">{t('woo.selectWarehouse')}</option>
                                     {warehouses.map((w) => <option key={w.id} value={w.id}>{w.name} · {w.code}</option>)}
                                 </select>
@@ -369,7 +369,7 @@ export default function WooCommerceSettings({ integration, runs, warehouses, sto
                             <div className="mt-2 space-y-2">
                                 <label className="block text-[13px] text-ink">{t('woo.brandSource')}
                                     <select value={form.data.brand_source} onChange={(e) => form.setData('brand_source', e.target.value)}
-                                        className="mt-1 w-full rounded-field border border-line-strong bg-surface px-3 py-2 text-sm">
+                                        className="control-select mt-1 w-full">
                                         <option value="">{t('woo.autoDetection')}</option>
                                         <option value="taxonomy">{t('woo.taxonomy')}</option>
                                         <option value="attribute">{t('woo.productAttribute')}</option>
@@ -395,7 +395,7 @@ export default function WooCommerceSettings({ integration, runs, warehouses, sto
 
                 {/* Status + actions */}
                 <div className="space-y-4">
-                    <div className="rounded-card border border-line bg-surface p-5 shadow-card">
+                    <div className="surface-card p-5 shadow-card">
                         <h2 className="text-sm font-semibold text-ink">{t('woo.state')}</h2>
                         {integration ? (
                             <dl className="mt-3 space-y-2 text-[13px]">
@@ -441,7 +441,7 @@ export default function WooCommerceSettings({ integration, runs, warehouses, sto
                     </div>
 
                     {(awaitingRun || liveRun) && (
-                        <div className="rounded-card border border-line bg-surface p-5 shadow-card">
+                        <div className="surface-card p-5 shadow-card">
                             <div className="flex items-center justify-between">
                                 <h2 className="text-sm font-semibold text-ink">{t('woo.sync')}</h2>
                                 <span className={`rounded-full px-2 py-0.5 text-[12px] font-semibold ${
@@ -514,7 +514,7 @@ export default function WooCommerceSettings({ integration, runs, warehouses, sto
                     <h2 className="mb-3 text-sm font-semibold text-ink">{t('woo.history')}</h2>
                     <div className="overflow-x-auto rounded-card border border-line">
                         <table className="min-w-full divide-y divide-line text-[13px]">
-                            <thead className="bg-raised text-start text-[11px] uppercase tracking-wide text-ink-faint">
+                            <thead>
                                 <tr><th className="px-3 py-2">{t('woo.started')}</th><th className="px-3 py-2">{t('common.status')}</th><th className="px-3 py-2 text-end">{t('woo.read')}</th><th className="px-3 py-2 text-end">{t('woo.created')}</th><th className="px-3 py-2 text-end">{t('woo.updated')}</th><th className="px-3 py-2 text-end">{t('woo.errors')}</th></tr>
                             </thead>
                             <tbody className="divide-y divide-line bg-surface">

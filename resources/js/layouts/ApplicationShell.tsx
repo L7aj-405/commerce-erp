@@ -89,7 +89,15 @@ export default function ApplicationShell({
         return () => observer.disconnect();
     }, []);
     const page = usePage<SharedPageProps & { sandbox?: { active: boolean } }>();
-    const { auth, tenant, flash, notifications } = page.props;
+    const { auth, tenant, flash } = page.props;
+    // `notifications` is a shared summary prop, but /notifications passes its own paginated
+    // list under the same key (Inertia page props win). Only hand the bell a real summary;
+    // otherwise it starts from the empty default and fills itself from /notifications/feed.
+    const sharedNotifications = page.props.notifications as unknown;
+    const notifications =
+        sharedNotifications && Array.isArray((sharedNotifications as { recent?: unknown }).recent)
+            ? (sharedNotifications as typeof page.props.notifications)
+            : undefined;
     const { direction, t } = useI18n();
     const currentPath = page.url.split('?')[0];
 

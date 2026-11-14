@@ -331,7 +331,7 @@ export default function FinanceSituation({
                     }))}
                     emptyLabel={t("finance.noObligations")}
                 />
-                <section className="rounded-card border border-line bg-surface p-5 shadow-card">
+                <section className="surface-card p-5">
                     <h2 className="font-semibold text-ink">
                         {t("finance.treasuryForecast")}
                     </h2>
@@ -377,12 +377,12 @@ export default function FinanceSituation({
                 </section>
             </div>
 
-            <section className="mt-8 rounded-card border border-line bg-surface p-5">
-                <h2 className="mb-4 text-sm font-semibold text-ink">
+            <section className="surface-card mt-8 p-5">
+                <h2 className="mb-4 font-semibold text-ink">
                     {t("finance.customerPositionReconciliation")}
                 </h2>
-                <table className="w-full max-w-xl text-sm">
-                    <tbody>
+                {/* Label/amount pairs: flex keeps every amount on the reading end edge in both directions. */}
+                <dl className="w-full max-w-xl space-y-2.5 text-sm">
                         <ReconciliationRow
                             label={t("finance.reconciliation.opening")}
                             value={situation.position_nette_debut}
@@ -395,14 +395,12 @@ export default function FinanceSituation({
                             label={t("finance.reconciliation.netCollections")}
                             value={situation.net_encaisse}
                         />
-                        <tr className="border-t border-line-strong font-semibold text-ink">
-                            <td className="py-2">
-                                {t("finance.reconciliation.closing")}
-                            </td>
-                            <td className="py-2 text-end">
+                        <div className="flex items-center justify-between gap-4 border-t border-line-strong pt-2.5 font-semibold text-ink">
+                            <dt>{t("finance.reconciliation.closing")}</dt>
+                            <dd className="metric-value" dir="ltr">
                                 {formatMoney(situation.position_nette_fin)}
-                            </td>
-                        </tr>
+                            </dd>
+                        </div>
                         <ReconciliationRow
                             label={t("finance.reconciliation.receivables")}
                             value={situation.creances_fin}
@@ -411,8 +409,7 @@ export default function FinanceSituation({
                             label={t("finance.reconciliation.refunds")}
                             value={situation.obligations_remboursement}
                         />
-                    </tbody>
-                </table>
+                </dl>
                 {hasVariance && (
                     <p className="mt-3 rounded-field bg-raised px-3 py-2 text-[13px] text-ink-muted">
                         {t("finance.reconciliation.variancePrefix")}{" "}
@@ -471,11 +468,11 @@ function ReconciliationRow({
     value: string;
 }): ReactNode {
     return (
-        <tr>
-            <td className="py-1.5 text-ink-muted">{label}</td>
-            <td className="metric-value py-1.5 text-end text-ink" dir="ltr">
+        <div className="flex items-center justify-between gap-4">
+            <dt className="text-ink-muted">{label}</dt>
+            <dd className="metric-value text-ink" dir="ltr">
                 {formatMoney(value)}
-            </td>
-        </tr>
+            </dd>
+        </div>
     );
 }

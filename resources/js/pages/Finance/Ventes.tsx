@@ -1,6 +1,7 @@
 import FinanceFilters, { type FinanceStore } from '@/components/finance/FinanceFilters';
 import PageHeader from '@/components/ui/PageHeader';
-import Pagination from '@/components/ui/Pagination';
+import EmptyState from '@/components/ui/EmptyState';
+import { TablePager, TableShell } from '@/components/ui/TableShell';
 import ApplicationShell from '@/layouts/ApplicationShell';
 import { useI18n } from '@/i18n';
 import { formatMoney } from '@/utils/format';
@@ -26,7 +27,7 @@ type Props = {
     periodLabel: string;
     storeId: number | null;
     stores: FinanceStore[];
-    orders: { data: Order[]; links: LinkData[]; total: number };
+    orders: { data: Order[]; links: LinkData[]; total: number; from?: number | null; to?: number | null };
 };
 
 export default function FinanceVentes({ organization, period, periodLabel, storeId, stores, orders }: Props) {
@@ -37,52 +38,57 @@ export default function FinanceVentes({ organization, period, periodLabel, store
             <PageHeader title={t('finance.sales.title')} description={`${organization.name} · ${periodLabel} · ${orders.total} ${t('finance.sales.confirmedCount')}`} />
             <FinanceFilters path="/finance/ventes" period={period} storeId={storeId} stores={stores} />
 
-            {orders.data.length === 0 ? (
-                <div className="rounded-card border border-dashed border-line-strong bg-raised px-4 py-8 text-center text-sm text-ink-faint">
-                    {t('finance.sales.empty')}
-                </div>
-            ) : (
-                <>
-                    {/* Desktop/tablet: table */}
-                    <div className="hidden overflow-x-auto rounded-card border border-line bg-surface md:block">
-                        <table className="erp-table">
+            {/* Desktop/tablet: table */}
+            <TableShell
+                label={t('finance.sales.title')}
+                state={orders.data.length === 0 ? 'empty' : 'ready'}
+                emptyTitle={t('finance.sales.empty')}
+                className="hidden md:block"
+                footer={orders.data.length === 0 ? undefined : <TablePager links={orders.links} from={orders.from} to={orders.to} total={orders.total} />}
+            >
+                <table className="erp-table min-w-[1080px]">
                             <thead>
                                 <tr>
                                     <th className="px-4 py-2.5">{t('finance.sales.orderNumber')}</th>
                                     <th className="px-4 py-2.5">{t('finance.sales.saleDate')}</th>
                                     <th className="px-4 py-2.5">{t('common.customer')}</th>
-                                    <th className="px-4 py-2.5 text-end">{t('finance.sales.grossSale')}</th>
-                                    <th className="px-4 py-2.5 text-end">{t('finance.sales.receivedReturns')}</th>
-                                    <th className="px-4 py-2.5 text-end">{t('finance.sales.netRetained')}</th>
-                                    <th className="px-4 py-2.5 text-end">{t('finance.sales.collected')}</th>
-                                    <th className="px-4 py-2.5 text-end">{t('finance.sales.remaining')}</th>
+                                    <th className="num px-4 py-2.5">{t('finance.sales.grossSale')}</th>
+                                    <th className="num px-4 py-2.5">{t('finance.sales.receivedReturns')}</th>
+                                    <th className="num px-4 py-2.5">{t('finance.sales.netRetained')}</th>
+                                    <th className="num px-4 py-2.5">{t('finance.sales.collected')}</th>
+                                    <th className="num px-4 py-2.5">{t('finance.sales.remaining')}</th>
                                     <th className="px-4 py-2.5">{t('finance.sales.paymentStatus')}</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {orders.data.map((order) => (
-                                    <tr key={order.id} className="border-t border-line">
+                                    <tr key={order.id}>
                                         <td className="bidi-isolate px-4 py-2.5 font-medium text-ink" dir="ltr">
                                             <Link href={`/sales/orders/${order.id}`}>{order.order_number}</Link>
                                         </td>
                                         <td className="px-4 py-2.5 text-ink-muted">{order.sale_date}</td>
                                         <td className="px-4 py-2.5">{order.customer}</td>
-                                        <td className="metric-value px-4 py-2.5 text-end" dir="ltr">{formatMoney(order.total_incl_tax)}</td>
-                                        <td className="metric-value px-4 py-2.5 text-end text-danger" dir="ltr">-{formatMoney(order.returned_total)}</td>
-                                        <td className="metric-value px-4 py-2.5 text-end font-medium" dir="ltr">{formatMoney(order.net_total)}</td>
-                                        <td className="metric-value px-4 py-2.5 text-end text-ink-muted" dir="ltr">{formatMoney(order.paid_amount)}</td>
-                                        <td className="metric-value px-4 py-2.5 text-end font-medium" dir="ltr">{formatMoney(order.remaining_amount)}</td>
+                                        <td className="num px-4 py-2.5" dir="ltr">{formatMoney(order.total_incl_tax)}</td>
+                                        <td className="num px-4 py-2.5 text-danger" dir="ltr">-{formatMoney(order.returned_total)}</td>
+                                        <td className="num px-4 py-2.5 font-medium" dir="ltr">{formatMoney(order.net_total)}</td>
+                                        <td className="num px-4 py-2.5 text-ink-muted" dir="ltr">{formatMoney(order.paid_amount)}</td>
+                                        <td className="num px-4 py-2.5 font-medium" dir="ltr">{formatMoney(order.remaining_amount)}</td>
                                         <td className="px-4 py-2.5 text-ink-muted">{label(paymentStatusLabel, order.payment_status)}</td>
                                     </tr>
                                 ))}
                             </tbody>
                         </table>
-                    </div>
+            </TableShell>
 
-                    {/* Mobile: stacked cards */}
-                    <ul className="space-y-3 md:hidden">
+            {/* Mobile: stacked cards */}
+            <div className="space-y-3 md:hidden">
+                {orders.data.length === 0 ? (
+                    <EmptyState compact title={t('finance.sales.empty')} />
+                ) : (
+                    <>
+                        <ul className="space-y-3">
                         {orders.data.map((order) => (
-                            <li key={order.id} className="rounded-card border border-line bg-surface p-4">
+                            <li key={order.id} className="surface-card p-4">
                                 <div className="flex items-start justify-between gap-3">
                                     <div className="min-w-0">
                                         <Link href={`/sales/orders/${order.id}`} className="block truncate text-sm font-semibold text-ink">
@@ -113,9 +119,10 @@ export default function FinanceVentes({ organization, period, periodLabel, store
                             </li>
                         ))}
                     </ul>
-                </>
-            )}
-            <Pagination links={orders.links} />
+                        <TablePager links={orders.links} from={orders.from} to={orders.to} total={orders.total} />
+                    </>
+                )}
+            </div>
         </ApplicationShell>
     );
 }

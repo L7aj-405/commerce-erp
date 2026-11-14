@@ -88,7 +88,7 @@ class FinanceJournalService
             ->whereDate('invoice_date', '<=', $period->end->toDateString())
             ->with(['lines:id,invoice_id,position,quantity,product_name,description,sku,reference,variant_name'])
             ->orderBy('invoice_date')->orderBy('id')
-            ->paginate($perPage);
+            ->paginate($perPage)->withQueryString();
 
         $salesOrderIds = $paginator->getCollection()->pluck('sales_order_id')->unique()->values()->all();
         $methodsByOrder = $this->paymentMethodsBySalesOrder($salesOrderIds);

@@ -15,7 +15,7 @@ export default function FollowUpPanel({ panel }: { panel: FollowUpPanelData }) {
     if (!panel) return null;
 
     return (
-        <section className="rounded-card border border-line bg-surface p-5 shadow-soft">
+        <section className="surface-card p-5">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                 <div>
                     <h2 className="text-sm font-semibold text-ink">{t('work.panelTitle')}</h2>

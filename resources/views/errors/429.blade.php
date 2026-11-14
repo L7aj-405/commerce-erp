@@ -1,0 +1,6 @@
+@extends('errors.layout')
+@section('code', '429')
+@section('title_fr', 'Trop de requêtes')
+@section('title_ar', 'طلبات كثيرة جدًا')
+@section('message_fr', 'Cette action a été répétée trop souvent. Patientez une minute avant de réessayer.')
+@section('message_ar', 'تم تكرار هذا الإجراء كثيرًا. انتظر دقيقة قبل المحاولة مجددًا.')
