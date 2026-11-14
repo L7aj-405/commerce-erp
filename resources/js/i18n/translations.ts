@@ -3896,6 +3896,7 @@ export const fr = {
     "notifications.allPriorities": "Toutes les priorités",
     "notifications.markAllRead": "Tout marquer comme lu",
     "notifications.empty": "Aucune notification",
+    "notifications.emptyTest": "Aucune notification Test",
     "notifications.emptyHelp":
         "Les événements correspondant à ces filtres apparaîtront ici.",
     "notifications.markUnread": "Marquer non lue",
@@ -8670,6 +8671,7 @@ export const ar: Record<TranslationKey, string> = {
     "notifications.allPriorities": "كل الأولويات",
     "notifications.markAllRead": "تحديد الكل كمقروء",
     "notifications.empty": "لا توجد إشعارات",
+    "notifications.emptyTest": "لا توجد إشعارات اختبار",
     "notifications.emptyHelp": "ستظهر هنا الأحداث المطابقة لهذه المرشحات.",
     "notifications.markUnread": "تحديد كغير مقروء",
     "notifications.markRead": "تحديد كمقروء",

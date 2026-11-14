@@ -58,4 +58,6 @@ return Application::configure(basePath: dirname(__DIR__))
         $exceptions->render(fn (App\Services\Sandbox\SandboxStaleGenerationException $e, Request $request) => App\Services\Sandbox\SandboxStaleSession::respond(
             $request, $e->sandboxId, $e->requestGeneration, $e->currentGeneration, 'write',
         ));
+        // Phase 10.1: a record deleted by a concurrent Sandbox reset is a stale session, not a bare 404.
+        $exceptions->render(fn (Symfony\Component\HttpKernel\Exception\NotFoundHttpException $e, Request $request) => App\Services\Sandbox\SandboxStaleSession::forMissingRecord($request));
     })->create();

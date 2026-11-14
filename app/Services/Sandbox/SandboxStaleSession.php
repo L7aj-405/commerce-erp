@@ -33,6 +33,25 @@ final class SandboxStaleSession
         return redirect('/test-mode', 303)->with('sandbox_stale', SandboxStaleGenerationException::MESSAGE);
     }
 
+    /**
+     * Phase 10.1: a Test request whose sandbox was reset while it ran may first hit a
+     * record the reset deleted (404) instead of a fenced write. When the generation
+     * moved, answer with the stale-generation response instead of a bare 404.
+     */
+    public static function forMissingRecord(Request $request): ?Response
+    {
+        if (! SandboxGenerationFence::active()) {
+            return null;
+        }
+        $context = app(SandboxContext::class);
+        $row = Sandbox::query()->whereKey($context->id())->first(['generation', 'status']);
+        if ($row !== null && (int) $row->generation === (int) $context->generation() && $row->status === 'active') {
+            return null;
+        }
+
+        return self::respond($request, $context->id(), $context->generation(), $row === null ? null : (int) $row->generation, 'write');
+    }
+
     /** Audited once per session and stale generation for page navigation; every refused write is audited. */
     private static function audit(Request $request, ?int $sandboxId, ?int $sessionGeneration, ?int $currentGeneration, string $stage): void
     {

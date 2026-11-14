@@ -18,7 +18,9 @@ class ResolveSandboxContext
         Inertia::share('sandbox', fn () => ['active' => $context->isSandbox(), 'restricted' => $context->isRestricted(), 'id' => $context->id(), 'stale' => $context->isStale()]);
         // Explicit route allowlist: expand only after each domain implements real isolation.
         // `sandbox.enter` lets a restricted (e.g. reset / stale) session explicitly re-enter.
-        $allowed = ['sandbox.show', 'sandbox.leave', 'sandbox.enter', 'logout', 'sandbox.reset.show', 'sandbox.reset.execute'];
+        // `notifications.feed` is the bell's read-only poll: in Test Mode NotificationFeed
+        // answers an empty Test summary, so it can never expose the Production inbox.
+        $allowed = ['sandbox.show', 'sandbox.leave', 'sandbox.enter', 'logout', 'sandbox.reset.show', 'sandbox.reset.execute', 'notifications.feed'];
         // Phase 10: a session left on an old generation by a reset gets a controlled answer.
         if ($context->isStale() && !in_array($request->route()?->getName(), $allowed, true)) {
             $selection = $context->selection() ?? [];

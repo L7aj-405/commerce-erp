@@ -41,16 +41,22 @@ final class SandboxGenerationFence
         }
         self::$registered[$connection] = true;
         $connection->beforeExecuting(function (string $query, array $bindings, Connection $connection) {
-            if (self::$checking || ! app()->bound(SandboxContext::class)) {
+            if (self::$checking || ! self::active()) {
                 return;
             }
             $context = app(SandboxContext::class);
-            if (! $context->isSandbox() || ! preg_match('/^\s*(insert|update|delete|replace)\b/i', $query)
+            if (! preg_match('/^\s*(insert|update|delete|replace)\b/i', $query)
                 || ! preg_match(self::pattern(), $query)) {
                 return;
             }
             self::assertCurrent($connection, $context);
         });
+    }
+
+    /** Whether the current request runs in an active Test context (the fence applies). */
+    public static function active(): bool
+    {
+        return app()->bound(SandboxContext::class) && app(SandboxContext::class)->isSandbox();
     }
 
     /** Statement-level check, also usable directly by code that must fail before doing work. */
