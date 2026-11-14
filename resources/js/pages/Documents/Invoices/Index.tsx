@@ -131,7 +131,7 @@ export default function InvoiceIndex({ invoices, filters }: Props) {
                                                 <bdi>{number(invoice)}</bdi>
                                             </Link>
                                             <span className="text-[13px] text-ink-muted">V{invoice.version}</span>
-                                            <SandboxDocumentBadge sandboxId={invoice.sandbox_id} />
+                                            <SandboxDocumentBadge kind="invoice" sandboxId={invoice.sandbox_id} />
                                         </span>
                                     </td>
                                     <td className="px-4 py-3 whitespace-nowrap text-ink-muted tabular-nums">{formatDate(invoice.invoice_date)}</td>
@@ -183,7 +183,7 @@ export default function InvoiceIndex({ invoices, filters }: Props) {
                                 <p className="mt-2 truncate text-sm font-medium text-ink">{customer(invoice)}</p>
                                 <div className="mt-2 flex flex-wrap items-center gap-1.5">
                                     {badges(invoice)}
-                                    <SandboxDocumentBadge sandboxId={invoice.sandbox_id} />
+                                    <SandboxDocumentBadge kind="invoice" sandboxId={invoice.sandbox_id} />
                                 </div>
                                 <p className="mt-2 text-[13px] text-ink-muted">
                                     {t('invoices.order')} : {orderRef(invoice)}

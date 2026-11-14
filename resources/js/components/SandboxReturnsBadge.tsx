@@ -1,3 +1,4 @@
+import { SandboxNotice } from '@/components/SandboxBadge';
 import { usePage } from '@inertiajs/react';
 
 /**
@@ -11,10 +12,8 @@ export default function SandboxReturnsBadge({ kind }: { kind: 'return' | 'exchan
     const { sandbox } = usePage<{ sandbox?: { active: boolean } }>().props;
     if (!sandbox?.active) return null;
     return (
-        <div role="note" className="mb-3 rounded-field border border-amber-400 bg-amber-50 px-3 py-2 text-sm text-amber-950">
-            <strong className="me-2">MODE TEST — {kind === 'exchange' ? 'ÉCHANGE TEST' : 'RETOUR TEST'}</strong>
-            <strong className="me-2">REMBOURSEMENT TEST / SIMULÉ</strong>
-            Stock test uniquement, avoirs TEST-AV sans valeur fiscale : aucun effet sur la Production.
-        </div>
+        <SandboxNotice kind={kind}>
+            Stock test uniquement, remboursements simulés, avoirs TEST-AV sans valeur fiscale : aucun effet sur la Production.
+        </SandboxNotice>
     );
 }

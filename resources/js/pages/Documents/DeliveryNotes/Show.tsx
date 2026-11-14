@@ -93,7 +93,7 @@ export default function DeliveryNoteShow({ deliveryNote: note, can, mailConfigur
                                 <bdi>{title}</bdi>
                             </h1>
                             <DocBadge tone={deliveryNoteStatusTone(note.status)}>{statusLabel[note.status] ?? note.status}</DocBadge>
-                            <SandboxDocumentBadge sandboxId={note.sandbox_id} />
+                            <SandboxDocumentBadge kind="delivery" sandboxId={note.sandbox_id} />
                         </div>
                         <p className="mt-1 text-sm text-ink-muted">
                             {t('deliveryNotes.order')}{' '}

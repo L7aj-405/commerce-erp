@@ -1,3 +1,4 @@
+import { SandboxNotice } from '@/components/SandboxBadge';
 import { Button } from '@/components/ui/Button';
 import { useI18n } from '@/i18n';
 import { Link, useForm } from '@inertiajs/react';
@@ -124,9 +125,9 @@ export default function SendDocumentEmailModal({
                 </div>
 
                 {simulated && (
-                    <div role="note" className="mt-3 rounded-field border border-amber-400 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-950">
-                        EMAIL TEST — NON ENVOYÉ : envoi simulé, aucun e-mail réel ne sera expédié.
-                    </div>
+                    <SandboxNotice kind="email" className="mt-3 mb-0 text-xs">
+                        Envoi simulé : aucun e-mail réel ne sera expédié.
+                    </SandboxNotice>
                 )}
 
                 {!mailConfigured && (
