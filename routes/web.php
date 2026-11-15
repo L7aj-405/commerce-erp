@@ -506,6 +506,7 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
         Route::get('/stock', [InventoryStockController::class, 'index'])->name('stock.index');
         Route::post('/opening-stock', [InventoryStockController::class, 'opening'])->name('opening.store');
         Route::post('/adjustments', [InventoryStockController::class, 'adjustment'])->name('adjustments.store');
+        Route::post('/adjustments/preview', [InventoryStockController::class, 'previewAdjustment'])->name('adjustments.preview');
 
         Route::get('/warehouses', [WarehouseController::class, 'index'])->name('warehouses.index');
         Route::post('/warehouses', [WarehouseController::class, 'store'])->name('warehouses.store');

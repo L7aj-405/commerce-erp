@@ -37,15 +37,26 @@ export function useQueryFilters<F extends FilterRecord>(
     const requestedRef = useRef<FilterRecord>(filters);
     const requestedSearch = () => String(requestedRef.current[searchKey] ?? '').trim();
 
-    // Server-confirmed values win after navigation (back/forward, pagination, reset).
+    // Callers usually pass a fresh object literal every render, so depend on its
+    // serialized value: the sync below must only run when the server echo really changed.
+    const filtersKey = JSON.stringify(filters);
+    const lastSentSearchRef = useRef<string | null>(null);
+
+    // Server-confirmed values win after navigation (back/forward, pagination, reset),
+    // but the echo of our own search visit never overwrites what is being typed.
     useEffect(() => {
         requestedRef.current = filters;
+        const echoed = String(filters[searchKey] ?? '').trim();
+        if (lastSentSearchRef.current !== null && echoed === lastSentSearchRef.current) return;
+        lastSentSearchRef.current = null;
         setSearchState(String(filters[searchKey] ?? ''));
-    }, [filters, searchKey]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [filtersKey, searchKey]);
 
     const visit = useCallback(
         (next: FilterRecord) => {
             requestedRef.current = next;
+            lastSentSearchRef.current = String(next[searchKey] ?? '').trim();
             setSearchState((current) => (current.trim() === String(next[searchKey] ?? '').trim() ? current : String(next[searchKey] ?? '')));
             const params = new URLSearchParams(window.location.search);
             const preserved: FilterRecord = {};

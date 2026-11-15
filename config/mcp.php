@@ -42,6 +42,7 @@ return [
         'product_cost.view' => ['permission' => 'product_cost.view', 'label' => 'View purchase costs'],
         'product_cost.manage' => ['permission' => 'product_cost.manage', 'label' => 'Manage purchase costs'],
         'inventory.view' => ['permission' => 'inventory.view', 'label' => 'View organization stock'],
+        'inventory.adjust' => ['permission' => 'inventory.adjust', 'label' => 'Preview and apply manual stock adjustments (set / add / remove); Production inventory only'],
         'brands.manage' => ['permission' => 'brands.manage', 'label' => 'Manage brands'],
         'categories.manage' => ['permission' => 'categories.manage', 'label' => 'Manage categories'],
         'units.manage' => ['permission' => 'units.manage', 'label' => 'Manage units'],

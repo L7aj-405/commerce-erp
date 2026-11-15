@@ -10,11 +10,11 @@ import { useQueryFilters } from '@/hooks/useQueryFilters';
 import InventoryLayout from '@/layouts/InventoryLayout';
 import { useI18n } from '@/i18n';
 import { formatInteger, formatQuantity } from '@/utils/format';
-import { Head, Link, useForm } from '@inertiajs/react';
-import type { FormEvent } from 'react';
+import { Head, Link } from '@inertiajs/react';
+import { useState } from 'react';
+import StockAdjustmentDialog from './StockAdjustmentDialog';
 
 type Warehouse = { id: number; name: string; code: string };
-type VariantLookup = { id: number; label: string | null; sku: string; product: { id: number; name: string } };
 type StockRow = {
     id: number;
     label: string | null;
@@ -24,6 +24,7 @@ type StockRow = {
     image_url: string | null;
     product: { id: number; name: string; image_url: string | null; brand: { id: number; name: string } | null; category: { id: number; name: string } | null };
     warehouses: Array<{ id: number; name: string; code: string; on_hand: string; reserved: string; available: string }>;
+    initial_warehouse_ids: number[];
     summary: { id?: number; name?: string; code?: string; on_hand: string; reserved: string; available: string };
 };
 type LinkData = { url: string | null; label: string; active: boolean };
@@ -33,18 +34,16 @@ type Props = {
     warehouses: Warehouse[];
     brands: Array<{ id: number; name: string }>;
     categories: Array<{ id: number; name: string }>;
-    variants: VariantLookup[];
     can: { opening: boolean; adjust: boolean; transfer: boolean };
 };
 
-export default function StockIndex({ balances, filters, warehouses, brands, categories, variants, can }: Props) {
+export default function StockIndex({ balances, filters, warehouses, brands, categories, can }: Props) {
     const { t } = useI18n();
     const str = (value?: number | string) => (value != null && value !== '' ? String(value) : undefined);
     const current = { search: filters.search, warehouse: str(filters.warehouse), brand: str(filters.brand), category: str(filters.category), availability: filters.availability };
     // Exactly the params InventoryStockController@index validates.
     const f = useQueryFilters('/inventory/stock', current, { keys: ['search', 'warehouse', 'brand', 'category', 'availability'] });
-    const opening = useForm({ warehouse_id: String(filters.warehouse ?? ''), product_variant_id: '', quantity: '', reason: '', reference: '' });
-    const adjustment = useForm({ warehouse_id: String(filters.warehouse ?? ''), product_variant_id: '', type: 'adjustment_in', quantity: '', reason: '', reference: '' });
+    const [adjusting, setAdjusting] = useState<StockRow | null>(null);
 
     const activeWarehouse = warehouses.find((warehouse) => String(warehouse.id) === current.warehouse);
     const toOptions = (items: Array<{ id: number; name: string }>) => items.map((item) => ({ value: String(item.id), label: item.name }));
@@ -68,22 +67,6 @@ export default function StockIndex({ balances, filters, warehouses, brands, cate
     const stockState = (row: StockRow) => Number(row.summary.available) > 0
         ? { label: t('inventory.stock.inStock'), className: 'bg-success-soft text-success' }
         : { label: t('inventory.stock.outOfStock'), className: 'bg-danger-soft text-danger' };
-
-    function submitOpening(event: FormEvent) {
-        event.preventDefault();
-        opening.post('/inventory/opening-stock', {
-            preserveScroll: true,
-            onSuccess: () => opening.reset('product_variant_id', 'quantity', 'reason', 'reference'),
-        });
-    }
-
-    function submitAdjustment(event: FormEvent) {
-        event.preventDefault();
-        adjustment.post('/inventory/adjustments', {
-            preserveScroll: true,
-            onSuccess: () => adjustment.reset('product_variant_id', 'quantity', 'reason', 'reference'),
-        });
-    }
 
     return (
         <InventoryLayout wide>
@@ -214,6 +197,7 @@ export default function StockIndex({ balances, filters, warehouses, brands, cate
                                                         <td className="px-4 py-3"><span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${state.className}`}>{state.label}</span></td>
                                                         <td className="px-4 py-3 text-end">
                                                             <div className="flex justify-end gap-2">
+                                                                {can.adjust && <button type="button" onClick={() => setAdjusting(row)} className="rounded-field px-3 py-2 text-sm font-medium text-ink transition-soft hover:bg-sage focus-visible:outline-2">{t('inventory.stock.adjustStock')}</button>}
                                                                 {can.transfer && <Link href={`/inventory/transfers/create?variant_id=${row.id}`} className="rounded-field px-3 py-2 text-sm font-medium text-ink transition-soft hover:bg-sage">{t('inventory.stock.transfer')}</Link>}
                                                                 <Link href={`/catalog/products/${row.product.id}`} className="rounded-field px-3 py-2 text-sm text-ink-muted transition-soft hover:bg-sage hover:text-ink">{t('inventory.stock.product')}</Link>
                                                             </div>
@@ -263,7 +247,8 @@ export default function StockIndex({ balances, filters, warehouses, brands, cate
                                                         </div>
                                                     ))}
                                                 </div>
-                                                <div className="mt-4 flex gap-3 text-sm">
+                                                <div className="mt-4 flex flex-wrap gap-3 text-sm">
+                                                    {can.adjust && <button type="button" onClick={() => setAdjusting(row)} className="font-medium text-ink hover:underline">{t('inventory.stock.adjustStock')}</button>}
                                                     {can.transfer && <Link href={`/inventory/transfers/create?variant_id=${row.id}`} className="font-medium text-ink hover:underline">{t('inventory.stock.transfer')}</Link>}
                                                     <Link href={`/catalog/products/${row.product.id}`} className="text-ink-muted hover:text-ink hover:underline">{t('inventory.stock.viewProduct')}</Link>
                                                 </div>
@@ -277,51 +262,13 @@ export default function StockIndex({ balances, filters, warehouses, brands, cate
                         </>
                     )}
 
-                    {(can.opening || can.adjust) && (
-                        <section className="mt-8 grid gap-6 lg:grid-cols-2">
-                            {can.opening && (
-                                <form onSubmit={submitOpening} className="space-y-3 surface-card p-5">
-                                    <h2 className="font-semibold text-ink">{t('inventory.stock.opening')}</h2>
-                                    <select required aria-label={t('inventory.stock.selectWarehouse')} value={opening.data.warehouse_id} onChange={event => opening.setData('warehouse_id', event.target.value)} className="control-select w-full">
-                                        <option value="">{t('inventory.stock.selectWarehouse')}</option>
-                                        {warehouses.map(warehouse => <option key={warehouse.id} value={warehouse.id}>{warehouse.name}</option>)}
-                                    </select>
-                                    <select required aria-label={t('inventory.stock.selectProduct')} value={opening.data.product_variant_id} onChange={event => opening.setData('product_variant_id', event.target.value)} className="control-select w-full">
-                                        <option value="">{t('inventory.stock.selectProduct')}</option>
-                                        {variants.map(variant => <option key={variant.id} value={variant.id}>{variant.product.name} · {variant.label ?? t('inventory.stock.main')} · {variant.sku}</option>)}
-                                    </select>
-                                    <input required inputMode="decimal" value={opening.data.quantity} onChange={event => opening.setData('quantity', event.target.value)} placeholder={t('inventory.stock.quantity')} className="control-input w-full" />
-                                    <input value={opening.data.reason} onChange={event => opening.setData('reason', event.target.value)} placeholder={t('inventory.stock.reasonOptional')} className="control-input w-full" />
-                                    <input value={opening.data.reference} onChange={event => opening.setData('reference', event.target.value)} placeholder={t('inventory.stock.referenceOptional')} className="control-input w-full" />
-                                    {Object.values(opening.errors).map((error, index) => <p key={index} className="text-sm text-danger">{error}</p>)}
-                                    <Button type="submit" loading={opening.processing} loadingText={t('inventory.stock.recording')}>{t('inventory.stock.addOpening')}</Button>
-                                </form>
-                            )}
-
-                            {can.adjust && (
-                                <form onSubmit={submitAdjustment} className="space-y-3 surface-card p-5">
-                                    <h2 className="font-semibold text-ink">{t('inventory.stock.adjustment')}</h2>
-                                    <select required aria-label={t('inventory.stock.selectWarehouse')} value={adjustment.data.warehouse_id} onChange={event => adjustment.setData('warehouse_id', event.target.value)} className="control-select w-full">
-                                        <option value="">{t('inventory.stock.selectWarehouse')}</option>
-                                        {warehouses.map(warehouse => <option key={warehouse.id} value={warehouse.id}>{warehouse.name}</option>)}
-                                    </select>
-                                    <select required aria-label={t('inventory.stock.selectProduct')} value={adjustment.data.product_variant_id} onChange={event => adjustment.setData('product_variant_id', event.target.value)} className="control-select w-full">
-                                        <option value="">{t('inventory.stock.selectProduct')}</option>
-                                        {variants.map(variant => <option key={variant.id} value={variant.id}>{variant.product.name} · {variant.label ?? t('inventory.stock.main')} · {variant.sku}</option>)}
-                                    </select>
-                                    <select aria-label={t('inventory.stock.adjustment')} value={adjustment.data.type} onChange={event => adjustment.setData('type', event.target.value)} className="control-select w-full">
-                                        <option value="adjustment_in">{t('inventory.stock.adjustmentIn')}</option>
-                                        <option value="adjustment_out">{t('inventory.stock.adjustmentOut')}</option>
-                                    </select>
-                                    <input required inputMode="decimal" value={adjustment.data.quantity} onChange={event => adjustment.setData('quantity', event.target.value)} placeholder={t('inventory.stock.quantity')} className="control-input w-full" />
-                                    <input required value={adjustment.data.reason} onChange={event => adjustment.setData('reason', event.target.value)} placeholder={t('inventory.stock.reason')} className="control-input w-full" />
-                                    <input value={adjustment.data.reference} onChange={event => adjustment.setData('reference', event.target.value)} placeholder={t('inventory.stock.referenceOptional')} className="control-input w-full" />
-                                    {Object.values(adjustment.errors).map((error, index) => <p key={index} className="text-sm text-danger">{error}</p>)}
-                                    <Button type="submit" loading={adjustment.processing} loadingText={t('inventory.stock.adjusting')}>{t('inventory.stock.applyAdjustment')}</Button>
-                                </form>
-                            )}
-                        </section>
-                    )}
+                    <StockAdjustmentDialog
+                        row={adjusting}
+                        warehouses={warehouses}
+                        canInitial={can.opening}
+                        defaultWarehouseId={current.warehouse}
+                        onClose={() => setAdjusting(null)}
+                    />
                 </>
             )}
         </InventoryLayout>

@@ -10,6 +10,7 @@ use App\Services\Mcp\Parties\CustomerContactTools;
 use App\Services\Mcp\Documents\DocumentStampToolRegistrar;
 use App\Services\Mcp\Finance\FinanceToolRegistrar;
 use App\Services\Mcp\Fulfillment\FulfillmentToolRegistrar;
+use App\Services\Mcp\Inventory\StockAdjustmentToolRegistrar;
 use App\Services\Mcp\Parties\McpContactChangeService;
 use App\Services\Mcp\Procurement\PurchasingToolRegistrar;
 use App\Services\Mcp\Procurement\SupplierCatalogToolRegistrar;
@@ -49,6 +50,7 @@ final class McpServerFactory
         private readonly FinanceToolRegistrar $financeTools,
         private readonly FulfillmentToolRegistrar $fulfillmentTools,
         private readonly PurchasingToolRegistrar $purchasingTools,
+        private readonly StockAdjustmentToolRegistrar $stockAdjustmentTools,
         private readonly DocumentStampToolRegistrar $documentStampTools,
     ) {}
 
@@ -200,6 +202,7 @@ final class McpServerFactory
         $this->financeTools->register($builder, $readOnly, $outputSchema);
         $this->fulfillmentTools->register($builder, $readOnly, $outputSchema);
         $this->purchasingTools->register($builder, $readOnly, $outputSchema);
+        $this->stockAdjustmentTools->register($builder, $readOnly, $outputSchema);
         $this->documentStampTools->register($builder, $readOnly, $outputSchema);
 
         return $builder->build();
