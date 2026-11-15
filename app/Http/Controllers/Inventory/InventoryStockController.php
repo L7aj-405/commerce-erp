@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Inventory;
 
 use App\Actions\Inventory\AdjustInventoryAction;
+use App\Actions\Inventory\ManualStockAdjustmentAction;
 use App\Actions\Inventory\OpeningStockAction;
 use App\Enums\InventoryMovementType;
 use App\Enums\WarehouseStatus;
@@ -14,6 +15,7 @@ use App\Services\ActiveTenantContext;
 use App\Services\ShowroomReplenishmentPlanner;
 use App\Support\InventoryQuantity;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -87,7 +89,22 @@ class InventoryStockController extends Controller
             $selectedWarehouseId ? [$selectedWarehouseId] : $warehouses->pluck('id')->all(),
         );
 
-        $balances = $variants->through(function (ProductVariant $variant) use ($stockByVariant, $selectedWarehouseId) {
+        $canOpen = $request->user()->can('opening', [InventoryBalance::class, $organization])
+            && ! app(\App\Services\Sandbox\SandboxContext::class)->isSandbox();
+        $warehouseScope = $selectedWarehouseId ? [(int) $selectedWarehouseId] : $warehouses->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $movedByVariant = [];
+        if ($canOpen && $variants->items() !== []) {
+            \App\Models\InventoryMovement::query()
+                ->where('organization_id', $organization->getKey())
+                ->whereIn('product_variant_id', collect($variants->items())->pluck('id'))
+                ->whereIn('warehouse_id', $warehouseScope)
+                ->distinct()->get(['product_variant_id', 'warehouse_id'])
+                ->each(function ($row) use (&$movedByVariant) {
+                    $movedByVariant[$row->product_variant_id][] = (int) $row->warehouse_id;
+                });
+        }
+
+        $balances = $variants->through(function (ProductVariant $variant) use ($stockByVariant, $selectedWarehouseId, $canOpen, $warehouseScope, $movedByVariant) {
             $warehouseStock = collect($stockByVariant[$variant->getKey()] ?? []);
             $summary = $warehouseStock->reduce(function (array $carry, array $warehouse) {
                 $carry['on_hand'] = InventoryQuantity::add($carry['on_hand'], $warehouse['on_hand']);
@@ -116,6 +133,11 @@ class InventoryStockController extends Controller
                     'category' => $variant->product->defaultCategory?->only(['id', 'name']),
                 ],
                 'warehouses' => $warehouseStock->values()->all(),
+                // Active warehouses with no physical movement yet: the only places the
+                // existing opening-stock rule accepts an initial quantity.
+                'initial_warehouse_ids' => $canOpen
+                    ? array_values(array_diff($warehouseScope, $movedByVariant[$variant->getKey()] ?? []))
+                    : [],
                 'summary' => $selectedWarehouseId && $warehouseStock->first()
                     ? $warehouseStock->first()
                     : $summary,
@@ -128,10 +150,9 @@ class InventoryStockController extends Controller
             'warehouses' => $warehouses,
             'brands' => $organization->brands()->where('status', 'active')->orderBy('name')->get(['id', 'name']),
             'categories' => $organization->categories()->where('status', 'active')->orderBy('name')->get(['id', 'name']),
-            'variants' => ProductVariant::query()->where('organization_id', $organization->getKey())->where('status', 'active')
-                ->with('product:id,name')->orderBy('sku')->limit(500)->get(['id', 'product_id', 'label', 'sku']),
             'can' => [
-                'opening' => $request->user()->can('opening', [InventoryBalance::class, $organization]),
+                // Opening stock is Production-only (the Test Mode guard blocks it).
+                'opening' => $canOpen,
                 'adjust' => $request->user()->can('adjust', [InventoryBalance::class, $organization]),
                 'transfer' => $request->user()->hasPermission($organization, 'inventory.transfer'),
             ],
@@ -148,10 +169,13 @@ class InventoryStockController extends Controller
         return back();
     }
 
-    public function adjustment(Request $request, ActiveTenantContext $context, AdjustInventoryAction $action, ShowroomReplenishmentPlanner $planner): RedirectResponse
+    public function adjustment(Request $request, ActiveTenantContext $context, AdjustInventoryAction $action, ShowroomReplenishmentPlanner $planner, ManualStockAdjustmentAction $manual): RedirectResponse
     {
         $organization = $context->organizationOrFail();
         $this->authorize('adjust', [InventoryBalance::class, $organization]);
+        if ($request->has('operation')) {
+            return $this->applyManualAdjustment($request, $organization, $manual);
+        }
         $data = $request->validate($this->operationRules($organization->getKey(), true));
         $type = InventoryMovementType::from($data['type']);
         $warehouse = $this->warehouse($organization->getKey(), $data['warehouse_id']);
@@ -173,6 +197,56 @@ class InventoryStockController extends Controller
         }
 
         return back();
+    }
+
+    /** Read-only dry run of the Set / Add / Remove dialog (no lock, no write). */
+    public function previewAdjustment(Request $request, ActiveTenantContext $context, ManualStockAdjustmentAction $manual): JsonResponse
+    {
+        $organization = $context->organizationOrFail();
+        $this->authorize('adjust', [InventoryBalance::class, $organization]);
+        $data = $request->validate($this->manualRules($organization->getKey(), false));
+
+        return response()->json($manual->preview(
+            $request->user(), $organization,
+            $this->warehouse($organization->getKey(), $data['warehouse_id']),
+            $this->variant($organization->getKey(), $data['product_variant_id']),
+            $data['operation'], $data['quantity'], $data['reason'] ?? null,
+        ));
+    }
+
+    private function applyManualAdjustment(Request $request, \App\Models\Organization $organization, ManualStockAdjustmentAction $manual): RedirectResponse
+    {
+        $data = $request->validate($this->manualRules($organization->getKey(), true));
+        $warehouse = $this->warehouse($organization->getKey(), $data['warehouse_id']);
+        $variant = $this->variant($organization->getKey(), $data['product_variant_id']);
+        $movement = $manual->execute($request->user(), $organization, $warehouse, $variant, $data['operation'], $data['quantity'], $data['reason'], $data['reference'] ?? null, $data['expected_on_hand']);
+
+        if ($movement->movement_type === InventoryMovementType::AdjustmentOut && ! app(\App\Services\Sandbox\SandboxContext::class)->isSandbox()) {
+            $shortfall = app(ShowroomReplenishmentPlanner::class)->promiseShortfalls($organization->getKey(), $warehouse->getKey(), [$variant->getKey()])[$variant->getKey()] ?? null;
+            if ($shortfall !== null) {
+                return back()->with('success', sprintf(
+                    'Ajustement enregistré. Attention : il manque %s unité(s) pour honorer les demandes de transfert ouvertes %s — ajustez-les avant expédition.',
+                    rtrim(rtrim($shortfall['short'], '0'), '.'),
+                    implode(', ', $shortfall['requests']),
+                ));
+            }
+        }
+
+        return back()->with('success', 'Stock ajusté.');
+    }
+
+    /** @return array<string, mixed> */
+    private function manualRules(int $organizationId, bool $apply): array
+    {
+        return [
+            'warehouse_id' => ['required', 'integer', Rule::exists('warehouses', 'id')->where(fn ($query) => $query->where('organization_id', $organizationId)->where('status', 'active'))],
+            'product_variant_id' => ['required', 'integer', Rule::exists('product_variants', 'id')->where(fn ($query) => $query->where('organization_id', $organizationId)->where('status', 'active'))],
+            'operation' => ['required', Rule::in(ManualStockAdjustmentAction::OPERATIONS)],
+            'quantity' => ['required', 'decimal:0,4'],
+            'reason' => $apply ? ['required', 'string', 'max:2000'] : ['nullable', 'string', 'max:2000'],
+            'reference' => ['nullable', 'string', 'max:255'],
+            'expected_on_hand' => $apply ? ['required', 'decimal:0,4'] : ['prohibited'],
+        ];
     }
 
     /** @return array<string, mixed> */

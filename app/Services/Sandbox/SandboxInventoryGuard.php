@@ -38,7 +38,7 @@ final class SandboxInventoryGuard
      * account management and every finance report page (Production-only).
      */
     public const ROUTES = [
-        'inventory.stock.index', 'inventory.movements.index', 'inventory.adjustments.store',
+        'inventory.stock.index', 'inventory.movements.index', 'inventory.adjustments.store', 'inventory.adjustments.preview',
         'inventory.reservations.store', 'inventory.reservations.release', 'inventory.reservations.consume',
         'inventory.transfers.index', 'inventory.transfers.create', 'inventory.transfers.store', 'inventory.transfers.show',
         'sales.orders.confirm',
