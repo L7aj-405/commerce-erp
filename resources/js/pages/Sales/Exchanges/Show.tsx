@@ -5,6 +5,7 @@ import { useI18n } from "@/i18n";
 import { useBusinessToday } from "@/utils/businessDate";
 import { formatMoney, formatQuantity } from "@/utils/format";
 import { Head, Link, router, useForm } from "@inertiajs/react";
+import { newOperationId } from '@/utils/uuid';
 
 type Props = {
     exchange: any;
@@ -32,7 +33,7 @@ export default function ShowExchange({
     const businessToday = useBusinessToday();
     const difference = Number(exchange.difference_amount);
     const paymentForm = useForm({
-        client_operation_id: crypto.randomUUID(),
+        client_operation_id: newOperationId(),
         payments: [
             {
                 method: "cash",
@@ -44,7 +45,7 @@ export default function ShowExchange({
         ],
     });
     const refundForm = useForm({
-        client_operation_id: crypto.randomUUID(),
+        client_operation_id: newOperationId(),
         payment_id: "",
         amount: settlementSummary.remaining,
         reason: `Échange ${exchange.exchange_number}`,

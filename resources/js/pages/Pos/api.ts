@@ -7,6 +7,13 @@ function xsrfToken(): string | null {
     return match ? decodeURIComponent(match[1]) : null;
 }
 
+export type PosRequestError = Error & { errors?: Record<string, string[]>; status?: number };
+
+/** True when the cart no longer exists / is no longer an open draft (expired, discarded, converted). */
+export function isStaleDraftError(error: unknown): boolean {
+    return (error as PosRequestError | null)?.status === 404;
+}
+
 export async function posJson<T>(url: string, options: { method?: 'POST' | 'PATCH' | 'DELETE'; body?: Record<string, JsonValue> } = {}): Promise<T> {
     const response = await fetch(url, {
         method: options.method ?? 'POST',
@@ -25,11 +32,14 @@ export async function posJson<T>(url: string, options: { method?: 'POST' | 'PATC
 
     if (response.status === 422) {
         const payload = await response.json() as { errors?: Record<string, string[]>; message?: string };
-        const error = new Error(payload.message ?? 'Validation failed.') as Error & { errors?: Record<string, string[]> };
+        const error = new Error(payload.message ?? 'Validation failed.') as PosRequestError;
         error.errors = payload.errors;
+        error.status = 422;
         throw error;
     }
 
     const payload = await response.text();
-    throw new Error(payload || 'POS request failed.');
+    const failure = new Error(payload || 'POS request failed.') as PosRequestError;
+    failure.status = response.status;
+    throw failure;
 }

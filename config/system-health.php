@@ -3,6 +3,8 @@
 return [
     'app_version' => env('APP_VERSION'),
     'commit_sha' => env('APP_COMMIT_SHA'),
+    // ISO-8601 build timestamp injected by the image build (APP_BUILD_AT); falls back to the Vite manifest mtime.
+    'build_at' => env('APP_BUILD_AT'),
     'poll_seconds' => (int) env('SYSTEM_HEALTH_POLL_SECONDS', 20),
     'queue_heartbeat_stale_minutes' => (int) env('SYSTEM_HEALTH_QUEUE_STALE_MINUTES', 3),
     'scheduler_heartbeat_stale_minutes' => (int) env('SYSTEM_HEALTH_SCHEDULER_STALE_MINUTES', 3),

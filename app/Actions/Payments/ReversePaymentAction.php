@@ -30,7 +30,7 @@ class ReversePaymentAction
         $this->authorizePayment($actor, $order, 'payments.reverse');
 
         if (trim($reason) === '') {
-            throw ValidationException::withMessages(['reason' => 'A reversal reason is required.']);
+            throw ValidationException::withMessages(['reason' => 'Un motif d’annulation est obligatoire.']);
         }
 
         return DB::transaction(function () use ($actor, $payment, $reason) {
@@ -56,11 +56,11 @@ class ReversePaymentAction
                 ->with(['allocations', 'refunds'])
                 ->firstOrFail();
             if ($payment->status !== PaymentStatus::Posted) {
-                throw ValidationException::withMessages(['payment' => 'Only a posted Payment can be reversed.']);
+                throw ValidationException::withMessages(['payment' => 'Seul un paiement comptabilisé peut être annulé.']);
             }
             if ($payment->refunds->isNotEmpty()) {
                 throw ValidationException::withMessages([
-                    'payment' => 'A Payment with a posted refund cannot be reversed; both financial movements must remain historical.',
+                    'payment' => 'Un paiement déjà remboursé ne peut pas être annulé : les deux mouvements financiers restent historiques.',
                 ]);
             }
             // A reversal removes the payment from its own month (it has no

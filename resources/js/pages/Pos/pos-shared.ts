@@ -190,3 +190,5 @@ export function buildEmptyPayment(): PaymentDraft {
         cashReceivedTouched: false,
     };
 }
+
+export { newOperationId } from '@/utils/uuid';

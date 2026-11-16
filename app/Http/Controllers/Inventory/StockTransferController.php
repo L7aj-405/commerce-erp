@@ -195,6 +195,7 @@ class StockTransferController extends Controller
             'source_warehouse_id' => ['required', 'integer', Rule::exists('warehouses', 'id')->where(fn ($query) => $query->where('organization_id', $organization->getKey())->where('status', 'active'))],
             'destination_warehouse_id' => ['required', 'integer', 'different:source_warehouse_id', Rule::exists('warehouses', 'id')->where(fn ($query) => $query->where('organization_id', $organization->getKey())->where('status', 'active'))],
             'reason' => ['required', 'string', 'max:2000'],
+            'client_operation_id' => ['nullable', 'uuid'],
             'lines' => ['required', 'array', 'min:1'],
             'lines.*.product_variant_id' => ['required', 'integer', 'distinct', Rule::exists('product_variants', 'id')->where(fn ($query) => $query->where('organization_id', $organization->getKey())->where('status', 'active'))],
             'lines.*.quantity' => ['required', 'integer', 'min:1'],
@@ -208,6 +209,8 @@ class StockTransferController extends Controller
             ->get()
             ->keyBy('id');
 
+        // Durable idempotency lives in CreateStockTransferAction (unique DB key): a retry or
+        // double click returns the transfer already created instead of moving stock again.
         $transfer = $action->execute(
             $request->user(),
             $organization,
@@ -218,6 +221,7 @@ class StockTransferController extends Controller
                 'quantity' => $line['quantity'],
             ])->values()->all(),
             $data['reason'],
+            clientOperationId: $data['client_operation_id'] ?? null,
         );
 
         return redirect()

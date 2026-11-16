@@ -38,10 +38,15 @@ class SandboxModulesAccessTest extends QuotationTestCase
         foreach (['/pos', '/quotations', '/sales/orders', '/invoices', '/delivery-notes', '/inventory/stock', '/inventory/movements', '/inventory/transfers', '/inventory/transfers/create', '/payments'] as $url) {
             $this->get($url)->assertOk();
         }
-        // A Test POS cart can be created and discarded.
+        // A Test POS cart can be created and discarded. Discarding an empty POS draft now REMOVES it
+        // (audited) instead of leaving a cancelled order; it is gone from the Test environment and the
+        // Production environment never had it.
         $cart = $this->postJson('/pos/drafts', ['warehouse_id' => $warehouse->id])->assertOk()->json('active_sale.id');
-        $this->deleteJson("/pos/drafts/{$cart}")->assertOk();
-        $this->assertSame('cancelled', SalesOrder::query()->findOrFail($cart)->status->value);
+        $this->assertNotNull(SalesOrder::query()->find($cart), 'The Test cart exists in the Test environment.');
+        $this->deleteJson("/pos/drafts/{$cart}")->assertOk()->assertJsonPath('active_sale', null);
+        $this->assertNull(SalesOrder::query()->find($cart));
+        $this->assertDatabaseMissing('sales_orders', ['id' => $cart]);
+        $this->assertDatabaseHas('audit_logs', ['event' => 'sales_order.pos_draft_discarded', 'auditable_id' => $cart]);
 
         // Still blocked: GET pages redirect home, writes return the Sandbox guard.
         foreach (['/finance', '/inventory/warehouses', '/inventory/transfer-requests', '/catalog/products', '/integrations/woocommerce'] as $url) {

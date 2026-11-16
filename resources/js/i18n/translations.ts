@@ -1350,6 +1350,7 @@ export const fr = {
     "finance.monthEnd.by": "par",
     "finance.monthEnd.openMonth": "Mois ouvert pour le suivi Finance.",
     "finance.monthEnd.markReviewed": "Marquer comme vérifié",
+    "finance.monthEnd.closeUnavailable": "« Vérifié » est un simple pointage et ne verrouille rien. La clôture (qui bloque toute écriture datée du mois) n’est possible qu’une fois le mois terminé ; elle sera proposée ici à ce moment.",
     "finance.monthEnd.close": "Clôturer",
     "finance.monthEnd.reopen": "Réouvrir",
     "finance.monthEnd.staleWarning":
@@ -3182,6 +3183,7 @@ export const fr = {
     "pos.stockOutCheckoutHelp":
         "Des articles sont en rupture. Revenez au panier et approvisionnez-les auprès d’un fournisseur avant de finaliser.",
     "pos.reviewOrder": "Vérifier la commande",
+    "pos.reviewFailed": "Impossible d’ouvrir la vérification de la commande. Vérifiez les informations de paiement puis réessayez.",
     "pos.prepareReceipt": "Préparation du reçu…",
     "pos.holdConfirm":
         "La vente active contient des articles. La mettre en attente et démarrer une nouvelle vente ?",
@@ -4369,6 +4371,8 @@ export const fr = {
     "orders.show.delivery": "Livraison",
     "orders.show.paid": "Payé",
     "orders.show.remaining": "Reste",
+    "customers.show.invoicedBalance": "Solde des factures émises",
+    "customers.show.unbilledBalance": "Reste dû sur commandes non facturées",
     "orders.show.grossMargin": "Marge brute HT",
     "orders.show.missingCosts": "{count} coût(s) indisponible(s)",
     "orders.show.coveredRevenue": "CA net HT couvert",
@@ -4380,6 +4384,10 @@ export const fr = {
     "orders.show.marginExclTax": "Marge HT",
     "orders.show.addendumDelivered": "Complément #{sequence} · remis",
     "orders.show.initialDelivered": "Commande initiale · déjà remis",
+    "orders.show.initialPending": "Commande initiale · pas encore remis",
+    "orders.show.initialPartial": "Commande initiale · {delivered} déjà remis",
+    "orders.show.addendumPending": "Complément n°{sequence} · pas encore remis",
+    "orders.show.addendumPartial": "Complément n°{sequence} · {delivered} déjà remis",
     "orders.show.replenishment": "Transferts internes",
     "orders.show.toReplenish": "À approvisionner",
     "orders.show.replenishmentHelp":
@@ -6441,6 +6449,7 @@ export const ar: Record<TranslationKey, string> = {
     "finance.monthEnd.by": "بواسطة",
     "finance.monthEnd.openMonth": "الشهر مفتوح للمتابعة المالية.",
     "finance.monthEnd.markReviewed": "تعيين كمراجع",
+    "finance.monthEnd.closeUnavailable": "«تمت المراجعة» مجرد تأشير ولا يقفل شيئا. الإغلاق (الذي يمنع أي قيد مؤرخ في الشهر) متاح فقط بعد انتهاء الشهر وسيظهر هنا حينها.",
     "finance.monthEnd.close": "إغلاق",
     "finance.monthEnd.reopen": "إعادة الفتح",
     "finance.monthEnd.staleWarning":
@@ -8205,6 +8214,7 @@ export const ar: Record<TranslationKey, string> = {
     "pos.stockOutCheckoutHelp":
         "بعض الأصناف نافدة. ارجع إلى السلة وقم بتوريدها من مورد قبل الإنهاء.",
     "pos.reviewOrder": "مراجعة الطلب",
+    "pos.reviewFailed": "تعذر فتح مراجعة الطلب. تحقق من معلومات الدفع ثم أعد المحاولة.",
     "pos.prepareReceipt": "جارٍ تجهيز الإيصال…",
     "pos.holdConfirm":
         "تحتوي عملية البيع الحالية على أصناف. هل تريد تعليقها وبدء بيع جديد؟",
@@ -9359,6 +9369,8 @@ export const ar: Record<TranslationKey, string> = {
     "orders.show.delivery": "التوصيل",
     "orders.show.paid": "المؤدى",
     "orders.show.remaining": "المتبقي",
+    "customers.show.invoicedBalance": "رصيد الفواتير الصادرة",
+    "customers.show.unbilledBalance": "المتبقي على الطلبات غير المفوترة",
     "orders.show.grossMargin": "هامش الربح الإجمالي دون ضريبة",
     "orders.show.missingCosts": "{count} تكلفة غير متاحة",
     "orders.show.coveredRevenue": "رقم المعاملات الصافي المغطى",
@@ -9370,6 +9382,10 @@ export const ar: Record<TranslationKey, string> = {
     "orders.show.marginExclTax": "الهامش دون ضريبة",
     "orders.show.addendumDelivered": "تكملة #{sequence} · تم التسليم",
     "orders.show.initialDelivered": "الطلب الأصلي · تم التسليم",
+    "orders.show.initialPending": "الطلب الأصلي · لم يتم التسليم بعد",
+    "orders.show.initialPartial": "الطلب الأصلي · تم تسليم {delivered}",
+    "orders.show.addendumPending": "تكملة #{sequence} · لم يتم التسليم بعد",
+    "orders.show.addendumPartial": "تكملة #{sequence} · تم تسليم {delivered}",
     "orders.show.replenishment": "التحويلات الداخلية",
     "orders.show.toReplenish": "يتطلب التموين",
     "orders.show.replenishmentHelp":

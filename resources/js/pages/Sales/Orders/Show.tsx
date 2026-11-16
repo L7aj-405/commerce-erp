@@ -30,6 +30,7 @@ import {
 import { Head, Link, router, useForm } from '@inertiajs/react';
 import type { FormEvent, ReactNode } from 'react';
 import { useState } from 'react';
+import { newOperationId } from '@/utils/uuid';
 
 type Allocation = { quantity: string; warehouse: { name: string; code: string }; inventory_reservation: { status: string } | null };
 type OutOfStockArticleRef = { id: number; status: string } | null;
@@ -56,6 +57,7 @@ type Line = {
     allocations: Allocation[];
     out_of_stock_article: OutOfStockArticleRef;
     addendum: { id: number; sequence: number } | null;
+    handed_over_quantity?: string | null;
 };
 type Customer = {
     id: number;
@@ -311,7 +313,7 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
     const [showSalespersonCorrection, setShowSalespersonCorrection] = useState(false);
     const salespersonForm = useForm({ salesperson_id: order.salesperson_id, reason: '' });
     const paymentForm = useForm<{ client_operation_id: string; payments: PaymentEntry[] }>({
-        client_operation_id: crypto.randomUUID(),
+        client_operation_id: newOperationId(),
         payments: [blankPayment(businessToday, paymentSummary.remaining)],
     });
 
@@ -366,7 +368,7 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
         event.preventDefault();
         paymentForm.post(`/sales/orders/${order.id}/payments`, {
             preserveScroll: true,
-            onSuccess: () => paymentForm.setData({ client_operation_id: crypto.randomUUID(), payments: [blankPayment(businessToday)] }),
+            onSuccess: () => paymentForm.setData({ client_operation_id: newOperationId(), payments: [blankPayment(businessToday)] }),
         });
     };
     const setEntry = (index: number, key: keyof PaymentEntry, value: string) =>
@@ -684,9 +686,17 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
                                         {[line.variant_name, line.reference ?? line.sku].filter(Boolean).join(' · ')}
                                     </div>
                                     <div className="mt-0.5 text-xs text-ink-faint">
-                                        {line.addendum
-                                            ? t('orders.show.addendumDelivered').replace('{sequence}', String(line.addendum.sequence))
-                                            : t('orders.show.initialDelivered')}
+                                        {Number(line.handed_over_quantity ?? 0) <= 0
+                                            ? (line.addendum
+                                                ? t('orders.show.addendumPending').replace('{sequence}', String(line.addendum.sequence))
+                                                : t('orders.show.initialPending'))
+                                            : Number(line.handed_over_quantity) < Number(line.quantity)
+                                                ? (line.addendum
+                                                    ? t('orders.show.addendumPartial').replace('{sequence}', String(line.addendum.sequence))
+                                                    : t('orders.show.initialPartial')).replace('{delivered}', formatQuantity(line.handed_over_quantity as string))
+                                                : (line.addendum
+                                                    ? t('orders.show.addendumDelivered').replace('{sequence}', String(line.addendum.sequence))
+                                                    : t('orders.show.initialDelivered'))}
                                     </div>
                                     {line.allocations.length > 0 && (
                                         <div className="mt-0.5 text-xs text-ink-faint">

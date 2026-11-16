@@ -92,6 +92,9 @@ class FinanceMonthlySituationController extends Controller
             'monthReview' => $reviews->state($organization, $period, $store),
             'can' => [
                 'manage' => $request->user()->hasPermission($organization, 'finance.monthly_situation.manage'),
+                // Same rule ManageFinanceMonthReviewAction::reopen enforces (Owner or finance.periods.reopen).
+                'reopen' => (int) $organization->owner_id === (int) $request->user()->getKey()
+                    || $request->user()->hasPermission($organization, 'finance.periods.reopen'),
                 'pay' => $request->user()->hasPermission($organization, 'finance.outgoing_payments.manage'),
                 'export' => $request->user()->hasPermission($organization, 'finance.monthly_situation.export'),
             ],

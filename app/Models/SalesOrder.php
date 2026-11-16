@@ -12,6 +12,7 @@ use App\Enums\SalesOrderSource;
 use App\Enums\SalesOrderStatus;
 use App\Models\Concerns\ScopesToActiveStore;
 use App\Models\Concerns\ScopesToSandbox;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -52,9 +53,28 @@ class SalesOrder extends Model
             'pos_global_discount_value' => 'decimal:4',
             'pos_shipping_fee' => 'decimal:4',
             'pos_held_at' => 'datetime',
+            'pos_last_activity_at' => 'datetime',
             'pos_converted_at' => 'datetime',
             'pos_fulfillment_origin' => PosFulfillmentOrigin::class,
         ];
+    }
+
+    /** Open POS carts: source=pos, still a draft, never handed over to a Sales Order. */
+    public function scopePosOpenDrafts(Builder $query): Builder
+    {
+        return $query->where($this->qualifyColumn('source'), SalesOrderSource::Pos->value)
+            ->where($this->qualifyColumn('status'), SalesOrderStatus::Draft->value)
+            ->whereNull($this->qualifyColumn('pos_converted_at'));
+    }
+
+    /** Hides empty POS carts (no line) from business lists; they are transient working state. */
+    public function scopeWithoutEmptyPosDrafts(Builder $query): Builder
+    {
+        return $query->where(fn (Builder $q) => $q
+            ->where($this->qualifyColumn('source'), '!=', SalesOrderSource::Pos->value)
+            ->orWhere($this->qualifyColumn('status'), '!=', SalesOrderStatus::Draft->value)
+            ->orWhereNotNull($this->qualifyColumn('pos_converted_at'))
+            ->orWhereHas('lines'));
     }
 
     public function organization(): BelongsTo

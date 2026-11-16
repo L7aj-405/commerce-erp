@@ -5,6 +5,7 @@ import { useI18n } from '@/i18n';
 import { formatMoney, formatQuantity } from '@/utils/format';
 import { Head, Link, useForm } from '@inertiajs/react';
 import { useEffect, useRef, useState } from 'react';
+import { newOperationId } from '@/utils/uuid';
 
 type ExistingLine = {
     id: number;
@@ -54,7 +55,7 @@ export default function CompletePosOrder({ order, paymentSummary, searchUrl, sub
     const abortRef = useRef<AbortController | null>(null);
     const debouncedQuery = useDebouncedValue(query.trim(), 250);
     const form = useForm<{ client_operation_id: string; lines: { product_variant_id: number; quantity: string }[] }>({
-        client_operation_id: crypto.randomUUID(),
+        client_operation_id: newOperationId(),
         lines: [],
     });
 

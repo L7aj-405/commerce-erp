@@ -4,6 +4,7 @@ import EmptyState from '@/components/ui/EmptyState';
 import SandboxStockBadge from '@/components/SandboxStockBadge';
 import PageHeader from '@/components/ui/PageHeader';
 import { useI18n } from '@/i18n';
+import { newOperationId } from '@/utils/uuid';
 import InventoryLayout from '@/layouts/InventoryLayout';
 import { Head, Link, router, useForm } from '@inertiajs/react';
 import { useEffect, useState } from 'react';
@@ -45,6 +46,9 @@ export default function TransferCreate({ filters, warehouses, searchResults, pre
     const [search, setSearch] = useState(filters.search ?? '');
     const [searching, setSearching] = useState(false);
     const [lines, setLines] = useState<PickerLine[]>([]);
+    // One idempotency key per form instance: a retry / double click replays the same transfer.
+    const [operationId] = useState(newOperationId);
+    const [submitted, setSubmitted] = useState(false);
     const form = useForm({
         source_warehouse_id: filters.source_warehouse_id ? String(filters.source_warehouse_id) : '',
         destination_warehouse_id: filters.destination_warehouse_id ? String(filters.destination_warehouse_id) : '',
@@ -54,7 +58,7 @@ export default function TransferCreate({ filters, warehouses, searchResults, pre
 
     const sameRoute = Boolean(form.data.source_warehouse_id && form.data.source_warehouse_id === form.data.destination_warehouse_id);
     const sourceSelected = form.data.source_warehouse_id !== '';
-    const canSubmit = !form.processing && !sameRoute && lines.length > 0 && Boolean(form.data.source_warehouse_id && form.data.destination_warehouse_id && form.data.reason.trim());
+    const canSubmit = !form.processing && !submitted && !sameRoute && lines.length > 0 && Boolean(form.data.source_warehouse_id && form.data.destination_warehouse_id && form.data.reason.trim());
     const errors = form.errors as Record<string, string | undefined>;
 
     useEffect(() => {
@@ -108,8 +112,18 @@ export default function TransferCreate({ filters, warehouses, searchResults, pre
         form.transform((data) => ({
             ...data,
             lines: lines.map((line) => ({ product_variant_id: line.product_variant_id, quantity: Number(line.quantity) })),
+            client_operation_id: operationId,
         }));
-        form.post('/inventory/transfers', { preserveScroll: true });
+        if (submitted || form.processing) return;
+        form.post('/inventory/transfers', {
+            preserveScroll: true,
+            // The server redirects to the transfer; until that navigation completes the
+            // form stays locked so a second click can never submit the same movement again.
+            onSuccess: () => {
+                setSubmitted(true);
+                setLines([]);
+            },
+        });
     }
 
     if (warehouses.length < 2) {

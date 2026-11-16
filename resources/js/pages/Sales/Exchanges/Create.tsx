@@ -6,6 +6,7 @@ import { useI18n } from "@/i18n";
 import { formatMoney, formatQuantity } from "@/utils/format";
 import { Head, Link, useForm } from "@inertiajs/react";
 import { useEffect, useState } from "react";
+import { newOperationId } from '@/utils/uuid';
 
 type ReturnLine = {
     id: number;
@@ -64,7 +65,7 @@ export default function CreateExchange({
     const [cart, setCart] = useState<(Variant & { quantity: string })[]>([]);
     const [searching, setSearching] = useState(false);
     const form = useForm({
-        client_operation_id: crypto.randomUUID(),
+        client_operation_id: newOperationId(),
         reason: "",
         disposition: policy.default_disposition || "restock",
         override_policy: false,

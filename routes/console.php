@@ -124,6 +124,11 @@ Artisan::command('mcp:prune-oauth', function () {
     $this->info("MCP OAuth: {$codes} code(s) and {$tokens} token row(s) pruned.");
 })->purpose('Delete expired MCP OAuth authorization codes and long-dead tokens');
 
+// POS draft lifecycle: removes abandoned POS carts (Production only; dry-run: `php artisan pos:cleanup-drafts`).
+// Row locks make it safe if two schedulers ever overlap, but run exactly ONE scheduler.
+Schedule::command('pos:cleanup-drafts --execute')->dailyAt((string) config('pos.drafts.cleanup_time', '03:50'))
+    ->timezone((string) config('pos.drafts.cleanup_timezone', 'Africa/Casablanca'))
+    ->when(fn () => (bool) config('pos.drafts.cleanup_enabled', true))->withoutOverlapping();
 Schedule::command('catalog:cleanup-product-imports')->daily();
 Schedule::command('mcp:prune-oauth')->dailyAt('03:35')->withoutOverlapping();
 Schedule::command('mcp:prune-operations')->dailyAt('03:20')->withoutOverlapping();

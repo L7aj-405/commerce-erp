@@ -9,7 +9,7 @@ import { useI18n } from '@/i18n';
 import PosLayout from '@/layouts/PosLayout';
 import { Head, Link, router } from '@inertiajs/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { posJson } from './api';
+import { isStaleDraftError, posJson } from './api';
 import HeldSalesDrawer from './HeldSalesDrawer';
 import PosCartPanel from './PosCartPanel';
 import PosCatalogue from './PosCatalogue';
@@ -21,6 +21,7 @@ import PosReviewModal from './PosReviewModal';
 import PosSuccessToast from './PosSuccessToast';
 import PosSourcingModal from './PosSourcingModal';
 import type { SourcingTransport } from '@/pages/Quotations/Sourcing';
+import { newOperationId } from './pos-shared';
 import type { Account, CheckoutState, PosPending, ReviewData } from './pos-shared';
 import type { ActiveSale, CartLine, Customer, HeldSale, Option, ProductResult, StockConflict, Supplier, Warehouse } from './types';
 
@@ -257,13 +258,18 @@ export default function PosIndex({
 
     function addProduct(product: ProductResult) {
         void perform(`product:add:${product.id}`, async () => {
-            const draft = await ensureDraft();
-            sync(
-                await posJson<DraftStatePayload>(`/pos/drafts/${draft.id}/lines`, {
-                    method: 'POST',
-                    body: { line_type: 'catalog', product_variant_id: product.id, warehouse_id: warehouseId, quantity: '1', discount_type: 'none', discount_value: '0.0000' },
-                }),
-            );
+            const body = { line_type: 'catalog', product_variant_id: product.id, warehouse_id: warehouseId, quantity: '1', discount_type: 'none', discount_value: '0.0000' };
+            try {
+                const draft = await ensureDraft();
+                sync(await posJson<DraftStatePayload>(`/pos/drafts/${draft.id}/lines`, { method: 'POST', body }));
+            } catch (error) {
+                if (!isStaleDraftError(error)) throw error;
+                // The cart was expired/removed server-side: drop the stale id, open a fresh one, retry once.
+                activeSaleRef.current = null;
+                setActiveSale(null);
+                const draft = await ensureDraft();
+                sync(await posJson<DraftStatePayload>(`/pos/drafts/${draft.id}/lines`, { method: 'POST', body }));
+            }
             const stamp = Date.now();
             setAddedFlash((current) => ({ ...current, [product.id]: stamp }));
             window.setTimeout(() => {
@@ -455,7 +461,7 @@ export default function PosIndex({
     async function deleteHeldSale(sale: HeldSale) {
         if (!(await confirm({ title: t('pos.deleteHeldConfirm').replace('{order}', sale.order_number), danger: true }))) return;
         void perform(`sale:delete:${sale.id}`, async () => {
-            sync(await posJson<DraftStatePayload>(`/pos/drafts/${sale.id}`, { method: 'DELETE' }));
+            sync(await posJson<DraftStatePayload>(`/pos/drafts/${sale.id}`, { method: 'DELETE', body: { confirm: true } }));
         });
     }
 
@@ -481,7 +487,9 @@ export default function PosIndex({
     }
 
     async function saveCheckoutState(state: CheckoutState) {
-        await perform('checkout:save', () =>
+        // perform() reports failures with a toast and resolves false: surface that to the
+        // checkout panel so it never believes a rejected save succeeded.
+        const saved = await perform('checkout:save', () =>
             updateDraftFields({
                 fulfillment_mode: state.fulfillment_mode,
                 fulfillment_origin: state.fulfillment_origin,
@@ -491,10 +499,11 @@ export default function PosIndex({
                 delivery_notes: state.delivery_notes || null,
             }),
         );
+        if (!saved) throw new Error('checkout state not saved');
     }
 
     function openReview(data: ReviewData) {
-        operationIdRef.current = crypto.randomUUID();
+        operationIdRef.current = newOperationId();
         setReviewError(null);
         setReviewData(data);
     }

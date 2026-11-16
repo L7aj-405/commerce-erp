@@ -66,9 +66,30 @@ final class SystemHealthService
             'environment' => app()->environment(),
             'debug_safe' => ! $debug,
             'version' => config('app.version') ?: config('system-health.app_version'),
-            'commit' => config('system-health.commit_sha'),
-            'build_at' => is_file($manifest) ? date(DATE_ATOM, filemtime($manifest)) : null,
-        ]);
+            'commit' => config('system-health.commit_sha') ?: 'Unverified',
+            'build_at' => config('system-health.build_at') ?: (is_file($manifest) ? date(DATE_ATOM, filemtime($manifest)) : 'Unverified'),
+        ] + $this->workerBuild());
+    }
+
+    /**
+     * Worker build identity as reported by the worker's own heartbeat. Anything the
+     * worker did not report (or a stale probe) is "Unverified", never guessed.
+     *
+     * @return array<string, string>
+     */
+    private function workerBuild(): array
+    {
+        $heartbeat = SystemHealthHeartbeat::query()->find('queue_worker');
+        $fresh = $heartbeat?->last_seen_at?->gte(now()->subMinutes(max(1, (int) config('system-health.queue_heartbeat_stale_minutes')))) ?? false;
+        $metadata = is_array($heartbeat?->metadata) ? $heartbeat->metadata : [];
+        $commit = $fresh && is_string($metadata['commit'] ?? null) && $metadata['commit'] !== '' ? $metadata['commit'] : null;
+        $app = (string) config('system-health.commit_sha');
+
+        return [
+            'worker_commit' => $commit ?? 'Unverified',
+            'worker_build_at' => $fresh && is_string($metadata['build_at'] ?? null) && $metadata['build_at'] !== '' ? $metadata['build_at'] : 'Unverified',
+            'worker_matches_app' => $commit === null || $app === '' ? 'Unverified' : ($commit === $app ? 'yes' : 'NO — redeploy worker'),
+        ];
     }
 
     /** @return array<string, mixed> */
@@ -129,6 +150,14 @@ final class SystemHealthService
         $fresh = $heartbeat?->last_seen_at?->gte(now()->subMinutes(max(1, (int) config('system-health.queue_heartbeat_stale_minutes')))) ?? false;
         $status = $fresh ? ($failed > 0 ? 'degraded' : 'operational') : ($waiting > 0 ? 'critical' : 'degraded');
         $message = $fresh ? 'Le worker traite les sondes de santé.' : ($waiting > 0 ? 'Aucun worker récent alors que des tâches attendent.' : 'Aucune sonde worker récente.');
+        // The worker probe is DISPATCHED by the scheduler. With no live scheduler there is no
+        // probe to process, so a silent probe does NOT prove the worker is stopped: it is unverifiable.
+        $scheduler = SystemHealthHeartbeat::query()->find('scheduler');
+        $schedulerAlive = $scheduler?->last_seen_at?->gte(now()->subMinutes(max(1, (int) config('system-health.scheduler_heartbeat_stale_minutes')))) ?? false;
+        if (! $fresh && $waiting === 0 && ! $schedulerAlive) {
+            $status = 'unknown';
+            $message = 'Worker non vérifiable : le scheduler n’envoie aucune sonde (monitoring absent, pas nécessairement un worker arrêté).';
+        }
 
         return $this->check($status, $message, [
             'driver' => $driver, 'waiting_jobs' => $waiting, 'failed_jobs' => $failed,

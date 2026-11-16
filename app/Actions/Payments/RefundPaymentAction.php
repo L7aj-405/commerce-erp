@@ -44,7 +44,7 @@ class RefundPaymentAction
         $this->authorizePayment($actor, $order, 'payments.reverse');
 
         if (trim($reason) === '') {
-            throw ValidationException::withMessages(['reason' => 'A refund reason is required.']);
+            throw ValidationException::withMessages(['reason' => 'Un motif de remboursement est obligatoire.']);
         }
 
         return DB::transaction(function () use ($actor, $payment, $order, $reason) {
@@ -79,21 +79,21 @@ class RefundPaymentAction
 
             if ($order->status !== SalesOrderStatus::Confirmed || $order->fulfillment_status !== SalesOrderFulfillmentStatus::Unfulfilled) {
                 throw ValidationException::withMessages([
-                    'order' => 'Cancellation refunds are only allowed for confirmed, unfulfilled orders.',
+                    'order' => 'Le remboursement d’annulation n’est possible que pour une commande confirmée et non livrée.',
                 ]);
             }
             if ($order->invoices()->whereIn('status', [InvoiceStatus::Issued->value, InvoiceStatus::Superseded->value])->exists()) {
                 throw ValidationException::withMessages([
-                    'order' => 'An issued Invoice requires a Credit Note before a refund can be recorded.',
+                    'order' => 'Une facture émise exige un avoir avant d’enregistrer un remboursement.',
                 ]);
             }
             if ($payment->status !== PaymentStatus::Posted) {
                 throw ValidationException::withMessages([
-                    'payment' => 'Only a posted Payment can be refunded. Reversed entries are not collections.',
+                    'payment' => 'Seul un paiement comptabilisé peut être remboursé. Une écriture annulée n’est pas un encaissement.',
                 ]);
             }
             if (Decimal::compare($allocation->amount, '0.0000') <= 0) {
-                throw ValidationException::withMessages(['payment' => 'The Payment allocation has no refundable amount.']);
+                throw ValidationException::withMessages(['payment' => 'Cette affectation de paiement n’a aucun montant remboursable.']);
             }
             $refundDate = BusinessTime::today($order->organization);
             $this->periods->assertOpen($order->organization, $refundDate, 'refund_date');

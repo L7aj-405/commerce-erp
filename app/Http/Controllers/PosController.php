@@ -39,6 +39,7 @@ use App\Models\User;
 use App\Models\Warehouse;
 use App\Services\ActiveTenantContext;
 use App\Services\AuditLogger;
+use App\Services\Pos\PosDraftLifecycle;
 use App\Services\CustomerManager;
 use App\Services\Pos\PosCartSourcing;
 use App\Services\Pos\PosLocations;
@@ -418,26 +419,35 @@ class PosController extends Controller
 
         $warehouse = app(PosLocations::class)->assertEligible($organization, $store, (int) $data['warehouse_id']);
         $terminal = $this->terminalId($request);
-        $active = $this->activeDraft($organization, $store, $terminal);
 
-        if (! $active) {
-            $active = $createOrder->execute($request->user(), $organization, $store, [
-                'customer_id' => $data['customer_id'] ?? null,
-                'sale_date' => BusinessTime::today($organization),
-                'currency_code' => config('platform.currency_code', 'MAD'),
-                'notes' => null,
-            ], SalesOrderSource::Pos);
-            $active->pos_warehouse_id = $warehouse->getKey();
-            $active->pos_terminal_id = $terminal;
-            $active->pos_global_discount_type = SalesOrderDiscountType::None->value;
-            $active->pos_global_discount_value = '0.0000';
-            $active->pos_fulfillment_mode = 'pickup';
-            $active->pos_shipping_fee = '0.0000';
-            $active->save();
-            $active->load($this->draftRelations());
-        } elseif (! $active->lines()->exists()) {
-            $this->syncDraftHeader($request, $active, $data);
-        }
+        // Creation is serialized per Store: rapid double clicks, retries and two tabs of
+        // the same terminal all queue on this lock and re-read, so only ONE draft exists.
+        $active = DB::transaction(function () use ($request, $organization, $store, $terminal, $data, $warehouse, $createOrder) {
+            Store::query()->whereKey($store->getKey())->lockForUpdate()->first();
+            $active = $this->activeDraft($organization, $store, $terminal);
+
+            if (! $active) {
+                $active = $createOrder->execute($request->user(), $organization, $store, [
+                    'customer_id' => $data['customer_id'] ?? null,
+                    'sale_date' => BusinessTime::today($organization),
+                    'currency_code' => config('platform.currency_code', 'MAD'),
+                    'notes' => null,
+                ], SalesOrderSource::Pos);
+                $active->pos_warehouse_id = $warehouse->getKey();
+                $active->pos_terminal_id = $terminal;
+                $active->pos_global_discount_type = SalesOrderDiscountType::None->value;
+                $active->pos_global_discount_value = '0.0000';
+                $active->pos_fulfillment_mode = 'pickup';
+                $active->pos_shipping_fee = '0.0000';
+                $active->pos_last_activity_at = now();
+                $active->save();
+                $active->load($this->draftRelations());
+            } elseif (! $active->lines()->exists()) {
+                $this->syncDraftHeader($request, $active, $data);
+            }
+
+            return $active;
+        });
 
         return $this->draftStateResponse($organization, $store, $active, $posSummary);
     }
@@ -524,6 +534,7 @@ class PosController extends Controller
             $order->pos_delivery_notes = null;
         }
 
+        $order->pos_last_activity_at = now();
         $order->save();
 
         return $this->draftStateResponse($organization, $store, $order->fresh($this->draftRelations()), $posSummary);
@@ -554,6 +565,7 @@ class PosController extends Controller
         } else {
             $saveLine->execute($request->user(), $order, $data);
         }
+        $this->lifecycle()->touch($order);
 
         return $this->draftStateResponse($organization, $store, $order->fresh($this->draftRelations()), $posSummary);
     }
@@ -574,6 +586,7 @@ class PosController extends Controller
         }
 
         $saveLine->execute($request->user(), $order, $data, $line);
+        $this->lifecycle()->touch($order);
 
         return $this->draftStateResponse($organization, $store, $order->fresh($this->draftRelations()), $posSummary);
     }
@@ -585,6 +598,10 @@ class PosController extends Controller
         $this->ensurePosDraft($order);
         abort_unless($line->sales_order_id === $order->getKey(), 404);
         $removeLine->execute($request->user(), $order, $line);
+        // The (now possibly empty) cart is KEPT and reused by the next add: no new draft
+        // number is burned per add/remove cycle. Empty carts are hidden from Sales Order
+        // lists and swept by pos:cleanup-drafts after the empty-cart grace period.
+        $this->lifecycle()->touch($order);
 
         return $this->draftStateResponse($organization, $store, $order->fresh($this->draftRelations()), $posSummary);
     }
@@ -622,6 +639,7 @@ class PosController extends Controller
             $active->pos_global_discount_value = '0.0000';
             $active->pos_fulfillment_mode = 'pickup';
             $active->pos_shipping_fee = '0.0000';
+            $active->pos_last_activity_at = now();
             $active->save();
             $active->load($this->draftRelations());
         }
@@ -649,6 +667,7 @@ class PosController extends Controller
         $order->pos_held_at = null;
         // Resuming makes it THIS terminal's active cart.
         $order->pos_terminal_id = $terminal;
+        $order->pos_last_activity_at = now();
         $order->touch();
         $order->save();
         $audit->record('sales_order.pos_resumed', $request->user(), $organization, $store, $order, newValues: [
@@ -664,9 +683,27 @@ class PosController extends Controller
         [$organization, $store] = $this->operationalContext($request, $context);
         $this->authorize('cancel', $order);
         $this->ensurePosDraft($order);
-        $cancelOrder->execute($request->user(), $order, 'POS hold discarded');
+        $confirmed = $request->boolean('confirm');
+
+        // Eligible POS drafts are removed outright (audited, reservations released
+        // through the reservation service). A draft that already carries commercial
+        // history (supplier procurement, ...) keeps the previous behaviour: the
+        // existing cancellation workflow, which has its own safeguards.
+        $result = $this->lifecycle()->discard($request->user(), $order, PosDraftLifecycle::REASON_MANUAL, $confirmed);
+        match ($result['outcome']) {
+            PosDraftLifecycle::OUTCOME_CONFIRMATION_REQUIRED => throw ValidationException::withMessages([
+                'confirm' => 'Ce panier contient des articles : confirmez la suppression.',
+            ]),
+            PosDraftLifecycle::OUTCOME_BLOCKED => $cancelOrder->execute($request->user(), $order, 'POS hold discarded'),
+            default => null,
+        };
 
         return $this->draftStateResponse($organization, $store, $this->activeDraft($organization, $store, $this->terminalId($request)), $posSummary);
+    }
+
+    private function lifecycle(): PosDraftLifecycle
+    {
+        return app(PosDraftLifecycle::class);
     }
 
     public function complete(CompletePosSaleRequest $request, ActiveTenantContext $context, CreatePosSaleAction $action): RedirectResponse|JsonResponse

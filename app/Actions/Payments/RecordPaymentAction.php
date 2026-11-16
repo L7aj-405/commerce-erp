@@ -61,13 +61,13 @@ class RecordPaymentAction
                 }
 
                 if ($order->status !== SalesOrderStatus::Confirmed) {
-                    throw ValidationException::withMessages(['order' => 'Only a confirmed Sales Order can receive a Payment.']);
+                    throw ValidationException::withMessages(['order' => 'Seule une commande client confirmée peut recevoir un paiement.']);
                 }
                 if ($account->status !== FinancialAccountStatus::Active) {
-                    throw ValidationException::withMessages(['financial_account_id' => 'Only an active Financial Account can receive a Payment.']);
+                    throw ValidationException::withMessages(['financial_account_id' => 'Seul un compte financier actif peut recevoir un paiement.']);
                 }
                 if ($account->currency_code !== $order->currency_code) {
-                    throw ValidationException::withMessages(['financial_account_id' => 'The Financial Account currency must match the Sales Order currency.']);
+                    throw ValidationException::withMessages(['financial_account_id' => 'La devise du compte financier doit correspondre à celle de la commande.']);
                 }
                 $this->assertCompatible($method, $account);
                 // "Today" is the organization's business date (Africa/Casablanca
@@ -78,7 +78,7 @@ class RecordPaymentAction
                 $this->periods->assertOpen($order->organization, $paymentDate, 'payment_date');
                 $remaining = $this->calculator->remainingAmount($order);
                 if (Decimal::compare($amount, $remaining) > 0) {
-                    throw ValidationException::withMessages(['amount' => 'The Payment amount exceeds the Sales Order remaining balance.']);
+                    throw ValidationException::withMessages(['amount' => 'Le montant du paiement dépasse le reste à payer de la commande.']);
                 }
 
                 $payment = new Payment;
@@ -161,7 +161,7 @@ class RecordPaymentAction
             || $allocation->sales_order_id !== $order->getKey()
             || Decimal::compare($allocation->amount, $amount) !== 0
         ) {
-            throw ValidationException::withMessages(['client_operation_id' => 'This Payment operation identifier was already used with different data.']);
+            throw ValidationException::withMessages(['client_operation_id' => 'Cet identifiant d’opération de paiement a déjà été utilisé avec des données différentes.']);
         }
 
         return $payment->load(['financialAccount:id,name,code,type', 'allocations.salesOrder:id,order_number']);
@@ -176,7 +176,7 @@ class RecordPaymentAction
     private function assertCompatible(PaymentMethod $method, FinancialAccount $account): void
     {
         if (! $account->acceptsMethod($method)) {
-            throw ValidationException::withMessages(['financial_account_id' => 'The selected Financial Account is not compatible with this Payment method.']);
+            throw ValidationException::withMessages(['financial_account_id' => 'Le compte financier sélectionné n’est pas compatible avec ce mode de paiement.']);
         }
     }
 }

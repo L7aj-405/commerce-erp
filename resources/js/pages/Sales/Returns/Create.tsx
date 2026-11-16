@@ -9,6 +9,7 @@ import {
 } from "@/utils/format";
 import { Head, Link, useForm } from "@inertiajs/react";
 import type { FormEvent } from "react";
+import { newOperationId } from '@/utils/uuid';
 
 type Line = {
     id: number;
@@ -57,7 +58,7 @@ export default function ReturnCreate({
 }: Props) {
     const { t } = useI18n();
     const form = useForm({
-        client_operation_id: crypto.randomUUID(),
+        client_operation_id: newOperationId(),
         reason: "",
         disposition: policy.default_disposition,
         override_policy: false,

@@ -63,7 +63,8 @@ class SalesOrderController extends Controller
 
         $scope = fn () => SalesOrder::query()
             ->where('organization_id', $organization->getKey())
-            ->where('store_id', $store->getKey());
+            ->where('store_id', $store->getKey())
+            ->withoutEmptyPosDrafts();
 
         $orders = $scope()
             ->when($filters['search'] ?? null, fn ($query, string $search) => $query->where(fn ($query) => $query
@@ -197,6 +198,25 @@ class SalesOrderController extends Controller
         $receivedReturns = $returns->where('status', 'received');
         $returnSummary = $this->returnSummary($order, $receivedReturns);
         $completion = $completionEligibility->evaluate(request()->user(), $order);
+
+        // Real handed-over quantity per line (BUG-05): a counter-fulfilled order has
+        // delivered its lines; otherwise only shipped (handed to carrier / in transit /
+        // delivered / closed) fulfillment items count — never "confirmed" or "reserved".
+        $shippedStatuses = collect(\App\Enums\FulfillmentStatus::cases())->filter(fn ($status) => $status->isShipped())->map->value->all();
+        $handedOver = \App\Models\FulfillmentItem::query()
+            ->where('organization_id', $order->organization_id)
+            ->whereIn('sales_order_line_id', $order->lines->pluck('id'))
+            ->whereHas('fulfillment', fn ($query) => $query->whereIn('status', $shippedStatuses))
+            ->selectRaw('sales_order_line_id, SUM(quantity) as aggregate')->groupBy('sales_order_line_id')
+            ->pluck('aggregate', 'sales_order_line_id');
+        foreach ($order->lines as $orderLine) {
+            $orderLine->setAttribute(
+                'handed_over_quantity',
+                $order->fulfillment_status === SalesOrderFulfillmentStatus::Fulfilled
+                    ? Decimal::normalize((string) $orderLine->quantity)
+                    : Decimal::normalize((string) ($handedOver[$orderLine->id] ?? '0')),
+            );
+        }
 
         return Inertia::render('Sales/Orders/Show', [
             'order' => $order,

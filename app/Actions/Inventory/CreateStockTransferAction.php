@@ -12,6 +12,7 @@ use App\Services\AuditLogger;
 use App\Services\ShowroomReplenishmentPlanner;
 use App\Services\StockTransferNumberGenerator;
 use App\Support\InventoryQuantity;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -45,8 +46,64 @@ class CreateStockTransferAction
         string $reason,
         string $permission = 'inventory.transfer',
         bool $respectTransferPromises = true,
+        ?string $clientOperationId = null,
     ): StockTransfer {
-        return DB::transaction(function () use ($actor, $organization, $source, $destination, $lines, $reason, $permission, $respectTransferPromises) {
+        if ($clientOperationId === null) {
+            return $this->run($actor, $organization, $source, $destination, $lines, $reason, $permission, $respectTransferPromises, null, null);
+        }
+
+        // Durable idempotency: the unique (organization, client_operation_id) key arbitrates.
+        $hash = $this->fingerprint($source, $destination, $lines, $reason);
+        if ($existing = $this->replayed($organization, $clientOperationId, $hash)) {
+            return $existing;
+        }
+        try {
+            return $this->run($actor, $organization, $source, $destination, $lines, $reason, $permission, $respectTransferPromises, $clientOperationId, $hash);
+        } catch (UniqueConstraintViolationException $exception) {
+            // A concurrent submit of the same operation committed first: its whole transaction
+            // (movements included) is the one that counts; this one rolled back entirely.
+            if ($existing = $this->replayed($organization, $clientOperationId, $hash)) {
+                return $existing;
+            }
+            throw $exception;
+        }
+    }
+
+    private function replayed(Organization $organization, string $operationId, string $hash): ?StockTransfer
+    {
+        $existing = StockTransfer::query()->where('organization_id', $organization->getKey())
+            ->where('client_operation_id', $operationId)->first();
+        if ($existing && $existing->client_operation_hash !== $hash) {
+            throw ValidationException::withMessages(['client_operation_id' => 'Cet identifiant d’opération a déjà été utilisé avec des données différentes.']);
+        }
+
+        return $existing;
+    }
+
+    /** @param list<array{variant: ProductVariant, quantity: int|string|float}> $lines */
+    private function fingerprint(Warehouse $source, Warehouse $destination, array $lines, string $reason): string
+    {
+        $normalized = collect($lines)
+            ->map(fn (array $line) => [(int) $line['variant']->getKey(), InventoryQuantity::normalize((string) $line['quantity'])])
+            ->sortBy(0)->values()->all();
+
+        return hash('sha256', json_encode([(int) $source->getKey(), (int) $destination->getKey(), trim($reason), $normalized]));
+    }
+
+    /** @param list<array{variant: ProductVariant, quantity: int|string|float}> $lines */
+    private function run(
+        User $actor,
+        Organization $organization,
+        Warehouse $source,
+        Warehouse $destination,
+        array $lines,
+        string $reason,
+        string $permission,
+        bool $respectTransferPromises,
+        ?string $clientOperationId,
+        ?string $operationHash,
+    ): StockTransfer {
+        return DB::transaction(function () use ($actor, $organization, $source, $destination, $lines, $reason, $permission, $respectTransferPromises, $clientOperationId, $operationHash) {
             $transferNumber = $this->numbers->next($organization);
             $movements = $this->transfers->executeMany(
                 $actor,
@@ -69,6 +126,8 @@ class CreateStockTransferAction
             $transfer->source_warehouse_id = $source->getKey();
             $transfer->destination_warehouse_id = $destination->getKey();
             $transfer->transfer_number = $transferNumber;
+            $transfer->client_operation_id = $clientOperationId;
+            $transfer->client_operation_hash = $operationHash;
             $transfer->status = 'completed';
             $transfer->reason = $reason;
             $transfer->product_count = count($movements);

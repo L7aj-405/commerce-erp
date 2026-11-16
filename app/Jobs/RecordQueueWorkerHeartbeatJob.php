@@ -15,7 +15,13 @@ class RecordQueueWorkerHeartbeatJob implements ShouldBeUnique, ShouldQueue
 
     public function handle(): void
     {
-        SystemHealthHeartbeat::beat('queue_worker', ['queue' => $this->queue ?? 'default']);
+        // The worker process reports ITS OWN build identity (its env, not the web app's), so
+        // the health page can show whether web and worker run the same release. Non-secret only.
+        SystemHealthHeartbeat::beat('queue_worker', [
+            'queue' => $this->queue ?? 'default',
+            'commit' => config('system-health.commit_sha') ?: null,
+            'build_at' => config('system-health.build_at') ?: null,
+        ]);
     }
 
     public function uniqueId(): string

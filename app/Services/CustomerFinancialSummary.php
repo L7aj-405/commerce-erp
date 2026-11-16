@@ -30,9 +30,12 @@ use Illuminate\Support\Facades\DB;
  */
 final class CustomerFinancialSummary
 {
-    public function __construct(private readonly DocumentVisibility $visibility) {}
+    public function __construct(
+        private readonly DocumentVisibility $visibility,
+        private readonly SalesOrderPaymentCalculator $orderPayments,
+    ) {}
 
-    /** @return array{sales_total: ?string, invoiced_total: ?string, paid_total: ?string, outstanding: ?string, last_activity: ?string} */
+    /** @return array{sales_total: ?string, invoiced_total: ?string, paid_total: ?string, outstanding: ?string, unbilled_outstanding: ?string, last_activity: ?string} */
     public function forCustomer(Customer $customer, User $viewer): array
     {
         $organization = $customer->organization;
@@ -65,7 +68,26 @@ final class CustomerFinancialSummary
         $outstanding = $invoicedTotal === null || $paidTotal === null ? null
             : Money::outstanding($invoicedTotal, $paidTotal, (string) config('platform.currency_code', 'MAD'));
 
+        // Accounting semantics: `outstanding` is the INVOICE-based receivable only.
+        // A confirmed order that has no issued invoice yet is a commercial exposure,
+        // not a receivable; it is reported separately so "0 due on invoices" is never
+        // read as "the customer owes nothing". Per-order remaining uses the same
+        // calculator as the order screens (refunds and returns included).
+        $unbilledOutstanding = null;
+        if ($orders !== null && $this->visibility->canView($viewer, $organization, Payment::class)) {
+            $unbilledOrders = (clone $orders)
+                ->where('status', SalesOrderStatus::Confirmed->value)
+                ->whereDoesntHave('invoices', fn ($query) => $query->whereIn('status', [InvoiceStatus::Issued->value, InvoiceStatus::Superseded->value]))
+                ->limit(500)->get();
+            $unbilledOutstanding = '0.0000';
+            foreach ($this->orderPayments->summaries($unbilledOrders) as $summaryRow) {
+                $unbilledOutstanding = Decimal::add($unbilledOutstanding, $summaryRow['remaining']);
+            }
+            $unbilledOutstanding = Decimal::normalize($unbilledOutstanding);
+        }
+
         return [
+            'unbilled_outstanding' => $unbilledOutstanding,
             'sales_total' => $salesTotal,
             'invoiced_total' => $invoicedTotal,
             'paid_total' => $paidTotal,

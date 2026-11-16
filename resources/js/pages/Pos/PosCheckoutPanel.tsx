@@ -5,7 +5,7 @@ import { Button, IconButton } from '@/components/ui/Button';
 import { Spinner } from '@/components/ui/Spinner';
 import { useI18n } from '@/i18n';
 import { Link } from '@inertiajs/react';
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import PosCustomerCard from './PosCustomerCard';
 import { PlusIcon } from './PosCustomerDialog';
@@ -157,6 +157,8 @@ export default function PosCheckoutPanel({
     /** Every blocking payment problem found by the last "review" attempt (shown together). */
     const [paymentIssues, setPaymentIssues] = useState<string[]>([]);
     const [attempted, setAttempted] = useState(false);
+    // Debounces double clicks on "Vérifier la commande".
+    const reviewing = useRef(false);
     const [savingState, setSavingState] = useState(false);
 
     const selectedCustomer = sale.customer;
@@ -270,6 +272,7 @@ export default function PosCheckoutPanel({
     }
 
     function submitReview() {
+        if (reviewing.current) return;
         setAttempted(true);
         if (settlementMode !== 'deferred') {
             // Same rules and order as before; all failing rules are now listed together.
@@ -287,6 +290,18 @@ export default function PosCheckoutPanel({
         setError('');
 
         const active = payments.filter((payment) => payment.method && positiveAmount(payment.amount) > 0);
+        reviewing.current = true;
+        try {
+            buildAndOpenReview(active);
+        } catch {
+            // Never fail silently: any unexpected error becomes a visible, actionable message.
+            setError(t('pos.reviewFailed'));
+        } finally {
+            window.setTimeout(() => { reviewing.current = false; }, 400);
+        }
+    }
+
+    function buildAndOpenReview(active: PaymentDraft[]) {
         onReview({
             fulfillment_mode: checkoutState.fulfillment_mode,
             fulfillment_origin: checkoutState.fulfillment_origin,

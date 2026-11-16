@@ -31,6 +31,7 @@ import {
     useMemo,
     useState,
 } from "react";
+import { newOperationId } from '@/utils/uuid';
 
 type Option = { value: string; label: string };
 type Entity = {
@@ -206,7 +207,7 @@ type Props = {
     obligations: Paginator;
     futureObligations: FutureObligation[];
     recurringTemplatesCount: number;
-    can: { manage: boolean; pay: boolean; export: boolean };
+    can: { manage: boolean; pay: boolean; export: boolean; reopen?: boolean };
     treasury: Treasury;
     expectedCollections: ExpectedCollection[];
     receivableOrders: ReceivableOrder[];
@@ -422,7 +423,7 @@ export default function MonthlySituation(props: Props) {
             payment_date: businessToday,
             reference: row.reference ?? "",
             notes: "",
-            idempotency_key: crypto.randomUUID(),
+            idempotency_key: newOperationId(),
             allocations: [
                 {
                     obligation_id: row.id,
@@ -602,7 +603,16 @@ export default function MonthlySituation(props: Props) {
                         )}
                     </div>
                     {can.manage && (
-                        <div className="flex flex-wrap gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                            {props.monthReview.status !== "closed" &&
+                                !props.monthReview.can_close && (
+                                    <p
+                                        className="max-w-sm text-xs text-ink-muted"
+                                        data-testid="month-close-unavailable"
+                                    >
+                                        {t("finance.monthEnd.closeUnavailable")}
+                                    </p>
+                                )}
                             {props.monthReview.status !== "closed" &&
                                 props.monthReview.can_review && (
                                     <Button
@@ -626,7 +636,7 @@ export default function MonthlySituation(props: Props) {
                                         {t("finance.monthEnd.close")}
                                     </Button>
                                 )}
-                            {props.monthReview.status === "closed" && (
+                            {props.monthReview.status === "closed" && can.reopen !== false && (
                                 <Button
                                     variant="secondary"
                                     onClick={() => setReopeningMonth(true)}

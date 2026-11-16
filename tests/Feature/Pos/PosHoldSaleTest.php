@@ -58,7 +58,7 @@ class PosHoldSaleTest extends PosTestCase
             ->assertJsonPath('active_sale.lines.0.insufficient', true);
     }
 
-    public function test_held_sale_can_be_cancelled_without_becoming_paid_or_fulfilled(): void
+    public function test_held_sale_with_lines_requires_confirmation_then_is_discarded_and_audited(): void
     {
         [$owner, $organization, $store, $warehouse, $variant] = $this->context();
         $draft = $this->createPosDraft($owner, $organization, $store, $warehouse);
@@ -66,14 +66,19 @@ class PosHoldSaleTest extends PosTestCase
         $draft->pos_held_at = now();
         $draft->save();
 
-        $this->actingAs($owner)->deleteJson(route('pos.drafts.destroy', $draft))->assertOk();
+        // Non-empty draft: explicit confirmation is mandatory.
+        $this->actingAs($owner)->deleteJson(route('pos.drafts.destroy', $draft))->assertStatus(422)->assertJsonValidationErrors('confirm');
+        $this->assertDatabaseHas('sales_orders', ['id' => $draft->id, 'status' => 'draft']);
 
-        $this->assertDatabaseHas('sales_orders', [
-            'id' => $draft->id,
-            'status' => 'cancelled',
-            'payment_status' => 'unpaid',
-            'fulfillment_status' => 'unfulfilled',
-        ]);
+        $this->actingAs($owner)->deleteJson(route('pos.drafts.destroy', $draft), ['confirm' => true])->assertOk();
+
+        $this->assertDatabaseMissing('sales_orders', ['id' => $draft->id]);
+        $this->assertDatabaseMissing('sales_order_lines', ['sales_order_id' => $draft->id]);
+        $this->assertDatabaseHas('audit_logs', ['event' => 'sales_order.pos_draft_discarded', 'auditable_id' => $draft->id]);
+        // A draft never reserved stock: on-hand and reserved are untouched.
+        $balance = $this->balance($organization, $warehouse, $variant);
+        $this->assertSame('5.0000', $balance->on_hand);
+        $this->assertSame('0.0000', $balance->reserved);
     }
 
     public function test_held_sale_is_store_scoped_and_hidden_from_foreign_tenant(): void
