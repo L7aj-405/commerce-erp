@@ -6,6 +6,7 @@ use App\Models\AuditLog;
 use App\Models\Organization;
 use App\Models\User;
 use App\Services\AuditLogger;
+use App\Services\Finance\FiscalDocumentProtection;
 use App\Services\OrganizationDataReset\OrganizationDataResetAlreadyExecutedException;
 use App\Services\OrganizationDataReset\OrganizationDataResetException;
 use App\Services\OrganizationDataReset\OrganizationDataResetExecutor;
@@ -40,6 +41,7 @@ class SelectiveResetExecutor
         private readonly SelectiveResetPlanner $planner,
         private readonly OrganizationDataResetForeignKeyMap $foreignKeys,
         private readonly AuditLogger $audit,
+        private readonly FiscalDocumentProtection $fiscal,
     ) {}
 
     /** @return array{deleted: array<string,int>, unlinked: array<string,int>, released: int, audit_log_id: int} */
@@ -74,6 +76,7 @@ class SelectiveResetExecutor
 
             $organizationId = (int) $locked->getKey();
             $protectedBefore = $plan->protected;
+            $fiscalBefore = $this->fiscal->protectedCounts($locked);
             $onHandBefore = $this->onHand($organizationId);
             $touched = $this->touchedBalances($organizationId, $plan->release);
             $inconsistentBefore = $this->inconsistentReservations($organizationId, $touched);
@@ -132,6 +135,9 @@ class SelectiveResetExecutor
             }
             if ($this->planner->protectedCounts($organizationId) !== $protectedBefore) {
                 throw new OrganizationDataResetException('A protected master / configuration record changed during the selective reset.');
+            }
+            if ($this->fiscal->protectedCounts($locked) !== $fiscalBefore) {
+                throw new OrganizationDataResetException('A protected fiscal document changed during the selective reset.');
             }
             if ($this->onHand($organizationId) !== $onHandBefore) {
                 throw new OrganizationDataResetException('Stock on-hand changed during the selective reset.');

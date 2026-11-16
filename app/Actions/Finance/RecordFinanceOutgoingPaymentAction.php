@@ -12,6 +12,7 @@ use App\Models\Store;
 use App\Models\Supplier;
 use App\Models\User;
 use App\Services\AuditLogger;
+use App\Services\Finance\FinanceClosedPeriodGuard;
 use App\Services\Finance\FinanceNumberGenerator;
 use App\Services\Finance\FinanceInstrumentCommitmentService;
 use App\Services\Finance\FinanceObligationCalculator;
@@ -28,6 +29,7 @@ class RecordFinanceOutgoingPaymentAction
         private readonly FinanceObligationCalculator $calculator,
         private readonly FinanceInstrumentCommitmentService $commitments,
         private readonly AuditLogger $audit,
+        private readonly FinanceClosedPeriodGuard $periods,
     ) {}
 
     /** @param array<string, mixed> $data */
@@ -49,6 +51,7 @@ class RecordFinanceOutgoingPaymentAction
                 return $existing;
             }
 
+            $this->periods->assertOpen($organization, Carbon::parse($data['payment_date']), 'payment_date');
             $account = FinancialAccount::query()->where('organization_id', $organization->getKey())->whereKey($data['financial_account_id'])->lockForUpdate()->first();
             if (! $account || $account->status->value !== 'active') {
                 throw ValidationException::withMessages(['financial_account_id' => 'Le compte financier sélectionné est invalide ou inactif.']);

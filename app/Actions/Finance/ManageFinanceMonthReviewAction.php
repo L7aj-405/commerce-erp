@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Services\AuditLogger;
 use App\Services\Finance\FinanceMonthReviewService;
 use App\Services\Finance\FinancePeriod;
+use App\Support\BusinessTime;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -18,7 +19,7 @@ class ManageFinanceMonthReviewAction
     public function review(User $actor, Organization $organization, FinancePeriod $period, ?string $note): FinanceMonthReview
     {
         $this->authorize($actor, $organization);
-        if ($period->start->gt(now()->startOfMonth())) throw ValidationException::withMessages(['month' => 'Un mois futur ne peut pas être vérifié.']);
+        if ($period->month > BusinessTime::now($organization)->format('Y-m')) throw ValidationException::withMessages(['month' => 'Un mois futur ne peut pas être vérifié.']);
 
         return DB::transaction(function () use ($actor, $organization, $period, $note) {
             $row = $this->locked($organization, $period);
@@ -33,7 +34,8 @@ class ManageFinanceMonthReviewAction
     public function close(User $actor, Organization $organization, FinancePeriod $period, ?string $note, bool $acknowledged): FinanceMonthReview
     {
         $this->authorize($actor, $organization);
-        if (! $period->end->lt(now()->startOfDay())) throw ValidationException::withMessages(['month' => 'Seul un mois terminé peut être clôturé.']);
+        // "Ended" in the organization's business calendar, not in UTC.
+        if (! ($period->end->toDateString() < BusinessTime::today($organization))) throw ValidationException::withMessages(['month' => 'Seul un mois terminé peut être clôturé.']);
         $warnings = $this->service->warnings($organization, $period);
         if ($warnings !== [] && ! $acknowledged) throw ValidationException::withMessages(['acknowledge_warnings' => 'Confirmez avoir pris connaissance des avertissements avant la clôture.']);
         $snapshot = $this->service->snapshot($organization, $period);
@@ -52,6 +54,13 @@ class ManageFinanceMonthReviewAction
     public function reopen(User $actor, Organization $organization, FinancePeriod $period, string $reason): FinanceMonthReview
     {
         $this->authorize($actor, $organization);
+        // Segregation of duties: closing needs `finance.monthly_situation.manage`;
+        // reopening additionally needs the Owner or `finance.periods.reopen`,
+        // and always a reason (audited below).
+        abort_unless((int) $organization->owner_id === (int) $actor->getKey() || $actor->hasPermission($organization, 'finance.periods.reopen'), 403);
+        if (trim($reason) === '') {
+            throw ValidationException::withMessages(['reason' => 'Le motif de réouverture est obligatoire.']);
+        }
         return DB::transaction(function () use ($actor, $organization, $period, $reason) {
             $row = $this->locked($organization, $period);
             if ($row->status !== 'closed') throw ValidationException::withMessages(['month' => 'Seul un mois clôturé peut être réouvert.']);

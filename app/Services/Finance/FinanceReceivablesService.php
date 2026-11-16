@@ -10,6 +10,7 @@ use App\Models\SalesOrder;
 use App\Models\Store;
 use App\Services\SalesOrderPaymentCalculator;
 use App\Support\Decimal;
+use App\Support\Money;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -31,76 +32,200 @@ class FinanceReceivablesService
 {
     public function __construct(private readonly SalesOrderPaymentCalculator $payments) {}
 
+    /*
+    |--------------------------------------------------------------------------
+    | Two receivable concepts — deliberately NOT merged
+    |--------------------------------------------------------------------------
+    |
+    | 1. ORDER EXPOSURE ("Créances clients", executive dashboards, expected
+    |    collection picker): what customers still owe on CONFIRMED sales
+    |    orders, whether or not an invoice was issued.
+    |
+    |      commercial total = max(order TTC − received returns TTC, 0)
+    |      net paid         = posted collections − posted refunds
+    |      outstanding      = commercial total − net paid, counted only when
+    |                         it is payable at the currency precision
+    |                         (Money::outstanding: 0.0049 MAD is settled)
+    |
+    |    As of a date: collections by payment_date, refunds by refund_date,
+    |    returns by received_at before the end of that LOCAL day, orders by
+    |    sale_date. Per-order rule: SalesOrderPaymentCalculator::summaryFromAmounts.
+    |
+    | 2. ISSUED-INVOICE DEBT ("Situation" créances début / fin, Créances
+    |    drill-down by invoice): the fiscal receivable carried by the currently
+    |    effective ISSUED invoice of each order (see totalAsOf()):
+    |
+    |      issued invoice TTC − issued credit notes − net paid (as of)
+    |
+    |    floored at zero per invoice; the excess is a separate refund
+    |    obligation (refundObligationAsOf()), never a negative receivable.
+    |
+    | They legitimately differ: an unpaid confirmed order without an invoice
+    | is exposure but not invoice debt; payments recorded before the invoice
+    | is issued are "unapplied" (unappliedPaymentsTotal()).
+    */
+
     /**
-     * The Créances clients page is SalesOrder-based: confirmed orders whose
-     * authoritative balance was still positive at the selected month end.
+     * Order exposure as of a date: the paginated rows, the total and the
+     * unpaid / partially paid split — computed in the database (one aggregate
+     * query + one page query), never by loading every order in memory.
      *
      * @return array{total: string, orders: LengthAwarePaginator, status_counts: array{unpaid:int,partially_paid:int}, status_amounts: array{unpaid:string,partially_paid:string}}
      */
     public function salesOrderReceivablesAsOf(Organization $organization, Carbon $asOf, ?Store $store, int $perPage = 30): array
     {
-        $rows = collect();
-        $total = '0.0000';
-        $statusCounts = ['unpaid' => 0, 'partially_paid' => 0];
-        $statusAmounts = ['unpaid' => '0.0000', 'partially_paid' => '0.0000'];
+        $summary = $this->orderExposureSummaryAsOf($organization, $asOf, $store);
 
-        SalesOrder::query()
-            ->withoutGlobalScopes()
-            ->whereNull('sales_orders.sandbox_id')
-            ->where('organization_id', $organization->getKey())
-            ->where('status', SalesOrderStatus::Confirmed->value)
-            ->whereDate('sale_date', '<=', $asOf->toDateString())
-            ->when($store, fn ($query) => $query->where('store_id', $store->getKey()))
-            ->select([
-                'id', 'organization_id', 'store_id', 'order_number', 'sale_date',
-                'customer_name', 'customer_company', 'total_incl_tax', 'currency_code', 'status',
-            ])
-            ->chunkById(500, function ($orders) use ($asOf, $rows, &$total, &$statusCounts, &$statusAmounts) {
-                $summaries = $this->payments->summaries($orders, $asOf);
-
-                foreach ($orders as $order) {
-                    $summary = $summaries[$order->getKey()];
-                    if (Decimal::compare($summary['remaining'], '0.0000') <= 0) {
-                        continue;
-                    }
-
-                    $total = Decimal::add($total, $summary['remaining']);
-                    $status = $summary['status'] === 'partially_paid' ? 'partially_paid' : 'unpaid';
-                    $statusCounts[$status]++;
-                    $statusAmounts[$status] = Decimal::add($statusAmounts[$status], $summary['remaining']);
-                    $rows->push([
-                        'id' => $order->getKey(),
-                        'order_number' => $order->order_number,
-                        'sale_date' => $order->sale_date->toDateString(),
-                        'customer' => trim($order->customer_company ?: $order->customer_name ?: '') ?: '—',
-                        'store_id' => $order->store_id,
-                        'total_incl_tax' => $summary['commercial_total'],
-                        'paid_amount' => $summary['paid'],
-                        'outstanding' => $summary['remaining'],
-                        'payment_status' => $summary['status'],
-                        'last_payment_date' => $summary['last_payment_date'],
-                    ]);
-                }
-            });
-
-        $rows = $rows->sort(function (array $left, array $right) {
-            return [$left['sale_date'], $left['id']] <=> [$right['sale_date'], $right['id']];
-        })->values();
-        $page = LengthAwarePaginator::resolveCurrentPage();
-        $paginator = new LengthAwarePaginator(
-            $rows->forPage($page, $perPage)->values(),
-            $rows->count(),
-            $perPage,
-            $page,
-            ['path' => LengthAwarePaginator::resolveCurrentPath()],
-        );
-        $paginator->withQueryString();
+        $page = $this->orderExposureQuery($organization, $asOf, $store)
+            ->orderBy('sales_orders.sale_date')
+            ->orderBy('sales_orders.id')
+            ->paginate($perPage)
+            ->withQueryString();
+        $page->setCollection($page->getCollection()->map(fn (SalesOrder $order) => $this->exposureRow($order)));
 
         return [
-            'total' => $total,
-            'orders' => $paginator,
-            'status_counts' => $statusCounts,
-            'status_amounts' => $statusAmounts,
+            'total' => $summary['total'],
+            'orders' => $page,
+            'status_counts' => $summary['status_counts'],
+            'status_amounts' => $summary['status_amounts'],
+        ];
+    }
+
+    /**
+     * Order exposure totals only (dashboards): one aggregate query.
+     *
+     * @return array{total: string, status_counts: array{unpaid:int,partially_paid:int}, status_amounts: array{unpaid:string,partially_paid:string}}
+     */
+    public function orderExposureSummaryAsOf(Organization $organization, Carbon $asOf, ?Store $store): array
+    {
+        $row = DB::query()->fromSub($this->orderExposureQuery($organization, $asOf, $store)->toBase(), 'exposure')
+            ->selectRaw('COALESCE(SUM(outstanding_raw), 0) as total')
+            ->selectRaw('SUM(CASE WHEN net_paid_raw = 0 THEN 1 ELSE 0 END) as unpaid_count')
+            ->selectRaw('SUM(CASE WHEN net_paid_raw <> 0 THEN 1 ELSE 0 END) as partial_count')
+            ->selectRaw('COALESCE(SUM(CASE WHEN net_paid_raw = 0 THEN outstanding_raw ELSE 0 END), 0) as unpaid_amount')
+            ->selectRaw('COALESCE(SUM(CASE WHEN net_paid_raw <> 0 THEN outstanding_raw ELSE 0 END), 0) as partial_amount')
+            ->first();
+
+        return [
+            'total' => Decimal::normalize((string) ($row->total ?? '0')),
+            'status_counts' => ['unpaid' => (int) ($row->unpaid_count ?? 0), 'partially_paid' => (int) ($row->partial_count ?? 0)],
+            'status_amounts' => [
+                'unpaid' => Decimal::normalize((string) ($row->unpaid_amount ?? '0')),
+                'partially_paid' => Decimal::normalize((string) ($row->partial_amount ?? '0')),
+            ],
+        ];
+    }
+
+    /**
+     * Confirmed orders with a payable order exposure as of a date, with their
+     * aggregated components (collected_amount, refunded_amount,
+     * returned_amount, last_payment_date) and the derived outstanding_raw /
+     * net_paid_raw columns. Callers order / paginate / limit it.
+     *
+     * @return \Illuminate\Database\Eloquent\Builder<SalesOrder>
+     */
+    public function orderExposureQuery(Organization $organization, Carbon $asOf, ?Store $store)
+    {
+        $organizationId = (int) $organization->getKey();
+        $date = $asOf->toDateString();
+
+        $collections = DB::table('payment_allocations')
+            ->join('payments', function ($join) {
+                $join->on('payments.id', '=', 'payment_allocations.payment_id')
+                    ->on('payments.organization_id', '=', 'payment_allocations.organization_id');
+            })
+            ->where('payment_allocations.organization_id', $organizationId)
+            ->where('payments.status', PaymentStatus::Posted->value)
+            ->whereDate('payments.payment_date', '<=', $date)
+            ->groupBy('payment_allocations.sales_order_id')
+            ->select('payment_allocations.sales_order_id')
+            ->selectRaw('SUM(payment_allocations.amount) as collected_amount')
+            ->selectRaw('MAX(payments.payment_date) as last_payment_date');
+        $refunds = DB::table('payment_refunds')
+            ->where('organization_id', $organizationId)
+            ->where('status', 'posted')
+            ->whereDate('refund_date', '<=', $date)
+            ->groupBy('sales_order_id')
+            ->select('sales_order_id')
+            ->selectRaw('SUM(amount) as refunded_amount');
+        $returns = DB::table('customer_returns')
+            ->where('organization_id', $organizationId)
+            ->where('status', 'received')
+            ->where('received_at', '<', SalesOrderPaymentCalculator::endOfLocalDayUtc($organizationId, $asOf))
+            ->groupBy('sales_order_id')
+            ->select('sales_order_id')
+            ->selectRaw('SUM(total_incl_tax) as returned_amount');
+
+        $outstanding = $this->outstandingSql();
+        $netPaid = $this->netPaidSql();
+
+        return SalesOrder::query()
+            ->withoutGlobalScopes()
+            ->whereNull('sales_orders.sandbox_id')
+            ->leftJoinSub($collections, 'exp_collections', 'exp_collections.sales_order_id', '=', 'sales_orders.id')
+            ->leftJoinSub($refunds, 'exp_refunds', 'exp_refunds.sales_order_id', '=', 'sales_orders.id')
+            ->leftJoinSub($returns, 'exp_returns', 'exp_returns.sales_order_id', '=', 'sales_orders.id')
+            ->where('sales_orders.organization_id', $organizationId)
+            ->where('sales_orders.status', SalesOrderStatus::Confirmed->value)
+            ->whereDate('sales_orders.sale_date', '<=', $date)
+            ->when($store, fn ($query) => $query->where('sales_orders.store_id', $store->getKey()))
+            ->whereRaw("({$outstanding}) >= (".Money::payableThresholdSql('sales_orders.currency_code').')')
+            ->select([
+                'sales_orders.id', 'sales_orders.organization_id', 'sales_orders.store_id', 'sales_orders.order_number',
+                'sales_orders.sale_date', 'sales_orders.customer_name', 'sales_orders.customer_company',
+                'sales_orders.customer_id', 'sales_orders.total_incl_tax', 'sales_orders.currency_code', 'sales_orders.status',
+            ])
+            ->selectRaw('COALESCE(exp_collections.collected_amount, 0) as collected_amount')
+            ->selectRaw('COALESCE(exp_refunds.refunded_amount, 0) as refunded_amount')
+            ->selectRaw('COALESCE(exp_returns.returned_amount, 0) as returned_amount')
+            ->selectRaw('exp_collections.last_payment_date as last_payment_date')
+            ->selectRaw("({$outstanding}) as outstanding_raw")
+            ->selectRaw("({$netPaid}) as net_paid_raw");
+    }
+
+    /** max(order TTC − returned, 0) − (collected − refunded), on the joined aggregates. */
+    private function outstandingSql(): string
+    {
+        $returned = 'COALESCE(exp_returns.returned_amount, 0)';
+        $commercial = "CASE WHEN sales_orders.total_incl_tax - {$returned} > 0 THEN sales_orders.total_incl_tax - {$returned} ELSE 0 END";
+
+        return "{$commercial} - ({$this->netPaidSql()})";
+    }
+
+    private function netPaidSql(): string
+    {
+        return 'COALESCE(exp_collections.collected_amount, 0) - COALESCE(exp_refunds.refunded_amount, 0)';
+    }
+
+    /**
+     * One page row, recomputed from the aggregated components with the
+     * canonical per-order rule (exact 4-decimal arithmetic in PHP).
+     *
+     * @return array<string,mixed>
+     */
+    private function exposureRow(SalesOrder $order): array
+    {
+        $summary = $this->payments->summaryFromAmounts(
+            $order,
+            (string) $order->getAttribute('collected_amount'),
+            (string) $order->getAttribute('refunded_amount'),
+            (string) $order->getAttribute('returned_amount'),
+            $order->getAttribute('last_payment_date') !== null
+                ? Carbon::parse((string) $order->getAttribute('last_payment_date'))->toDateString()
+                : null,
+        );
+
+        return [
+            'id' => $order->getKey(),
+            'order_number' => $order->order_number,
+            'sale_date' => $order->sale_date->toDateString(),
+            'customer' => trim($order->customer_company ?: $order->customer_name ?: '') ?: '—',
+            'store_id' => $order->store_id,
+            'total_incl_tax' => $summary['commercial_total'],
+            'paid_amount' => $summary['paid'],
+            'outstanding' => $summary['remaining'],
+            'payment_status' => $summary['status'],
+            'last_payment_date' => $summary['last_payment_date'],
         ];
     }
 

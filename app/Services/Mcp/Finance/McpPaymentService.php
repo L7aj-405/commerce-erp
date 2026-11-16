@@ -13,6 +13,7 @@ use App\Services\Mcp\McpExecutionContext;
 use App\Services\Mcp\Parties\McpPartyPreviews;
 use App\Services\Mcp\Sales\SalesOrderReadService;
 use App\Services\SalesOrderPaymentCalculator;
+use App\Support\BusinessTime;
 use App\Support\Decimal;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\Validator;
@@ -56,7 +57,7 @@ final class McpPaymentService
     {
         if (array_diff(array_keys($data), self::FIELDS) !== []) throw new InvalidArgumentException('forbidden_fields');
         $payload = array_map(fn ($value) => is_string($value) && trim($value) === '' ? null : (is_string($value) ? trim($value) : $value), $data);
-        $payload['payment_date'] ??= now()->toDateString();
+        $payload['payment_date'] ??= BusinessTime::today($this->context->organization());
         foreach (['reference', 'external_reference', 'notes'] as $optional) {
             $payload[$optional] ??= null;
         }
@@ -90,7 +91,7 @@ final class McpPaymentService
             } catch (ValidationException $exception) {
                 $issues = $this->issues($exception, $payload, $before, $order);
             } catch (HttpExceptionInterface) {
-                $issues[] = ['path' => 'payment', 'code' => 'not_permitted', 'message' => $payload['payment_date'] !== now()->toDateString()
+                $issues[] = ['path' => 'payment', 'code' => 'not_permitted', 'message' => $payload['payment_date'] !== BusinessTime::today($this->context->organization())
                     ? 'Recording a payment on another date than today needs the ERP payments.backdate permission.'
                     : 'The ERP refused this payment for the connection user (permission or store membership).'];
             } catch (ModelNotFoundException) {

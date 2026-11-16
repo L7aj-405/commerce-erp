@@ -11,6 +11,7 @@ use App\Models\Store;
 use App\Models\Supplier;
 use App\Models\User;
 use App\Services\AuditLogger;
+use App\Services\Finance\FinanceClosedPeriodGuard;
 use App\Services\Finance\FinanceNumberGenerator;
 use App\Support\Decimal;
 use Illuminate\Support\Carbon;
@@ -19,13 +20,18 @@ use Illuminate\Validation\ValidationException;
 
 class ManageFinanceSupplierInstallmentPlanAction
 {
-    public function __construct(private readonly FinanceNumberGenerator $numbers, private readonly AuditLogger $audit) {}
+    public function __construct(
+        private readonly FinanceNumberGenerator $numbers,
+        private readonly AuditLogger $audit,
+        private readonly FinanceClosedPeriodGuard $periods,
+    ) {}
 
     /** @param array<string,mixed> $data */
     public function create(User $actor, Organization $organization, array $data): FinanceSupplierInstallmentPlan
     {
         $this->authorize($actor, $organization); $validated = $this->validated($organization, $data);
         return DB::transaction(function () use ($actor, $organization, $data, $validated) {
+            $this->periods->assertOpen($organization, array_column($validated['rows'], 'due_date'), 'installments');
             $plan = new FinanceSupplierInstallmentPlan; $plan->organization_id = $organization->id;
             $plan->plan_number = $this->numbers->nextSupplierInstallmentPlan($organization, (int) Carbon::parse($validated['first_due'])->format('Y'));
             $this->applyPlan($plan, $actor, $data, $validated['total']); $plan->save();
@@ -46,6 +52,11 @@ class ManageFinanceSupplierInstallmentPlanAction
                 ->where('a.organization_id', $plan->organization_id)->whereIn('a.obligation_id', $obligations->pluck('id'))->where('p.status', 'posted')->exists();
             $hasInstruments = DB::table('finance_payment_instruments')->where('organization_id', $plan->organization_id)->whereIn('obligation_id', $obligations->pluck('id'))->exists();
             if ($hasPaid || $hasInstruments) throw ValidationException::withMessages(['installments' => 'Un échéancier engagé ne peut plus être restructuré. Modifiez chaque obligation future selon les règles Finance ou annulez d’abord les instruments.']);
+            // Every month an installment leaves (current obligations) or lands in (new rows) must be open.
+            $this->periods->assertOpen($plan->organization_id, [
+                ...$obligations->whereNull('cancelled_at')->pluck('due_date')->all(),
+                ...array_column($validated['rows'], 'due_date'),
+            ], 'installments');
             $old = $this->auditValues($plan); $this->applyPlan($plan, $actor, $data, $validated['total'], false); $plan->save();
             foreach ($validated['rows'] as $index => $row) {
                 $obligation = $obligations->get($index);

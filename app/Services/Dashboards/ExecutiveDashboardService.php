@@ -31,7 +31,7 @@ final class ExecutiveDashboardService
         $current = $this->reports->situation($organization, $period, $store);
         $previousPeriod = FinancePeriod::fromMonth($period->start->copy()->subMonthNoOverflow()->format('Y-m'));
         $previous = $this->reports->situation($organization, $previousPeriod, $store);
-        $receivables = $this->receivables->salesOrderReceivablesAsOf($organization, $period->end, $store, 1);
+        $receivables = $this->receivables->orderExposureSummaryAsOf($organization, $period->end, $store);
         $orderCount = $this->confirmedOrderCount($organization, $period, $store);
         $previousOrderCount = $this->confirmedOrderCount($organization, $previousPeriod, $store);
         $states = $this->orderStates($organization, $period, $store);
@@ -72,7 +72,7 @@ final class ExecutiveDashboardService
     public function finance(Organization $organization, FinancePeriod $period, ?Store $store): array
     {
         $situation = $this->reports->situation($organization, $period, $store);
-        $receivables = $this->receivables->salesOrderReceivablesAsOf($organization, $period->end, $store, 1);
+        $receivables = $this->receivables->orderExposureSummaryAsOf($organization, $period->end, $store);
         $treasury = $this->treasury->forecast($organization, $period, $store);
         $obligations = $this->obligations->kpis($organization, $period, $store);
 

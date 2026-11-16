@@ -179,7 +179,7 @@ class FinanceDashboardController extends Controller
     {
         $month = $request->query('month');
 
-        return $month ? FinancePeriod::fromMonth($month) : FinancePeriod::current();
+        return $month ? FinancePeriod::fromMonth($month) : FinancePeriod::current(app(ActiveTenantContext::class)->organizationOrFail());
     }
 
     /** @return list<array<string, mixed>> */

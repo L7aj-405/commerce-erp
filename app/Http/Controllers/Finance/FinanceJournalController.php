@@ -24,7 +24,7 @@ class FinanceJournalController extends Controller
         $guard->authorizeView($request->user(), $organization);
 
         $month = $request->query('month');
-        $period = $month ? FinancePeriod::fromMonth($month) : FinancePeriod::current();
+        $period = $month ? FinancePeriod::fromMonth($month) : FinancePeriod::current($organization);
         $store = $guard->resolveStore($organization, $request->query('store_id'));
 
         return Inertia::render('Finance/Journal', [

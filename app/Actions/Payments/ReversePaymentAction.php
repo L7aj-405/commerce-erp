@@ -9,6 +9,7 @@ use App\Models\PaymentAllocation;
 use App\Models\SalesOrder;
 use App\Models\User;
 use App\Services\AuditLogger;
+use App\Services\Finance\FinanceClosedPeriodGuard;
 use App\Services\SalesOrderPaymentCalculator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -17,7 +18,11 @@ class ReversePaymentAction
 {
     use AuthorizesPaymentAction;
 
-    public function __construct(private readonly SalesOrderPaymentCalculator $calculator, private readonly AuditLogger $audit) {}
+    public function __construct(
+        private readonly SalesOrderPaymentCalculator $calculator,
+        private readonly AuditLogger $audit,
+        private readonly FinanceClosedPeriodGuard $periods,
+    ) {}
 
     public function execute(User $actor, Payment $payment, string $reason): Payment
     {
@@ -58,6 +63,9 @@ class ReversePaymentAction
                     'payment' => 'A Payment with a posted refund cannot be reversed; both financial movements must remain historical.',
                 ]);
             }
+            // A reversal removes the payment from its own month (it has no
+            // reversal date of its own): refused while that month is closed.
+            $this->periods->assertOpen($payment->organization_id, $payment->payment_date, 'payment');
 
             $payment->status = PaymentStatus::Reversed;
             $payment->reversed_at = now();

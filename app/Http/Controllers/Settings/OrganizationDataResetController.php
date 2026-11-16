@@ -2,8 +2,10 @@
 
 namespace App\Http\Controllers\Settings;
 
+use App\Actions\Settings\SetOrganizationFiscalDataModeAction;
 use App\Http\Controllers\Controller;
 use App\Services\ActiveTenantContext;
+use App\Services\Finance\FiscalDocumentProtection;
 use App\Services\OrganizationDataReset\OrganizationDataResetBlockedException;
 use App\Services\OrganizationDataReset\OrganizationDataResetAlreadyExecutedException;
 use App\Services\OrganizationDataReset\OrganizationDataResetConfirmation;
@@ -31,7 +33,7 @@ use Inertia\Response;
 
 class OrganizationDataResetController extends Controller
 {
-    public function index(Request $request, ActiveTenantContext $context, SelectiveResetCategoryRegistry $registry): Response
+    public function index(Request $request, ActiveTenantContext $context, SelectiveResetCategoryRegistry $registry, FiscalDocumentProtection $fiscal): Response
     {
         $organization = $context->organizationOrFail();
         $this->authorizeActor($request, $organization);
@@ -57,7 +59,50 @@ class OrganizationDataResetController extends Controller
             ])->values(),
             'warehouses' => Warehouse::query()->where('organization_id', $organizationId)->orderBy('name')->get(['id', 'name']),
             'selectiveConfirmationPhrase' => SelectiveResetExecutor::PHRASE,
+            'fiscal' => $this->fiscalState($organization, $request->user(), $fiscal),
         ]);
+    }
+
+    /**
+     * Declare the organization's fiscal data as real (protected) or as test
+     * data. Declaring test mode requires the Owner, a fresh 2FA and that no
+     * protected fiscal document exists (enforced by the action).
+     */
+    public function fiscalMode(
+        Request $request,
+        ActiveTenantContext $context,
+        SetOrganizationFiscalDataModeAction $action,
+        FreshAuthentication $freshAuthentication,
+        FiscalDocumentProtection $fiscal,
+    ): JsonResponse {
+        $organization = $context->organizationOrFail();
+        $this->authorizeActor($request, $organization);
+        $validated = $request->validate([
+            'mode' => ['required', Rule::in([FiscalDocumentProtection::MODE_PROTECTED, FiscalDocumentProtection::MODE_TEST])],
+            'reason' => ['required', 'string', 'max:1000'],
+            'organization_id' => ['prohibited'],
+        ]);
+        // Declaring test fiscal data is a platform-operator action (Test Mode
+        // owns test data); the action refuses it for tenant users.
+        $organization = $action->execute($request->user(), $organization, $validated['mode'], $validated['reason']);
+
+        return response()->json(['data' => $this->fiscalState($organization, $request->user(), $fiscal)]);
+    }
+
+    /** @return array<string,mixed> */
+    private function fiscalState(\App\Models\Organization $organization, \App\Models\User $user, FiscalDocumentProtection $fiscal): array
+    {
+        $counts = $fiscal->protectedCounts($organization);
+        $isOwner = (int) $organization->owner_id === (int) $user->getKey();
+
+        return [
+            'mode' => $fiscal->mode($organization),
+            'protection_started_at' => $organization->fiscal_protection_started_at?->toIso8601String(),
+            'protected_counts' => $counts,
+            'protected_total' => array_sum($counts),
+            'can_declare_test' => false,
+            'can_protect' => $fiscal->mode($organization) === FiscalDocumentProtection::MODE_TEST,
+        ];
     }
 
     /**

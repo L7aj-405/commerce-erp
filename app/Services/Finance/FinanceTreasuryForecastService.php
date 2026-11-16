@@ -18,7 +18,7 @@ class FinanceTreasuryForecastService
     /** @return array<string,mixed> */
     public function forecast(Organization $organization, FinancePeriod $period, ?Store $store): array
     {
-        $today = now()->startOfDay();
+        $today = FinancePeriod::businessToday($organization);
         $past = $period->end->lt($today);
         $balanceDate = $past ? $period->end : $today;
         $position = $this->balances->organizationPosition($organization, $balanceDate);
@@ -60,12 +60,13 @@ class FinanceTreasuryForecastService
             ->with(['salesOrder:id,organization_id,store_id,order_number,customer_id,total_incl_tax,currency_code', 'salesOrder.customer:id,display_name,company_name'])
             ->withSum('matches as matched_amount', 'amount')->orderBy('expected_date');
         if ($limit !== null) $query->limit($limit);
+        $today = FinancePeriod::businessToday($organization);
 
         return $query->get()
-            ->map(function (FinanceExpectedCollection $row) {
+            ->map(function (FinanceExpectedCollection $row) use ($today) {
                 $matched = Decimal::normalize((string) ($row->matched_amount ?? '0'));
                 $remaining = Decimal::subtract((string) $row->expected_amount, $matched);
-                $status = $row->state === 'cancelled' ? 'cancelled' : (Decimal::compare($remaining, '0.0000') <= 0 ? 'received' : (Decimal::compare($matched, '0.0000') > 0 ? 'partial' : ($row->expected_date->lt(now()->startOfDay()) ? 'overdue' : 'planned')));
+                $status = $row->state === 'cancelled' ? 'cancelled' : (Decimal::compare($remaining, '0.0000') <= 0 ? 'received' : (Decimal::compare($matched, '0.0000') > 0 ? 'partial' : ($row->expected_date->lt($today) ? 'overdue' : 'planned')));
                 return ['id' => $row->id, 'sales_order_id' => $row->sales_order_id, 'order_number' => $row->salesOrder->order_number,
                     'customer' => $row->salesOrder->customer?->company_name ?: $row->salesOrder->customer?->display_name ?: '—', 'label' => $row->label,
                     'reference' => $row->reference, 'expected_date' => $row->expected_date->toDateString(), 'amount' => (string) $row->expected_amount,

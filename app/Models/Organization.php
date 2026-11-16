@@ -21,6 +21,7 @@ class Organization extends Model
     {
         return [
             'settings' => 'array',
+            'fiscal_protection_started_at' => 'datetime',
         ];
     }
 

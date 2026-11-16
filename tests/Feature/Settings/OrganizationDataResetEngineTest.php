@@ -30,6 +30,9 @@ class OrganizationDataResetEngineTest extends DocumentTestCase
     {
         $owner = User::factory()->create();
         $organization = $this->createOrganization($owner, 'Commercial reset');
+        // This scenario deletes payments and refunds: it is explicitly declared
+        // test data (a protected organization blocks it — FiscalDataProtectionTest).
+        $organization->forceFill(['fiscal_data_mode' => 'test'])->save();
         $store = $this->createStore($organization, $owner);
         $warehouse = $this->createWarehouse($organization);
         $destinationWarehouse = $this->createWarehouse($organization, 'Destination warehouse');

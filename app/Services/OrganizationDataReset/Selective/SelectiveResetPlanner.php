@@ -9,6 +9,7 @@ use App\Models\Organization;
 use App\Models\Quotation;
 use App\Models\SalesOrderInventoryAllocation;
 use App\Models\SalesOrderProcurement;
+use App\Services\Finance\FiscalDocumentProtection;
 use App\Services\OrganizationDataReset\OrganizationDataResetForeignKeyMap;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Query\Builder;
@@ -67,6 +68,7 @@ class SelectiveResetPlanner
     public function __construct(
         private readonly SelectiveResetCategoryRegistry $registry,
         private readonly OrganizationDataResetForeignKeyMap $foreignKeys,
+        private readonly FiscalDocumentProtection $fiscal,
     ) {}
 
     public function plan(Organization $organization, SelectiveResetSelection $selection, bool $lockRoots = false): SelectiveResetPlan
@@ -217,6 +219,13 @@ class SelectiveResetPlanner
             $delete[$table] = $this->sortedIds($table, $ids);
         }
         ksort($delete);
+        // Fiscal protection (issued invoices / credit notes, payments, refunds,
+        // outgoing payments of a protected organization): never deleted,
+        // however the plan reached them. Re-evaluated inside the execution
+        // transaction by the same re-plan.
+        foreach ($this->fiscal->selectiveBlockers($organization, $delete) as $blocker) {
+            $blockers[] = $blocker;
+        }
         $unlinkLists = [];
         foreach ($unlink as $key => $ids) {
             $unlinkLists[$key] = $this->sortedIds(explode('.', $key)[0], $ids);

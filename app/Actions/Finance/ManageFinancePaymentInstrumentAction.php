@@ -10,7 +10,9 @@ use App\Models\FinancialAccount;
 use App\Models\Organization;
 use App\Models\User;
 use App\Services\AuditLogger;
+use App\Services\Finance\FinanceClosedPeriodGuard;
 use App\Services\Finance\FinanceInstrumentCommitmentService;
+use App\Support\BusinessTime;
 use App\Services\Finance\FinanceNumberGenerator;
 use App\Services\Finance\FinanceObligationCalculator;
 use App\Support\Decimal;
@@ -22,7 +24,8 @@ use Illuminate\Validation\ValidationException;
 class ManageFinancePaymentInstrumentAction
 {
     public function __construct(private readonly FinanceNumberGenerator $numbers, private readonly FinanceObligationCalculator $calculator,
-        private readonly FinanceInstrumentCommitmentService $commitments, private readonly RecordFinanceOutgoingPaymentAction $payments, private readonly AuditLogger $audit) {}
+        private readonly FinanceInstrumentCommitmentService $commitments, private readonly RecordFinanceOutgoingPaymentAction $payments, private readonly AuditLogger $audit,
+        private readonly FinanceClosedPeriodGuard $periods) {}
 
     /** @param array<string,mixed> $data */
     public function create(User $actor, FinanceObligation $obligation, array $data): FinancePaymentInstrument
@@ -35,6 +38,7 @@ class ManageFinancePaymentInstrumentAction
             if (! $account || $account->status->value !== 'active' || $account->currency_code !== $obligation->currency_code) throw ValidationException::withMessages(['financial_account_id' => 'Le compte financier est invalide, inactif ou dans une autre devise.']);
             $issue = Carbon::parse($data['issue_date']); $maturity = Carbon::parse($data['maturity_date']);
             if ($maturity->lt($issue)) throw ValidationException::withMessages(['maturity_date' => 'L’échéance doit être postérieure ou égale à la date d’émission.']);
+            $this->periods->assertOpen($obligation->organization_id, $maturity, 'maturity_date');
             $remaining = $this->calculator->values($obligation, $issue, true)['remaining']; $committed = $this->commitments->committed($obligation, null, true);
             if (Decimal::compare($amount, Decimal::subtract($remaining, $committed)) > 0) throw ValidationException::withMessages(['amount' => 'Le montant dépasse le reste non payé et non engagé de cette obligation.']);
             $instrument = new FinancePaymentInstrument; $instrument->organization_id = $obligation->organization_id; $instrument->store_id = $obligation->store_id;
@@ -64,16 +68,27 @@ class ManageFinancePaymentInstrumentAction
         $this->authorizeManage($actor, $instrument->organization); if (trim($reason) === '') throw ValidationException::withMessages(['reason' => 'Le motif est obligatoire.']);
         return DB::transaction(function () use ($actor, $instrument, $reason) {
             $instrument = $this->locked($instrument); if (! in_array($instrument->state, [FinancePaymentInstrumentState::Issued, FinancePaymentInstrumentState::Presented], true)) throw ValidationException::withMessages(['instrument' => 'Cet instrument ne peut plus être annulé.']);
+            $this->periods->assertOpen($instrument->organization_id, $instrument->maturity_date, 'instrument');
             $instrument->state = FinancePaymentInstrumentState::Cancelled; $instrument->cancelled_at = now(); $instrument->cancelled_by_user_id = $actor->id; $instrument->cancellation_reason = trim($reason); $instrument->save();
             $this->audit->record('finance_payment_instrument.cancelled', $actor, $instrument->organization, $instrument->store, $instrument, newValues: $this->values($instrument) + ['reason' => $reason]); return $instrument;
         }, 3);
     }
 
-    public function clear(User $actor, FinancePaymentInstrument $instrument): FinancePaymentInstrument
+    /**
+     * Clearing (compensation bancaire) records the outgoing payment on the
+     * bank value date: `$clearedOn` (organization-local calendar date, never in
+     * the future, never before the issue date), today's business date by
+     * default — never the server's UTC date.
+     */
+    public function clear(User $actor, FinancePaymentInstrument $instrument, ?string $clearedOn = null): FinancePaymentInstrument
     {
         abort_unless($actor->active_organization_id === $instrument->organization_id && $actor->hasPermission($instrument->organization, 'finance.outgoing_payments.manage'), 403);
         if ($instrument->state === FinancePaymentInstrumentState::Cleared && $instrument->outgoing_payment_id) return $instrument;
-        return DB::transaction(function () use ($actor, $instrument) {
+        $today = BusinessTime::today($instrument->organization);
+        $clearedOn = ($clearedOn ?? '') !== '' ? Carbon::parse($clearedOn)->toDateString() : $today;
+        if ($clearedOn > $today) throw ValidationException::withMessages(['cleared_on' => 'La date de compensation ne peut pas être dans le futur.']);
+        if ($clearedOn < $instrument->issue_date->toDateString()) throw ValidationException::withMessages(['cleared_on' => 'La date de compensation ne peut pas précéder la date d’émission.']);
+        return DB::transaction(function () use ($actor, $instrument, $clearedOn) {
             FinancialAccount::query()->where('organization_id', $instrument->organization_id)->whereKey($instrument->financial_account_id)->lockForUpdate()->firstOrFail();
             FinanceObligation::query()->where('organization_id', $instrument->organization_id)->whereKey($instrument->obligation_id)->lockForUpdate()->firstOrFail();
             $instrument = $this->locked($instrument);
@@ -82,7 +97,7 @@ class ManageFinancePaymentInstrumentAction
             $payment = $this->payments->execute($actor, $instrument->organization, [
                 'store_id' => $instrument->store_id, 'financial_account_id' => $instrument->financial_account_id, 'supplier_id' => $instrument->supplier_id,
                 'beneficiary_name' => $instrument->beneficiary_name, 'payment_method' => $instrument->type->value, 'amount' => $instrument->amount,
-                'currency_code' => $instrument->currency_code, 'payment_date' => now()->toDateString(), 'reference' => $instrument->external_reference,
+                'currency_code' => $instrument->currency_code, 'payment_date' => $clearedOn, 'reference' => $instrument->external_reference,
                 'notes' => $instrument->notes, 'idempotency_key' => $instrument->clearing_idempotency_key, 'instrument_id' => $instrument->id,
                 'allocations' => [['obligation_id' => $instrument->obligation_id, 'amount' => $instrument->amount]],
             ]);

@@ -13,8 +13,10 @@ use App\Models\PaymentRefund;
 use App\Models\SalesOrder;
 use App\Models\User;
 use App\Services\AuditLogger;
+use App\Services\Finance\FinanceClosedPeriodGuard;
 use App\Services\PaymentRefundNumberGenerator;
 use App\Services\SalesOrderPaymentCalculator;
+use App\Support\BusinessTime;
 use App\Support\Decimal;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -34,6 +36,7 @@ class RefundPaymentAction
         private readonly PaymentRefundNumberGenerator $numbers,
         private readonly SalesOrderPaymentCalculator $calculator,
         private readonly AuditLogger $audit,
+        private readonly FinanceClosedPeriodGuard $periods,
     ) {}
 
     public function execute(User $actor, Payment $payment, SalesOrder $order, string $reason): PaymentRefund
@@ -92,6 +95,8 @@ class RefundPaymentAction
             if (Decimal::compare($allocation->amount, '0.0000') <= 0) {
                 throw ValidationException::withMessages(['payment' => 'The Payment allocation has no refundable amount.']);
             }
+            $refundDate = BusinessTime::today($order->organization);
+            $this->periods->assertOpen($order->organization, $refundDate, 'refund_date');
 
             $refund = new PaymentRefund;
             $refund->organization_id = $order->organization_id;
@@ -104,7 +109,7 @@ class RefundPaymentAction
             $refund->status = 'posted';
             $refund->amount = $allocation->amount;
             $refund->currency_code = $payment->currency_code;
-            $refund->refund_date = now()->toDateString();
+            $refund->refund_date = $refundDate;
             $refund->reason = trim($reason);
             $refund->refunded_by_user_id = $actor->getKey();
             $refund->save();
