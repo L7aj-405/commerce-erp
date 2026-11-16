@@ -11,6 +11,7 @@ import { useI18n } from '@/i18n';
 import type { TranslationKey } from '@/i18n/translations';
 import FulfillmentCard, { type FulfillmentPayload } from './FulfillmentCard';
 import ProcurementReadinessCard, { type ProcurementPlan } from './ProcurementReadinessCard';
+import { useBusinessToday } from '@/utils/businessDate';
 import { formatDate, formatDateTime, formatMoney, formatQuantity } from '@/utils/format';
 import {
     deliveryNoteStatusLabel,
@@ -280,15 +281,11 @@ type Props = {
     };
 };
 
-const today = () => {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-};
-const blankPayment = (remaining = ''): PaymentEntry => ({
+const blankPayment = (today: string, remaining = ''): PaymentEntry => ({
     method: 'cash',
     financial_account_id: '',
     amount: remaining,
-    payment_date: today(),
+    payment_date: today,
     reference: '',
     external_reference: '',
     notes: '',
@@ -305,6 +302,7 @@ function Card({ label: l, children }: { label: string; children: ReactNode }) {
 
 export default function ShowOrder({ order, paymentSummary, payments, refunds, financialAccounts, documents, awaitingReplenishment, fulfillmentRouting, procurement, procurementPlan, fulfillment, transferRequests, revisions, activeCorrection, pendingReplacementInvoice, invoiceStaleAfterCompletion, addenda, customerReturns, customerExchanges, returnPolicy, commercialSummary, marginSummary, salespersons, completionEligibility, can }: Props) {
     const { t } = useI18n();
+    const businessToday = useBusinessToday();
     const [confirmCancel, setConfirmCancel] = useState(false);
     const cancellation = useForm({ reason: '' });
     const createInvoice = useForm({});
@@ -314,7 +312,7 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
     const salespersonForm = useForm({ salesperson_id: order.salesperson_id, reason: '' });
     const paymentForm = useForm<{ client_operation_id: string; payments: PaymentEntry[] }>({
         client_operation_id: crypto.randomUUID(),
-        payments: [blankPayment(paymentSummary.remaining)],
+        payments: [blankPayment(businessToday, paymentSummary.remaining)],
     });
 
     const activeInvoice = documents.invoices.find((i) => i.status !== 'cancelled') ?? null;
@@ -368,7 +366,7 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
         event.preventDefault();
         paymentForm.post(`/sales/orders/${order.id}/payments`, {
             preserveScroll: true,
-            onSuccess: () => paymentForm.setData({ client_operation_id: crypto.randomUUID(), payments: [blankPayment()] }),
+            onSuccess: () => paymentForm.setData({ client_operation_id: crypto.randomUUID(), payments: [blankPayment(businessToday)] }),
         });
     };
     const setEntry = (index: number, key: keyof PaymentEntry, value: string) =>
@@ -1093,7 +1091,7 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
                         <div className="flex gap-2">
                             <button
                                 type="button"
-                                onClick={() => paymentForm.setData('payments', [...paymentForm.data.payments, blankPayment()])}
+                                onClick={() => paymentForm.setData('payments', [...paymentForm.data.payments, blankPayment(businessToday)])}
                                 className="rounded-field border border-line-strong px-4 py-2 text-sm"
                             >
                                 {t('orders.show.addMethod')}

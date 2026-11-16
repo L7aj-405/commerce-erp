@@ -49,7 +49,7 @@ class FinanceExportController extends Controller
         $months = (array) $request->query('months', [$request->query('month')]);
         $months = array_values(array_filter($months));
         if ($months === []) {
-            $months = [FinancePeriod::current()->month];
+            $months = [FinancePeriod::current($organization)->month];
         }
         $periods = FinancePeriod::fromMonths($months);
         $store = $guard->resolveStore($organization, $request->query('store_id'));
@@ -110,7 +110,7 @@ class FinanceExportController extends Controller
         $months = (array) $request->query('months', [$request->query('month')]);
         $months = array_values(array_filter($months));
         if ($months === []) {
-            $months = [FinancePeriod::current()->month];
+            $months = [FinancePeriod::current($organization)->month];
         }
         $periods = FinancePeriod::fromMonths($months);
         $store = $guard->resolveStore($organization, $request->query('store_id'));
@@ -174,7 +174,7 @@ class FinanceExportController extends Controller
     {
         $month = $request->query('month');
 
-        return $month ? FinancePeriod::fromMonth($month) : FinancePeriod::current();
+        return $month ? FinancePeriod::fromMonth($month) : FinancePeriod::current(app(ActiveTenantContext::class)->organizationOrFail());
     }
 
     private function download(string $bytes, string $filename, string $mime): Response

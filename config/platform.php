@@ -137,6 +137,7 @@ return [
         'finance.receivables.view' => 'View receivables and outstanding balances',
         'finance.monthly_situation.view' => 'View monthly outgoing obligations and payments',
         'finance.monthly_situation.manage' => 'Create, update and cancel monthly obligations',
+        'finance.periods.reopen' => 'Reopen a closed Finance month (the Owner can always reopen)',
         'finance.monthly_situation.export' => 'Export the monthly Finance situation workbook',
         'finance.outgoing_payments.manage' => 'Record and reverse outgoing Finance payments',
         'finance.financial_accounts.manage_balance' => 'Set authoritative financial-account opening balances',

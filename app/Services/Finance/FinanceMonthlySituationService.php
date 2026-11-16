@@ -21,7 +21,7 @@ class FinanceMonthlySituationService
     /** @param array<string, mixed> $filters */
     public function rows(Organization $organization, FinancePeriod $period, ?Store $store, array $filters, int $perPage = 25): LengthAwarePaginator
     {
-        $cutoff = $this->cutoff($period);
+        $cutoff = $this->cutoff($organization, $period);
         $query = FinanceObligation::query()
             ->where('finance_obligations.organization_id', $organization->getKey())
             ->when($store, fn (Builder $query) => $query->where('finance_obligations.store_id', $store->getKey()))
@@ -69,7 +69,7 @@ class FinanceMonthlySituationService
     /** @param array<string,mixed> $filters @return LazyCollection<int,array<string,mixed>> */
     public function exportRows(Organization $organization, FinancePeriod $period, ?Store $store, array $filters): LazyCollection
     {
-        $cutoff = $this->cutoff($period);
+        $cutoff = $this->cutoff($organization, $period);
         $query = FinanceObligation::query()->withoutGlobalScopes()
             ->where('finance_obligations.organization_id', $organization->id)
             ->when($store, fn (Builder $query) => $query->where('finance_obligations.store_id', $store->id))
@@ -126,7 +126,7 @@ class FinanceMonthlySituationService
         $paid = Decimal::normalize((string) $totals->paid);
         $remaining = Decimal::subtract($planned, $paid);
 
-        $cutoff = $this->cutoff($period);
+        $cutoff = $this->cutoff($organization, $period);
         $overdue = $scope()->whereNull('cancelled_at')
             ->whereDate('due_date', '<', $period->start->toDateString())
             ->whereDate('due_date', '<', $cutoff->toDateString())
@@ -167,7 +167,7 @@ class FinanceMonthlySituationService
     /** @return array<int,array<string,mixed>> */
     public function supplierSummary(Organization $organization, FinancePeriod $period, ?Store $store): array
     {
-        $cutoff = $this->cutoff($period);
+        $cutoff = $this->cutoff($organization, $period);
         $committedSql = "COALESCE((SELECT SUM(i.amount) FROM finance_payment_instruments i WHERE i.organization_id=finance_obligations.organization_id AND i.obligation_id=finance_obligations.id AND i.state IN ('issued','presented')),0)";
         $query = FinanceObligation::query()->withoutGlobalScopes()
             ->leftJoin('suppliers', function ($join) {
@@ -203,9 +203,9 @@ class FinanceMonthlySituationService
         ])->all();
     }
 
-    private function cutoff(FinancePeriod $period): Carbon
+    private function cutoff(Organization $organization, FinancePeriod $period): Carbon
     {
-        $today = now()->startOfDay();
+        $today = FinancePeriod::businessToday($organization);
 
         return $today->lt($period->end) ? $today : $period->end->copy()->startOfDay();
     }

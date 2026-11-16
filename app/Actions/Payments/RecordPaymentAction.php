@@ -13,8 +13,10 @@ use App\Models\PaymentAllocation;
 use App\Models\SalesOrder;
 use App\Models\User;
 use App\Services\AuditLogger;
+use App\Services\Finance\FinanceClosedPeriodGuard;
 use App\Services\PaymentNumberGenerator;
 use App\Services\SalesOrderPaymentCalculator;
+use App\Support\BusinessTime;
 use App\Support\Decimal;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
@@ -28,6 +30,7 @@ class RecordPaymentAction
         private readonly PaymentNumberGenerator $numbers,
         private readonly SalesOrderPaymentCalculator $calculator,
         private readonly AuditLogger $audit,
+        private readonly FinanceClosedPeriodGuard $periods,
     ) {}
 
     /** @param array<string, mixed> $data */
@@ -67,9 +70,12 @@ class RecordPaymentAction
                     throw ValidationException::withMessages(['financial_account_id' => 'The Financial Account currency must match the Sales Order currency.']);
                 }
                 $this->assertCompatible($method, $account);
-                if ($paymentDate !== now()->toDateString() && ! $actor->hasPermission($order->organization_id, 'payments.backdate')) {
+                // "Today" is the organization's business date (Africa/Casablanca
+                // for a Moroccan organization), never the server's UTC date.
+                if ($paymentDate !== BusinessTime::today($order->organization) && ! $actor->hasPermission($order->organization_id, 'payments.backdate')) {
                     abort(403, 'You are not authorized to change the Payment business date.');
                 }
+                $this->periods->assertOpen($order->organization, $paymentDate, 'payment_date');
                 $remaining = $this->calculator->remainingAmount($order);
                 if (Decimal::compare($amount, $remaining) > 0) {
                     throw ValidationException::withMessages(['amount' => 'The Payment amount exceeds the Sales Order remaining balance.']);

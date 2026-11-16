@@ -49,11 +49,21 @@ type ResetPreview = {
     confirmation_phrase: string;
 };
 
+type FiscalState = {
+    mode: 'protected' | 'test';
+    protection_started_at: string | null;
+    protected_counts: Record<string, number>;
+    protected_total: number;
+    can_declare_test: boolean;
+    can_protect: boolean;
+};
+
 type Props = {
     organization: { id: number; name: string };
     categories: ResetCategory[];
     warehouses: { id: number; name: string }[];
     selectiveConfirmationPhrase: string;
+    fiscal: FiscalState;
 };
 
 const scopes: ResetScope[] = [
@@ -98,6 +108,11 @@ const blockerKeys: Record<string, TranslationKey> = {
     'suppliers.recurring_configuration': 'dataReset.blocker.suppliers.recurring_configuration',
     'access.owner_custom_role': 'dataReset.blocker.access.owner_custom_role',
     'sandbox.test_data_present': 'dataReset.blocker.sandbox.test_data_present',
+    'fiscal.protected_documents.invoices': 'dataReset.blocker.fiscal.invoices',
+    'fiscal.protected_documents.credit_notes': 'dataReset.blocker.fiscal.credit_notes',
+    'fiscal.protected_documents.payments': 'dataReset.blocker.fiscal.payments',
+    'fiscal.protected_documents.payment_refunds': 'dataReset.blocker.fiscal.payment_refunds',
+    'fiscal.protected_documents.finance_outgoing_payments': 'dataReset.blocker.fiscal.finance_outgoing_payments',
 };
 
 const preservedKeys: Record<string, TranslationKey> = {
@@ -109,7 +124,76 @@ const preservedKeys: Record<string, TranslationKey> = {
     audit_history: 'dataReset.preserved.audit_history',
 };
 
-export default function DataReset({ organization, categories, warehouses, selectiveConfirmationPhrase }: Props) {
+function FiscalProtectionPanel({ fiscal }: { fiscal: FiscalState }) {
+    const { t } = useI18n();
+    const { request } = useFreshAuth();
+    const toast = useToast();
+    const [state, setState] = useState<FiscalState>(fiscal);
+    const [reason, setReason] = useState('');
+    const [error, setError] = useState('');
+    const [saving, setSaving] = useState(false);
+    const protectedMode = state.mode === 'protected';
+
+    const submit = async (mode: 'protected' | 'test') => {
+        if (saving) return;
+        if (reason.trim() === '') {
+            setError(t('dataReset.fiscal.reasonRequired'));
+            return;
+        }
+        setSaving(true);
+        setError('');
+        try {
+            const response = await request<{ data: FiscalState }>({ method: 'post', url: '/settings/data-reset/fiscal-mode', data: { mode, reason } });
+            setState(response.data.data);
+            setReason('');
+            toast.success(mode === 'test' ? t('dataReset.fiscal.declaredTest') : t('dataReset.fiscal.declaredProtected'));
+        } catch (exception) {
+            if (axios.isCancel(exception)) return;
+            const payload = axios.isAxiosError(exception) ? (exception.response?.data as { errors?: Record<string, string[]> } | undefined) : undefined;
+            setError(payload?.errors ? Object.values(payload.errors)[0]?.[0] ?? t('dataReset.executeError') : t('dataReset.executeError'));
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    return (
+        <section className={`mb-6 rounded-card border p-5 shadow-soft ${protectedMode ? 'border-success/30 bg-surface' : 'border-warning/40 bg-warning-soft'}`} aria-labelledby="fiscal-protection-title">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                    <h2 id="fiscal-protection-title" className="font-semibold text-ink">{t('dataReset.fiscal.title')}</h2>
+                    <p className="mt-1 text-sm leading-6 text-ink-muted">{protectedMode ? t('dataReset.fiscal.protectedHelp') : t('dataReset.fiscal.testHelp')}</p>
+                    {protectedMode && state.protection_started_at && (
+                        <p className="mt-1 text-xs text-ink-muted">{t('dataReset.fiscal.since')} <bdi>{formatDateTime(state.protection_started_at)}</bdi></p>
+                    )}
+                    {protectedMode && state.protected_total > 0 && (
+                        <p className="mt-1 text-xs text-ink-muted">{t('dataReset.fiscal.protectedCount').replace('{count}', formatInteger(state.protected_total))}</p>
+                    )}
+                    <p className="mt-2 text-xs text-ink-faint">{t('dataReset.fiscal.retentionNote')}</p>
+                </div>
+                <span className={`inline-flex shrink-0 rounded-full px-3 py-1 text-xs font-semibold ${protectedMode ? 'bg-success-soft text-success' : 'bg-warning text-surface'}`}>
+                    {protectedMode ? t('dataReset.fiscal.modeProtected') : t('dataReset.fiscal.modeTest')}
+                </span>
+            </div>
+            {(state.can_declare_test || state.can_protect) && (
+                <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-end">
+                    <label className="block flex-1 text-sm">
+                        <span className="font-medium text-ink">{t('dataReset.fiscal.reason')}</span>
+                        <input value={reason} onChange={(event) => setReason(event.target.value)} maxLength={1000} className="mt-1 w-full rounded-field border border-line bg-surface px-3 py-2 text-ink" />
+                    </label>
+                    {state.can_protect && (
+                        <Button type="button" onClick={() => submit('protected')} disabled={saving}>{t('dataReset.fiscal.goLive')}</Button>
+                    )}
+                    {state.can_declare_test && (
+                        <Button type="button" variant="secondary" onClick={() => submit('test')} disabled={saving}>{t('dataReset.fiscal.declareTest')}</Button>
+                    )}
+                </div>
+            )}
+            {error && <p className="mt-2 text-sm text-danger" role="alert">{error}</p>}
+        </section>
+    );
+}
+
+export default function DataReset({ organization, categories, warehouses, selectiveConfirmationPhrase, fiscal }: Props) {
     const { t } = useI18n();
     const [tab, setTab] = useState<'selective' | 'modules'>('selective');
     const { request } = useFreshAuth();
@@ -249,6 +333,8 @@ export default function DataReset({ organization, categories, warehouses, select
                 <DangerIcon />
                 <p>{t('dataReset.warning')}</p>
             </div>
+
+            <FiscalProtectionPanel fiscal={fiscal} />
 
             <div className="mb-6 inline-flex rounded-field border border-line bg-raised p-1" role="tablist" aria-label={t('dataReset.title')}>
                 {(['selective', 'modules'] as const).map((key) => (

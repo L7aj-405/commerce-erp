@@ -21,6 +21,7 @@ use App\Services\Pos\PosCartStockGuard;
 use App\Services\PosDraftCheckoutCalculator;
 use App\Services\SalesOrderPaymentCalculator;
 use App\Services\SalespersonEligibilityService;
+use App\Support\BusinessTime;
 use App\Support\Decimal;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
@@ -142,7 +143,7 @@ class CreatePosSaleAction
                         'method' => $payment['method'],
                         'financial_account_id' => $payment['financial_account_id'],
                         'amount' => $payment['amount'],
-                        'payment_date' => now()->toDateString(),
+                        'payment_date' => BusinessTime::today($organization),
                         'reference' => $payment['reference'],
                     ], $payments),
                     $data['client_operation_id'],
@@ -203,7 +204,7 @@ class CreatePosSaleAction
                     $store,
                     [
                         'customer_id' => $data['customer_id'] ?? null,
-                        'sale_date' => now()->toDateString(),
+                        'sale_date' => BusinessTime::today($organization),
                         'currency_code' => config('platform.currency_code', 'MAD'),
                         'notes' => null,
                     ],
@@ -249,7 +250,7 @@ class CreatePosSaleAction
                         'method' => $payment['method'],
                         'financial_account_id' => $payment['financial_account_id'],
                         'amount' => $payment['amount'],
-                        'payment_date' => now()->toDateString(),
+                        'payment_date' => BusinessTime::today($organization),
                         'reference' => $payment['reference'],
                     ], $payments),
                     $data['client_operation_id'],

@@ -5,6 +5,7 @@ namespace App\Http\Middleware;
 use App\Models\Organization;
 use App\Services\ActiveTenantContext;
 use App\Services\Notifications\NotificationFeed;
+use App\Support\BusinessTime;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -56,6 +57,9 @@ class HandleInertiaRequests extends Middleware
             'tenant' => [
                 'organization' => $organization?->only(['id', 'name', 'status']),
                 'store' => $store?->only(['id', 'organization_id', 'name', 'code', 'status']),
+                // The organization's calendar date (its business timezone), the
+                // default for every business-date field (payment, refund, due date…).
+                'business_today' => $organization ? BusinessTime::today($organization) : null,
                 'organizations' => $organizations,
                 'stores' => $stores,
                 'permissions' => $request->user() && $organization

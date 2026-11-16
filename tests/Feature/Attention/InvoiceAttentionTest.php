@@ -274,6 +274,9 @@ class InvoiceAttentionTest extends QuotationTestCase
         $followUp = app(SaveFollowUpAction::class)->create($owner, $organization, ['title' => 'Relancer', 'invoice_id' => $invoice->getKey()]);
         $this->tick($organization, '2026-12-02 10:00:00');
         $this->assertSame(1, AttentionItem::query()->count());
+        // Deleting an issued invoice is only possible for declared test data
+        // (a protected organization blocks it — FiscalDataProtectionTest).
+        $organization->forceFill(['fiscal_data_mode' => 'test'])->save();
 
         app(OrganizationDataResetExecutor::class)->execute($organization, $owner,
             app(OrganizationDataResetPreviewService::class)->preview($organization, OrganizationDataResetScope::SalesAndDocuments));

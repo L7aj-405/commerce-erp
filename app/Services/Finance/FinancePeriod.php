@@ -2,6 +2,8 @@
 
 namespace App\Services\Finance;
 
+use App\Models\Organization;
+use App\Support\BusinessTime;
 use Illuminate\Support\Carbon;
 use Illuminate\Validation\ValidationException;
 
@@ -30,9 +32,20 @@ final class FinancePeriod
         return new self($month, $start->copy()->startOfMonth(), $start->copy()->endOfMonth());
     }
 
-    public static function current(): self
+    /**
+     * The current month — in the organization's business calendar when one
+     * is given (on the 1st at 00:30 Africa/Casablanca it is already the new
+     * month, while UTC still shows the previous one).
+     */
+    public static function current(?Organization $organization = null): self
     {
-        return self::fromMonth(Carbon::now()->format('Y-m'));
+        return self::fromMonth($organization ? BusinessTime::now($organization)->format('Y-m') : Carbon::now()->format('Y-m'));
+    }
+
+    /** The organization's business "today" as a date-only Carbon (00:00, app timezone), comparable with period boundaries. */
+    public static function businessToday(Organization $organization): Carbon
+    {
+        return Carbon::createFromFormat('!Y-m-d', BusinessTime::today($organization));
     }
 
     /** The day immediately before this period starts — "as of" boundary for an opening balance. */

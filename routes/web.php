@@ -322,6 +322,10 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
     Route::post('/settings/data-reset/selective/execute', [OrganizationDataResetController::class, 'selectiveExecute'])
         ->middleware('throttle:data-reset-execute')
         ->name('settings.data-reset.selective.execute');
+    // Real (protected) vs declared test fiscal data — see FiscalDocumentProtection.
+    Route::post('/settings/data-reset/fiscal-mode', [OrganizationDataResetController::class, 'fiscalMode'])
+        ->middleware('throttle:10,1')
+        ->name('settings.data-reset.fiscal-mode');
     Route::get('/settings/ai-mcp', [McpConnectionController::class, 'index'])->name('settings.ai-mcp.index');
     Route::put('/settings/ai-mcp/policy', [McpConnectionController::class, 'policy'])->middleware('fresh-auth:2')->name('settings.ai-mcp.policy');
     Route::post('/settings/ai-mcp/connections', [McpConnectionController::class, 'store'])->middleware('fresh-auth:2')->name('settings.ai-mcp.store');

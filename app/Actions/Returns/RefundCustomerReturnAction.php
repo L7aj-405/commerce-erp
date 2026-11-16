@@ -9,15 +9,22 @@ use App\Models\PaymentAllocation;
 use App\Models\PaymentRefund;
 use App\Models\User;
 use App\Services\AuditLogger;
+use App\Services\Finance\FinanceClosedPeriodGuard;
 use App\Services\PaymentRefundNumberGenerator;
 use App\Services\SalesOrderPaymentCalculator;
+use App\Support\BusinessTime;
 use App\Support\Decimal;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 class RefundCustomerReturnAction
 {
-    public function __construct(private readonly PaymentRefundNumberGenerator $numbers, private readonly SalesOrderPaymentCalculator $payments, private readonly AuditLogger $audit) {}
+    public function __construct(
+        private readonly PaymentRefundNumberGenerator $numbers,
+        private readonly SalesOrderPaymentCalculator $payments,
+        private readonly AuditLogger $audit,
+        private readonly FinanceClosedPeriodGuard $periods,
+    ) {}
 
     public function execute(User $actor, CustomerReturn $customerReturn, Payment $payment, string $amount, string $reason, string $operationId): PaymentRefund
     {
@@ -49,12 +56,14 @@ class RefundCustomerReturnAction
             $paymentRefunded = PaymentRefund::query()->where('organization_id', $customerReturn->organization_id)->where('payment_id', $payment->id)->where('sales_order_id', $customerReturn->sales_order_id)->where('status', 'posted')->lockForUpdate()->sum('amount');
             if (Decimal::compare($amount, Decimal::subtract($customerReturn->total_incl_tax, (string) $returnRefunded)) > 0) throw ValidationException::withMessages(['amount' => 'Le remboursement dépasse le solde de ce retour.']);
             if (Decimal::compare($amount, Decimal::subtract($allocation->amount, (string) $paymentRefunded)) > 0) throw ValidationException::withMessages(['amount' => 'Le remboursement dépasse le solde du paiement sélectionné.']);
+            $refundDate = BusinessTime::today($customerReturn->organization);
+            $this->periods->assertOpen($customerReturn->organization, $refundDate, 'refund_date');
             $refund = new PaymentRefund;
             $refund->organization_id = $customerReturn->organization_id; $refund->store_id = $customerReturn->store_id; $refund->payment_id = $payment->id;
             $refund->sales_order_id = $customerReturn->sales_order_id; $refund->customer_return_id = $customerReturn->id; $refund->client_operation_id = $operationId;
             $refund->financial_account_id = $payment->financial_account_id; $refund->refund_number = $this->numbers->next($customerReturn->organization);
             $refund->method = $payment->method; $refund->status = 'posted'; $refund->amount = $amount; $refund->currency_code = $payment->currency_code;
-            $refund->refund_date = now()->toDateString(); $refund->reason = trim($reason); $refund->refunded_by_user_id = $actor->id; $refund->save();
+            $refund->refund_date = $refundDate; $refund->reason = trim($reason); $refund->refunded_by_user_id = $actor->id; $refund->save();
             $this->payments->recalculate($customerReturn->salesOrder);
             $this->audit->record('payment.refunded', $actor, $customerReturn->organization, $customerReturn->store, $refund, newValues: [
                 'refund_number' => $refund->refund_number,

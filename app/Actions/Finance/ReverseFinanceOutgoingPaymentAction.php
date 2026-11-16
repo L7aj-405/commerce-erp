@@ -9,12 +9,13 @@ use App\Models\FinancePaymentInstrument;
 use App\Enums\FinancePaymentInstrumentState;
 use App\Models\User;
 use App\Services\AuditLogger;
+use App\Services\Finance\FinanceClosedPeriodGuard;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 class ReverseFinanceOutgoingPaymentAction
 {
-    public function __construct(private readonly AuditLogger $audit) {}
+    public function __construct(private readonly AuditLogger $audit, private readonly FinanceClosedPeriodGuard $periods) {}
 
     public function execute(User $actor, FinanceOutgoingPayment $payment, string $reason): FinanceOutgoingPayment
     {
@@ -30,6 +31,8 @@ class ReverseFinanceOutgoingPaymentAction
             if ($payment->status !== FinanceOutgoingPaymentStatus::Posted) {
                 throw ValidationException::withMessages(['payment' => 'Seul un paiement comptabilisé peut être inversé.']);
             }
+            // The reversal removes the payment from its own month.
+            $this->periods->assertOpen($payment->organization_id, $payment->payment_date, 'payment');
 
             $payment->status = FinanceOutgoingPaymentStatus::Reversed;
             $payment->reversed_at = now();

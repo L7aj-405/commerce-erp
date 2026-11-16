@@ -5,6 +5,7 @@ namespace Tests\Feature\Finance;
 use App\Actions\Finance\ManageFinanceExpectedCollectionAction;
 use App\Actions\Finance\ManageFinanceMonthReviewAction;
 use App\Actions\Finance\ManageFinanceObligationAction;
+use App\Actions\Finance\SetFinancialAccountOpeningPositionAction;
 use App\Models\FinanceMonthReview;
 use App\Models\User;
 use App\Services\Finance\Export\FinanceMonthlySituationExcelExport;
@@ -65,16 +66,29 @@ class FinanceMonthReviewExportTest extends PaymentTestCase
     public function test_close_warnings_require_explicit_acknowledgement_and_stale_changes_are_detected(): void
     {
         [$owner, $organization] = $this->tenant();
-        $this->createFinancialAccount($organization, ['code' => 'UNCONFIGURED']);
+        $unconfigured = $this->createFinancialAccount($organization, ['code' => 'UNCONFIGURED']);
         $period = FinancePeriod::fromMonth('2026-09');
         $action = app(ManageFinanceMonthReviewAction::class);
         try { $action->close($owner, $organization, $period, null, false); $this->fail('Expected acknowledgement.'); } catch (ValidationException) {}
         $row = $action->close($owner, $organization, $period, null, true);
         $this->travel(1)->minute();
-        app(ManageFinanceObligationAction::class)->create($owner, $organization, $this->obligation(['due_date' => '2026-09-20']));
+        // Sprint 0: a posting dated inside the closed month is now refused outright…
+        try {
+            app(ManageFinanceObligationAction::class)->create($owner, $organization, $this->obligation(['due_date' => '2026-09-20']));
+            $this->fail('Expected the closed month to refuse the obligation.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('due_date', $exception->errors());
+        }
+        $before = app(FinanceMonthReviewService::class)->state($organization, $period);
+        $this->assertFalse($before['stale']);
+        $this->assertContains('opening_positions', collect($before['warnings'])->pluck('key')->all());
+        // …while stale detection still reports changes the posting guard does not
+        // cover (an opening position effective inside the closed month).
+        app(SetFinancialAccountOpeningPositionAction::class)->execute($owner, $unconfigured, [
+            'effective_date' => '2026-09-01', 'amount' => '100.0000', 'currency_code' => 'MAD',
+        ]);
         $state = app(FinanceMonthReviewService::class)->state($organization, $period);
         $this->assertTrue($state['stale']);
-        $this->assertContains('opening_positions', collect($state['warnings'])->pluck('key')->all());
         $this->assertNotNull($row->close_snapshot);
     }
 

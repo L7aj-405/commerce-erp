@@ -48,6 +48,7 @@ use App\Services\Procurement\SupplierRecommendationService;
 use App\Services\PosDraftCheckoutCalculator;
 use App\Services\ProductPriceResolver;
 use App\Services\SalesOrderPaymentCalculator;
+use App\Support\BusinessTime;
 use App\Support\Decimal;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -422,7 +423,7 @@ class PosController extends Controller
         if (! $active) {
             $active = $createOrder->execute($request->user(), $organization, $store, [
                 'customer_id' => $data['customer_id'] ?? null,
-                'sale_date' => now()->toDateString(),
+                'sale_date' => BusinessTime::today($organization),
                 'currency_code' => config('platform.currency_code', 'MAD'),
                 'notes' => null,
             ], SalesOrderSource::Pos);
@@ -611,7 +612,7 @@ class PosController extends Controller
             $warehouse = $locations->assertEligible($organization, $store, (int) ($data['warehouse_id'] ?? $locations->defaultId($organization, $store, $request->user())));
             $active = $createOrder->execute($request->user(), $organization, $store, [
                 'customer_id' => null,
-                'sale_date' => now()->toDateString(),
+                'sale_date' => BusinessTime::today($organization),
                 'currency_code' => config('platform.currency_code', 'MAD'),
                 'notes' => null,
             ], SalesOrderSource::Pos);
