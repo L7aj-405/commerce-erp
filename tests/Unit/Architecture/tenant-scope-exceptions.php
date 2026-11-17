@@ -14,8 +14,6 @@
  * query appears (it cannot silently grow). Even REVIEWED RELOCK / IDS entries are hardening candidates: prefer
  * adding the organization_id filter and deleting the entry (application work outside Phase 1 / Step 1).
  */
-
-
 $r1 = 'REVIEWED (final review) - safe, scanner blind spot. The call chain is scoped but the scanner cannot see it: the helper/array argument adds organization_id (e.g. FollowUpAssignmentReleaser::stale(), or the $key array of both upsertIdentifier() callers).';
 $r2 = 'NEEDS STRENGTHENING. Mutates or locks a row by its bare key taken from an instance resolved earlier (route binding / caller). Not exploitable today, but sibling actions also filter organization_id and store_id here. Minimal fix: add ->where(\'organization_id\', $instance->organization_id).';
 $r3 = 'REVIEWED (final review) - safe, system-wide scheduled job by design: it iterates the rows of every organization on purpose (scheduler candidates) and re-locks a row it just selected itself; no request input is involved.';

@@ -10,7 +10,6 @@
  *    silently grow);
  *  - money is computed only with App\Support\Decimal / App\Support\Money (decimal strings, bcmath).
  */
-
 $layout = 'Not money: millimetre/percentage layout values of the document-template studio (stamp offsets, sizes). Clamped and stored as layout numbers, never added to an amount.';
 $count = 'Not money: sums the QUANTITY of transfer-request lines into a display-only unit count on the order page (no stored or financial effect). Debt: use InventoryQuantity for consistency.';
 $f04 = 'KNOWN DEBT, Phase-1 finding F-04: last-resort fallback for SQLite sums returned in scientific notation (test driver only); MySQL returns exact decimals and takes the exact branch above it. To be replaced by exact parsing in a later step; do not copy this pattern.';

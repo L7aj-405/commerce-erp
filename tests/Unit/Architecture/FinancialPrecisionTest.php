@@ -60,7 +60,7 @@ final class FinancialPrecisionTest extends TestCase
         ));
 
         $this->assertSame([], array_map(fn (array $f) => "{$f['file']}:{$f['line']} {$f['unit']} → {$f['kind']}", $new),
-            "Float arithmetic in core financial code. Use App\\Support\\Decimal / Money (decimal strings). If the value is NOT money, "
+            'Float arithmetic in core financial code. Use App\\Support\\Decimal / Money (decimal strings). If the value is NOT money, '
             .'add a reasoned entry to tests/Unit/Architecture/financial-precision-exceptions.php.');
     }
 
