@@ -1,8 +1,10 @@
 name: CI
 
 # Continuous integration only: this workflow never deploys, never reads application secrets and never
-# connects to a Staging or Production service. Every job runs on a fresh, ephemeral runner with
-# SQLite in memory (see phpunit.xml). Actions are pinned to immutable commit SHAs (tag in the comment).
+# connects to a Staging or Production service. Every job runs on a fresh, ephemeral runner. The PHP job uses
+# SQLite in memory (see phpunit.xml); the two mysql-* jobs use an EPHEMERAL MySQL 8.4 service container that
+# lives and dies with the job (testing credentials, *_test databases only, see phpunit.mysql.xml).
+# Actions are pinned to immutable commit SHAs (tag in the comment).
 
 on:
   pull_request:
@@ -82,6 +84,10 @@ jobs:
           grep -q 'name="DB_CONNECTION" value="sqlite"' phpunit.xml
           grep -q 'name="DB_DATABASE" value=":memory:"' phpunit.xml
 
+      - name: Architecture guards (tenant scoping, financial precision)
+        # Static (AST) checks, no database. Fast feedback; they also run again inside the full suite below.
+        run: vendor/bin/phpunit --no-progress tests/Unit/Architecture
+
       - name: Record the PHP environment
         run: |
           php -r '
@@ -118,6 +124,209 @@ jobs:
             build/phpunit-output.txt
           if-no-files-found: ignore
           retention-days: 14
+
+  # ---------------------------------------------------------------------------------------------------------
+  # MySQL 8.4 (Phase 1 / Step 1, finding F-06). SQLite ignores InnoDB row/gap locks, VARCHAR widths, decimal
+  # scales, composite foreign keys and index-name limits, which is where financial protections live. These two
+  # jobs run the critical suites on the same engine as production. Isolation guarantees:
+  #   - the MySQL server is a service container of THIS job only (ephemeral, destroyed at job end);
+  #   - credentials below are throw-away test values, not secrets, and the server is never reachable from outside;
+  #   - phpunit.mysql.xml force-pins host 127.0.0.1 and a *_test database; the guard step re-checks that;
+  #   - no deploy, no staging/production host or credential appears anywhere in the job.
+  # ---------------------------------------------------------------------------------------------------------
+  mysql-tests:
+    name: MySQL 8.4 tests (critical suites)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      # Throw-away credentials for the ephemeral service container below (never a real secret).
+      DB_USERNAME: root
+      DB_PASSWORD: ci-only-throwaway-password
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: ci-only-throwaway-password
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pci-only-throwaway-password --silent"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@bf6b4fbd49ca58e4608c9c89fba0b8d90bd2a39f # 2.35.5
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          extensions: ${{ env.PHP_EXTENSIONS }}
+          coverage: none
+          tools: composer:v2
+
+      - name: Locate the Composer cache
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Composer downloads
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: composer-${{ runner.os }}-php${{ env.PHP_VERSION }}-${{ hashFiles('composer.lock') }}
+          restore-keys: composer-${{ runner.os }}-php${{ env.PHP_VERSION }}-
+
+      - name: Install dependencies
+        run: composer install --no-interaction --no-progress --prefer-dist
+
+      - name: Prepare an isolated test environment
+        run: |
+          cp .env.example .env
+          php artisan key:generate --no-interaction
+          php artisan config:clear
+
+      - name: Guard - only the ephemeral local MySQL test database can be targeted
+        run: |
+          # phpunit.mysql.xml must keep force-pinning the loopback host and a *_test database.
+          grep -q 'name="DB_HOST" value="127.0.0.1" force="true"' phpunit.mysql.xml
+          grep -qE 'name="DB_DATABASE" value="[a-z0-9_]+_test" force="true"' phpunit.mysql.xml
+          grep -q 'name="DB_CONNECTION" value="mysql" force="true"' phpunit.mysql.xml
+          echo "Guard OK: MySQL target is 127.0.0.1 / commerce_erp_dev_test (ephemeral service container)."
+
+      - name: Wait for MySQL and create the test database (utf8mb4_unicode_ci)
+        run: |
+          php -r '
+            $pdo = null;
+            for ($i = 0; $i < 30 && $pdo === null; $i++) {
+              try { $pdo = new PDO("mysql:host=127.0.0.1;port=3306", "root", getenv("DB_PASSWORD")); }
+              catch (Throwable $e) { sleep(2); }
+            }
+            if ($pdo === null) { fwrite(STDERR, "MySQL did not become ready\n"); exit(1); }
+            $pdo->exec("CREATE DATABASE commerce_erp_dev_test CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
+            echo "MySQL ", $pdo->query("SELECT VERSION()")->fetchColumn(), " ready; sql_mode=", $pdo->query("SELECT @@sql_mode")->fetchColumn(), "; tz=", $pdo->query("SELECT @@global.time_zone")->fetchColumn(), PHP_EOL;'
+
+      - name: Run the critical suites on MySQL (migrations run through RefreshDatabase)
+        run: |
+          mkdir -p build
+          php -d memory_limit=2G vendor/bin/phpunit -c phpunit.mysql.xml \
+            --no-progress \
+            --display-warnings --display-deprecations --display-notices --display-skipped \
+            --log-junit build/phpunit-mysql-junit.xml \
+            tests/Feature/Finance tests/Feature/Payments tests/Feature/Documents tests/Feature/Sales \
+            tests/Feature/Pos tests/Feature/Tenancy tests/Feature/Sandbox 2>&1 | tee build/phpunit-mysql-output.txt
+
+      - name: Summarise failures as annotations
+        if: failure()
+        run: |
+          python3 .github/scripts/ci_annotate.py junit build/phpunit-mysql-junit.xml
+          python3 .github/scripts/ci_annotate.py tail build/phpunit-mysql-output.txt "PHPUnit (MySQL) output (tail)"
+
+      - name: Upload JUnit report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: phpunit-mysql-junit
+          path: |
+            build/phpunit-mysql-junit.xml
+            build/phpunit-mysql-output.txt
+          if-no-files-found: ignore
+          retention-days: 14
+
+  mysql-concurrency:
+    name: MySQL 8.4 concurrency (real parallel sessions)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      DB_USERNAME: root
+      DB_PASSWORD: ci-only-throwaway-password
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: ci-only-throwaway-password
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pci-only-throwaway-password --silent"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@bf6b4fbd49ca58e4608c9c89fba0b8d90bd2a39f # 2.35.5
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          extensions: ${{ env.PHP_EXTENSIONS }}
+          coverage: none
+          tools: composer:v2
+
+      - name: Locate the Composer cache
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Composer downloads
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: composer-${{ runner.os }}-php${{ env.PHP_VERSION }}-${{ hashFiles('composer.lock') }}
+          restore-keys: composer-${{ runner.os }}-php${{ env.PHP_VERSION }}-
+
+      - name: Install dependencies
+        run: composer install --no-interaction --no-progress --prefer-dist
+
+      - name: Prepare an isolated test environment
+        run: |
+          cp .env.example .env
+          php artisan key:generate --no-interaction
+          php artisan config:clear
+
+      - name: Wait for MySQL and create the race-test database (utf8mb4_unicode_ci)
+        run: |
+          php -r '
+            $pdo = null;
+            for ($i = 0; $i < 30 && $pdo === null; $i++) {
+              try { $pdo = new PDO("mysql:host=127.0.0.1;port=3306", "root", getenv("DB_PASSWORD")); }
+              catch (Throwable $e) { sleep(2); }
+            }
+            if ($pdo === null) { fwrite(STDERR, "MySQL did not become ready\n"); exit(1); }
+            $pdo->exec("CREATE DATABASE commerce_erp_race_test CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
+            echo "MySQL ", $pdo->query("SELECT VERSION()")->fetchColumn(), " ready", PHP_EOL;'
+
+      - name: Run every migration on an empty MySQL database
+        env:
+          APP_ENV: testing
+          DB_CONNECTION: mysql
+          DB_HOST: 127.0.0.1
+          DB_PORT: '3306'
+          DB_DATABASE: commerce_erp_race_test
+          DB_URL: ''
+        run: |
+          php artisan migrate --force --no-interaction
+          # Nothing may be left pending after a full migrate.
+          php artisan migrate:status --no-interaction | tee migrate-status.txt
+          if grep -Eq '(^|[[:space:]])Pending([[:space:]]|$)' migrate-status.txt; then echo "Pending migrations remain"; exit 1; fi
+
+      # The scripts refuse any host other than 127.0.0.1/localhost and any database not ending in _test/_dev
+      # (exit code 2); they create their own organizations and exit non-zero on any invariant violation.
+      - name: Race - document number sequences (every generator, first use and existing row)
+        run: php tests/Concurrency/number_sequence_race.php --sessions=4 --rounds=1 --database=commerce_erp_race_test
+
+      - name: Race - transfer requests and showroom replenishment priority
+        run: php tests/Concurrency/transfer_priority_race.php --rounds=3 --database=commerce_erp_race_test
+
+      - name: Race - sandbox (Test Mode) inventory ledger isolation
+        run: php tests/Concurrency/sandbox_inventory_race.php --sessions=6 --database=commerce_erp_race_test
+
+      - name: Race - selective data reset
+        run: php tests/Concurrency/selective_reset_race.php --rounds=2 --database=commerce_erp_race_test
 
   frontend:
     name: Frontend (typecheck and production build)
@@ -309,18 +518,21 @@ jobs:
           python3 .github/scripts/ci_annotate.py npm-gate npm-audit.json
 
   # One stable status to require in branch protection: green only when every BLOCKING job passed
-  # (php-tests, frontend, pint-changed, npm-audit, composer-audit). Only the whole-repo Pint baseline is advisory.
+  # (php-tests, mysql-tests, mysql-concurrency, frontend, pint-changed, npm-audit, composer-audit). Only the whole-repo
+  # Pint baseline is advisory.
   ci-gate:
     name: CI gate
     if: always()
-    needs: [php-tests, frontend, pint-changed, npm-audit, composer-audit]
+    needs: [php-tests, mysql-tests, mysql-concurrency, frontend, pint-changed, npm-audit, composer-audit]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - name: Require all blocking jobs to succeed
         run: |
-          echo "php-tests=${{ needs.php-tests.result }} frontend=${{ needs.frontend.result }} pint-changed=${{ needs.pint-changed.result }} npm-audit=${{ needs.npm-audit.result }} composer-audit=${{ needs.composer-audit.result }}"
+          echo "php-tests=${{ needs.php-tests.result }} mysql-tests=${{ needs.mysql-tests.result }} mysql-concurrency=${{ needs.mysql-concurrency.result }} frontend=${{ needs.frontend.result }} pint-changed=${{ needs.pint-changed.result }} npm-audit=${{ needs.npm-audit.result }} composer-audit=${{ needs.composer-audit.result }}"
           test "${{ needs.php-tests.result }}" = "success"
+          test "${{ needs.mysql-tests.result }}" = "success"
+          test "${{ needs.mysql-concurrency.result }}" = "success"
           test "${{ needs.frontend.result }}" = "success"
           test "${{ needs.pint-changed.result }}" = "success"
           test "${{ needs.npm-audit.result }}" = "success"
