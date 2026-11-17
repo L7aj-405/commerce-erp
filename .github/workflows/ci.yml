@@ -221,9 +221,10 @@ jobs:
       - name: Pint (whole repository, check only)
         run: |
           set +e
-          vendor/bin/pint --test --format=json > pint-report.json
+          vendor/bin/pint --test --format=json > pint-report.json 2> pint-report.err
           code=$?
-          python3 .github/scripts/ci_annotate.py pint pint-report.json
+          echo "::notice title=Pint baseline run::pint exit=$code, report=$(wc -c < pint-report.json) bytes, stderr=$(wc -c < pint-report.err) bytes, head: $(head -c 160 pint-report.json | tr '\n' ' ')"
+          python3 .github/scripts/ci_annotate.py pint pint-report.json || echo "::error title=Pint annotation helper failed::exit $?"
           exit $code
 
   composer-audit:
