@@ -8,7 +8,7 @@ Every action is pinned to a full commit SHA (the tag is in the trailing comment)
 
 | Job | Blocking | What it does |
 |---|---|---|
-| `php-tests` | yes | PHP 8.4 on a fresh runner. `composer validate --strict`, `composer install` (from `composer.lock`), `composer check-platform-reqs`, throw-away `.env` from `.env.example` + generated key, then the **complete** PHPUnit suite (`vendor/bin/phpunit`) against **SQLite in memory** (forced by `phpunit.xml`: sqlite, `:memory:`, array cache/session, sync queue). Warnings, deprecations, notices and **skipped tests are displayed**. A guard step fails the job if `public/build` exists (tests must not depend on, or race with, a frontend build) or if `phpunit.xml` stops pinning the in-memory database. JUnit XML is uploaded as an artifact. |
+| `php-tests` | yes | PHP 8.4 on a fresh runner. `composer validate --strict`, `composer install` (from `composer.lock`), `composer check-platform-reqs`, throw-away `.env` from `.env.example` + generated key, then the **complete** PHPUnit suite (`vendor/bin/phpunit`) against **SQLite in memory** (forced by `phpunit.xml`: sqlite, `:memory:`, array cache/session, sync queue). Warnings, deprecations, notices and **skipped tests are displayed**. A guard step fails the job if `public/build` exists or if `phpunit.xml` stops pinning the in-memory database; `tests/TestCase.php` stubs Vite (`withoutVite()`), so no test needs built assets. Each step runs with `pipefail`. JUnit XML is uploaded as an artifact. |
 | `frontend` | yes | Node 22 (Vite 8 needs `^20.19 \|\| >=22.12`). `npm ci --ignore-scripts` (same flag as the project's `setup` script), `npx tsc --noEmit`, `npm run build`. Runs on its own runner, so a build can never modify assets while PHP tests execute. |
 | `pint-changed` | yes | Fetches full history, computes the PHP files changed by the change set (PR: base..head; push: before..after; manual: merge-base with `origin/main`) and runs `vendor/bin/pint --test` on exactly those files. Reports violations, never rewrites files. New and modified code therefore cannot add style debt. |
 | `pint-baseline` | no (advisory, visible) | Whole-repository `pint --test --format=json`; an annotation lists the number of non-conforming files and examples (the runner's Pint emits PHP-CS-Fixer JSON, which carries file names only; rule counts come from a local `pint --test --format=json`). This keeps the legacy debt (see the baseline strategy below) visible until it is cleared. |
@@ -64,7 +64,22 @@ vendor/bin/phpunit --order-by=random --random-order-seed=<seed>
 No test is skipped, excluded or retried. A red soak run is an investigation lead, not noise.
 
 ### Status of the `SalesOrderAttentionTest::test_visibility_store_isolation_navigation_and_timezone` failure
-It failed once with `Not a valid Inertia response` in a full local run that overlapped an `npm run build`, and then passed in isolation, in its directory (47/47) and in a clean full run (2283/2283). Hiding or emptying `public/build/manifest.json` did **not** reproduce it, so the cause is **not proven**. The CI layout removes the suspected interference (the build is a separate job; `php-tests` asserts `public/build` is absent). If the soak ever reproduces it, the seed and JUnit report identify the preceding tests; do not disable the test.
+**Root cause: not proven; most likely explanation found.** It failed once (`Not a valid Inertia response`) in a full local run that overlapped an `npm run build`, then passed in every later run on that machine.
+
+What the CI investigation established:
+* On a fresh checkout every Blade/Inertia page render threw `ViteManifestNotFoundException` (no `public/build/manifest.json`), i.e. HTTP 500 / "Not a valid Inertia response". 324 of 2283 tests failed on the runner this way and in the same way in every randomised soak run (deterministic, **not** order-dependent).
+* Locally the same tests passed only because a stale `public/hot` file (Vite dev-server marker) made `@vite` skip the manifest. Earlier "clean environment" simulations that hid only `public/build` were therefore invalid. With both `public/hot` and `public/build` absent the failure reproduces locally.
+* So whether page tests pass depended on frontend build / dev-server state, which a concurrent `npm run build` can disturb. This is the best-supported explanation for the single local failure, but that exact event was not reproduced.
+* Fix: the shared `tests/TestCase.php` now calls `withoutVite()`, so PHP tests no longer depend on built assets or a dev server.
+
+Other environment differences the runner exposed and how they are handled: `APP_DEBUG` is pinned to `false` in `phpunit.xml` (the error-leak test searches for `vendor/laravel`, which can only match on Linux paths, and CI copies `.env.example` where debug is on); the runner installs the `timezonedb` extension so Africa/Casablanca rules match (`tzdb=2025.2`); and the run annotations print the PHP/ICU/SQLite/tz facts and the Casablanca offsets the tests rely on.
+
+Evidence at commit `544864e`: CI `PHP tests (full suite)` passed (2283 tests, 0 failing) and the soak workflow completed 3 randomised full runs, all 2283 tests, 0 failing (seeds 17949320261, 17949320262, 17949320353).
+
+### Pitfalls found while building this pipeline
+* **Pipes hide failures.** GitHub's default `run` shell has no `pipefail`: `phpunit | tee out.txt` returned `tee`'s status and a failing suite was reported as success (the PHP and soak jobs were green while 324 tests failed). Both workflows now set `defaults.run.shell: bash` (`-eo pipefail`). Never pipe a gating command without it.
+* **Local green is not CI green** while `public/hot`, `public/build`, a `.env`, or a different tz database exist locally. Reproduce CI conditions by hiding `public/hot` and `public/build` and using a clean `.env.testing` copied from `.env.example`.
+* On some Windows shells `vendor/bin/phpunit` and `vendor/bin/pint` print nothing and return 0; call them through `php vendor/phpunit/phpunit/phpunit` and `php vendor/laravel/pint/builds/pint`.
 
 ## Recommended branch protection for `main` (not applied: requires repository-admin authorization)
 
