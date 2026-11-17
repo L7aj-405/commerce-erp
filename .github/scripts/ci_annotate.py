@@ -28,14 +28,24 @@ def emit(level: str, title: str, body: str) -> None:
 
 
 def _failure_detail(node, case_name: str):
-    """PHPUnit's failure text is: <test id>, <message lines...>, <blank>, <file:line>. Return (message, location)."""
+    """PHPUnit's failure text is: <test id>, <message lines...>, <blank>, <file:line>.
+    Returns (message, location, cause). `cause` is the underlying application exception that Laravel
+    prints for a failed HTTP assertion ("The following exception occurred during the last request"),
+    which is what explains a 500 / "Not a valid Inertia response"."""
     lines = [l.rstrip() for l in (node.text or node.get('message') or '').strip().splitlines()]
     body = [l for l in lines if l.strip()]
     if body and ('::' in body[0] or body[0].strip() == case_name):
         body = body[1:]  # drop the repeated test id
     location = body[-1] if body and re.search(r'\.php:\d+', body[-1]) else ''
     message = next((l for l in body if l != location), '')
-    return message.strip(), location.strip()
+    cause = ''
+    for i, l in enumerate(body):
+        if 'exception occurred during the last request' in l.lower():
+            cause = next((x.strip() for x in body[i + 1:] if x.strip()), '')
+            break
+    if not cause:
+        cause = next((l.strip() for l in body if re.match(r'^[\w\\]+(Exception|Error)\b[: ]', l.strip())), '')
+    return message.strip(), location.strip(), cause
 
 
 def junit(path: str) -> None:
@@ -52,24 +62,25 @@ def junit(path: str) -> None:
             node = case.find(kind)
             if node is not None:
                 name = f"{case.get('classname', '')}::{case.get('name', '')}"
-                message, location = _failure_detail(node, name)
-                failures.append((name, kind, (node.get('type') or '').split(chr(92))[-1], message, location))
+                message, location, cause = _failure_detail(node, name)
+                failures.append((name, kind, (node.get('type') or '').split(chr(92))[-1], message, location, cause))
     print(f'PHPUnit report: {total} test cases, {len(failures)} failing')
     if not failures:
         emit('notice', 'PHPUnit report', f'{total} test cases, 0 failing')
         return
-    grouped = Counter((t, re.sub(r'\d+', 'N', m)[:160]) for _, _, t, m, _ in failures)
-    lines = [f'{len(failures)} failing of {total}. Most common causes (type: message):']
-    lines += [f'  {n}x {t}: {msg}' for (t, msg), n in grouped.most_common(10)]
+    norm = lambda text, n: re.sub(r'\d+', 'N', text)[:n]
+    grouped = Counter((t, norm(m, 90), norm(c, 200)) for _, _, t, m, _, c in failures)
+    lines = [f'{len(failures)} failing of {total}. Most common causes (type: message | underlying exception):']
+    lines += [f'  {n}x {t}: {m} | {c or "-"}' for (t, m, c), n in grouped.most_common(10)]
     lines.append('Examples (test -> message @ location):')
     seen = set()
-    for name, kind, t, msg, loc in failures:
-        key = (t, re.sub(r'\d+', 'N', msg)[:80])
+    for name, kind, t, msg, loc, cause in failures:
+        key = (t, norm(msg, 60), norm(cause, 80))
         if key in seen:
             continue
         seen.add(key)
-        lines.append(f'  {name.split(chr(92))[-1]} -> {msg[:150]} @ {loc[-70:]}')
-        if len(seen) >= 14:
+        lines.append(f'  {name.split(chr(92))[-1]} -> {msg[:110]} @ {loc[-60:]}')
+        if len(seen) >= 8:
             break
     emit('error', f'PHPUnit: {len(failures)} failing tests', chr(10).join(lines))
 
