@@ -54,20 +54,25 @@ def junit(path: str) -> None:
 
 
 def pint(path: str) -> None:
+    """Accepts both JSON shapes Pint can emit: {"files":[{"path","fixers"}]} and PHP-CS-Fixer's
+    {"files":[{"name"}]} (what the CI runner produces); unknown shapes degrade to a count, never a crash."""
     try:
         data = json.load(open(path, encoding='utf-8'))
     except Exception as exc:
         emit('warning', 'Pint report unreadable', f'{path}: {exc}')
         return
-    files = data.get('files', [])
+    files = [f for f in (data.get('files') or []) if isinstance(f, dict)]
     print(f'Pint: {len(files)} files need formatting')
     if not files:
         return
-    rules = Counter(rule for f in files for rule in f.get('fixers', []))
-    lines = [f'{len(files)} PHP files do not match the Laravel Pint preset (legacy style debt; advisory).',
-             'Most frequent rules: ' + ', '.join(f'{r} ({n})' for r, n in rules.most_common(8)),
-             'Examples:'] + [f"  {f['path']}" for f in files[:15]]
-    emit('warning', f'Pint: {len(files)} files need formatting', '\n'.join(lines))
+    names = [str(f.get('path') or f.get('name') or '?').replace(chr(92), '/') for f in files]
+    rules = Counter(rule for f in files for rule in (f.get('fixers') or []))
+    lines = [f'{len(files)} PHP files do not match the Laravel Pint preset (legacy style debt; advisory).']
+    if rules:
+        lines.append('Most frequent rules: ' + ', '.join(f'{r} ({n})' for r, n in rules.most_common(8)))
+    lines.append('Examples:')
+    lines += [f'  {n}' for n in names[:15]]
+    emit('warning', f'Pint: {len(files)} files need formatting', chr(10).join(lines))
 
 
 def tail(path: str, title: str = 'Tool output (last lines)') -> None:
@@ -152,4 +157,9 @@ if __name__ == '__main__':
     if len(sys.argv) < 3 or sys.argv[1] not in ('junit', 'pint', 'tail', 'composer', 'npm', 'npm-gate'):
         print(__doc__)
         sys.exit(0)
-    {'junit': junit, 'pint': pint, 'tail': tail, 'composer': composer, 'npm': npm, 'npm-gate': npm_gate}[sys.argv[1]](*sys.argv[2:])
+    try:
+        {'junit': junit, 'pint': pint, 'tail': tail, 'composer': composer, 'npm': npm, 'npm-gate': npm_gate}[sys.argv[1]](*sys.argv[2:])
+    except SystemExit:
+        raise  # npm-gate decides the job result through its exit status
+    except Exception as exc:  # the helper must never hide a result behind a traceback
+        emit('error', f'ci_annotate {sys.argv[1]} failed', f'{type(exc).__name__}: {exc}')
