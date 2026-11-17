@@ -27,6 +27,17 @@ def emit(level: str, title: str, body: str) -> None:
     print(f"::{level} title={escape(title)}::{escape(body[:LIMIT])}")
 
 
+def _failure_detail(node, case_name: str):
+    """PHPUnit's failure text is: <test id>, <message lines...>, <blank>, <file:line>. Return (message, location)."""
+    lines = [l.rstrip() for l in (node.text or node.get('message') or '').strip().splitlines()]
+    body = [l for l in lines if l.strip()]
+    if body and ('::' in body[0] or body[0].strip() == case_name):
+        body = body[1:]  # drop the repeated test id
+    location = body[-1] if body and re.search(r'\.php:\d+', body[-1]) else ''
+    message = next((l for l in body if l != location), '')
+    return message.strip(), location.strip()
+
+
 def junit(path: str) -> None:
     try:
         root = ET.parse(path).getroot()
@@ -40,18 +51,27 @@ def junit(path: str) -> None:
         for kind in ('failure', 'error'):
             node = case.find(kind)
             if node is not None:
-                message = (node.get('type') or '') + ': ' + ((node.text or node.get('message') or '').strip().splitlines() or [''])[0]
-                failures.append((f"{case.get('classname', '')}::{case.get('name', '')}", kind, message[:300]))
+                name = f"{case.get('classname', '')}::{case.get('name', '')}"
+                message, location = _failure_detail(node, name)
+                failures.append((name, kind, (node.get('type') or '').split(chr(92))[-1], message, location))
     print(f'PHPUnit report: {total} test cases, {len(failures)} failing')
     if not failures:
         emit('notice', 'PHPUnit report', f'{total} test cases, 0 failing')
         return
-    grouped = Counter(re.sub(r'\d+', 'N', m) for _, _, m in failures)
-    lines = [f'{len(failures)} failing of {total}. Most common causes:']
-    lines += [f'  {n}x {msg[:200]}' for msg, n in grouped.most_common(8)]
-    lines.append('First failures:')
-    lines += [f'  [{k}] {name} -> {msg[:240]}' for name, k, msg in failures[:25]]
-    emit('error', f'PHPUnit: {len(failures)} failing tests', '\n'.join(lines))
+    grouped = Counter((t, re.sub(r'\d+', 'N', m)[:160]) for _, _, t, m, _ in failures)
+    lines = [f'{len(failures)} failing of {total}. Most common causes (type: message):']
+    lines += [f'  {n}x {t}: {msg}' for (t, msg), n in grouped.most_common(10)]
+    lines.append('Examples (test -> message @ location):')
+    seen = set()
+    for name, kind, t, msg, loc in failures:
+        key = (t, re.sub(r'\d+', 'N', msg)[:80])
+        if key in seen:
+            continue
+        seen.add(key)
+        lines.append(f'  {name.split(chr(92))[-1]} -> {msg[:150]} @ {loc[-70:]}')
+        if len(seen) >= 14:
+            break
+    emit('error', f'PHPUnit: {len(failures)} failing tests', chr(10).join(lines))
 
 
 def pint(path: str) -> None:

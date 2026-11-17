@@ -30,6 +30,12 @@ on:
 permissions:
   contents: read
 
+# `shell: bash` makes GitHub run every step as `bash -eo pipefail`. Without it a pipeline such as
+# `phpunit | tee file` takes the exit status of `tee` and a failing test run would be reported as success.
+defaults:
+  run:
+    shell: bash
+
 concurrency:
   group: soak-${{ github.ref }}
   cancel-in-progress: false

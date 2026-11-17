@@ -15,6 +15,12 @@ on:
 permissions:
   contents: read
 
+# `shell: bash` makes GitHub run every step as `bash -eo pipefail`. Without it a pipeline such as
+# `phpunit | tee file` takes the exit status of `tee` and a failing test run would be reported as success.
+defaults:
+  run:
+    shell: bash
+
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -75,6 +81,10 @@ jobs:
           test ! -e public/build
           grep -q 'name="DB_CONNECTION" value="sqlite"' phpunit.xml
           grep -q 'name="DB_DATABASE" value=":memory:"' phpunit.xml
+
+      - name: Record the PHP environment
+        run: |
+          php -r 'echo "::notice title=PHP environment::php=", PHP_VERSION, " os=", PHP_OS, " icu=", (defined("INTL_ICU_VERSION") ? INTL_ICU_VERSION : "no-intl"), " sqlite=", (class_exists("SQLite3") ? SQLite3::version()["versionString"] : "none"), " tz=", date_default_timezone_get(), " locale=", setlocale(LC_ALL, 0), " memory_limit=", ini_get("memory_limit"), PHP_EOL;'
 
       - name: Run the complete PHP test suite
         run: |
