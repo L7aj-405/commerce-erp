@@ -134,7 +134,7 @@ class FiscalDocumentProtection
     /**
      * Selective reset: protected rows among the ids a plan would delete.
      *
-     * @param array<string, list<int|string>> $delete table => ids
+     * @param  array<string, list<int|string>>  $delete  table => ids
      * @return list<array{code:string,table:string,count:int,samples:list<string>}>
      */
     public function selectiveBlockers(Organization $organization, array $delete): array

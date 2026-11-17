@@ -11,6 +11,7 @@ use App\Models\Store;
 use App\Services\SalesOrderPaymentCalculator;
 use App\Support\Decimal;
 use App\Support\Money;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -122,7 +123,7 @@ class FinanceReceivablesService
      * returned_amount, last_payment_date) and the derived outstanding_raw /
      * net_paid_raw columns. Callers order / paginate / limit it.
      *
-     * @return \Illuminate\Database\Eloquent\Builder<SalesOrder>
+     * @return Builder<SalesOrder>
      */
     public function orderExposureQuery(Organization $organization, Carbon $asOf, ?Store $store)
     {

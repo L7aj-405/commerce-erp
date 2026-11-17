@@ -8,9 +8,9 @@ use App\Actions\Sales\FulfillSalesOrderAction;
 use App\Http\Controllers\Controller;
 use App\Models\SalesOrder;
 use App\Services\Pos\PosDraftLifecycle;
-use Illuminate\Validation\ValidationException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 
 class SalesOrderLifecycleController extends Controller
 {

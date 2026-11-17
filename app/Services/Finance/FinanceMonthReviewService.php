@@ -125,7 +125,9 @@ class FinanceMonthReviewService
         ];
 
         foreach ($checks as $query) {
-            if ($query->exists()) return true;
+            if ($query->exists()) {
+                return true;
+            }
         }
 
         return false;

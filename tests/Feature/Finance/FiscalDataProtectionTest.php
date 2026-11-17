@@ -17,7 +17,6 @@ use App\Services\OrganizationDataReset\Selective\SelectiveResetPlanner;
 use App\Services\OrganizationDataReset\Selective\SelectiveResetSelection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
-use Symfony\Component\HttpKernel\Exception\HttpException;
 use Tests\Support\DocumentTestCase;
 
 /**
@@ -107,7 +106,7 @@ class FiscalDataProtectionTest extends DocumentTestCase
 
     public function test_going_live_protects_only_documents_created_from_then_on(): void
     {
-        [$owner, $organization, , $order, ] = $this->documentFixture(total: '300.0000');
+        [$owner, $organization, , $order] = $this->documentFixture(total: '300.0000');
         $organization->forceFill(['fiscal_data_mode' => 'test'])->save();
         $account = $this->createFinancialAccount($organization);
         $testPayment = $this->recordPayment($owner, $order, $account, '100.0000');
@@ -197,7 +196,7 @@ class FiscalDataProtectionTest extends DocumentTestCase
     {
         [$owner, $organization, , $order] = $this->documentFixture();
         $invoice = $this->issueInvoice($owner, $this->createInvoice($owner, $order));
-        $fiscal = app(\App\Services\Finance\FiscalDocumentProtection::class);
+        $fiscal = app(FiscalDocumentProtection::class);
         $this->assertSame(1, $fiscal->protectedCounts($organization)['invoices']);
 
         // The same row re-labelled as a Test Mode document is owned by the Sandbox, not protected here.

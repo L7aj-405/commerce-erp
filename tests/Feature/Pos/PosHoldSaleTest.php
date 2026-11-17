@@ -2,7 +2,12 @@
 
 namespace Tests\Feature\Pos;
 
+use App\Models\Organization;
+use App\Models\ProductVariant;
+use App\Models\SalesOrder;
+use App\Models\Store;
 use App\Models\User;
+use App\Models\Warehouse;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\Support\PosTestCase;
 
@@ -22,7 +27,7 @@ class PosHoldSaleTest extends PosTestCase
         $draft->refresh();
         $this->assertNotNull($draft->pos_held_at);
         $response->assertJsonPath('held_sales.0.id', $draft->id);
-        $this->assertSame(2, \App\Models\SalesOrder::query()->where('source', 'pos')->where('status', 'draft')->count());
+        $this->assertSame(2, SalesOrder::query()->where('source', 'pos')->where('status', 'draft')->count());
         $this->assertDatabaseCount('inventory_reservations', 0);
     }
 
@@ -114,7 +119,7 @@ class PosHoldSaleTest extends PosTestCase
             ->where('heldSales.0.id', $held->id));
     }
 
-    /** @return array{User, \App\Models\Organization, \App\Models\Store, \App\Models\Warehouse, \App\Models\ProductVariant} */
+    /** @return array{User, Organization, Store, Warehouse, ProductVariant} */
     private function context(string $stock = '5.0000'): array
     {
         $owner = User::factory()->create();

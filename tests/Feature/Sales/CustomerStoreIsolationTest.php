@@ -15,7 +15,6 @@ use App\Services\Mcp\Sales\CustomerReadService;
 use App\Support\Decimal;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Testing\TestResponse;
-use Inertia\Testing\AssertableInertia as Assert;
 use Tests\Support\QuotationTestCase;
 
 /** W5.1: the customer profile only ever serializes, counts and sums documents the viewer may see. */

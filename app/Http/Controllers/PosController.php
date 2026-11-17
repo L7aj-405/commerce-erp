@@ -28,25 +28,23 @@ use App\Models\Customer;
 use App\Models\FinancialAccount;
 use App\Models\InventoryBalance;
 use App\Models\Organization;
-use App\Models\OrganizationMembership;
 use App\Models\ProductVariant;
 use App\Models\QuotationSupplierAvailabilityRequest;
 use App\Models\SalesOrder;
 use App\Models\SalesOrderLine;
 use App\Models\Store;
 use App\Models\Supplier;
-use App\Models\User;
 use App\Models\Warehouse;
 use App\Services\ActiveTenantContext;
 use App\Services\AuditLogger;
-use App\Services\Pos\PosDraftLifecycle;
 use App\Services\CustomerManager;
 use App\Services\Pos\PosCartSourcing;
+use App\Services\Pos\PosDraftLifecycle;
 use App\Services\Pos\PosLocations;
+use App\Services\PosDraftCheckoutCalculator;
 use App\Services\Procurement\SupplierCatalogQuery;
 use App\Services\Procurement\SupplierOptionsQuery;
 use App\Services\Procurement\SupplierRecommendationService;
-use App\Services\PosDraftCheckoutCalculator;
 use App\Services\ProductPriceResolver;
 use App\Services\SalesOrderPaymentCalculator;
 use App\Support\BusinessTime;
@@ -54,6 +52,7 @@ use App\Support\Decimal;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cookie;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -1313,10 +1312,10 @@ class PosController extends Controller
      * of the organisation covers, and what is missing (→ À sourcer). A confirmed
      * legacy special-order quantity is neither stock nor missing.
      *
-     * @param  \Illuminate\Support\Collection<string, InventoryBalance>  $balances  keyed "variant:warehouse"
+     * @param  Collection<string, InventoryBalance>  $balances  keyed "variant:warehouse"
      * @return array<int, array{location: ?array<string, mixed>, here: string, elsewhere: string, missing: string}>
      */
-    private function stockSources(SalesOrder $order, \Illuminate\Support\Collection $balances): array
+    private function stockSources(SalesOrder $order, Collection $balances): array
     {
         $here = [];
         $elsewhere = [];

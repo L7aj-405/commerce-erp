@@ -11,7 +11,8 @@ use App\Support\Decimal;
 class FinanceTreasuryForecastService
 {
     private const OBLIGATION_PAID = "COALESCE((SELECT SUM(a.amount) FROM finance_outgoing_payment_allocations a INNER JOIN finance_outgoing_payments p ON p.id=a.outgoing_payment_id AND p.organization_id=a.organization_id WHERE a.obligation_id=finance_obligations.id AND a.organization_id=finance_obligations.organization_id AND p.status='posted'),0)";
-    private const MATCHED = "COALESCE((SELECT SUM(m.amount) FROM finance_expected_collection_matches m WHERE m.expected_collection_id=finance_expected_collections.id AND m.organization_id=finance_expected_collections.organization_id),0)";
+
+    private const MATCHED = 'COALESCE((SELECT SUM(m.amount) FROM finance_expected_collection_matches m WHERE m.expected_collection_id=finance_expected_collections.id AND m.organization_id=finance_expected_collections.organization_id),0)';
 
     public function __construct(private readonly FinancialAccountBalanceService $balances) {}
 
@@ -59,7 +60,9 @@ class FinanceTreasuryForecastService
             ->when($store, fn ($query) => $query->where('store_id', $store->id))
             ->with(['salesOrder:id,organization_id,store_id,order_number,customer_id,total_incl_tax,currency_code', 'salesOrder.customer:id,display_name,company_name'])
             ->withSum('matches as matched_amount', 'amount')->orderBy('expected_date');
-        if ($limit !== null) $query->limit($limit);
+        if ($limit !== null) {
+            $query->limit($limit);
+        }
         $today = FinancePeriod::businessToday($organization);
 
         return $query->get()
@@ -67,6 +70,7 @@ class FinanceTreasuryForecastService
                 $matched = Decimal::normalize((string) ($row->matched_amount ?? '0'));
                 $remaining = Decimal::subtract((string) $row->expected_amount, $matched);
                 $status = $row->state === 'cancelled' ? 'cancelled' : (Decimal::compare($remaining, '0.0000') <= 0 ? 'received' : (Decimal::compare($matched, '0.0000') > 0 ? 'partial' : ($row->expected_date->lt($today) ? 'overdue' : 'planned')));
+
                 return ['id' => $row->id, 'sales_order_id' => $row->sales_order_id, 'order_number' => $row->salesOrder->order_number,
                     'customer' => $row->salesOrder->customer?->company_name ?: $row->salesOrder->customer?->display_name ?: '—', 'label' => $row->label,
                     'reference' => $row->reference, 'expected_date' => $row->expected_date->toDateString(), 'amount' => (string) $row->expected_amount,

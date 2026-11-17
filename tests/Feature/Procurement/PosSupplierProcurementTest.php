@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Procurement;
 
+use App\Actions\Pos\ConvertPosCartToSalesOrderDraftAction;
 use App\Actions\Pos\CreatePosSaleAction;
 use App\Actions\Procurement\CreateProcurementAction;
 use App\Actions\Procurement\CreatePurchaseOrderFromProcurementRequirementsAction;
@@ -10,10 +11,12 @@ use App\Actions\Sales\ConfirmSalesOrderAction;
 use App\Actions\Sales\FulfillSalesOrderAction;
 use App\Actions\Sales\SaveSalesOrderLineAction;
 use App\Enums\SupplierProcurementStatus;
+use App\Exceptions\Pos\PosStockConflictException;
 use App\Models\InventoryBalance;
 use App\Models\InventoryMovement;
 use App\Models\InventoryReservation;
 use App\Models\Organization;
+use App\Models\Payment;
 use App\Models\ProductVariant;
 use App\Models\SalesOrder;
 use App\Models\SalesOrderLine;
@@ -23,6 +26,7 @@ use App\Models\Supplier;
 use App\Models\User;
 use App\Models\Warehouse;
 use Illuminate\Validation\ValidationException;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 use Tests\Support\PosTestCase;
 
 class PosSupplierProcurementTest extends PosTestCase
@@ -201,12 +205,12 @@ class PosSupplierProcurementTest extends PosTestCase
                 $draft->fresh(), [$this->posPayment($account, '100.0000')],
             ));
             $this->fail('A supplier requirement is not stock: no instant sale.');
-        } catch (\App\Exceptions\Pos\PosStockConflictException $conflict) {
+        } catch (PosStockConflictException $conflict) {
             $this->assertSame('1.0000', $conflict->lines[0]['missing']);
         }
 
         $this->assertSame('draft', $draft->fresh()->status->value);
-        $this->assertSame(0, \App\Models\Payment::query()->count());
+        $this->assertSame(0, Payment::query()->count());
         $this->assertSame(0, InventoryReservation::query()->count());
         $this->assertSame(0, InventoryMovement::query()->where('movement_type', 'supplier_receipt')->count());
     }
@@ -219,7 +223,7 @@ class PosSupplierProcurementTest extends PosTestCase
 
         // The existing requirement covers the shortage: the cart converts without
         // asking the supplier again and without a second requirement.
-        $order = app(\App\Actions\Pos\ConvertPosCartToSalesOrderDraftAction::class)->execute($owner, $draft->fresh());
+        $order = app(ConvertPosCartToSalesOrderDraftAction::class)->execute($owner, $draft->fresh());
         $this->assertSame('draft', $order->status->value);
         $this->assertSame(1, SalesOrderProcurement::query()->where('sales_order_id', $order->id)->count());
         $this->assertConfirmationBlocked($owner, $order);
@@ -283,7 +287,7 @@ class PosSupplierProcurementTest extends PosTestCase
         $foreignSupplier->active = true;
         $foreignSupplier->save();
 
-        $this->expectException(\Symfony\Component\HttpKernel\Exception\HttpException::class);
+        $this->expectException(HttpException::class);
         app(CreateProcurementAction::class)->execute($owner, $draft, $line, $foreignSupplier, ['quantity' => '1.0000']);
     }
 }

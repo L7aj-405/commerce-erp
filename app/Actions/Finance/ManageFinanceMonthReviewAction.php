@@ -19,14 +19,23 @@ class ManageFinanceMonthReviewAction
     public function review(User $actor, Organization $organization, FinancePeriod $period, ?string $note): FinanceMonthReview
     {
         $this->authorize($actor, $organization);
-        if ($period->month > BusinessTime::now($organization)->format('Y-m')) throw ValidationException::withMessages(['month' => 'Un mois futur ne peut pas être vérifié.']);
+        if ($period->month > BusinessTime::now($organization)->format('Y-m')) {
+            throw ValidationException::withMessages(['month' => 'Un mois futur ne peut pas être vérifié.']);
+        }
 
         return DB::transaction(function () use ($actor, $organization, $period, $note) {
             $row = $this->locked($organization, $period);
-            if ($row->status === 'closed') throw ValidationException::withMessages(['month' => 'Réouvrez le mois avant de le vérifier à nouveau.']);
-            $row->status = 'reviewed'; $row->reviewed_at = now(); $row->reviewed_by_user_id = $actor->id; $row->note = $note; $row->save();
+            if ($row->status === 'closed') {
+                throw ValidationException::withMessages(['month' => 'Réouvrez le mois avant de le vérifier à nouveau.']);
+            }
+            $row->status = 'reviewed';
+            $row->reviewed_at = now();
+            $row->reviewed_by_user_id = $actor->id;
+            $row->note = $note;
+            $row->save();
             $this->audit->record('finance_month.reviewed', $actor, $organization, auditable: $row,
                 newValues: ['period' => $period->month, 'note' => $note]);
+
             return $row;
         });
     }
@@ -35,18 +44,31 @@ class ManageFinanceMonthReviewAction
     {
         $this->authorize($actor, $organization);
         // "Ended" in the organization's business calendar, not in UTC.
-        if (! ($period->end->toDateString() < BusinessTime::today($organization))) throw ValidationException::withMessages(['month' => 'Seul un mois terminé peut être clôturé.']);
+        if (! ($period->end->toDateString() < BusinessTime::today($organization))) {
+            throw ValidationException::withMessages(['month' => 'Seul un mois terminé peut être clôturé.']);
+        }
         $warnings = $this->service->warnings($organization, $period);
-        if ($warnings !== [] && ! $acknowledged) throw ValidationException::withMessages(['acknowledge_warnings' => 'Confirmez avoir pris connaissance des avertissements avant la clôture.']);
+        if ($warnings !== [] && ! $acknowledged) {
+            throw ValidationException::withMessages(['acknowledge_warnings' => 'Confirmez avoir pris connaissance des avertissements avant la clôture.']);
+        }
         $snapshot = $this->service->snapshot($organization, $period);
 
         return DB::transaction(function () use ($actor, $organization, $period, $note, $warnings, $snapshot) {
             $row = $this->locked($organization, $period);
-            if ($row->status === 'closed') throw ValidationException::withMessages(['month' => 'Ce mois est déjà clôturé.']);
-            $row->status = 'closed'; $row->reviewed_at ??= now(); $row->reviewed_by_user_id ??= $actor->id;
-            $row->closed_at = now(); $row->closed_by_user_id = $actor->id; $row->note = $note; $row->close_snapshot = $snapshot; $row->save();
+            if ($row->status === 'closed') {
+                throw ValidationException::withMessages(['month' => 'Ce mois est déjà clôturé.']);
+            }
+            $row->status = 'closed';
+            $row->reviewed_at ??= now();
+            $row->reviewed_by_user_id ??= $actor->id;
+            $row->closed_at = now();
+            $row->closed_by_user_id = $actor->id;
+            $row->note = $note;
+            $row->close_snapshot = $snapshot;
+            $row->save();
             $this->audit->record('finance_month.closed', $actor, $organization, auditable: $row,
                 newValues: ['period' => $period->month, 'note' => $note, 'warnings' => collect($warnings)->pluck('key')->all(), 'snapshot' => $snapshot]);
+
             return $row;
         });
     }
@@ -61,12 +83,20 @@ class ManageFinanceMonthReviewAction
         if (trim($reason) === '') {
             throw ValidationException::withMessages(['reason' => 'Le motif de réouverture est obligatoire.']);
         }
+
         return DB::transaction(function () use ($actor, $organization, $period, $reason) {
             $row = $this->locked($organization, $period);
-            if ($row->status !== 'closed') throw ValidationException::withMessages(['month' => 'Seul un mois clôturé peut être réouvert.']);
-            $row->status = 'open'; $row->reopened_at = now(); $row->reopened_by_user_id = $actor->id; $row->note = $reason; $row->save();
+            if ($row->status !== 'closed') {
+                throw ValidationException::withMessages(['month' => 'Seul un mois clôturé peut être réouvert.']);
+            }
+            $row->status = 'open';
+            $row->reopened_at = now();
+            $row->reopened_by_user_id = $actor->id;
+            $row->note = $reason;
+            $row->save();
             $this->audit->record('finance_month.reopened', $actor, $organization, auditable: $row,
                 oldValues: ['status' => 'closed'], newValues: ['status' => 'open', 'period' => $period->month, 'reason' => $reason]);
+
             return $row;
         });
     }
@@ -81,8 +111,15 @@ class ManageFinanceMonthReviewAction
     {
         $row = FinanceMonthReview::query()->withoutGlobalScopes()->where('organization_id', $organization->id)
             ->whereDate('period', $period->start->toDateString())->lockForUpdate()->first();
-        if ($row) return $row;
-        $row = new FinanceMonthReview; $row->organization_id = $organization->id; $row->period = $period->start->toDateString(); $row->status = 'open'; $row->save();
+        if ($row) {
+            return $row;
+        }
+        $row = new FinanceMonthReview;
+        $row->organization_id = $organization->id;
+        $row->period = $period->start->toDateString();
+        $row->status = 'open';
+        $row->save();
+
         return $row;
     }
 }

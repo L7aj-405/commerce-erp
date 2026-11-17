@@ -1,14 +1,16 @@
 <?php
 
+use App\Actions\Finance\GenerateRecurringFinanceObligationsAction;
 use App\Jobs\RecordQueueWorkerHeartbeatJob;
+use App\Models\McpOAuthAuthorizationCode;
+use App\Models\McpOAuthToken;
 use App\Models\McpOperation;
 use App\Models\McpOperationItem;
+use App\Models\Organization;
 use App\Models\ProductImport;
 use App\Models\SystemHealthHeartbeat;
 use App\Models\TrustedTwoFactorDevice;
 use App\Models\UserNotification;
-use App\Models\Organization;
-use App\Actions\Finance\GenerateRecurringFinanceObligationsAction;
 use App\Services\Notifications\SystemHealthNotificationMonitor;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
@@ -74,7 +76,9 @@ Artisan::command('finance:generate-recurring-obligations {--organization=}', fun
             foreach ($organizations as $organization) {
                 try {
                     $result = app(GenerateRecurringFinanceObligationsAction::class)->execute($organization, $month);
-                    $created += $result['created']; $existing += $result['existing']; $skipped += $result['skipped'];
+                    $created += $result['created'];
+                    $existing += $result['existing'];
+                    $skipped += $result['skipped'];
                 } catch (Throwable $exception) {
                     $failed++;
                     report($exception);
@@ -83,6 +87,7 @@ Artisan::command('finance:generate-recurring-obligations {--organization=}', fun
             }
         });
     $this->info("Recurring obligations: {$created} created, {$existing} existing, {$skipped} skipped, {$failed} organization(s) failed.");
+
     return $failed === 0 ? self::SUCCESS : self::FAILURE;
 })->purpose('Generate the current month recurring Finance obligations idempotently');
 
@@ -116,8 +121,8 @@ Artisan::command('mcp:prune-operations', function () {
 Artisan::command('mcp:prune-oauth', function () {
     // Codes live minutes; tokens are kept a week past their last possible use
     // so replay detection still sees recently rotated/revoked refresh tokens.
-    $codes = \App\Models\McpOAuthAuthorizationCode::query()->where('expires_at', '<', now()->subDay())->delete();
-    $tokens = \App\Models\McpOAuthToken::query()
+    $codes = McpOAuthAuthorizationCode::query()->where('expires_at', '<', now()->subDay())->delete();
+    $tokens = McpOAuthToken::query()
         ->where('access_expires_at', '<', now()->subDays(7))
         ->where(fn ($query) => $query->whereNull('refresh_expires_at')->orWhere('refresh_expires_at', '<', now()->subDays(7)))
         ->delete();

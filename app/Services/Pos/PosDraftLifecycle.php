@@ -3,10 +3,13 @@
 namespace App\Services\Pos;
 
 use App\Enums\InventoryReservationStatus;
+use App\Enums\SalesOrderSource;
+use App\Enums\SalesOrderStatus;
 use App\Models\InventoryReservation;
 use App\Models\Organization;
 use App\Models\SalesOrder;
 use App\Models\SalesOrderInventoryAllocation;
+use App\Models\Store;
 use App\Models\User;
 use App\Services\AuditLogger;
 use App\Services\InventoryReservationManager;
@@ -30,16 +33,23 @@ use Illuminate\Support\Facades\DB;
 class PosDraftLifecycle
 {
     public const REASON_MANUAL = 'manual';
+
     public const REASON_EMPTY = 'empty';
+
     /** The cashier left / switched away from an empty cart (event-driven, revalidated server-side). */
     public const REASON_ABANDONED = 'abandoned';
+
     /** A cancelled, never-confirmed POS draft deleted by an authorized user. */
     public const REASON_CANCELLED_DELETE = 'cancelled_delete';
 
     public const OUTCOME_DISCARDED = 'discarded';
+
     public const OUTCOME_SKIPPED_ACTIVE = 'skipped_active';
+
     public const OUTCOME_SKIPPED_GONE = 'skipped_not_open_draft';
+
     public const OUTCOME_BLOCKED = 'blocked';
+
     public const OUTCOME_CONFIRMATION_REQUIRED = 'confirmation_required';
 
     /** Relations whose rows mean the order has a consequential history. */
@@ -166,8 +176,8 @@ class PosDraftLifecycle
     public function needsAttention(SalesOrder $order, int $lineCount, ?Carbon $now = null): bool
     {
         return $lineCount > 0
-            && $order->source === \App\Enums\SalesOrderSource::Pos
-            && $order->status === \App\Enums\SalesOrderStatus::Draft
+            && $order->source === SalesOrderSource::Pos
+            && $order->status === SalesOrderStatus::Draft
             && $order->pos_converted_at === null
             && $this->isInactive($order, $lineCount, $now);
     }
@@ -204,7 +214,7 @@ class PosDraftLifecycle
      * activity is older than $graceSeconds. Every candidate is revalidated under its row lock by
      * discard(); safe to call repeatedly (idempotent) and from several requests at once.
      */
-    public function abandonEmptyCarts(User $actor, Organization $organization, \App\Models\Store $store, ?string $terminal, ?int $exceptId = null, int $graceSeconds = 0): int
+    public function abandonEmptyCarts(User $actor, Organization $organization, Store $store, ?string $terminal, ?int $exceptId = null, int $graceSeconds = 0): int
     {
         $cutoff = now()->subSeconds(max(0, $graceSeconds));
         $ids = $this->candidates($organization)
@@ -231,8 +241,8 @@ class PosDraftLifecycle
     {
         $query = $reason === self::REASON_CANCELLED_DELETE
             ? SalesOrder::query()
-                ->where('source', \App\Enums\SalesOrderSource::Pos->value)
-                ->where('status', \App\Enums\SalesOrderStatus::Cancelled->value)
+                ->where('source', SalesOrderSource::Pos->value)
+                ->where('status', SalesOrderStatus::Cancelled->value)
                 ->whereNull('pos_converted_at')
             : SalesOrder::query()->posOpenDrafts();
         $locked = $query->where('organization_id', $order->organization_id)
@@ -264,53 +274,52 @@ class PosDraftLifecycle
             return ['outcome' => self::OUTCOME_CONFIRMATION_REQUIRED, 'lines' => $lineCount];
         }
 
-        {
-            $blockers = $this->blockers($locked, allowReservationRelease: $actor !== null);
-            if ($blockers !== []) {
-                return ['outcome' => self::OUTCOME_BLOCKED, 'reasons' => $blockers];
-            }
-
-            // Only reservations owned by THIS draft's allocations; never a double release.
-            $released = [];
-            if ($actor !== null) {
-                $owned = InventoryReservation::query()
-                    ->where('organization_id', $locked->organization_id)
-                    ->whereIn('id', $this->activeReservationIds($locked))
-                    ->with(['warehouse', 'productVariant'])
-                    ->orderBy('warehouse_id')->orderBy('product_variant_id')->get();
-                foreach ($owned as $reservation) {
-                    $this->reservations->release($actor, $locked->organization, $reservation);
-                    $released[] = (int) $reservation->getKey();
-                }
-            }
-
-            $lines = $locked->lines()->get();
-            $snapshot = [
-                'order_number' => $locked->order_number,
-                'reason' => $reason,
-                'trigger' => $actor ? 'user' : 'scheduler',
-                'line_count' => $lineCount,
-                'total_incl_tax' => $locked->total_incl_tax,
-                'customer_id' => $locked->customer_id,
-                'pos_terminal_id' => $locked->pos_terminal_id,
-                'last_activity_at' => $this->lastActivityAt($locked)?->toIso8601String(),
-                'released_reservation_ids' => $released,
-                'lines' => $lines->map(fn ($line) => [
-                    'product_variant_id' => $line->product_variant_id,
-                    'quantity' => (string) $line->quantity,
-                    'line_type' => $line->line_type,
-                ])->values()->all(),
-            ];
-
-            foreach ($lines as $line) {
-                $line->allocations()->delete();
-                $line->supplierAvailabilityRequests()->whereDoesntHave('derivedProcurement')->delete();
-                $line->delete();
-            }
-            $this->audit->record('sales_order.pos_draft_discarded', $actor, $locked->organization, $locked->store, $locked, oldValues: ['status' => $locked->status->value], newValues: $snapshot);
-            $locked->delete();
-
-            return ['outcome' => self::OUTCOME_DISCARDED, 'lines' => $lineCount];
+        $blockers = $this->blockers($locked, allowReservationRelease: $actor !== null);
+        if ($blockers !== []) {
+            return ['outcome' => self::OUTCOME_BLOCKED, 'reasons' => $blockers];
         }
+
+        // Only reservations owned by THIS draft's allocations; never a double release.
+        $released = [];
+        if ($actor !== null) {
+            $owned = InventoryReservation::query()
+                ->where('organization_id', $locked->organization_id)
+                ->whereIn('id', $this->activeReservationIds($locked))
+                ->with(['warehouse', 'productVariant'])
+                ->orderBy('warehouse_id')->orderBy('product_variant_id')->get();
+            foreach ($owned as $reservation) {
+                $this->reservations->release($actor, $locked->organization, $reservation);
+                $released[] = (int) $reservation->getKey();
+            }
+        }
+
+        $lines = $locked->lines()->get();
+        $snapshot = [
+            'order_number' => $locked->order_number,
+            'reason' => $reason,
+            'trigger' => $actor ? 'user' : 'scheduler',
+            'line_count' => $lineCount,
+            'total_incl_tax' => $locked->total_incl_tax,
+            'customer_id' => $locked->customer_id,
+            'pos_terminal_id' => $locked->pos_terminal_id,
+            'last_activity_at' => $this->lastActivityAt($locked)?->toIso8601String(),
+            'released_reservation_ids' => $released,
+            'lines' => $lines->map(fn ($line) => [
+                'product_variant_id' => $line->product_variant_id,
+                'quantity' => (string) $line->quantity,
+                'line_type' => $line->line_type,
+            ])->values()->all(),
+        ];
+
+        foreach ($lines as $line) {
+            $line->allocations()->delete();
+            $line->supplierAvailabilityRequests()->whereDoesntHave('derivedProcurement')->delete();
+            $line->delete();
+        }
+        $this->audit->record('sales_order.pos_draft_discarded', $actor, $locked->organization, $locked->store, $locked, oldValues: ['status' => $locked->status->value], newValues: $snapshot);
+        $locked->delete();
+
+        return ['outcome' => self::OUTCOME_DISCARDED, 'lines' => $lineCount];
+
     }
 }

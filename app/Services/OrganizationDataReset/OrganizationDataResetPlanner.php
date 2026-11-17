@@ -3,8 +3,8 @@
 namespace App\Services\OrganizationDataReset;
 
 use App\Models\Organization;
-use App\Services\Sandbox\SandboxProductionResetGuard;
 use App\Services\Finance\FiscalDocumentProtection;
+use App\Services\Sandbox\SandboxProductionResetGuard;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -194,7 +194,7 @@ class OrganizationDataResetPlanner
     }
 
     /**
-     * @param list<OrganizationDataResetOperation> $operations
+     * @param  list<OrganizationDataResetOperation>  $operations
      * @return list<OrganizationDataResetBlocker>
      */
     private function retainedReferenceBlockers(Organization $organization, array $operations): array
@@ -255,7 +255,7 @@ class OrganizationDataResetPlanner
      * would delete. One blocker per document table; no required scope can
      * lift it — only an organization explicitly declared as test data.
      *
-     * @param list<OrganizationDataResetOperation> $operations
+     * @param  list<OrganizationDataResetOperation>  $operations
      * @return list<OrganizationDataResetBlocker>
      */
     private function fiscalBlockers(Organization $organization, array $operations): array

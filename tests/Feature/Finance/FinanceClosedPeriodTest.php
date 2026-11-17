@@ -13,6 +13,7 @@ use App\Actions\Payments\RefundPaymentAction;
 use App\Actions\Payments\ReversePaymentAction;
 use App\Models\FinanceObligation;
 use App\Models\FinanceRecurringObligationTemplate;
+use App\Models\FinancialAccount;
 use App\Models\Organization;
 use App\Models\Supplier;
 use App\Models\User;
@@ -20,6 +21,7 @@ use App\Services\Finance\FinancePeriod;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 use Tests\Support\PaymentTestCase;
 
 /**
@@ -186,7 +188,7 @@ class FinanceClosedPeriodTest extends PaymentTestCase
         try {
             $action->reopen($manager, $organization->fresh(), FinancePeriod::fromMonth('2026-09'), 'Correction');
             $this->fail('A manager without the reopen permission must be refused.');
-        } catch (\Symfony\Component\HttpKernel\Exception\HttpException $exception) {
+        } catch (HttpException $exception) {
             $this->assertSame(403, $exception->getStatusCode());
         }
         $this->assertSame('closed', DB::table('finance_month_reviews')->where('organization_id', $organization->id)->value('status'));
@@ -219,7 +221,7 @@ class FinanceClosedPeriodTest extends PaymentTestCase
         ]);
     }
 
-    /** @return array{User, Organization, \App\Models\FinancialAccount, Supplier} */
+    /** @return array{User, Organization, FinancialAccount, Supplier} */
     private function financeFixture(): array
     {
         $owner = User::factory()->create();

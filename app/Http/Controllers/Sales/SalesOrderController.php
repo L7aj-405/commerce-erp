@@ -7,37 +7,43 @@ use App\Actions\Sales\ReassignSalesOrderSalespersonAction;
 use App\Actions\Sales\StartSalesOrderCorrectionAction;
 use App\Actions\Sales\UpdateSalesOrderAction;
 use App\Enums\CatalogStatus;
+use App\Enums\FulfillmentStatus;
 use App\Enums\InvoiceStatus;
 use App\Enums\SalesOrderFulfillmentStatus;
 use App\Enums\SalesOrderLineType;
 use App\Enums\SalesOrderPaymentStatus;
 use App\Enums\SalesOrderSource;
 use App\Enums\SalesOrderStatus;
-use App\Services\Pos\PosDraftLifecycle;
 use App\Enums\WarehouseStatus;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Sales\SalesOrderRules;
 use App\Models\Customer;
+use App\Models\CustomerExchange;
 use App\Models\DeliveryNote;
 use App\Models\FinancialAccount;
+use App\Models\FulfillmentItem;
 use App\Models\InventoryBalance;
+use App\Models\InventoryReservation;
 use App\Models\Invoice;
 use App\Models\Payment;
 use App\Models\ProductVariant;
 use App\Models\Quotation;
 use App\Models\SalesOrder;
+use App\Models\SalesOrderInventoryAllocation;
 use App\Models\Supplier;
 use App\Models\Warehouse;
 use App\Services\ActiveTenantContext;
-use App\Services\PosStockAllocator;
-use App\Services\Pos\PosOrderCompletionEligibility;
-use App\Services\ProductPriceResolver;
 use App\Services\Fulfillment\FulfillmentQuery;
+use App\Services\Pos\PosDraftLifecycle;
+use App\Services\Pos\PosOrderCompletionEligibility;
+use App\Services\PosStockAllocator;
 use App\Services\Procurement\SalesOrderProcurementPlanner;
 use App\Services\Procurement\SupplierCatalogQuery;
-use App\Services\SalesOrderPaymentCalculator;
-use App\Services\SalesMarginReportService;
-use App\Services\SalespersonEligibilityService;
+use App\Services\ProductPriceResolver;
 use App\Services\ReturnPolicyService;
+use App\Services\SalesMarginReportService;
+use App\Services\SalesOrderPaymentCalculator;
+use App\Services\SalespersonEligibilityService;
 use App\Support\Decimal;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -164,12 +170,14 @@ class SalesOrderController extends Controller
      * Supplier catalog price and last actual PO price per line still to order,
      * keyed by sales order line id; empty without purchase-price visibility.
      *
-     * @param list<array<string, mixed>> $lines
+     * @param  list<array<string, mixed>>  $lines
      * @return array<int, array<string, mixed>>
      */
     private function procurementPriceHints(SalesOrder $order, array $lines): array
     {
-        if (! SupplierCatalogQuery::canViewPrices(request()->user(), (int) $order->organization_id)) return [];
+        if (! SupplierCatalogQuery::canViewPrices(request()->user(), (int) $order->organization_id)) {
+            return [];
+        }
         $pending = array_values(array_filter($lines, fn (array $line) => $line['state'] === SalesOrderProcurementPlanner::REQUIRED
             && $line['supplier'] !== null && $line['product_variant_id'] !== null));
         $hints = app(SupplierCatalogQuery::class)->priceHints((int) $order->organization_id, array_map(fn (array $line) => [
@@ -179,7 +187,9 @@ class SalesOrderController extends Controller
         $result = [];
         foreach ($pending as $line) {
             $hint = $hints[$line['supplier']['id'].':'.$line['product_variant_id']] ?? null;
-            if ($hint !== null && ($hint['catalog_price'] !== null || $hint['last_purchase_price'] !== null)) $result[(int) $line['line_id']] = $hint;
+            if ($hint !== null && ($hint['catalog_price'] !== null || $hint['last_purchase_price'] !== null)) {
+                $result[(int) $line['line_id']] = $hint;
+            }
         }
 
         return $result;
@@ -239,8 +249,8 @@ class SalesOrderController extends Controller
         // Real handed-over quantity per line (BUG-05): a counter-fulfilled order has
         // delivered its lines; otherwise only shipped (handed to carrier / in transit /
         // delivered / closed) fulfillment items count — never "confirmed" or "reserved".
-        $shippedStatuses = collect(\App\Enums\FulfillmentStatus::cases())->filter(fn ($status) => $status->isShipped())->map->value->all();
-        $handedOver = \App\Models\FulfillmentItem::query()
+        $shippedStatuses = collect(FulfillmentStatus::cases())->filter(fn ($status) => $status->isShipped())->map->value->all();
+        $handedOver = FulfillmentItem::query()
             ->where('organization_id', $order->organization_id)
             ->whereIn('sales_order_line_id', $order->lines->pluck('id'))
             ->whereHas('fulfillment', fn ($query) => $query->whereIn('status', $shippedStatuses))
@@ -373,7 +383,7 @@ class SalesOrderController extends Controller
                     && request()->user()->hasPermission($order->organization_id, 'sales_returns.create'),
                 'createExchange' => $order->fulfillment_status === SalesOrderFulfillmentStatus::Fulfilled
                     && $order->invoices()->where('status', InvoiceStatus::Issued->value)->exists()
-                    && request()->user()->can('create', [\App\Models\CustomerExchange::class, $order]),
+                    && request()->user()->can('create', [CustomerExchange::class, $order]),
                 'viewMargin' => $canViewMargin,
                 'reassignSalesperson' => $canReassignSalesperson,
             ],
@@ -577,7 +587,7 @@ class SalesOrderController extends Controller
     /** @return array<string, mixed> */
     private function headerRules(int $organizationId): array
     {
-        return \App\Http\Requests\Sales\SalesOrderRules::header($organizationId);
+        return SalesOrderRules::header($organizationId);
     }
 
     /**
@@ -603,11 +613,11 @@ class SalesOrderController extends Controller
         }
 
         // Phase 4: routed tables (Test inventory ledger in Test Mode).
-        $a = \App\Models\SalesOrderInventoryAllocation::environmentTable();
-        $warehouses = \App\Models\SalesOrderInventoryAllocation::query()
+        $a = SalesOrderInventoryAllocation::environmentTable();
+        $warehouses = SalesOrderInventoryAllocation::query()
             ->join('sales_order_lines as l', 'l.id', '=', $a.'.sales_order_line_id')
             ->join('warehouses as w', 'w.id', '=', $a.'.warehouse_id')
-            ->leftJoin(\App\Models\InventoryReservation::environmentTable().' as r', 'r.id', '=', $a.'.inventory_reservation_id')
+            ->leftJoin(InventoryReservation::environmentTable().' as r', 'r.id', '=', $a.'.inventory_reservation_id')
             ->where($a.'.organization_id', $order->organization_id)
             ->where('l.sales_order_id', $order->getKey())
             ->orderBy('w.id')

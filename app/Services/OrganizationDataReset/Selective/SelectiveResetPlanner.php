@@ -11,10 +11,10 @@ use App\Models\SalesOrderInventoryAllocation;
 use App\Models\SalesOrderProcurement;
 use App\Services\Finance\FiscalDocumentProtection;
 use App\Services\OrganizationDataReset\OrganizationDataResetForeignKeyMap;
+use App\Services\Sandbox\SandboxProductionResetGuard;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
-use App\Services\Sandbox\SandboxProductionResetGuard;
 use Illuminate\Support\Facades\Schema;
 
 /**
@@ -329,8 +329,8 @@ class SelectiveResetPlanner
      * the ACTIVE reservations held by deleted allocations / procurements.
      * Each table is evaluated once its parents are final.
      *
-     * @param array<string, array<int,bool>> $doomed
-     * @param array<string, bool> $done
+     * @param  array<string, array<int,bool>>  $doomed
+     * @param  array<string, bool>  $done
      * @return array<string, list<int|string>>
      */
     private function logicalChildren(int $organizationId, array $doomed, array &$done): array
@@ -403,7 +403,7 @@ class SelectiveResetPlanner
     }
 
     /**
-     * @param array<string, array<int,bool>> $blocked "child.column>parent" => ids
+     * @param  array<string, array<int,bool>>  $blocked  "child.column>parent" => ids
      * @return list<array<string,mixed>>
      */
     private function blockers(int $organizationId, array $blocked, array $selectedCategories): array
@@ -440,8 +440,8 @@ class SelectiveResetPlanner
     }
 
     /**
-     * @param array<string, list<int|string>> $delete
-     * @param array<string, list<int|string>> $unlink
+     * @param  array<string, list<int|string>>  $delete
+     * @param  array<string, list<int|string>>  $unlink
      * @return array<string, array{delete: array<string,int>, unlink: array<string,int>}>
      */
     private function breakdown(SelectiveResetSelection $selection, array $delete, array $unlink): array
@@ -471,7 +471,7 @@ class SelectiveResetPlanner
      * Deterministic, type-preserving list of a set's ids (numeric order for
      * integer keys, byte order for string keys).
      *
-     * @param array<string, int|string> $set
+     * @param  array<string, int|string>  $set
      * @return list<int|string>
      */
     private function sortedIds(string $table, array $set): array
@@ -521,8 +521,8 @@ class SelectiveResetPlanner
      * and the stock balances of released reservations): any concurrent change
      * makes the preview stale.
      *
-     * @param array<string, list<int|string>> $delete
-     * @param array<string, list<int|string>> $unlink
+     * @param  array<string, list<int|string>>  $delete
+     * @param  array<string, list<int|string>>  $unlink
      */
     private function stateHash(int $organizationId, array $delete, array $unlink): string
     {

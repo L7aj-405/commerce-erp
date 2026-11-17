@@ -3,6 +3,7 @@
 namespace Tests\Feature\Inventory;
 
 use App\Models\User;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 use Tests\Support\InventoryTestCase;
 
@@ -99,7 +100,7 @@ class StockTransferReplayTest extends InventoryTestCase
         $this->actingAs($owner)->post(route('inventory.transfers.store'), $payload)->assertRedirect();
         $this->assertDatabaseHas('stock_transfers', ['organization_id' => $organization->id, 'client_operation_id' => $operation]);
 
-        \Illuminate\Support\Facades\Cache::flush();
+        Cache::flush();
         $this->actingAs($owner)->post(route('inventory.transfers.store'), $payload)->assertRedirect();
 
         $this->assertDatabaseCount('stock_transfers', 1);

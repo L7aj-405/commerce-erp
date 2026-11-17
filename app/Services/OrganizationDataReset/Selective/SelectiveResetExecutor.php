@@ -166,7 +166,7 @@ class SelectiveResetExecutor
      * foreign keys. Nullable links between doomed rows were cleared (step 3),
      * so only NOT NULL edges constrain the order.
      *
-     * @param list<string> $tables
+     * @param  list<string>  $tables
      * @return list<string>
      */
     public function order(array $tables): array
@@ -253,7 +253,7 @@ class SelectiveResetExecutor
      * we just updated (current) with reservations from the old snapshot and
      * miss a concurrent, committed reservation.
      *
-     * @param list<array{0:int,1:int}> $pairs
+     * @param  list<array{0:int,1:int}>  $pairs
      * @return list<string>
      */
     private function inconsistentReservations(int $organizationId, array $pairs): array

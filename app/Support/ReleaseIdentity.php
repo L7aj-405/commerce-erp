@@ -56,7 +56,7 @@ final class ReleaseIdentity
      * Resolution order for THIS process: live APP_COMMIT_SHA, live SOURCE_COMMIT, then the
      * (possibly cached) config value. Only a well-formed SHA is ever returned.
      *
-     * @return array{0: string, 1: string}|null  [sha, source label]
+     * @return array{0: string, 1: string}|null [sha, source label]
      */
     private static function resolveCommit(): ?array
     {

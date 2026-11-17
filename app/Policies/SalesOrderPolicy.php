@@ -3,6 +3,7 @@
 namespace App\Policies;
 
 use App\Enums\SalesOrderFulfillmentStatus;
+use App\Enums\SalesOrderSource;
 use App\Enums\SalesOrderStatus;
 use App\Models\Organization;
 use App\Models\SalesOrder;
@@ -46,7 +47,7 @@ class SalesOrderPolicy
     {
         return $this->allowed($user, $order, 'sales_orders.cancel')
             && $order->status === SalesOrderStatus::Cancelled
-            && $order->source === \App\Enums\SalesOrderSource::Pos;
+            && $order->source === SalesOrderSource::Pos;
     }
 
     public function cancel(User $user, SalesOrder $order): bool

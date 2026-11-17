@@ -2,9 +2,11 @@
 
 namespace Tests\Feature\Attention;
 
+use App\Actions\Documents\IssueInvoiceAction;
 use App\Actions\FollowUps\SaveFollowUpAction;
 use App\Actions\FollowUps\TransitionFollowUpAction;
 use App\Actions\Payments\ReversePaymentAction;
+use App\Actions\Sales\ConfirmSalesOrderAction;
 use App\Models\AttentionItem;
 use App\Models\FinancialAccount;
 use App\Models\FollowUp;
@@ -19,6 +21,7 @@ use App\Services\Attention\AttentionScanner;
 use App\Services\OrganizationDataReset\OrganizationDataResetExecutor;
 use App\Services\OrganizationDataReset\OrganizationDataResetPreviewService;
 use App\Services\OrganizationDataReset\OrganizationDataResetScope;
+use App\Services\SalesOrderPaymentCalculator;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -122,9 +125,9 @@ class InvoiceAttentionTest extends QuotationTestCase
         // Paid at issue (the normal flow): never flagged.
         [, , , $paidOrder] = [$owner, $organization, $store, $this->createDraftOrder($owner, $organization, $store, null, ['sale_date' => '2026-11-01'])];
         $this->addCustomLine($owner, $paidOrder, ['description' => 'Service', 'unit_price_excl_tax' => '50.0000']);
-        $paidOrder = app(\App\Actions\Sales\ConfirmSalesOrderAction::class)->execute($owner, $paidOrder)->fresh();
-        $this->recordPayment($owner, $paidOrder, $this->createFinancialAccount($organization, ['name' => 'B', 'code' => 'B']), app(\App\Services\SalesOrderPaymentCalculator::class)->remainingAmount($paidOrder));
-        $paid = app(\App\Actions\Documents\IssueInvoiceAction::class)->execute($owner, $this->createInvoice($owner, $paidOrder))->fresh();
+        $paidOrder = app(ConfirmSalesOrderAction::class)->execute($owner, $paidOrder)->fresh();
+        $this->recordPayment($owner, $paidOrder, $this->createFinancialAccount($organization, ['name' => 'B', 'code' => 'B']), app(SalesOrderPaymentCalculator::class)->remainingAmount($paidOrder));
+        $paid = app(IssueInvoiceAction::class)->execute($owner, $this->createInvoice($owner, $paidOrder))->fresh();
         DB::table('invoices')->where('id', $outstanding->getKey())->update(['status' => 'superseded']);
 
         $this->tick($organization, '2026-12-05 10:00:00');

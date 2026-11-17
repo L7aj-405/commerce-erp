@@ -2,8 +2,12 @@
 
 namespace Tests\Feature\Pos;
 
+use App\Models\Organization;
 use App\Models\ProductVariant;
+use App\Models\Store;
 use App\Models\User;
+use App\Models\Warehouse;
+use Illuminate\Support\Facades\DB;
 use Tests\Support\PosTestCase;
 
 class PosDraftCartTest extends PosTestCase
@@ -153,7 +157,7 @@ class PosDraftCartTest extends PosTestCase
             'delivery_notes' => 'Appeler avant',
         ];
 
-        $movementsBefore = \Illuminate\Support\Facades\DB::table('inventory_movements')->count();
+        $movementsBefore = DB::table('inventory_movements')->count();
         $first = $this->actingAs($owner)->patchJson(route('pos.drafts.update', $draft), $payload)->assertOk()->json('active_sale.checkout');
         $second = $this->actingAs($owner)->patchJson(route('pos.drafts.update', $draft), $payload)->assertOk()->json('active_sale.checkout');
 
@@ -164,7 +168,7 @@ class PosDraftCartTest extends PosTestCase
         $this->assertDatabaseCount('inventory_movements', $movementsBefore);
     }
 
-    /** @return array{User, \App\Models\Organization, \App\Models\Store, \App\Models\Warehouse, ProductVariant} */
+    /** @return array{User, Organization, Store, Warehouse, ProductVariant} */
     private function context(string $stock = '8.0000'): array
     {
         $owner = User::factory()->create();

@@ -2,21 +2,24 @@
 
 namespace Tests\Feature\Sandbox;
 
+use App\Actions\Inventory\ReleaseReservationAction;
 use App\Actions\Procurement\CreateProcurementAction;
 use App\Actions\Procurement\CreatePurchaseOrderFromProcurementRequirementsAction;
-use App\Actions\Inventory\ReleaseReservationAction;
 use App\Actions\Sales\CreateSalesOrderAction;
 use App\Actions\Sales\SaveSalesOrderLineAction;
 use App\Http\Controllers\PosController;
 use App\Models\InventoryReservation;
 use App\Models\Organization;
+use App\Models\ProductVariant;
 use App\Models\PurchaseOrderLine;
-use App\Models\Sandbox;
 use App\Models\SalesOrder;
 use App\Models\SalesOrderInventoryAllocation;
+use App\Models\Sandbox;
+use App\Models\Store;
 use App\Models\Supplier;
 use App\Models\User;
 use App\Models\UserNotification;
+use App\Models\Warehouse;
 use App\Services\Sandbox\SandboxResetExecutor;
 use App\Services\Sandbox\SandboxResetPlanner;
 use App\Services\Sandbox\SandboxStaleGenerationException;
@@ -193,7 +196,7 @@ class SandboxRaceWindowsTest extends QuotationTestCase
         $this->assertEquals($production, $this->getJson('/notifications/feed')->assertOk()->json());
     }
 
-    /** @return array{User, Organization, \App\Models\Store, \App\Models\ProductVariant, \App\Models\Warehouse} */
+    /** @return array{User, Organization, Store, ProductVariant, Warehouse} */
     private function fixture(): array
     {
         [$owner, $org, $store, $variant] = $this->quotationCatalogFixture();

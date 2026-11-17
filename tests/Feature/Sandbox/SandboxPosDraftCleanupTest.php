@@ -3,7 +3,6 @@
 namespace Tests\Feature\Sandbox;
 
 use App\Http\Controllers\PosController;
-use App\Models\SalesOrder;
 use App\Services\Sandbox\SandboxContext;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;

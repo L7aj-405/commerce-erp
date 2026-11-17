@@ -9,9 +9,10 @@ use App\Models\OrganizationBackupCloudCopy;
 use App\Models\OrganizationBackupSetting;
 use App\Models\OrganizationMailSetting;
 use App\Models\SystemHealthHeartbeat;
-use App\Support\ReleaseIdentity;
 use App\Models\WooCommerceSyncRun;
+use App\Support\ReleaseIdentity;
 use App\Support\SensitiveDataRedactor;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -86,8 +87,8 @@ final class SystemHealthService
             return 'Unverified';
         }
         try {
-            return \Illuminate\Support\Carbon::parse($value)->toIso8601String();
-        } catch (\Throwable) {
+            return Carbon::parse($value)->toIso8601String();
+        } catch (Throwable) {
             return 'Unverified';
         }
     }
@@ -216,7 +217,9 @@ final class SystemHealthService
     private function scheduler(): array
     {
         $heartbeat = SystemHealthHeartbeat::query()->find('scheduler');
-        if (! $heartbeat?->last_seen_at) return $this->check('degraded', 'Aucun heartbeat du scheduler reçu.', ['last_seen_at' => null, 'expected_cadence_seconds' => 60]);
+        if (! $heartbeat?->last_seen_at) {
+            return $this->check('degraded', 'Aucun heartbeat du scheduler reçu.', ['last_seen_at' => null, 'expected_cadence_seconds' => 60]);
+        }
         $fresh = $heartbeat->last_seen_at->gte(now()->subMinutes(max(1, (int) config('system-health.scheduler_heartbeat_stale_minutes'))));
 
         return $this->check($fresh ? 'operational' : 'degraded', $fresh ? 'Le scheduler s’exécute normalement.' : 'Le heartbeat du scheduler est ancien.', [
@@ -273,7 +276,9 @@ final class SystemHealthService
     {
         $total = @disk_total_space(storage_path());
         $free = @disk_free_space(storage_path());
-        if (! is_numeric($total) || ! is_numeric($free) || $total <= 0) return $this->check('unknown', 'Statistiques disque indisponibles.');
+        if (! is_numeric($total) || ! is_numeric($free) || $total <= 0) {
+            return $this->check('unknown', 'Statistiques disque indisponibles.');
+        }
         $used = $total - $free;
         $percent = round(($used / $total) * 100, 1);
         $status = $this->classifyDiskUsage($percent);
@@ -292,7 +297,9 @@ final class SystemHealthService
     private function smtp(Organization $organization): array
     {
         $setting = OrganizationMailSetting::query()->where('organization_id', $organization->getKey())->first();
-        if (! $setting) return $this->check('unknown', 'SMTP non configuré.', ['configured' => false]);
+        if (! $setting) {
+            return $this->check('unknown', 'SMTP non configuré.', ['configured' => false]);
+        }
         $status = $setting->last_test_ok === false ? 'degraded' : ($setting->last_test_ok === true ? 'operational' : 'unknown');
 
         return $this->check($status, $setting->last_test_ok === true ? 'Dernier test SMTP réussi.' : ($setting->last_test_ok === false ? 'Dernier test SMTP échoué.' : 'SMTP configuré mais non testé.'), [
@@ -305,7 +312,10 @@ final class SystemHealthService
     /** @return list<array<string, mixed>> */
     private function recentFailedJobs(): array
     {
-        if (! Schema::hasTable('failed_jobs')) return [];
+        if (! Schema::hasTable('failed_jobs')) {
+            return [];
+        }
+
         return DB::table('failed_jobs')->latest('failed_at')->limit(10)->get(['uuid', 'connection', 'queue', 'failed_at'])
             ->map(fn ($job) => ['uuid' => $job->uuid, 'connection' => $job->connection, 'queue' => $job->queue, 'failed_at' => $job->failed_at])->all();
     }
@@ -322,7 +332,10 @@ final class SystemHealthService
     /** @return array<string, mixed>|null */
     private function syncSummary(?WooCommerceSyncRun $run): ?array
     {
-        if (! $run) return null;
+        if (! $run) {
+            return null;
+        }
+
         return ['id' => $run->id, 'status' => $run->status, 'started_at' => $run->started_at?->toIso8601String(), 'completed_at' => $run->completed_at?->toIso8601String(),
             'duration_seconds' => $run->started_at && $run->completed_at ? $run->started_at->diffInSeconds($run->completed_at) : null,
             'products_read' => $run->products_read, 'products_created' => $run->products_created, 'products_updated' => $run->products_updated,

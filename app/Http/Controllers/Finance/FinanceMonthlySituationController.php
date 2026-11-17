@@ -6,17 +6,16 @@ use App\Actions\Finance\ManageFinanceObligationAction;
 use App\Actions\Finance\RecordFinanceOutgoingPaymentAction;
 use App\Actions\Finance\ReverseFinanceOutgoingPaymentAction;
 use App\Enums\FinanceObligationCategory;
-use App\Enums\PaymentMethod;
 use App\Enums\FinancePaymentMethod;
+use App\Enums\PaymentMethod;
 use App\Http\Controllers\Controller;
 use App\Models\FinanceObligation;
 use App\Models\FinanceOutgoingPayment;
 use App\Models\FinanceRecurringObligationTemplate;
 use App\Models\FinancialAccount;
+use App\Models\PaymentAllocation;
 use App\Models\Store;
 use App\Models\Supplier;
-use App\Models\SalesOrder;
-use App\Models\PaymentAllocation;
 use App\Services\ActiveTenantContext;
 use App\Services\Finance\FinanceAccessGuard;
 use App\Services\Finance\FinanceMonthlySituationService;
@@ -24,8 +23,8 @@ use App\Services\Finance\FinanceMonthReviewService;
 use App\Services\Finance\FinancePeriod;
 use App\Services\Finance\FinanceReceivablesService;
 use App\Services\Finance\FinanceTreasuryForecastService;
-use App\Support\Decimal;
 use App\Services\Security\FreshAuthentication;
+use App\Support\Decimal;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -57,6 +56,7 @@ class FinanceMonthlySituationController extends Controller
             ->withSum('expectedCollectionMatches as matched_amount', 'amount')->get()
             ->map(function ($allocation) {
                 $available = Decimal::subtract((string) $allocation->amount, (string) ($allocation->matched_amount ?? '0'));
+
                 return ['id' => $allocation->id, 'sales_order_id' => $allocation->sales_order_id, 'number' => $allocation->payment->payment_number,
                     'date' => $allocation->payment->payment_date->toDateString(), 'available' => $available];
             })->filter(fn ($row) => Decimal::compare($row['available'], '0.0000') > 0)->values();
@@ -106,6 +106,7 @@ class FinanceMonthlySituationController extends Controller
         $organization = $context->organizationOrFail();
         $guard->authorizeMonthlySituationManage($request->user(), $organization);
         $action->create($request->user(), $organization, $request->validate($this->obligationRules()));
+
         return back()->with('success', 'Obligation ajoutée.');
     }
 
@@ -113,6 +114,7 @@ class FinanceMonthlySituationController extends Controller
     {
         $guard->authorizeMonthlySituationManage($request->user(), $obligation->organization);
         $action->update($request->user(), $obligation, $request->validate($this->obligationRules()));
+
         return back()->with('success', 'Obligation mise à jour.');
     }
 
@@ -121,6 +123,7 @@ class FinanceMonthlySituationController extends Controller
         $guard->authorizeMonthlySituationManage($request->user(), $obligation->organization);
         $data = $request->validate(['reason' => ['required', 'string', 'max:2000']]);
         $action->cancel($request->user(), $obligation, $data['reason']);
+
         return back()->with('success', 'Obligation annulée.');
     }
 
@@ -146,6 +149,7 @@ class FinanceMonthlySituationController extends Controller
             'allocations.*.amount' => ['required', 'decimal:0,4', 'gt:0'],
         ]);
         $action->execute($request->user(), $organization, $data);
+
         return back()->with('success', 'Paiement sortant enregistré.');
     }
 
@@ -155,6 +159,7 @@ class FinanceMonthlySituationController extends Controller
         $fresh->ensure($request, FreshAuthentication::LEVEL_ACCOUNT);
         $data = $request->validate(['reason' => ['required', 'string', 'max:2000']]);
         $action->execute($request->user(), $outgoingPayment, $data['reason']);
+
         return back()->with('success', 'Paiement sortant inversé.');
     }
 

@@ -2,8 +2,10 @@
 
 namespace Tests\Feature\SystemHealth;
 
+use App\Jobs\RecordQueueWorkerHeartbeatJob;
 use App\Models\SystemHealthHeartbeat;
 use App\Models\User;
+use App\Support\ReleaseIdentity;
 use Illuminate\Support\Facades\Cache;
 use Tests\Support\PlatformTestCase;
 
@@ -36,7 +38,7 @@ class SystemHealthReleaseVisibilityTest extends PlatformTestCase
         putenv('SOURCE_COMMIT='.$sha);
         putenv('APP_BUILD_AT=2026-11-17T10:04:00+00:00');
 
-        (new \App\Jobs\RecordQueueWorkerHeartbeatJob)->handle();
+        (new RecordQueueWorkerHeartbeatJob)->handle();
 
         $metadata = SystemHealthHeartbeat::query()->find('queue_worker')->metadata;
         $this->assertSame($sha, $metadata['commit']);
@@ -52,7 +54,7 @@ class SystemHealthReleaseVisibilityTest extends PlatformTestCase
     public function test_worker_with_an_older_release_than_the_app_is_flagged(): void
     {
         putenv('SOURCE_COMMIT=1111111111111111111111111111111111111111');
-        (new \App\Jobs\RecordQueueWorkerHeartbeatJob)->handle();
+        (new RecordQueueWorkerHeartbeatJob)->handle();
         // The web app is now on a newer release than the (long-running) worker.
         putenv('SOURCE_COMMIT=2222222222222222222222222222222222222222');
 
@@ -67,13 +69,13 @@ class SystemHealthReleaseVisibilityTest extends PlatformTestCase
         config()->set('system-health.commit_sha', null);
         putenv('SOURCE_COMMIT=3333333333333333333333333333333333333333');
         putenv('APP_COMMIT_SHA=4444444444444444444444444444444444444444');
-        $this->assertSame('4444444444444444444444444444444444444444', \App\Support\ReleaseIdentity::commit());
-        $this->assertSame('APP_COMMIT_SHA (runtime env)', \App\Support\ReleaseIdentity::commitSource());
+        $this->assertSame('4444444444444444444444444444444444444444', ReleaseIdentity::commit());
+        $this->assertSame('APP_COMMIT_SHA (runtime env)', ReleaseIdentity::commitSource());
 
         putenv('APP_COMMIT_SHA=garbage');
         putenv('SOURCE_COMMIT=also not a sha');
-        $this->assertNull(\App\Support\ReleaseIdentity::commit());
-        (new \App\Jobs\RecordQueueWorkerHeartbeatJob)->handle();
+        $this->assertNull(ReleaseIdentity::commit());
+        (new RecordQueueWorkerHeartbeatJob)->handle();
         $data = $this->actingAs($this->owner())->getJson(route('system-health.index'))->json('checks.application.data');
         $this->assertSame('Unverified', $data['commit']);
         $this->assertSame('Unverified', $data['worker_commit']);
@@ -214,17 +216,17 @@ class SystemHealthReleaseVisibilityTest extends PlatformTestCase
     /** Round 3 ISSUE 3: a dead worker must not pile up identical probes, and the page says what is waiting. */
     public function test_scheduler_skips_a_new_probe_while_one_is_already_waiting(): void
     {
-        $this->assertFalse(\App\Jobs\RecordQueueWorkerHeartbeatJob::alreadyPending());
+        $this->assertFalse(RecordQueueWorkerHeartbeatJob::alreadyPending());
 
-        dispatch(new \App\Jobs\RecordQueueWorkerHeartbeatJob);
+        dispatch(new RecordQueueWorkerHeartbeatJob);
 
-        $this->assertTrue(\App\Jobs\RecordQueueWorkerHeartbeatJob::alreadyPending());
+        $this->assertTrue(RecordQueueWorkerHeartbeatJob::alreadyPending());
         $this->assertDatabaseCount('jobs', 1);
     }
 
     public function test_queue_card_lists_pending_job_types_read_only_and_is_critical_without_worker(): void
     {
-        dispatch(new \App\Jobs\RecordQueueWorkerHeartbeatJob);
+        dispatch(new RecordQueueWorkerHeartbeatJob);
         $owner = $this->owner();
 
         $queue = $this->actingAs($owner)->getJson(route('system-health.index'))->assertOk()->json('checks.queue');

@@ -4,10 +4,13 @@ namespace App\Http\Controllers\Settings;
 
 use App\Actions\Settings\SetOrganizationFiscalDataModeAction;
 use App\Http\Controllers\Controller;
+use App\Models\Organization;
+use App\Models\User;
+use App\Models\Warehouse;
 use App\Services\ActiveTenantContext;
 use App\Services\Finance\FiscalDocumentProtection;
-use App\Services\OrganizationDataReset\OrganizationDataResetBlockedException;
 use App\Services\OrganizationDataReset\OrganizationDataResetAlreadyExecutedException;
+use App\Services\OrganizationDataReset\OrganizationDataResetBlockedException;
 use App\Services\OrganizationDataReset\OrganizationDataResetConfirmation;
 use App\Services\OrganizationDataReset\OrganizationDataResetException;
 use App\Services\OrganizationDataReset\OrganizationDataResetExecutor;
@@ -16,17 +19,16 @@ use App\Services\OrganizationDataReset\OrganizationDataResetPlan;
 use App\Services\OrganizationDataReset\OrganizationDataResetPreviewService;
 use App\Services\OrganizationDataReset\OrganizationDataResetScope;
 use App\Services\OrganizationDataReset\OrganizationDataResetStalePlanException;
-use App\Services\Security\FreshAuthentication;
-use App\Models\Warehouse;
 use App\Services\OrganizationDataReset\Selective\SelectiveResetCategoryRegistry;
 use App\Services\OrganizationDataReset\Selective\SelectiveResetExecutor;
 use App\Services\OrganizationDataReset\Selective\SelectiveResetPlan;
 use App\Services\OrganizationDataReset\Selective\SelectiveResetPlanner;
 use App\Services\OrganizationDataReset\Selective\SelectiveResetSelection;
+use App\Services\Security\FreshAuthentication;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
-use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -90,7 +92,7 @@ class OrganizationDataResetController extends Controller
     }
 
     /** @return array<string,mixed> */
-    private function fiscalState(\App\Models\Organization $organization, \App\Models\User $user, FiscalDocumentProtection $fiscal): array
+    private function fiscalState(Organization $organization, User $user, FiscalDocumentProtection $fiscal): array
     {
         $counts = $fiscal->protectedCounts($organization);
         $isOwner = (int) $organization->owner_id === (int) $user->getKey();
@@ -335,7 +337,7 @@ class OrganizationDataResetController extends Controller
         ]);
     }
 
-    private function authorizeActor(Request $request, \App\Models\Organization $organization): void
+    private function authorizeActor(Request $request, Organization $organization): void
     {
         $user = $request->user();
         abort_unless(

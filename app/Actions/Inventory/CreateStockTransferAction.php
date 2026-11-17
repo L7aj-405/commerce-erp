@@ -9,6 +9,7 @@ use App\Models\StockTransferLine;
 use App\Models\User;
 use App\Models\Warehouse;
 use App\Services\AuditLogger;
+use App\Services\Sandbox\SandboxContext;
 use App\Services\ShowroomReplenishmentPlanner;
 use App\Services\StockTransferNumberGenerator;
 use App\Support\InventoryQuantity;
@@ -117,7 +118,7 @@ class CreateStockTransferAction
             );
 
             // Transfer requests are Production-only: a Test transfer has no promises to honour.
-            if ($respectTransferPromises && ! app(\App\Services\Sandbox\SandboxContext::class)->isSandbox()) {
+            if ($respectTransferPromises && ! app(SandboxContext::class)->isSandbox()) {
                 $this->assertPromisesStillCovered($organization, $source, $movements);
             }
 
@@ -132,22 +133,22 @@ class CreateStockTransferAction
             $transfer->reason = $reason;
             $transfer->product_count = count($movements);
             $transfer->unit_count = collect($movements)
-                ->reduce(fn(string $carry, array $line) => InventoryQuantity::add($carry, $line['quantity']), InventoryQuantity::ZERO);
+                ->reduce(fn (string $carry, array $line) => InventoryQuantity::add($carry, $line['quantity']), InventoryQuantity::ZERO);
             $transfer->performed_by_user_id = $actor->getKey();
             $transfer->transferred_at = now();
             $transfer->save();
 
             foreach ($movements as $line) {
-    $transferLine = new StockTransferLine;
+                $transferLine = new StockTransferLine;
 
-    $transferLine->organization_id = $organization->getKey();
-    $transferLine->product_variant_id = $line['variant']->getKey();
-    $transferLine->quantity = $line['quantity'];
-    $transferLine->source_out_movement_id = $line['out']->getKey();
-    $transferLine->destination_in_movement_id = $line['in']->getKey();
+                $transferLine->organization_id = $organization->getKey();
+                $transferLine->product_variant_id = $line['variant']->getKey();
+                $transferLine->quantity = $line['quantity'];
+                $transferLine->source_out_movement_id = $line['out']->getKey();
+                $transferLine->destination_in_movement_id = $line['in']->getKey();
 
-    $transfer->lines()->save($transferLine);
-}
+                $transfer->lines()->save($transferLine);
+            }
 
             $this->audit->record('stock_transfer.created', $actor, $organization, auditable: $transfer, newValues: [
                 'transfer_number' => $transferNumber,

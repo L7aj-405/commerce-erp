@@ -127,12 +127,68 @@ jobs:
       - name: Production build
         run: npm run build
 
-  pint:
-    name: Code style (Laravel Pint, check only - advisory)
+  pint-changed:
+    name: Code style (Pint on changed PHP files)
     runs-on: ubuntu-24.04
     timeout-minutes: 10
-    # The legacy code base predates this check and does not match the Laravel preset yet. Until a
-    # formatting baseline is approved this job REPORTS the debt (annotation + log) without blocking.
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@bf6b4fbd49ca58e4608c9c89fba0b8d90bd2a39f # 2.35.5
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          extensions: ${{ env.PHP_EXTENSIONS }}
+          coverage: none
+          tools: composer:v2
+
+      - name: Locate the Composer cache
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Composer downloads
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: composer-${{ runner.os }}-php${{ env.PHP_VERSION }}-${{ hashFiles('composer.lock') }}
+          restore-keys: composer-${{ runner.os }}-php${{ env.PHP_VERSION }}-
+
+      - name: Install dependencies
+        run: composer install --no-interaction --no-progress --prefer-dist
+
+      - name: Determine the PHP files changed by this change set
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          case "$EVENT" in
+            pull_request) base="$PR_BASE" ;;
+            push) base="$PUSH_BEFORE" ;;
+            *) base="$(git merge-base origin/main HEAD)" ;;
+          esac
+          if [ -z "$base" ] || [ "$base" = "0000000000000000000000000000000000000000" ] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
+            base="$(git rev-parse HEAD~1)"
+          fi
+          git diff --name-only --diff-filter=ACMR "$base" HEAD -- '*.php' > changed-php.txt
+          echo "Comparing against $base: $(wc -l < changed-php.txt) changed PHP files"
+
+      - name: Pint (check only, never rewrites files) on the changed files
+        run: |
+          if [ ! -s changed-php.txt ]; then echo "No PHP files changed."; exit 0; fi
+          xargs -a changed-php.txt vendor/bin/pint --test
+
+  pint-baseline:
+    name: Code style baseline (Pint, whole repo - advisory)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    # Legacy files predate the Pint check. This job keeps the remaining debt VISIBLE (count + rules in an
+    # annotation) until a mechanical formatting baseline is approved; new and changed code is gated above.
     continue-on-error: true
     steps:
       - name: Checkout
@@ -162,7 +218,7 @@ jobs:
       - name: Install dependencies
         run: composer install --no-interaction --no-progress --prefer-dist
 
-      - name: "Pint (test mode - reports violations, never rewrites files)"
+      - name: Pint (whole repository, check only)
         run: |
           set +e
           vendor/bin/pint --test --format=json > pint-report.json
@@ -170,11 +226,13 @@ jobs:
           python3 .github/scripts/ci_annotate.py pint pint-report.json
           exit $code
 
-  dependency-audit:
-    name: Dependency audit (informational)
+  composer-audit:
+    name: Composer audit (locked dependencies)
     runs-on: ubuntu-24.04
     timeout-minutes: 10
-    # Advisory only: known findings must not block unrelated work, but they stay visible in every run.
+    # TEMPORARILY non-blocking: the lockfile currently contains known advisories that need a deliberate
+    # dependency upgrade (see docs/ops/ci-and-branch-protection.md). The job still FAILS and annotates
+    # every finding; do not remove it, and make it blocking as soon as the upgrade lands.
     continue-on-error: true
     steps:
       - name: Checkout
@@ -189,34 +247,53 @@ jobs:
           coverage: none
           tools: composer:v2
 
+      - name: "Composer audit (--locked - audits composer.lock itself, nothing is installed)"
+        run: |
+          set +e
+          composer audit --locked --no-interaction --format=json > composer-audit.json 2> composer-audit.err
+          code=$?
+          composer audit --locked --no-interaction || true
+          python3 .github/scripts/ci_annotate.py composer composer-audit.json composer-audit.err "$code"
+          exit $code
+
+  npm-audit:
+    name: npm audit (production dependencies)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
       - name: Set up Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      - name: Composer audit
+      - name: npm audit (blocks on high/critical; moderate and below are annotated)
         run: |
           set +e
-          composer audit --no-interaction > composer-audit.txt 2>&1
+          npm audit --omit=dev --json > npm-audit.json 2> npm-audit.err
           code=$?
-          cat composer-audit.txt
-          python3 .github/scripts/ci_annotate.py tail composer-audit.txt "composer audit"
-          exit $code
-
-      - name: npm audit (production dependencies)
-        run: npm audit --omit=dev
+          npm audit --omit=dev || true
+          python3 .github/scripts/ci_annotate.py npm npm-audit.json "$code"
+          # Fail on high/critical findings, or when the audit itself could not run.
+          python3 .github/scripts/ci_annotate.py npm-gate npm-audit.json
 
   # One stable status to require in branch protection: green only when every BLOCKING job passed
-  # (php-tests, frontend). Pint and the dependency audit are advisory for now.
+  # (php-tests, frontend, pint-changed, npm-audit). The Pint baseline and composer-audit are advisory for now.
   ci-gate:
     name: CI gate
     if: always()
-    needs: [php-tests, frontend]
+    needs: [php-tests, frontend, pint-changed, npm-audit]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - name: Require all blocking jobs to succeed
         run: |
-          echo "php-tests=${{ needs.php-tests.result }} frontend=${{ needs.frontend.result }}"
+          echo "php-tests=${{ needs.php-tests.result }} frontend=${{ needs.frontend.result }} pint-changed=${{ needs.pint-changed.result }} npm-audit=${{ needs.npm-audit.result }}"
           test "${{ needs.php-tests.result }}" = "success"
           test "${{ needs.frontend.result }}" = "success"
+          test "${{ needs.pint-changed.result }}" = "success"
+          test "${{ needs.npm-audit.result }}" = "success"

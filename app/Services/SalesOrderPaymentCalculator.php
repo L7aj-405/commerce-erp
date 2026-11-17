@@ -87,7 +87,7 @@ class SalesOrderPaymentCalculator
      * Batch form of summary(), used by paginated read models to keep the
      * authoritative payment/return rules without introducing an N+1 query.
      *
-     * @param iterable<int, SalesOrder> $orders
+     * @param  iterable<int, SalesOrder>  $orders
      * @return array<int, array{paid: string, collected: string, refunded: string, net: string, returned: string, commercial_total: string, remaining: string, status: string, last_payment_date: ?string}>
      */
     public function summaries(iterable $orders, ?Carbon $asOf = null): array

@@ -14,6 +14,7 @@ use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Testing\TestResponse;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\Support\PosTestCase;
 
@@ -368,7 +369,7 @@ class PosDraftAbandonmentTest extends PosTestCase
         return $this->withCredentials()->withCookie(PosController::TERMINAL_COOKIE, $this->terminal)->actingAs($this->owner);
     }
 
-    private function abandon(int $draft): \Illuminate\Testing\TestResponse
+    private function abandon(int $draft): TestResponse
     {
         return $this->actingPos()->postJson(route('pos.drafts.abandon', $draft));
     }

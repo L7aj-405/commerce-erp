@@ -16,6 +16,7 @@ use App\Services\Pos\PosDraftLifecycle;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Testing\TestResponse;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\Support\PosTestCase;
 
@@ -370,7 +371,7 @@ class PosDraftLifecycleTest extends PosTestCase
         return (int) $response->json('active_sale.lines.0.id');
     }
 
-    private function removeLine(int $draft, int $lineId): \Illuminate\Testing\TestResponse
+    private function removeLine(int $draft, int $lineId): TestResponse
     {
         return $this->withCredentials()->withCookie(PosController::TERMINAL_COOKIE, $this->terminal)->actingAs($this->owner)
             ->deleteJson(route('pos.drafts.lines.destroy', [$draft, $lineId]))->assertOk();
