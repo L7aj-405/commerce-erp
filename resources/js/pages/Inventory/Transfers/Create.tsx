@@ -1,4 +1,5 @@
 import TransferLinePicker, { type PickerItem, type PickerLine } from '@/components/inventory/TransferLinePicker';
+import { Alert } from '@/components/ui/Alert';
 import { Button, ButtonLink } from '@/components/ui/Button';
 import EmptyState from '@/components/ui/EmptyState';
 import SandboxStockBadge from '@/components/SandboxStockBadge';
@@ -47,8 +48,12 @@ export default function TransferCreate({ filters, warehouses, searchResults, pre
     const [searching, setSearching] = useState(false);
     const [lines, setLines] = useState<PickerLine[]>([]);
     // One idempotency key per form instance: a retry / double click replays the same transfer.
-    const [operationId] = useState(newOperationId);
+    // It only changes when the user explicitly starts a NEW transfer, never on a retry.
+    const [operationId, setOperationId] = useState(newOperationId);
     const [submitted, setSubmitted] = useState(false);
+    // The request ended without a server answer (network drop, 5xx, non-Inertia reply): the
+    // transfer may or may not exist. The same operation id is replayed on retry.
+    const [uncertain, setUncertain] = useState(false);
     const form = useForm({
         source_warehouse_id: filters.source_warehouse_id ? String(filters.source_warehouse_id) : '',
         destination_warehouse_id: filters.destination_warehouse_id ? String(filters.destination_warehouse_id) : '',
@@ -109,21 +114,42 @@ export default function TransferCreate({ filters, warehouses, searchResults, pre
     }, [searchResults]);
 
     function submit() {
+        if (submitted || form.processing) return;
         form.transform((data) => ({
             ...data,
             lines: lines.map((line) => ({ product_variant_id: line.product_variant_id, quantity: Number(line.quantity) })),
             client_operation_id: operationId,
         }));
-        if (submitted || form.processing) return;
+        setUncertain(false);
+        // Outcome of this attempt: a success or a validation error is a definite answer;
+        // anything else (network failure, 5xx) is uncertain and must be retried with the SAME id.
+        let answered = false;
         form.post('/inventory/transfers', {
             preserveScroll: true,
-            // The server redirects to the transfer; until that navigation completes the
-            // form stays locked so a second click can never submit the same movement again.
             onSuccess: () => {
+                answered = true;
+                // The server normally redirects to the created transfer. If this component is
+                // still mounted, lock the form and show an explicit confirmation instead.
                 setSubmitted(true);
                 setLines([]);
+                form.reset();
+            },
+            onError: () => {
+                answered = true;
+            },
+            onFinish: () => {
+                if (!answered) setUncertain(true);
             },
         });
+    }
+
+    function startNewTransfer() {
+        setOperationId(newOperationId());
+        setSubmitted(false);
+        setUncertain(false);
+        setLines([]);
+        form.reset();
+        form.clearErrors();
     }
 
     if (warehouses.length < 2) {
@@ -153,6 +179,21 @@ export default function TransferCreate({ filters, warehouses, searchResults, pre
                 description={t('inventory.transferCreate.description')}
                 actions={<ButtonLink href="/inventory/transfers" variant="secondary">{t('inventory.transferCreate.back')}</ButtonLink>}
             />
+
+            {submitted && (
+                <Alert tone="success" className="mb-4 px-4 py-3" title={t('inventory.transferCreate.successTitle')}>
+                    <p>{t('inventory.transferCreate.successBody')}</p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                        <ButtonLink href="/inventory/transfers" variant="secondary">{t('inventory.transferCreate.viewTransfers')}</ButtonLink>
+                        <Button type="button" variant="secondary" onClick={startNewTransfer}>{t('inventory.transferCreate.newTransfer')}</Button>
+                    </div>
+                </Alert>
+            )}
+            {uncertain && !submitted && (
+                <Alert tone="warning" className="mb-4 px-4 py-3" title={t('inventory.transferCreate.uncertainTitle')}>
+                    {t('inventory.transferCreate.uncertainBody')}
+                </Alert>
+            )}
 
             <section className="mb-4 surface-card p-4 shadow-soft sm:p-5">
                 <h2 className="text-base font-semibold text-ink">{t('inventory.transferCreate.info')}</h2>
@@ -201,7 +242,7 @@ export default function TransferCreate({ filters, warehouses, searchResults, pre
                         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
                             <Link href="/inventory/transfers" className="inline-flex min-h-10 items-center justify-center rounded-field border border-line-strong bg-surface px-4 text-sm font-medium text-ink transition-soft hover:bg-sage">{t('common.cancel')}</Link>
                             <Button type="button" onClick={submit} disabled={!canSubmit} loading={form.processing} loadingText={t('inventory.transferCreate.creating')}>
-                                {t('inventory.transferCreate.create')}
+                                {uncertain ? t('inventory.transferCreate.retry') : t('inventory.transferCreate.create')}
                             </Button>
                         </div>
                         <p className="text-xs leading-relaxed text-ink-muted">{t('inventory.transferCreate.serverValidation')}</p>

@@ -67,8 +67,24 @@ final class SystemHealthService
             'debug_safe' => ! $debug,
             'version' => config('app.version') ?: config('system-health.app_version'),
             'commit' => config('system-health.commit_sha') ?: 'Unverified',
-            'build_at' => config('system-health.build_at') ?: (is_file($manifest) ? date(DATE_ATOM, filemtime($manifest)) : 'Unverified'),
+            'build_at' => $this->isoOrUnverified(config('system-health.build_at') ?: (is_file($manifest) ? date(DATE_ATOM, (int) filemtime($manifest)) : null)),
         ] + $this->workerBuild());
+    }
+
+    /**
+     * A timestamp is only ever exposed as a valid ISO-8601 string; null, empty or malformed
+     * input becomes "Unverified" so the UI never has to guess (or crash) on it.
+     */
+    private function isoOrUnverified(mixed $value): string
+    {
+        if (! is_string($value) || trim($value) === '') {
+            return 'Unverified';
+        }
+        try {
+            return \Illuminate\Support\Carbon::parse($value)->toIso8601String();
+        } catch (\Throwable) {
+            return 'Unverified';
+        }
     }
 
     /**
@@ -87,7 +103,7 @@ final class SystemHealthService
 
         return [
             'worker_commit' => $commit ?? 'Unverified',
-            'worker_build_at' => $fresh && is_string($metadata['build_at'] ?? null) && $metadata['build_at'] !== '' ? $metadata['build_at'] : 'Unverified',
+            'worker_build_at' => $fresh ? $this->isoOrUnverified($metadata['build_at'] ?? null) : 'Unverified',
             'worker_matches_app' => $commit === null || $app === '' ? 'Unverified' : ($commit === $app ? 'yes' : 'NO — redeploy worker'),
         ];
     }

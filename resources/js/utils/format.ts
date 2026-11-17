@@ -79,11 +79,31 @@ export function formatDate(value: string): string {
     return new Intl.DateTimeFormat(uiLocale()).format(new Date(value));
 }
 
-export function formatDateTime(value: string): string {
-    return new Intl.DateTimeFormat(uiLocale(), {
-        dateStyle: 'short',
-        timeStyle: 'short',
-    }).format(new Date(value));
+/**
+ * Parses a backend timestamp without ever throwing. Returns null for null, empty,
+ * malformed or placeholder values ("Unverified", "N/A"...), so callers can render a
+ * labelled fallback instead of crashing on `Intl.DateTimeFormat#format(Invalid Date)`.
+ */
+export function parseDateValue(value: unknown): Date | null {
+    if (value === null || value === undefined || value === '') return null;
+    if (typeof value !== 'string' && typeof value !== 'number') return null;
+    if (typeof value === 'string' && value.trim() === '') return null;
+    const date = new Date(value);
+
+    return Number.isNaN(date.getTime()) ? null : date;
+}
+
+export function formatDateTime(value: string | number | null | undefined, fallback = '—'): string {
+    const date = parseDateValue(value);
+    if (date === null) return fallback;
+    try {
+        return new Intl.DateTimeFormat(uiLocale(), {
+            dateStyle: 'short',
+            timeStyle: 'short',
+        }).format(date);
+    } catch {
+        return fallback;
+    }
 }
 
 export function formatInteger(value: number): string {
