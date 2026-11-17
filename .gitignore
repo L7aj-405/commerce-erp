@@ -47,3 +47,6 @@ Thumbs.db
 *.swp
 *.swo
 desktop.ini
+
+# CI / local JUnit reports
+/build

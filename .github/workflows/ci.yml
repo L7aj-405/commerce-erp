@@ -1,0 +1,199 @@
+name: CI
+
+# Continuous integration only: this workflow never deploys, never reads application secrets and never
+# connects to a Staging or Production service. Every job runs on a fresh, ephemeral runner with
+# SQLite in memory (see phpunit.xml). Actions are pinned to immutable commit SHAs (tag in the comment).
+
+on:
+  pull_request:
+    branches: [main, staging]
+  push:
+    branches: [main, staging]
+  workflow_dispatch:
+
+# Least privilege: the token can only read the repository contents.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  PHP_VERSION: '8.4'
+  NODE_VERSION: '22'
+  # composer.json requires these (plus the framework / PDF / spreadsheet needs); pcntl is used by queue timeouts.
+  PHP_EXTENSIONS: bcmath, ctype, dom, fileinfo, filter, gd, hash, iconv, json, libxml, mbstring, openssl, pcntl, pdo_mysql, pdo_sqlite, phar, session, sqlite3, tokenizer, xml, xmlreader, xmlwriter, zip
+
+jobs:
+  php-tests:
+    name: PHP tests (full suite)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@bf6b4fbd49ca58e4608c9c89fba0b8d90bd2a39f # 2.35.5
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          extensions: ${{ env.PHP_EXTENSIONS }}
+          coverage: none
+          tools: composer:v2
+
+      - name: Locate the Composer cache
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Composer downloads
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: composer-${{ runner.os }}-php${{ env.PHP_VERSION }}-${{ hashFiles('composer.lock') }}
+          restore-keys: composer-${{ runner.os }}-php${{ env.PHP_VERSION }}-
+
+      - name: Validate composer files and platform requirements
+        run: |
+          composer validate --no-check-publish --strict
+          composer install --no-interaction --no-progress --prefer-dist
+          composer check-platform-reqs
+
+      - name: Prepare an isolated test environment
+        run: |
+          # A throw-away environment file: placeholders only, no real credentials. phpunit.xml forces
+          # DB_CONNECTION=sqlite / DB_DATABASE=:memory:, array cache + session and the sync queue.
+          cp .env.example .env
+          php artisan key:generate --no-interaction
+          php artisan config:clear
+
+      - name: Guard - no shared build assets, no external database
+        run: |
+          # Tests must not depend on (or race with) a frontend build: it lives in a separate job/runner.
+          test ! -e public/build
+          grep -q 'name="DB_CONNECTION" value="sqlite"' phpunit.xml
+          grep -q 'name="DB_DATABASE" value=":memory:"' phpunit.xml
+
+      - name: Run the complete PHP test suite
+        run: >
+          vendor/bin/phpunit
+          --no-progress
+          --display-warnings --display-deprecations --display-notices --display-skipped
+          --log-junit build/phpunit-junit.xml
+
+      - name: Upload JUnit report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: phpunit-junit
+          path: build/phpunit-junit.xml
+          if-no-files-found: ignore
+          retention-days: 14
+
+  frontend:
+    name: Frontend (typecheck and production build)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies from the lockfile
+        # Lifecycle scripts are not needed for the build (same flag as the project's own setup script).
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Production build
+        run: npm run build
+
+  pint:
+    name: Code style (Laravel Pint, check only)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@bf6b4fbd49ca58e4608c9c89fba0b8d90bd2a39f # 2.35.5
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          extensions: ${{ env.PHP_EXTENSIONS }}
+          coverage: none
+          tools: composer:v2
+
+      - name: Locate the Composer cache
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Composer downloads
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: composer-${{ runner.os }}-php${{ env.PHP_VERSION }}-${{ hashFiles('composer.lock') }}
+          restore-keys: composer-${{ runner.os }}-php${{ env.PHP_VERSION }}-
+
+      - name: Install dependencies
+        run: composer install --no-interaction --no-progress --prefer-dist
+
+      - name: "Pint (test mode - reports violations, never rewrites files)"
+        run: vendor/bin/pint --test
+
+  dependency-audit:
+    name: Dependency audit (informational)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    # Advisory only: known findings must not block unrelated work, but they stay visible in every run.
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@bf6b4fbd49ca58e4608c9c89fba0b8d90bd2a39f # 2.35.5
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          coverage: none
+          tools: composer:v2
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Composer audit
+        run: composer audit --no-interaction
+
+      - name: npm audit (production dependencies)
+        run: npm audit --omit=dev
+
+  # One stable status to require in branch protection: green only when every blocking job passed.
+  ci-gate:
+    name: CI gate
+    if: always()
+    needs: [php-tests, frontend, pint]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require all blocking jobs to succeed
+        run: |
+          echo "php-tests=${{ needs.php-tests.result }} frontend=${{ needs.frontend.result }} pint=${{ needs.pint.result }}"
+          test "${{ needs.php-tests.result }}" = "success"
+          test "${{ needs.frontend.result }}" = "success"
+          test "${{ needs.pint.result }}" = "success"
