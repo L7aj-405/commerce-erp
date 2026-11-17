@@ -44,6 +44,7 @@ def junit(path: str) -> None:
                 failures.append((f"{case.get('classname', '')}::{case.get('name', '')}", kind, message[:300]))
     print(f'PHPUnit report: {total} test cases, {len(failures)} failing')
     if not failures:
+        emit('notice', 'PHPUnit report', f'{total} test cases, 0 failing')
         return
     grouped = Counter(re.sub(r'\d+', 'N', m) for _, _, m in failures)
     lines = [f'{len(failures)} failing of {total}. Most common causes:']
@@ -87,22 +88,25 @@ def tail(path: str, title: str = 'Tool output (last lines)') -> None:
 
 
 def composer(json_path: str, err_path: str, code: str) -> None:
-    """Exit bitmask of `composer audit`: 1 = vulnerabilities, 2 = abandoned packages. Anything else, or
-    unparsable output, means the audit itself failed (network / registry / lockfile error)."""
+    """Blocking decision for `composer audit --locked`. Exit status of THIS script is the job result:
+      0  clean (abandoned packages only produce a warning)
+      1  known vulnerabilities, OR the audit itself failed, OR the exit code and the report disagree.
+    Composer's exit code is a bitmask: 1 = vulnerabilities, 2 = abandoned packages; anything else, or an
+    unparsable report, is a command/infrastructure failure and must never be read as "clean"."""
     code = int(code)
     try:
         data = json.load(open(json_path, encoding='utf-8'))
     except Exception:
         data = None
-    if data is None or code not in (0, 1, 2, 3):
+    if not isinstance(data, dict) or code not in (0, 1, 2, 3):
         err = ''
         try:
             err = open(err_path, encoding='utf-8', errors='replace').read()[-1500:]
         except Exception:
             pass
         emit('error', 'composer audit COULD NOT RUN (command/infrastructure error, not a vulnerability result)',
-             f'exit code {code}\n{err}')
-        return
+             f'exit code {code}' + chr(10) + err)
+        sys.exit(1)
     advisories = data.get('advisories') or {}
     if isinstance(advisories, list):
         advisories = {}
@@ -112,12 +116,17 @@ def composer(json_path: str, err_path: str, code: str) -> None:
         for a in (items if isinstance(items, list) else [items]):
             severity[(a.get('severity') or 'unrated')] += 1
             rows.append(f"{package} | {a.get('severity') or 'unrated'} | {a.get('cve') or a.get('advisoryId')} | {(a.get('title') or '')[:110]}")
-    print(f'composer audit: {len(rows)} advisories in {len(advisories)} packages, {len(abandoned)} abandoned')
-    if rows:
-        head = f"{len(rows)} known vulnerabilities in {len(advisories)} locked packages ({', '.join(f'{n} {k}' for k, n in severity.most_common())}). Update the affected packages."
-        emit('error', f'composer audit: {len(rows)} known vulnerabilities', '\n'.join([head] + rows[:30]))
+    print(f'composer audit: exit={code}, {len(rows)} advisories in {len(advisories)} packages, {len(abandoned)} abandoned')
     if abandoned:
         emit('warning', f'composer audit: {len(abandoned)} abandoned packages', ', '.join(sorted(abandoned)))
+    if rows:
+        head = f"{len(rows)} known vulnerabilities in {len(advisories)} locked packages ({', '.join(f'{n} {k}' for k, n in severity.most_common())}). Update the affected packages."
+        emit('error', f'composer audit: {len(rows)} known vulnerabilities', chr(10).join([head] + rows[:30]))
+        sys.exit(1)
+    if code & 1:
+        emit('error', 'composer audit reported vulnerabilities (exit code) but the report lists none', f'exit code {code}')
+        sys.exit(1)
+    emit('notice', 'composer audit: no known vulnerabilities', 'composer audit --locked reported no advisories.')
 
 
 def npm(json_path: str, code: str) -> None:

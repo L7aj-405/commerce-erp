@@ -12,19 +12,34 @@ Every action is pinned to a full commit SHA (the tag is in the trailing comment)
 | `frontend` | yes | Node 22 (Vite 8 needs `^20.19 \|\| >=22.12`). `npm ci --ignore-scripts` (same flag as the project's `setup` script), `npx tsc --noEmit`, `npm run build`. Runs on its own runner, so a build can never modify assets while PHP tests execute. |
 | `pint-changed` | yes | Fetches full history, computes the PHP files changed by the change set (PR: base..head; push: before..after; manual: merge-base with `origin/main`) and runs `vendor/bin/pint --test` on exactly those files. Reports violations, never rewrites files. New and modified code therefore cannot add style debt. |
 | `pint-baseline` | no (advisory, visible) | Whole-repository `pint --test --format=json`; an annotation lists the number of non-conforming files and examples (the runner's Pint emits PHP-CS-Fixer JSON, which carries file names only; rule counts come from a local `pint --test --format=json`). This keeps the legacy debt (see the baseline strategy below) visible until it is cleared. |
-| `composer-audit` | no, **temporarily** | `composer audit --locked` (audits `composer.lock` itself; nothing is installed). The annotation separates **"N known vulnerabilities"** from **"audit could not run (command/infrastructure error)"** (Composer exit codes 1/2/3 are findings, anything else or unparsable output is an infrastructure failure). The job still fails and annotates every finding; it is only kept out of the gate until the pending dependency upgrade is approved (below). |
+| `composer-audit` | yes | `composer audit --locked` (audits `composer.lock` itself; nothing is installed). The decision is made by `.github/scripts/ci_annotate.py` from BOTH the exit code and the parsed report: any advisory fails the job; a crash, an unparsable/missing report, an unexpected exit code or an exit code that disagrees with the report is also a failure (annotated as "audit could not run", distinct from "N known vulnerabilities"). Abandoned packages only produce a warning. No `audit.ignore` entries exist. |
 | `npm-audit` | yes (high/critical) | `npm audit --omit=dev --json` plus a gate: fails on high/critical findings **or** when the audit could not run; moderate and below are annotated, not blocking. |
-| `ci-gate` | yes | One stable status: green only if `php-tests`, `frontend`, `pint-changed` and `npm-audit` all succeeded. Require **this** check. |
+| `ci-gate` | yes | One stable status: green only if `php-tests`, `frontend`, `pint-changed`, `npm-audit` and `composer-audit` all succeeded. Require **this** check. |
 
 Failure diagnostics: failing PHPUnit tests, Pint violations and audit findings are emitted as workflow annotations by `.github/scripts/ci_annotate.py` (readable on the run page and through the API); the raw PHPUnit output and JUnit XML are uploaded as an artifact.
 
 ## Security audit status and policy
 
-Audit results at this commit (locked dependencies):
+Status at this commit: **`composer audit --locked`: no advisories; `npm audit --omit=dev`: 0 vulnerabilities.** Both are blocking.
 
-* **npm (production): 0 vulnerabilities.** Fixed by a minimal lockfile patch: `follow-redirects` 1.16.1 -> 1.16.3 (high) and `qs` 6.16.0 -> 6.17.1 (moderate); only version/resolved/integrity changed, `npm ci` and the build were verified. The lock was patched by hand because a generated lock (`npm update --package-lock-only` on Windows) was out of sync and failed `npm ci`.
-* **Composer: 8 advisories in 5 packages, NOT fixed here.** `laravel/framework` v13.34.0 (low, fixed in >= 13.40.0), `symfony/http-foundation` v8.1.8 (trusted-proxy, path-rule and host-generation advisories; fixed in >= 8.1.11), `symfony/http-kernel` v8.1.8, `symfony/mime` v8.1.7 (medium, email header injection; fixed in >= 8.1.10) and `symfony/routing` (host placeholder matching). `composer update laravel/framework symfony/http-foundation symfony/http-kernel symfony/mime symfony/routing --with-dependencies` resolves them inside the existing constraints but moves about 40 packages (Laravel 13.34 -> 13.42, Guzzle 8.2 -> 8.5, Carbon, Monolog, ...). That is a deliberate dependency upgrade that must be reviewed and run against the full suite and Staging; it is intentionally **not** bundled into a CI change.
-* Policy: the failing `composer-audit` job is not hidden or ignored (no `audit.ignore` entries were added). When the upgrade lands, add `composer-audit` to `ci-gate.needs` and drop `continue-on-error`.
+Composer advisories that were open before the upgrade (8 advisories, 5 packages) and how they were resolved with the smallest compatible change (`composer update laravel/framework symfony/http-foundation symfony/http-kernel symfony/mime symfony/routing --with-dependencies --minimal-changes`, framework held at the lowest fixed version, then the `composer.json` floor raised from `^13.30` to `^13.40` so a vulnerable version cannot be re-resolved):
+
+| Package | Advisory | Severity | Affected | Fixed in | Upgrade | Used by the application? |
+|---|---|---|---|---|---|---|
+| laravel/framework | CVE-2026-128083 (PKSA-yxbx-3c9s-cjt9) task output injection, `Concurrency` process driver | low | >=13.0.0,<13.40.0 | 13.40.0 | v13.34.0 -> v13.40.0 | No: the `Concurrency` facade is not used. |
+| symfony/http-foundation | CVE-2026-121619 (PKSA-nxjs-s6hn-vb6m) `private_ranges` trusted-proxy shortcut trusts IPv4-mapped / 6to4 / Teredo / NAT64 clients | unrated | >=8.1.0,<8.1.11 | 8.1.11 | v8.1.8 -> v8.1.11 | Indirectly: the app trusts proxies via explicit RFC1918 CIDRs (`TrustedProxyRanges`), not the `private_ranges` keyword, but it does sit behind a proxy. |
+| symfony/http-foundation | CVE-2026-118514 (PKSA-24ph-xkrh-y79j) HEAD bypasses `methods` in `security.access_control` | unrated | >=8.1.0,<8.1.11 | 8.1.11 | same | No: Symfony Security is not used. |
+| symfony/http-foundation | PKSA-pr6q-2w5s-kzzf path rules in front of PHP bypassed by appending to the script name | unrated | >=8.1.0,<8.1.11 | 8.1.11 | same | Depends on the web-server / proxy path rules in front of PHP (deployment config, not application code). |
+| symfony/http-foundation | PKSA-b2gg-vk1g-6d5q generated URLs can point to a client-chosen host | unrated | >=8.1.0,<8.1.11 | 8.1.11 | same | **Yes, relevant:** URLs (e.g. emailed links) are built from the request host; there is no trusted-hosts middleware. Consider `trustHosts` / a fixed `APP_URL` root as hardening (not changed here). |
+| symfony/http-kernel | CVE-2026-123339 (PKSA-3gxv-7xhq-mgmz) inline fragments let forwarded headers set host/scheme/port | unrated | >=8.1.0,<8.1.11 | 8.1.11 | v8.1.8 -> v8.1.11 | No: fragment / ESI rendering is not used. |
+| symfony/mime | CVE-2026-45070 (PKSA-wtxr-p26d-nn42) email header injection via non-token characters in MIME parameter names | medium | >=8.1.0,<8.1.10 | 8.1.10 | v8.1.7 -> v8.1.10 | **Yes, relevant:** invoice / quotation / delivery-note / fulfillment emails carry attachments, including user-named proof files. |
+| symfony/routing | CVE-2026-118516 (PKSA-y8c5-1b7f-r1gj) host placeholders can match the start of the path | unrated | >=8.1.0,<8.1.11 | 8.1.11 | v8.1.8 -> v8.1.11 | No: no domain / host-placeholder routes. |
+
+Only six packages changed (the fixed packages plus `laravel/prompts` v0.3.24 -> v0.3.27, required by the new framework): no unrelated dependency moved and no major version changed.
+
+Previously open npm findings (`follow-redirects` high, `qs` moderate) were fixed by a minimal lockfile patch (1.16.1 -> 1.16.3 and 6.16.0 -> 6.17.1); a lock generated by `npm update --package-lock-only` on Windows was out of sync and failed `npm ci`, so the two entries were patched by hand.
+
+Policy: do not add `audit.ignore`. A new advisory makes `composer-audit` / `npm-audit` fail until the package is updated or a risk acceptance is reviewed and documented here.
 
 ## Pint baseline strategy
 
@@ -70,7 +85,7 @@ Deployment (Coolify) is intentionally separate from CI. If deployment is later t
 composer install && cp .env.example .env && php artisan key:generate
 php vendor/phpunit/phpunit/phpunit --no-progress        # full suite, SQLite in memory
 php vendor/laravel/pint/builds/pint --test              # whole repo (legacy debt) - CI gates changed files
-composer audit --locked && npm audit --omit=dev
+composer audit --locked && npm audit --omit=dev   # both must be clean
 npm ci --ignore-scripts && npx tsc --noEmit && npm run build
 ```
 Do not run `npm run build` while PHP tests execute in the same working copy.
