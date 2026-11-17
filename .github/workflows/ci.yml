@@ -29,7 +29,7 @@ env:
   PHP_VERSION: '8.4'
   NODE_VERSION: '22'
   # composer.json requires these (plus the framework / PDF / spreadsheet needs); pcntl is used by queue timeouts.
-  PHP_EXTENSIONS: bcmath, ctype, dom, fileinfo, filter, gd, hash, iconv, json, libxml, mbstring, openssl, pcntl, pdo_mysql, pdo_sqlite, phar, session, sqlite3, tokenizer, xml, xmlreader, xmlwriter, zip
+  PHP_EXTENSIONS: bcmath, ctype, dom, fileinfo, filter, gd, hash, iconv, json, libxml, mbstring, openssl, pcntl, pdo_mysql, pdo_sqlite, phar, session, sqlite3, tokenizer, xml, xmlreader, xmlwriter, zip, timezonedb
 
 jobs:
   php-tests:
@@ -84,7 +84,15 @@ jobs:
 
       - name: Record the PHP environment
         run: |
-          php -r 'echo "::notice title=PHP environment::php=", PHP_VERSION, " os=", PHP_OS, " icu=", (defined("INTL_ICU_VERSION") ? INTL_ICU_VERSION : "no-intl"), " sqlite=", (class_exists("SQLite3") ? SQLite3::version()["versionString"] : "none"), " tz=", date_default_timezone_get(), " locale=", setlocale(LC_ALL, 0), " memory_limit=", ini_get("memory_limit"), PHP_EOL;'
+          php -r '
+            $off = static fn (string $utc) => (new DateTime($utc, new DateTimeZone("UTC")))->setTimezone(new DateTimeZone("Africa/Casablanca"))->format("Y-m-d H:i P");
+            echo "::notice title=PHP environment::php=", PHP_VERSION, " os=", PHP_OS,
+              " icu=", (defined("INTL_ICU_VERSION") ? INTL_ICU_VERSION : "no-intl"),
+              " sqlite=", (class_exists("SQLite3") ? SQLite3::version()["versionString"] : "none"),
+              " tz=", date_default_timezone_get(), " tzdb=", timezone_version_get(),
+              " casablanca[2026-11-04 23:30Z]=", $off("2026-11-04 23:30:00"),
+              " casablanca[2026-03-01 23:30Z]=", $off("2026-03-01 23:30:00"),
+              " casablanca[2026-10-31 23:30Z]=", $off("2026-10-31 23:30:00"), PHP_EOL;'
 
       - name: Run the complete PHP test suite
         run: |

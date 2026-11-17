@@ -75,12 +75,12 @@ def junit(path: str) -> None:
     lines.append('Examples (test -> message @ location):')
     seen = set()
     for name, kind, t, msg, loc, cause in failures:
-        key = (t, norm(msg, 60), norm(cause, 80))
+        key = (name,) if len(failures) <= 30 else (t, norm(msg, 60), norm(cause, 80))
         if key in seen:
             continue
         seen.add(key)
-        lines.append(f'  {name.split(chr(92))[-1]} -> {msg[:110]} @ {loc[-60:]}')
-        if len(seen) >= 8:
+        lines.append(f'  {name.split(chr(92))[-1]} -> {msg[:(200 if len(failures) <= 30 else 110)]} @ {loc[-60:]}')
+        if len(seen) >= (30 if len(failures) <= 30 else 8):
             break
     emit('error', f'PHPUnit: {len(failures)} failing tests', chr(10).join(lines))
 
