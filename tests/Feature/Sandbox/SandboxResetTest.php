@@ -233,7 +233,7 @@ class SandboxResetTest extends QuotationTestCase
             $out[$table] = DB::table($table)->where('organization_id', $org->id)->orderBy('id')->get()->map(fn ($r) => (array) $r)->all();
         }
         $out['users'] = DB::table('users')->orderBy('id')->pluck('id')->all();
-        $out['organization_settings'] = DB::table('organizations')->whereKey($org->id)->value('settings');
+        $out['organization_settings'] = DB::table('organizations')->where('id', $org->id)->value('settings');
 
         return $out;
     }
