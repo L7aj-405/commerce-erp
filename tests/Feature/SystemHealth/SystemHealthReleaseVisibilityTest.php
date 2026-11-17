@@ -18,6 +18,68 @@ class SystemHealthReleaseVisibilityTest extends PlatformTestCase
         config()->set('system-health.cache_seconds', 1);
     }
 
+    protected function tearDown(): void
+    {
+        foreach (['APP_COMMIT_SHA', 'SOURCE_COMMIT', 'APP_BUILD_AT'] as $name) {
+            putenv($name);
+        }
+        parent::tearDown();
+    }
+
+    /** Round 4: the worker's config:cache froze the SHA as null, but the platform injected SOURCE_COMMIT at runtime. */
+    public function test_worker_probe_records_the_live_environment_sha_when_cached_config_is_null(): void
+    {
+        $sha = 'b1dc43ef692095960ec829e9ddfe341f23167f4c';
+        config()->set('system-health.commit_sha', null);
+        config()->set('system-health.commit_source', null);
+        config()->set('system-health.build_at', null);
+        putenv('SOURCE_COMMIT='.$sha);
+        putenv('APP_BUILD_AT=2026-11-17T10:04:00+00:00');
+
+        (new \App\Jobs\RecordQueueWorkerHeartbeatJob)->handle();
+
+        $metadata = SystemHealthHeartbeat::query()->find('queue_worker')->metadata;
+        $this->assertSame($sha, $metadata['commit']);
+        $this->assertSame('2026-11-17T10:04:00+00:00', $metadata['build_at']);
+
+        $data = $this->actingAs($this->owner())->getJson(route('system-health.index'))->assertOk()->json('checks.application.data');
+        $this->assertSame($sha, $data['worker_commit']);
+        $this->assertSame('yes', $data['worker_matches_app']);
+        $this->assertSame('SOURCE_COMMIT (runtime env)', $data['commit_source']);
+        $this->assertSame('APP_BUILD_AT', $data['build_at_source']);
+    }
+
+    public function test_worker_with_an_older_release_than_the_app_is_flagged(): void
+    {
+        putenv('SOURCE_COMMIT=1111111111111111111111111111111111111111');
+        (new \App\Jobs\RecordQueueWorkerHeartbeatJob)->handle();
+        // The web app is now on a newer release than the (long-running) worker.
+        putenv('SOURCE_COMMIT=2222222222222222222222222222222222222222');
+
+        $data = $this->actingAs($this->owner())->getJson(route('system-health.index'))->assertOk()->json('checks.application.data');
+
+        $this->assertSame('1111111111111111111111111111111111111111', $data['worker_commit']);
+        $this->assertStringContainsString('NO', $data['worker_matches_app']);
+    }
+
+    public function test_app_commit_sha_takes_precedence_over_source_commit_and_malformed_env_is_unverified(): void
+    {
+        config()->set('system-health.commit_sha', null);
+        putenv('SOURCE_COMMIT=3333333333333333333333333333333333333333');
+        putenv('APP_COMMIT_SHA=4444444444444444444444444444444444444444');
+        $this->assertSame('4444444444444444444444444444444444444444', \App\Support\ReleaseIdentity::commit());
+        $this->assertSame('APP_COMMIT_SHA (runtime env)', \App\Support\ReleaseIdentity::commitSource());
+
+        putenv('APP_COMMIT_SHA=garbage');
+        putenv('SOURCE_COMMIT=also not a sha');
+        $this->assertNull(\App\Support\ReleaseIdentity::commit());
+        (new \App\Jobs\RecordQueueWorkerHeartbeatJob)->handle();
+        $data = $this->actingAs($this->owner())->getJson(route('system-health.index'))->json('checks.application.data');
+        $this->assertSame('Unverified', $data['commit']);
+        $this->assertSame('Unverified', $data['worker_commit']);
+        $this->assertSame('Unverified', $data['worker_matches_app']);
+    }
+
     public function test_application_card_shows_environment_sha_build_and_unverified_worker(): void
     {
         config()->set('system-health.commit_sha', 'abc123def4567890abc123def4567890abc123de');

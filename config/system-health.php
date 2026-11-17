@@ -2,8 +2,9 @@
 
 return [
     'app_version' => env('APP_VERSION'),
-    // Observed deployment identity only. APP_COMMIT_SHA wins; otherwise the variable Coolify injects
-    // (SOURCE_COMMIT). Never hardcode a SHA here. 'commit_source' says which variable supplied it.
+    // Config-time FALLBACK only. The effective identity is resolved at runtime by
+    // App\Support\ReleaseIdentity from the live process environment (config:cache may have frozen
+    // these as null). Never hardcode a SHA here.
     'commit_sha' => env('APP_COMMIT_SHA') ?: env('SOURCE_COMMIT'),
     'commit_source' => env('APP_COMMIT_SHA') ? 'APP_COMMIT_SHA' : (env('SOURCE_COMMIT') ? 'SOURCE_COMMIT' : null),
     // ISO-8601 build timestamp injected by the image build (APP_BUILD_AT); falls back to the Vite manifest mtime.

@@ -62,7 +62,7 @@ final class SystemHealthService
     {
         $manifest = public_path('build/manifest.json');
         $debug = (bool) config('app.debug');
-        $declaredBuildAt = ReleaseIdentity::normalizeTimestamp(config('system-health.build_at'));
+        $declaredBuildAt = ReleaseIdentity::buildAt();
         $builtAt = $declaredBuildAt ?? (is_file($manifest) ? date(DATE_ATOM, (int) filemtime($manifest)) : null);
 
         return $this->check($debug ? 'degraded' : 'operational', $debug ? 'APP_DEBUG est activé.' : 'Configuration de production sûre.', [

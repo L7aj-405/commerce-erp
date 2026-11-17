@@ -38,12 +38,14 @@ class RecordQueueWorkerHeartbeatJob implements ShouldBeUnique, ShouldQueue
 
     public function handle(): void
     {
+        // Read from the live process environment at probe time (see ReleaseIdentity): a cached
+        // config can be frozen without the variable the platform injected into this worker.
         // The worker process reports ITS OWN build identity (its env, not the web app's), so
         // the health page can show whether web and worker run the same release. Non-secret only.
         SystemHealthHeartbeat::beat('queue_worker', [
             'queue' => $this->queue ?? 'default',
             'commit' => ReleaseIdentity::commit(),
-            'build_at' => ReleaseIdentity::normalizeTimestamp(config('system-health.build_at')),
+            'build_at' => ReleaseIdentity::buildAt(),
         ]);
     }
 

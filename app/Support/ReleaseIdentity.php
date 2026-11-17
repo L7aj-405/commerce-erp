@@ -36,16 +36,57 @@ final class ReleaseIdentity
         }
     }
 
+    /**
+     * Real process environment variable, read at call time (never from the config cache).
+     * `config()` is frozen when `config:cache` ran (at build or container start), so a variable
+     * the platform injects into the RUNNING process (e.g. Coolify's SOURCE_COMMIT in the worker)
+     * is invisible to it. Real env vars do not depend on the .env file being loaded.
+     */
+    public static function runtimeEnv(string $name): ?string
+    {
+        $value = getenv($name);
+        if ($value === false || $value === '') {
+            $value = $_SERVER[$name] ?? $_ENV[$name] ?? null;
+        }
+
+        return is_string($value) && trim($value) !== '' ? trim($value) : null;
+    }
+
+    /**
+     * Resolution order for THIS process: live APP_COMMIT_SHA, live SOURCE_COMMIT, then the
+     * (possibly cached) config value. Only a well-formed SHA is ever returned.
+     *
+     * @return array{0: string, 1: string}|null  [sha, source label]
+     */
+    private static function resolveCommit(): ?array
+    {
+        foreach (['APP_COMMIT_SHA', 'SOURCE_COMMIT'] as $name) {
+            $sha = self::normalizeCommit(self::runtimeEnv($name));
+            if ($sha !== null) {
+                return [$sha, $name.' (runtime env)'];
+            }
+        }
+        $sha = self::normalizeCommit(config('system-health.commit_sha'));
+
+        return $sha === null ? null : [$sha, ((string) config('system-health.commit_source')) ?: 'config'];
+    }
+
     /** Validated commit of this process, or null when unconfigured / malformed. */
     public static function commit(): ?string
     {
-        return self::normalizeCommit(config('system-health.commit_sha'));
+        return self::resolveCommit()[0] ?? null;
     }
 
-    /** Where the commit comes from, for honest labelling: "env", "platform" or null. */
+    /** Which variable supplied the commit, for honest labelling; null when unverified. */
     public static function commitSource(): ?string
     {
-        return self::commit() === null ? null : (string) config('system-health.commit_source');
+        return self::resolveCommit()[1] ?? null;
+    }
+
+    /** Declared build time of this process (live APP_BUILD_AT, then config), ISO-8601 or null. */
+    public static function buildAt(): ?string
+    {
+        return self::normalizeTimestamp(self::runtimeEnv('APP_BUILD_AT')) ?? self::normalizeTimestamp(config('system-health.build_at'));
     }
 
     /**
