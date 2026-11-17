@@ -5,10 +5,11 @@ import { Button, IconButton } from '@/components/ui/Button';
 import { Spinner } from '@/components/ui/Spinner';
 import { useI18n } from '@/i18n';
 import { Link } from '@inertiajs/react';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import PosCustomerCard from './PosCustomerCard';
 import { PlusIcon } from './PosCustomerDialog';
+import { loadPaymentSnapshot, savePaymentSnapshot } from './paymentStore';
 import {
     type Account,
     type CheckoutState,
@@ -151,8 +152,10 @@ export default function PosCheckoutPanel({
         delivery_phone: sale.checkout.delivery_phone ?? '',
         delivery_notes: sale.checkout.delivery_notes ?? '',
     });
-    const [settlementMode, setSettlementMode] = useState<SettlementMode>('full');
-    const [payments, setPayments] = useState<PaymentDraft[]>(() => [buildInitialPayment(sale.summary.total, financialAccounts)]);
+    // The payment choice is restored from the per-draft store, never re-defaulted on remount.
+    const [restored] = useState(() => loadPaymentSnapshot(sale.id));
+    const [settlementMode, setSettlementMode] = useState<SettlementMode>(restored?.settlementMode ?? 'full');
+    const [payments, setPayments] = useState<PaymentDraft[]>(() => restored?.payments ?? [buildInitialPayment(sale.summary.total, financialAccounts)]);
     const [error, setError] = useState('');
     /** Every blocking payment problem found by the last "review" attempt (shown together). */
     const [paymentIssues, setPaymentIssues] = useState<string[]>([]);
@@ -174,6 +177,30 @@ export default function PosCheckoutPanel({
     const currentTotal = useMemo(() => Math.max(0, merchandiseNetTtc + shippingNumeric).toFixed(4), [merchandiseNetTtc, shippingNumeric]);
     const paid = useMemo(() => payments.reduce((carry, payment) => carry + positiveAmount(payment.amount), 0), [payments]);
     const remaining = useMemo(() => Math.max(0, Number(currentTotal) - paid).toFixed(4), [currentTotal, paid]);
+
+    // Persist every change so leaving/re-entering the panel keeps the cashier's selection.
+    useEffect(() => {
+        savePaymentSnapshot(sale.id, { settlementMode, payments });
+    }, [sale.id, settlementMode, payments]);
+
+    // A full-payment line the cashier never edited tracks the order total (cart or shipping
+    // changes), so a restored selection cannot go stale. Deferred / edited lines are untouched.
+    useEffect(() => {
+        if (settlementMode !== 'full') return;
+        setPayments((current) => {
+            let changed = false;
+            const next = current.map((payment) => {
+                if (!payment.method || payment.amountTouched) return payment;
+                const amount = normalizeAmount(currentTotal);
+                if (payment.amount === amount) return payment;
+                changed = true;
+
+                return { ...payment, amount, cash_received: payment.method === 'cash' && !payment.cashReceivedTouched ? amount : payment.cash_received };
+            });
+
+            return changed ? next : current;
+        });
+    }, [currentTotal, settlementMode]);
 
     const cashErrors = payments
         .map((payment, index) => {

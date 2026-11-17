@@ -9,6 +9,7 @@ use App\Models\OrganizationBackupCloudCopy;
 use App\Models\OrganizationBackupSetting;
 use App\Models\OrganizationMailSetting;
 use App\Models\SystemHealthHeartbeat;
+use App\Support\ReleaseIdentity;
 use App\Models\WooCommerceSyncRun;
 use App\Support\SensitiveDataRedactor;
 use Illuminate\Support\Facades\Cache;
@@ -61,13 +62,17 @@ final class SystemHealthService
     {
         $manifest = public_path('build/manifest.json');
         $debug = (bool) config('app.debug');
+        $declaredBuildAt = ReleaseIdentity::normalizeTimestamp(config('system-health.build_at'));
+        $builtAt = $declaredBuildAt ?? (is_file($manifest) ? date(DATE_ATOM, (int) filemtime($manifest)) : null);
 
         return $this->check($debug ? 'degraded' : 'operational', $debug ? 'APP_DEBUG est activé.' : 'Configuration de production sûre.', [
             'environment' => app()->environment(),
             'debug_safe' => ! $debug,
             'version' => config('app.version') ?: config('system-health.app_version'),
-            'commit' => config('system-health.commit_sha') ?: 'Unverified',
-            'build_at' => $this->isoOrUnverified(config('system-health.build_at') ?: (is_file($manifest) ? date(DATE_ATOM, (int) filemtime($manifest)) : null)),
+            'commit' => ReleaseIdentity::commit() ?? 'Unverified',
+            'commit_source' => ReleaseIdentity::commitSource() ?? 'Unverified',
+            'build_at' => $this->isoOrUnverified($builtAt),
+            'build_at_source' => $builtAt === null ? 'Unverified' : ($declaredBuildAt !== null ? 'APP_BUILD_AT' : 'build manifest mtime'),
         ] + $this->workerBuild());
     }
 
@@ -98,13 +103,14 @@ final class SystemHealthService
         $heartbeat = SystemHealthHeartbeat::query()->find('queue_worker');
         $fresh = $heartbeat?->last_seen_at?->gte(now()->subMinutes(max(1, (int) config('system-health.queue_heartbeat_stale_minutes')))) ?? false;
         $metadata = is_array($heartbeat?->metadata) ? $heartbeat->metadata : [];
-        $commit = $fresh && is_string($metadata['commit'] ?? null) && $metadata['commit'] !== '' ? $metadata['commit'] : null;
-        $app = (string) config('system-health.commit_sha');
+        $commit = $fresh ? ReleaseIdentity::normalizeCommit($metadata['commit'] ?? null) : null;
+        $app = ReleaseIdentity::commit();
+        $same = ReleaseIdentity::matches($commit, $app);
 
         return [
             'worker_commit' => $commit ?? 'Unverified',
             'worker_build_at' => $fresh ? $this->isoOrUnverified($metadata['build_at'] ?? null) : 'Unverified',
-            'worker_matches_app' => $commit === null || $app === '' ? 'Unverified' : ($commit === $app ? 'yes' : 'NO — redeploy worker'),
+            'worker_matches_app' => $same === null ? 'Unverified' : ($same ? 'yes' : 'NO — redeploy worker'),
         ];
     }
 
@@ -179,7 +185,31 @@ final class SystemHealthService
             'driver' => $driver, 'waiting_jobs' => $waiting, 'failed_jobs' => $failed,
             'oldest_pending_age_seconds' => $oldest ? max(0, now()->timestamp - (int) $oldest) : null,
             'last_processed_at' => $heartbeat?->last_seen_at?->toIso8601String(),
-        ]);
+        ] + $this->pendingJobTypes());
+    }
+
+    /**
+     * Read-only breakdown of WHAT is waiting (top 5 job classes), so an operator can decide whether
+     * restarting the worker is safe before doing it. Bounded to the oldest 1000 rows; never executes
+     * or modifies a job.
+     *
+     * @return array<string, array<string, int>>
+     */
+    private function pendingJobTypes(): array
+    {
+        try {
+            $counts = [];
+            foreach (DB::table('jobs')->orderBy('id')->limit(1000)->pluck('payload') as $payload) {
+                $name = (string) (json_decode((string) $payload, true)['displayName'] ?? 'unknown');
+                $name = class_basename(str_replace(chr(92), '/', $name));
+                $counts[$name] = ($counts[$name] ?? 0) + 1;
+            }
+            arsort($counts);
+
+            return $counts === [] ? [] : ['pending_types' => array_slice($counts, 0, 5, true)];
+        } catch (Throwable) {
+            return [];
+        }
     }
 
     /** @return array<string, mixed> */

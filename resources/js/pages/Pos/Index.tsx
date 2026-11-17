@@ -14,6 +14,7 @@ import HeldSalesDrawer from './HeldSalesDrawer';
 import PosCartPanel from './PosCartPanel';
 import PosCatalogue from './PosCatalogue';
 import PosCheckoutPanel from './PosCheckoutPanel';
+import { clearPaymentSnapshots } from './paymentStore';
 import PosCustomerDialog from './PosCustomerDialog';
 import PosFilters, { emptyFilters, filtersActive, type CatalogueFilters } from './PosFilters';
 import PosReceipt from './PosReceipt';
@@ -512,6 +513,7 @@ export default function PosIndex({
         if (completing || !activeSaleRef.current || !reviewData) return;
         setCompleting(true);
         setReviewError(null);
+        const previousCompletedId = completedOrder?.id ?? null;
         try {
             if (print) sessionStorage.setItem(PRINT_FLAG, '1');
         } catch {
@@ -534,6 +536,12 @@ export default function PosIndex({
             },
             {
                 preserveScroll: true,
+                // Only a confirmed completion (a NEW completed order came back) discards the remembered
+                // payment choice; a rejected finalization lands on the same cart and keeps it.
+                onSuccess: (page) => {
+                    const returned = (page.props as { completedOrder?: { id: number } | null }).completedOrder;
+                    if (returned && returned.id !== previousCompletedId) clearPaymentSnapshots();
+                },
                 onError: (pageErrors) => {
                     // Keep the review open with the specific error so the cashier can
                     // correct and retry — the cart and payment context are untouched.
@@ -668,6 +676,7 @@ export default function PosIndex({
                                 />
                             ) : (
                                 <PosCheckoutPanel
+                                    key={activeSale.id}
                                     sale={activeSale}
                                     currencyCode={currencyCode}
                                     financialAccounts={financialAccounts}
@@ -742,6 +751,7 @@ export default function PosIndex({
                         />
                     ) : (
                         <PosCheckoutPanel
+                            key={activeSale.id}
                             sale={activeSale}
                             currencyCode={currencyCode}
                             financialAccounts={financialAccounts}

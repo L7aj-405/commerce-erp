@@ -1646,6 +1646,11 @@ export const fr = {
     "inventory.transferCreate.uncertainTitle": "Résultat incertain",
     "inventory.transferCreate.uncertainBody": "La connexion a été interrompue avant la réponse du serveur. Le transfert a peut-être été créé : vérifiez la liste des transferts, ou cliquez sur « Réessayer » — la même opération est rejouée, aucun doublon ne sera créé.",
     "inventory.transferCreate.retry": "Réessayer",
+    "inventory.transferCreate.viewTransfer": "Voir le transfert",
+    "inventory.transferCreate.checking": "Vérification du résultat auprès du serveur…",
+    "inventory.transferCreate.notCreatedTitle": "Transfert non retrouvé pour le moment",
+    "inventory.transferCreate.notCreatedBody": "Aucun transfert enregistré n’a été trouvé pour cette opération à cet instant. Si la requête initiale était encore en cours, elle peut encore aboutir : consultez la liste des transferts en cas de doute. Vous pouvez réessayer : la même opération est rejouée, le serveur n’en exécute qu’une seule, donc aucun doublon ne sera créé.",
+    "inventory.transferCreate.failedTitle": "Le transfert n’a pas pu être créé",
     "inventory.transferCreate.serverValidation":
         "La disponibilité affichée aide à la saisie. La validation finale du stock est réalisée par le serveur au moment de l’enregistrement.",
     "inventory.requests.title": "Demandes de transfert",
@@ -6731,6 +6736,11 @@ export const ar: Record<TranslationKey, string> = {
     "inventory.transferCreate.uncertainTitle": "نتيجة غير مؤكدة",
     "inventory.transferCreate.uncertainBody": "انقطع الاتصال قبل رد الخادم. ربما تم إنشاء التحويل: تحقق من قائمة التحويلات أو اضغط «إعادة المحاولة» — تتم إعادة تنفيذ نفس العملية دون إنشاء تكرار.",
     "inventory.transferCreate.retry": "إعادة المحاولة",
+    "inventory.transferCreate.viewTransfer": "عرض التحويل",
+    "inventory.transferCreate.checking": "جارٍ التحقق من النتيجة لدى الخادم…",
+    "inventory.transferCreate.notCreatedTitle": "لم يتم العثور على التحويل حالياً",
+    "inventory.transferCreate.notCreatedBody": "لم يُعثر على أي تحويل مسجّل لهذه العملية في هذه اللحظة. إذا كان الطلب الأصلي لا يزال قيد التنفيذ فقد ينجح لاحقاً: راجع قائمة التحويلات عند الشك. يمكنك إعادة المحاولة: تُعاد نفس العملية ولن ينفذ الخادم سوى واحدة منها، فلا تكرار.",
+    "inventory.transferCreate.failedTitle": "تعذر إنشاء التحويل",
     "inventory.transferCreate.serverValidation":
         "يساعد المتاح المعروض في الإدخال، ويتحقق الخادم نهائيًا من المخزون عند الحفظ.",
     "inventory.requests.title": "طلبات التحويل",

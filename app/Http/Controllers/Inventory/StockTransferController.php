@@ -10,6 +10,7 @@ use App\Models\TransferRequest;
 use App\Models\Warehouse;
 use App\Services\ActiveTenantContext;
 use App\Support\InventoryQuantity;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -227,6 +228,26 @@ class StockTransferController extends Controller
         return redirect()
             ->route('inventory.transfers.show', $transfer)
             ->with('success', 'Transfert effectue avec succes.');
+    }
+
+    /**
+     * Read-only: did the submit carrying this client_operation_id create a transfer?
+     * Lets the form tell a committed transfer from a lost one when the HTTP outcome was ambiguous
+     * (cancelled visit, dropped connection, unfollowed redirect). Never writes anything.
+     */
+    public function operation(string $operationId, ActiveTenantContext $context): JsonResponse
+    {
+        $organization = $context->organizationOrFail();
+        $this->authorize('create', [StockTransfer::class, $organization]);
+
+        $transfer = StockTransfer::query()
+            ->where('organization_id', $organization->getKey())
+            ->where('client_operation_id', $operationId)
+            ->first(['id', 'transfer_number', 'status']);
+
+        return response()->json($transfer === null
+            ? ['found' => false]
+            : ['found' => true, 'id' => $transfer->getKey(), 'transfer_number' => $transfer->transfer_number, 'status' => $transfer->status, 'url' => route('inventory.transfers.show', $transfer, false)]);
     }
 
     public function show(StockTransfer $transfer): Response

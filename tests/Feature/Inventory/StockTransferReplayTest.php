@@ -35,6 +35,53 @@ class StockTransferReplayTest extends InventoryTestCase
         $this->assertSame('4.0000', $this->balance($organization, $destination, $variant)->on_hand);
     }
 
+    /** Round 3 ISSUE 2: an ambiguous submit is resolved against the server by operation id (read-only). */
+    public function test_operation_lookup_reports_a_committed_transfer_once_and_never_writes(): void
+    {
+        $owner = User::factory()->create();
+        $organization = $this->createOrganization($owner);
+        $source = $this->createWarehouse($organization, 'Source');
+        $destination = $this->createWarehouse($organization, 'Destination');
+        $variant = $this->createProduct($organization, 'Lookup Product', 'LOOKUP')->variants->first();
+        $this->openStock($owner, $organization, $source, $variant, '10.0000');
+        $operation = (string) Str::uuid();
+
+        $this->actingAs($owner)->getJson(route('inventory.transfers.operation', $operation))
+            ->assertOk()->assertJson(['found' => false]);
+
+        $this->actingAs($owner)->post(route('inventory.transfers.store'), [
+            'source_warehouse_id' => $source->id, 'destination_warehouse_id' => $destination->id, 'reason' => 'Lookup',
+            'client_operation_id' => $operation, 'lines' => [['product_variant_id' => $variant->id, 'quantity' => 2]],
+        ])->assertRedirect();
+
+        $lookup = $this->actingAs($owner)->getJson(route('inventory.transfers.operation', $operation))->assertOk()->assertJson(['found' => true]);
+        $lookup->assertJsonStructure(['id', 'transfer_number', 'status', 'url']);
+        $this->getJson(route('inventory.transfers.operation', $operation))->assertOk()->assertJson(['found' => true]);
+        $this->assertDatabaseCount('stock_transfers', 1);
+        $this->assertSame('8.0000', $this->balance($organization, $source, $variant)->on_hand);
+    }
+
+    public function test_operation_lookup_is_organization_scoped_and_requires_a_valid_uuid(): void
+    {
+        $owner = User::factory()->create();
+        $organization = $this->createOrganization($owner);
+        $source = $this->createWarehouse($organization, 'Source');
+        $destination = $this->createWarehouse($organization, 'Destination');
+        $variant = $this->createProduct($organization, 'Scoped Product', 'SCOPED')->variants->first();
+        $this->openStock($owner, $organization, $source, $variant, '5.0000');
+        $operation = (string) Str::uuid();
+        $this->actingAs($owner)->post(route('inventory.transfers.store'), [
+            'source_warehouse_id' => $source->id, 'destination_warehouse_id' => $destination->id, 'reason' => 'Scope',
+            'client_operation_id' => $operation, 'lines' => [['product_variant_id' => $variant->id, 'quantity' => 1]],
+        ])->assertRedirect();
+
+        $other = User::factory()->create();
+        $this->createOrganization($other);
+        $this->actingAs($other)->getJson(route('inventory.transfers.operation', $operation))->assertJson(['found' => false]);
+
+        $this->actingAs($owner)->getJson('/inventory/transfers/operations/not-a-uuid')->assertNotFound();
+    }
+
     public function test_idempotency_is_durable_and_survives_a_cache_flush(): void
     {
         $owner = User::factory()->create();

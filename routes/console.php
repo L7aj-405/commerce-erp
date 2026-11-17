@@ -144,7 +144,8 @@ Schedule::command('attention:scan')->everyFifteenMinutes()->withoutOverlapping()
 Schedule::call(fn () => SystemHealthHeartbeat::beat('scheduler'))
     ->name('system-health:scheduler-heartbeat')->everyMinute()->withoutOverlapping();
 Schedule::job(new RecordQueueWorkerHeartbeatJob)
-    ->name('system-health:queue-worker-heartbeat')->everyMinute();
+    ->name('system-health:queue-worker-heartbeat')->everyMinute()
+    ->when(fn () => ! RecordQueueWorkerHeartbeatJob::alreadyPending());
 Schedule::call(fn () => app(SystemHealthNotificationMonitor::class)->evaluateAll())
     ->name('notifications:system-health-transitions')->everyFiveMinutes()->withoutOverlapping();
 Schedule::call(function () {

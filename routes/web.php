@@ -521,6 +521,8 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
         Route::get('/transfers', [StockTransferController::class, 'index'])->name('transfers.index');
         Route::get('/transfers/create', [StockTransferController::class, 'create'])->name('transfers.create');
         Route::post('/transfers', [StockTransferController::class, 'store'])->name('transfers.store');
+        // Read-only outcome lookup by client_operation_id (resolves an ambiguous submit without re-posting).
+        Route::get('/transfers/operations/{operationId}', [StockTransferController::class, 'operation'])->whereUuid('operationId')->name('transfers.operation');
         Route::get('/transfers/{transfer}', [StockTransferController::class, 'show'])->name('transfers.show');
 
         // Internal transfer REQUESTS (logistics lifecycle: requested → preparing

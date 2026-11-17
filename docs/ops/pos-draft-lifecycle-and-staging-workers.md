@@ -72,3 +72,19 @@ Environment, `commit` (APP_COMMIT_SHA), `build_at` (APP_BUILD_AT, else Vite mani
 
 ## 4. Month closing vs verification (Finance)
 "Vérifié" is a tick (audited, locks nothing). **Clôturer** locks the month (`FinanceClosedPeriodGuard`) and is only offered once the business month has ended (a running month, e.g. November before 1 December, cannot be closed — the page now says so). **Réouvrir** needs the Owner or `finance.periods.reopen`, fresh authentication, and a mandatory reason; it is audited (`finance_month.reopened`). One closing system only (`ManageFinanceMonthReviewAction`); no historical transaction is rewritten. Test Mode neither reads nor is blocked by Production closings.
+
+## 5. Round 3 — Worker recovery and release identity
+
+### 5.1 Worker: confirmed root cause (established outside the repo, from Coolify)
+* The Staging worker was started as `php artisan queue:work redis --sleep=3 --tries=3 --timeout=90` while the application uses `QUEUE_CONNECTION=database`. It therefore listened on a Redis queue nobody writes to, never processed the database queue and never recorded a heartbeat.
+* The 271 jobs waiting were inspected before the correction: **all were `RecordQueueWorkerHeartbeatJob`** (scheduler probes), not business jobs.
+* Corrected Staging command: `php artisan queue:work database --queue=default --sleep=3 --tries=3 --timeout=90 --max-time=3600`.
+* Code compatibility (verified in the repo): probes and every `ShouldQueue` job use the `database` connection and the `default` queue (`DB_QUEUE`); no `onQueue` is used. Per-job `$timeout` values (120–3600 s) take precedence over the worker `--timeout=90`, and `retry_after=3900` stays above them.
+* Code change made in Round 3: the scheduler no longer dispatches a new probe while one is already waiting (`RecordQueueWorkerHeartbeatJob::alreadyPending`), so a stopped/misconfigured worker can no longer pile up hundreds of identical probes. System Health > Queue also lists the pending job types (read-only).
+* General runbook for a silent worker: compare the worker's start command connection/queue with `QUEUE_CONNECTION`/`DB_QUEUE`; compare `DB_*` and `APP_KEY` with web; read the worker logs; inspect pending job types (System Health) BEFORE starting a worker, because starting it runs everything waiting. Never flush or clear the queue to "fix" this.
+
+### 5.2 Release identity
+* The app shows only what its own process was given: `APP_COMMIT_SHA`, else `SOURCE_COMMIT` (`config/system-health.php`), validated as 7–40 hex characters by `App\Support\ReleaseIdentity`. Missing or malformed values show "Unverified". The card shows which variable supplied the commit and whether the build time is `APP_BUILD_AT` or only the build-manifest file time. No SHA is hardcoded anywhere.
+* Observed Staging state: commit and worker commit were "Unverified" because no commit variable was present in the PHP process when `config:cache` ran during the build.
+* **To be verified in Coolify/Railpack before changing any setting** (nothing here is assumed to exist): (a) whether Coolify exposes `SOURCE_COMMIT` to the BUILD step of this resource (it is a build-time requirement because `config:cache` runs in the build); (b) whether Railpack forwards that variable into the build environment (check the build log), or whether it must be declared as an explicit build variable; (c) whether `$SOURCE_COMMIT` substitution is supported in the variable value field for this resource type; (d) how to produce a build timestamp for `APP_BUILD_AT`. Until verified, the page correctly stays "Unverified".
+* Worker comparison: each probe reports the worker's own cached config, so a worker not restarted after a deploy reports the old SHA and the page shows "NO — redeploy worker". Short and full SHAs of the same commit compare equal.
