@@ -28,12 +28,12 @@ final class TenantScopingTest extends TestCase
      * re-classify entries, lower the number in the same change; never raise it.
      *
      *  - UNREVIEWED_CEILING: findings whose callers/origin were not traced yet ("UNREVIEWED BASELINE").
-     *    It started at 65 and dropped to 3 after the Step 1 final security review.
+     *    It started at 65, dropped to 3 after the Step 1 review and to 0 once #10, #27 and #62 were traced.
      *  - NEEDS_STRENGTHENING_CEILING: reviewed, not exploitable today, but a bare-key / unscoped query that should
      *    gain an organization_id filter ("NEEDS STRENGTHENING"). Together with the unreviewed ones they account for
-     *    every one of the 65 original findings that was not proven safe: 3 + 14 = 17.
+     *    every one of the 65 original findings that was not proven safe: 0 + 14 = 14.
      */
-    private const UNREVIEWED_CEILING = 3;
+    private const UNREVIEWED_CEILING = 0;
 
     private const NEEDS_STRENGTHENING_CEILING = 14;
 

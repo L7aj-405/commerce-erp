@@ -6,12 +6,12 @@
 
 | Classe | Constats |
 |---|---|
-| **Sûr, avec preuve** | 48 (dont 2 supprimés par la correction du détecteur → 46 entrées `REVIEWED`) |
+| **Sûr, avec preuve** | 51 (dont 2 supprimés par la correction du détecteur → 49 entrées `REVIEWED`) |
 | **À renforcer** | 14 |
-| **À investiguer** | 3 |
+| **À investiguer** | 0 (les 3 constats #10, #27, #62 ont été tracés : sûrs) |
 | **Vulnérabilité confirmée** | **0** |
 
-**Aucune vulnérabilité exploitable n'a été trouvée** : aucun identifiant fourni par l'utilisateur n'atteint une requête sans filtre d'organisation sans être revalidé (jeton secret, URL signée, session serveur, ou revalidation dans l'action en aval). Les 17 constats ouverts (14 + 3) sont de la défense en profondeur ou des chemins non tracés ; ils restent dans des listes **plafonnées** (`UNREVIEWED_CEILING = 3`, `NEEDS_STRENGTHENING_CEILING = 14`). Le plafond d'origine (65) n'a **pas** été augmenté : il a été remplacé par ces deux plafonds dont la somme (17) est inférieure à 65, chaque reclassement étant justifié ci-dessous.
+**Aucune vulnérabilité exploitable n'a été trouvée** : aucun identifiant fourni par l'utilisateur n'atteint une requête sans filtre d'organisation sans être revalidé (jeton secret, URL signée, session serveur, ou revalidation dans l'action en aval). Les 14 constats ouverts sont de la défense en profondeur ; ils restent dans une liste **plafonnée** (`NEEDS_STRENGTHENING_CEILING = 14`, `UNREVIEWED_CEILING = 0`). Le plafond d'origine (65) n'a **pas** été augmenté : il a été remplacé par ces deux plafonds dont la somme (14) est inférieure à 65, chaque reclassement étant justifié ci-dessous.
 
 Priorités demandées : MCP, paiements, POS, rapports financiers, sandbox, invitations, audit/activité — toutes couvertes ci-dessous (MCP : #15-17, #22-24, #43-55 ; paiements/rapports : #30-34 ; POS : #60-61 ; sandbox : #18, #62-64 ; invitations : #41-42 ; audit/activité : #65 et contrôleurs Notification/ActivityTimeline).
 
@@ -181,16 +181,26 @@ Rows come from organization-scoped lists in the same flow; relock by bare key. M
 | 38 | `app/Services/FollowUps/FollowUpRecurringGenerator.php` | `FollowUpRecurringGenerator::rescheduleOrganization` | FollowUpRecurringRule |
 | 39 | `app/Services/FollowUps/FollowUpReminderSchedule.php` | `FollowUpReminderSchedule::realignDateOnly` | FollowUp |
 
-## Requires further investigation — Callers/origin not traced
+## Sûr, avec preuve (tracé lors de la revue finale) — #10, #27, #62
 
-#10 `QueuePersonalCloudBackupSyncAction` (child lookup by backup id), #27 `AttentionOwnership::apply` (background update by item id), #62 `SandboxInventoryInitializer::ensure` (relock of the passed sandbox). Likely safe, **not proven**.
-
-| # | Fichier | Méthode | Modèle |
-|---|---|---|---|
-| 10 | `app/Actions/OrganizationBackups/QueuePersonalCloudBackupSyncAction.php` | `QueuePersonalCloudBackupSyncAction::execute` | OrganizationBackupCloudCopy |
-| 27 | `app/Services/Attention/AttentionOwnership.php` | `AttentionOwnership::apply` | AttentionItem |
-| 62 | `app/Services/Sandbox/SandboxInventoryInitializer.php` | `SandboxInventoryInitializer::ensure` | Sandbox |
+| # | Fichier | Preuve |
+|---|---|---|
+| 10 | `app/Actions/OrganizationBackups/QueuePersonalCloudBackupSyncAction.php` | Seul appelant web : `OrganizationBackupCloudController::copy` vérifie la permission `organization_backups.create` **et** `backup.organization_id == organisation active` (404 sinon) avant l'action ; l'action filtre la connexion par `organization_id`. Chemin planifié : sauvegarde créée par le système. |
+| 27 | `app/Services/Attention/AttentionOwnership.php::apply` | Méthode **privée**, appelée uniquement par `repairOrganization()` dont la requête (chunk) filtre `organization_id` (l.124). |
+| 62 | `app/Services/Sandbox/SandboxInventoryInitializer.php::ensure` | Reçoit une sandbox trouvée avec `organization_id` (`SandboxController::enter`) ou résolue par `SandboxContext::resolve()` : il exige que `user_id` et `organization_id` de la session correspondent, que la fonction et les permissions soient actives, puis charge la sandbox avec `organization_id`. |
 
 ## Correction minimale recommandée (sans changement large)
 
 Ajouter `->where('organization_id', …)` aux 14 requêtes « à renforcer » (changement mécanique, une ligne chacune), puis supprimer l'entrée correspondante et abaisser `NEEDS_STRENGTHENING_CEILING` dans le même commit. Tracer les 3 constats « à investiguer », puis les portée ou les documenter. Répondre 404 dans `TenantContextController::store`. Ces correctifs touchent du code applicatif : **non faits dans cette étape**.
+
+## Constats « à renforcer » — priorité et responsable (les 14 NE SONT PAS résolus)
+
+Responsables = rôles (aucun nom n'est attribué ici ; à affecter par le propriétaire du produit). Chaque correctif est mécanique (une ligne `->where('organization_id', …)`), s'accompagne de la suppression de l'entrée d'exception et de la baisse de `NEEDS_STRENGTHENING_CEILING` dans le même commit.
+
+| Groupe | # | Priorité | Responsable proposé | Échéance recommandée |
+|---|---|---|---|---|
+| Agrégats financiers par `sales_order_id` (paiements/remboursements/allocations) | 30, 31, 32, 33, 34 | **P1** | Responsable finance backend | **Avant** les fonctions de crédit/facturation différée (ils alimentent les soldes) |
+| Verrous/mises à jour par clé nue — POS | 60 | P2 | Responsable POS | Sprint de durcissement POS |
+| Verrous/mises à jour par clé nue — ventes, retours, articles hors stock, réappro. | 3, 8, 11, 12, 13 | P2 | Responsable ventes/stock | Même lot que ci-dessus |
+| Suivis récurrents / rappels | 37, 38, 39 | P3 | Responsable suivis | Opportuniste |
+Autres : clé étrangère composite sur `follow_ups.customer_id/quotation_id` (P3, hors liste) ; 404 au lieu de 403 dans `TenantContextController::store` (P3).

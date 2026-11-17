@@ -21,7 +21,6 @@ $r2 = 'NEEDS STRENGTHENING. Mutates or locks a row by its bare key taken from an
 $r3 = 'REVIEWED (final review) - safe, system-wide scheduled job by design: it iterates the rows of every organization on purpose (scheduler candidates) and re-locks a row it just selected itself; no request input is involved.';
 $r4 = 'REVIEWED (final review) - safe, ids come from queries that already filter organization_id earlier in the same flow (AttentionEpisodes/Timeline/Reset/Follow-up candidates, or the order\'s own lines), and SaveFollowUpAction validates customer/quotation/order organization on write. Hardening candidate: add organization_id.';
 $r5 = 'REVIEWED. Reads rows by ids taken from records that were already organization-scoped earlier in the same flow (no user-supplied id reaches this query). Hardening candidate: add organization_id.';
-$r6 = 'UNREVIEWED BASELINE - REQUIRES FURTHER INVESTIGATION: the origin of the id and the callers were not traced in the final review (see docs/phase-1-foundation/TENANT_SCOPE_BASELINE_REVIEW.md). Trace the callers, then scope the query or document it.';
 $r7 = 'REVIEWED. Re-locks or re-reads an instance that the caller already resolved through an organization-scoped route binding, query or action; the key used is that instance\'s own key. Hardening candidate: add where(organization_id).';
 $r8 = 'REVIEWED. Correlated sub-select (whereColumn on the outer row): it only sees rows related to the outer Invoice row, and the outer Invoice query is organization-scoped.';
 $r9 = 'REVIEWED (final review) - safe, MCP authentication/binding: the connection is resolved from a hash-checked bearer token, an OAuth token row, a signed URL (signature covers connection+expiry) or the application\'s own operation row; McpConnectionGate then checks status, expiry, organization and membership, and every document read re-filters by the connection\'s organization.';
@@ -38,6 +37,7 @@ $r19 = 'NEEDS STRENGTHENING. Recurring-rule/follow-up row locked or updated by b
 $r20 = 'REVIEWED (final review) - safe, invitation is found by the SHA-256 hash of a secret one-time token (not guessable) and then re-locked by its own key.';
 $r21 = 'REVIEWED (final review) - safe, MCP product-operation pipeline: operations/items are created with organization_id from the connection, processed by ids from the application\'s own queue payload, and the only caller-supplied operation id goes through McpProductOperationService::operation() which filters organization_id and the connection user (line 736).';
 $r22 = 'REVIEWED (final review) - safe, notification de-duplication is keyed by the user\'s own id (user_id + dedupe key); notifications are per user.';
+$rTraced = "REVIEWED (final review, traced) - safe. #10: OrganizationBackupCloudController::copy checks the permission and that the backup belongs to the active organization (404 otherwise) before QueuePersonalCloudBackupSyncAction, which filters the connection by organization_id; the scheduled path uses the system's own backup. #27: AttentionOwnership::apply() is private and is only called from repairOrganization(), whose chunk query filters organization_id. #62: SandboxInventoryInitializer::ensure() receives a sandbox found with organization_id (SandboxController::enter) or resolved by SandboxContext::resolve(), which requires the session's user_id and organization_id to match, the sandbox feature and permissions, and loads the sandbox with organization_id.";
 
 return [
     'app/Actions/Catalog/StageProductCostImportAction.php::App\\Actions\\Catalog\\StageProductCostImportAction::execute::ProductCostImportRow' => $r1,
@@ -50,7 +50,7 @@ return [
     'app/Actions/FollowUps/TransitionFollowUpAction.php::App\\Actions\\FollowUps\\TransitionFollowUpAction::execute::Store' => $r5,
     'app/Actions/Inventory/PlanShowroomReplenishmentAction.php::App\\Actions\\Inventory\\PlanShowroomReplenishmentAction::execute::TransferRequest' => $r2,
     'app/Actions/OrganizationBackups/DispatchDueOrganizationBackupsAction.php::App\\Actions\\OrganizationBackups\\DispatchDueOrganizationBackupsAction::execute::OrganizationBackupSetting' => $r3,
-    'app/Actions/OrganizationBackups/QueuePersonalCloudBackupSyncAction.php::App\\Actions\\OrganizationBackups\\QueuePersonalCloudBackupSyncAction::execute::OrganizationBackupCloudCopy' => $r6,
+    'app/Actions/OrganizationBackups/QueuePersonalCloudBackupSyncAction.php::App\\Actions\\OrganizationBackups\\QueuePersonalCloudBackupSyncAction::execute::OrganizationBackupCloudCopy' => $rTraced,
     'app/Actions/Procurement/CreateProcurementAction.php::App\\Actions\\Procurement\\CreateProcurementAction::execute::SalesOrder' => $r7,
     'app/Actions/Procurement/ReportOutOfStockArticleAction.php::App\\Actions\\Procurement\\ReportOutOfStockArticleAction::execute::SalesOrder' => $r7,
     'app/Actions/Quotations/RemoveQuotationLineAction.php::App\\Actions\\Quotations\\RemoveQuotationLineAction::execute::NonStockItem' => $r2,
@@ -86,7 +86,7 @@ return [
     'app/Jobs/ValidateMcpProductOperationJob.php::App\\Jobs\\ValidateMcpProductOperationJob::markFailed::McpOperation' => $r14,
     'app/Services/Attention/AttentionEpisodes.php::App\\Services\\Attention\\AttentionEpisodes::apply::AttentionItem' => $r4,
     'app/Services/Attention/AttentionEpisodes.php::App\\Services\\Attention\\AttentionEpisodes::closeUnconfirmed::AttentionItem' => $r4,
-    'app/Services/Attention/AttentionOwnership.php::App\\Services\\Attention\\AttentionOwnership::apply::AttentionItem' => $r6,
+    'app/Services/Attention/AttentionOwnership.php::App\\Services\\Attention\\AttentionOwnership::apply::AttentionItem' => $rTraced,
     'app/Services/Attention/SalesOrderAttentionDetector.php::App\\Services\\Attention\\SalesOrderAttentionDetector::revisionStatuses::SalesOrderRevision' => $r4,
     'app/Services/Commissions/CommissionRuleManager.php::App\\Services\\Commissions\\CommissionRuleManager::activate::CommissionRuleSet' => $r7,
     'app/Services/DocumentStampApposer.php::App\\Services\\DocumentStampApposer::apply::DocumentStampApposition' => $r16,
@@ -135,7 +135,7 @@ return [
     'app/Services/Pos/PosDraftLifecycle.php::App\\Services\\Pos\\PosDraftLifecycle::abandonEmptyCarts::SalesOrder' => $r7,
     'app/Services/Pos/PosDraftLifecycle.php::App\\Services\\Pos\\PosDraftLifecycle::activeReservationIds::SalesOrderInventoryAllocation' => $r4,
     'app/Services/Pos/PosDraftLifecycle.php::App\\Services\\Pos\\PosDraftLifecycle::touch::SalesOrder' => $r2,
-    'app/Services/Sandbox/SandboxInventoryInitializer.php::App\\Services\\Sandbox\\SandboxInventoryInitializer::ensure::Sandbox' => $r6,
+    'app/Services/Sandbox/SandboxInventoryInitializer.php::App\\Services\\Sandbox\\SandboxInventoryInitializer::ensure::Sandbox' => $rTraced,
     'app/Services/Sandbox/SandboxStaleSession.php::App\\Services\\Sandbox\\SandboxStaleSession::audit::Sandbox' => $r13,
     'app/Services/Sandbox/SandboxStaleSession.php::App\\Services\\Sandbox\\SandboxStaleSession::forMissingRecord::Sandbox' => $r13,
     'app/Services/Timeline/BusinessTimeline.php::App\\Services\\Timeline\\BusinessTimeline::page::AuditLog' => $r4,
