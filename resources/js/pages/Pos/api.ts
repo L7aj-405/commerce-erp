@@ -43,3 +43,27 @@ export async function posJson<T>(url: string, options: { method?: 'POST' | 'PATC
     failure.status = response.status;
     throw failure;
 }
+
+/**
+ * Best-effort "the cashier left an EMPTY cart" signal that survives page unload (fetch keepalive).
+ * The server removes the draft only if it is still empty and history-free under its row lock, so a
+ * lost, duplicated or late call is harmless; the POS page-load sweep and the scheduled command are
+ * the fallbacks. Never throws.
+ */
+export function abandonEmptyCartKeepalive(orderId: number): void {
+    try {
+        void fetch(`/pos/drafts/${orderId}/abandon`, {
+            method: 'POST',
+            keepalive: true,
+            credentials: 'same-origin',
+            headers: {
+                Accept: 'application/json',
+                'Content-Type': 'application/json',
+                ...(xsrfToken() ? { 'X-XSRF-TOKEN': xsrfToken() as string } : {}),
+            },
+            body: '{}',
+        }).catch(() => undefined);
+    } catch {
+        /* unload in progress: the server-side fallbacks take over */
+    }
+}

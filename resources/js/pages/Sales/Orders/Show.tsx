@@ -1,6 +1,9 @@
 import DatePicker from '@/components/ui/DatePicker';
 import { Dialog } from '@/components/ui/Dialog';
+import { Alert } from '@/components/ui/Alert';
+import { useConfirm } from '@/components/ui/ConfirmDialog';
 import DocBadge from '@/components/ui/DocBadge';
+import { posJson } from '@/pages/Pos/api';
 import InfoTip from '@/components/ui/InfoTip';
 import SandboxPaymentBadge from '@/components/SandboxPaymentBadge';
 import { Button, ButtonLink } from '@/components/ui/Button';
@@ -264,6 +267,8 @@ type Props = {
     marginSummary: { net_revenue_excl_tax: string; covered_revenue_excl_tax: string; cost_total: string; gross_margin_amount: string; gross_margin_rate: string | null; missing_cost_line_count: number } | null;
     salespersons: { id: number; name: string }[];
     completionEligibility: CompletionEligibility;
+    /** POS-specific state (null for non-POS orders). */
+    posDraft: { attention: boolean; inactive_hours: number | null; last_activity_at: string | null; lines: number; can_delete: boolean } | null;
     can: {
         update: boolean;
         confirm: boolean;
@@ -302,10 +307,15 @@ function Card({ label: l, children }: { label: string; children: ReactNode }) {
     );
 }
 
-export default function ShowOrder({ order, paymentSummary, payments, refunds, financialAccounts, documents, awaitingReplenishment, fulfillmentRouting, procurement, procurementPlan, fulfillment, transferRequests, revisions, activeCorrection, pendingReplacementInvoice, invoiceStaleAfterCompletion, addenda, customerReturns, customerExchanges, returnPolicy, commercialSummary, marginSummary, salespersons, completionEligibility, can }: Props) {
+export default function ShowOrder({ order, paymentSummary, payments, refunds, financialAccounts, documents, awaitingReplenishment, fulfillmentRouting, procurement, procurementPlan, fulfillment, transferRequests, revisions, activeCorrection, pendingReplacementInvoice, invoiceStaleAfterCompletion, addenda, customerReturns, customerExchanges, returnPolicy, commercialSummary, marginSummary, salespersons, completionEligibility, posDraft, can }: Props) {
     const { t } = useI18n();
     const businessToday = useBusinessToday();
     const [confirmCancel, setConfirmCancel] = useState(false);
+    const [resuming, setResuming] = useState(false);
+    const [resumeError, setResumeError] = useState('');
+    const [deleting, setDeleting] = useState(false);
+    const [deleteError, setDeleteError] = useState('');
+    const confirmDialog = useConfirm();
     const cancellation = useForm({ reason: '' });
     const createInvoice = useForm({});
     const correctionForm = useForm({ reason: '' });
@@ -377,9 +387,58 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
             paymentForm.data.payments.map((entry, position) => (position === index ? { ...entry, [key]: value } : entry)),
         );
 
+    // Reopen this POS draft as the terminal's active cart (same server path as the POS held-sales drawer).
+    const resumeInPos = async () => {
+        setResuming(true);
+        setResumeError('');
+        try {
+            await posJson(`/pos/drafts/${order.id}/resume`, { method: 'POST' });
+            router.visit('/pos');
+        } catch {
+            setResumeError(t('orders.show.posResumeFailed'));
+            setResuming(false);
+        }
+    };
+
     return (
         <SalesLayout>
             <Head title={order.order_number} />
+
+            {posDraft?.attention && order.status === 'draft' && (
+                <Alert tone="warning" className="mb-4 px-4 py-3" title={t('orders.show.posInactiveTitle')}>
+                    <p>{t('orders.show.posInactiveBody').replace('{hours}', String(posDraft.inactive_hours ?? 24))}</p>
+                    {resumeError && <p className="mt-1 text-danger">{resumeError}</p>}
+                    <div className="mt-2 flex flex-wrap gap-2">
+                        {can.update && <Button type="button" variant="secondary" loading={resuming} onClick={() => void resumeInPos()}>{t('orders.show.posResume')}</Button>}
+                        {can.cancel && <Button type="button" variant="danger" onClick={() => setConfirmCancel(true)}>{t('orders.show.cancelOrder')}</Button>}
+                    </div>
+                </Alert>
+            )}
+
+            {posDraft?.can_delete && order.status === 'cancelled' && (
+                <Alert tone="info" className="mb-4 px-4 py-3">
+                    <p>{t('orders.show.deleteHelp')}</p>
+                    {deleteError && <p className="mt-1 text-danger">{deleteError}</p>}
+                    <div className="mt-2">
+                        <Button
+                            type="button"
+                            variant="danger"
+                            loading={deleting}
+                            onClick={async () => {
+                                if (!(await confirmDialog({ title: t('orders.show.deleteConfirm'), danger: true }))) return;
+                                setDeleting(true);
+                                setDeleteError('');
+                                router.delete(`/sales/orders/${order.id}`, {
+                                    onError: (errors) => setDeleteError(String(errors.order ?? Object.values(errors)[0] ?? '')),
+                                    onFinish: () => setDeleting(false),
+                                });
+                            }}
+                        >
+                            {t('orders.show.deleteOrder')}
+                        </Button>
+                    </div>
+                </Alert>
+            )}
 
             <div className="mb-6">
                 <ButtonLink href="/sales/orders" variant="ghost" size="sm" className="-ms-2 mb-1">

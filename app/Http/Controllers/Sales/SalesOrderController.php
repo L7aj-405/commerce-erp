@@ -13,6 +13,7 @@ use App\Enums\SalesOrderLineType;
 use App\Enums\SalesOrderPaymentStatus;
 use App\Enums\SalesOrderSource;
 use App\Enums\SalesOrderStatus;
+use App\Services\Pos\PosDraftLifecycle;
 use App\Enums\WarehouseStatus;
 use App\Http\Controllers\Controller;
 use App\Models\Customer;
@@ -59,7 +60,9 @@ class SalesOrderController extends Controller
             'fulfillment_status' => ['nullable', Rule::enum(SalesOrderFulfillmentStatus::class)],
             'payment_status' => ['nullable', Rule::enum(SalesOrderPaymentStatus::class)],
             'sale_date' => ['nullable', 'date'],
+            'attention' => ['nullable', 'boolean'],
         ]);
+        $lifecycle = app(PosDraftLifecycle::class);
 
         $scope = fn () => SalesOrder::query()
             ->where('organization_id', $organization->getKey())
@@ -76,6 +79,7 @@ class SalesOrderController extends Controller
             ->when($filters['fulfillment_status'] ?? null, fn ($query, string $value) => $query->where('fulfillment_status', $value))
             ->when($filters['payment_status'] ?? null, fn ($query, string $value) => $query->where('payment_status', $value))
             ->when($filters['sale_date'] ?? null, fn ($query, string $date) => $query->whereDate('sale_date', $date))
+            ->when($request->boolean('attention'), fn ($query) => $this->posAttentionScope($query, $lifecycle))
             ->with([
                 'store:id,name,code',
                 'lines:id,sales_order_id,product_variant_id,quantity',
@@ -88,7 +92,8 @@ class SalesOrderController extends Controller
             ->latest('ordered_at')
             ->paginate(20)
             ->withQueryString()
-            ->through(function (SalesOrder $order) {
+            ->through(function (SalesOrder $order) use ($lifecycle) {
+                $order->setAttribute('pos_attention', $this->posDraftState($order, $order->lines->count(), $lifecycle)['attention'] ?? false);
                 $returnSummary = $this->returnSummary($order, $order->customerReturns);
                 $order->setAttribute('returned_total', $returnSummary['returns']);
                 $order->setAttribute('net_total', $returnSummary['net']);
@@ -101,7 +106,7 @@ class SalesOrderController extends Controller
 
         return Inertia::render('Sales/Orders/Index', [
             'orders' => $orders,
-            'filters' => $filters,
+            'filters' => [...$filters, 'attention' => $request->boolean('attention') ? '1' : null],
             'summary' => [
                 'total' => $scope()->count(),
                 'a_preparer' => $scope()
@@ -109,8 +114,40 @@ class SalesOrderController extends Controller
                     ->where('fulfillment_status', SalesOrderFulfillmentStatus::Unfulfilled->value)->count(),
                 'partiellement_payees' => $scope()->where('payment_status', SalesOrderPaymentStatus::PartiallyPaid->value)->count(),
                 'payees' => $scope()->where('payment_status', SalesOrderPaymentStatus::Paid->value)->count(),
+                'brouillons' => $scope()->where('status', SalesOrderStatus::Draft->value)->count(),
+                'annulees' => $scope()->where('status', SalesOrderStatus::Cancelled->value)->count(),
+                'pos_inactifs' => $this->posAttentionScope($scope(), $lifecycle)->count(),
             ],
         ]);
+    }
+
+    /** POS drafts WITH products idle past the inactivity window (never auto-deleted: only flagged). */
+    private function posAttentionScope($query, PosDraftLifecycle $lifecycle)
+    {
+        return $query->posOpenDrafts()->whereHas('lines')
+            ->whereRaw('COALESCE(pos_last_activity_at, updated_at, created_at) < ?', [$lifecycle->inactivityCutoff()]);
+    }
+
+    /**
+     * POS-specific state for the list badge and the detail banner; null for every other order.
+     *
+     * @return array{attention: bool, inactive_hours: int|null, last_activity_at: string|null, lines: int, can_delete: bool}|null
+     */
+    private function posDraftState(SalesOrder $order, int $lineCount, PosDraftLifecycle $lifecycle): ?array
+    {
+        if ($order->source !== SalesOrderSource::Pos) {
+            return null;
+        }
+        $last = $lifecycle->lastActivityAt($order);
+        $attention = $lifecycle->needsAttention($order, $lineCount);
+
+        return [
+            'attention' => $attention,
+            'inactive_hours' => $attention && $last ? (int) $last->diffInHours(now()) : null,
+            'last_activity_at' => $last?->toIso8601String(),
+            'lines' => $lineCount,
+            'can_delete' => request()->user()?->can('deleteCancelledPosDraft', $order) ?? false,
+        ];
     }
 
     public function store(Request $request, ActiveTenantContext $context, CreateSalesOrderAction $action): RedirectResponse
@@ -220,6 +257,7 @@ class SalesOrderController extends Controller
 
         return Inertia::render('Sales/Orders/Show', [
             'order' => $order,
+            'posDraft' => $this->posDraftState($order, $order->lines()->count(), app(PosDraftLifecycle::class)),
             'paymentSummary' => $payments->summary($order),
             'payments' => $order->paymentAllocations()
                 ->with(['payment.financialAccount:id,name,code,type', 'payment.receivedBy:id,name'])

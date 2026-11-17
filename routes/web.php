@@ -403,6 +403,7 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
         Route::post('/drafts/{order}/hold', [PosController::class, 'holdDraft'])->name('drafts.hold');
         Route::post('/drafts/{order}/resume', [PosController::class, 'resumeDraft'])->name('drafts.resume');
         Route::delete('/drafts/{order}', [PosController::class, 'destroyDraft'])->name('drafts.destroy');
+        Route::post('/drafts/{order}/abandon', [PosController::class, 'abandonDraft'])->name('drafts.abandon');
         Route::post('/sales', [PosController::class, 'complete'])->name('sales.store');
         // F2 — supplier sourcing of cart shortages ("Articles à sourcer") and
         // hand-over of a fully sourced cart as a Sales Order Draft.
@@ -686,6 +687,8 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
         Route::post('/exchanges/{exchange}/refunds', [CustomerExchangeController::class, 'refund'])->name('exchanges.refunds.store');
         Route::post('/exchanges/{exchange}/cancel', [CustomerExchangeController::class, 'cancel'])->name('exchanges.cancel');
         Route::post('/orders/{order}/cancel', [SalesOrderLifecycleController::class, 'cancel'])->name('orders.cancel');
+        // Hard delete of a CANCELLED, never-confirmed POS draft with no commercial history (else 422).
+        Route::delete('/orders/{order}', [SalesOrderLifecycleController::class, 'destroyCancelledPosDraft'])->name('orders.destroy');
         Route::post('/orders/{order}/fulfill', [SalesOrderLifecycleController::class, 'fulfill'])->name('orders.fulfill');
         // Expédition & Livraison (F1.1): shipments of a confirmed order. Canonical rules live in App\Actions\Fulfillment.
         Route::prefix('/orders/{order}/fulfillments')->name('orders.fulfillments.')->group(function () {

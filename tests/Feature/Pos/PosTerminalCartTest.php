@@ -89,6 +89,11 @@ class PosTerminalCartTest extends PosTestCase
         $terminalA = (string) Str::uuid();
         $terminalB = (string) Str::uuid();
         $cart = $this->openCart($this->owner, $terminalA);
+        // Only a cart WITH products can be parked: holding an empty one discards it (nothing to resume).
+        $variant = $this->createProduct($this->organization, 'Held Product', 'HELD-1', ['default_sale_price' => '10.0000'])->variants->first();
+        $this->openStock($this->owner, $this->organization, $this->warehouse, $variant, '5.0000');
+        $this->withCredentials()->withCookie(PosController::TERMINAL_COOKIE, $terminalA)->actingAs($this->owner)
+            ->postJson(route('pos.drafts.lines.store', $cart), $this->posCatalogLine($variant, ['quantity' => '1', 'warehouse_id' => $this->warehouse->id]))->assertOk();
         $this->withCredentials()->withCookie(PosController::TERMINAL_COOKIE, $terminalA)->actingAs($this->owner)
             ->postJson(route('pos.drafts.hold', $cart))->assertOk();
 

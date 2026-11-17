@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Services\AuditLogger;
 use App\Services\InventoryReservationManager;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -30,7 +31,10 @@ class PosDraftLifecycle
 {
     public const REASON_MANUAL = 'manual';
     public const REASON_EMPTY = 'empty';
-    public const REASON_EXPIRED = 'expired';
+    /** The cashier left / switched away from an empty cart (event-driven, revalidated server-side). */
+    public const REASON_ABANDONED = 'abandoned';
+    /** A cancelled, never-confirmed POS draft deleted by an authorized user. */
+    public const REASON_CANCELLED_DELETE = 'cancelled_delete';
 
     public const OUTCOME_DISCARDED = 'discarded';
     public const OUTCOME_SKIPPED_ACTIVE = 'skipped_active';
@@ -154,7 +158,18 @@ class PosDraftLifecycle
             return ['state' => 'active', 'lines' => $lines, 'reservations' => $reservations, 'reasons' => []];
         }
 
-        return ['state' => $lines === 0 ? 'empty_eligible' : 'expired_eligible', 'lines' => $lines, 'reservations' => $reservations, 'reasons' => []];
+        // A cart WITH products is never removed automatically: it only needs attention.
+        return ['state' => $lines === 0 ? 'empty_eligible' : 'attention', 'lines' => $lines, 'reservations' => $reservations, 'reasons' => []];
+    }
+
+    /** True for a POS draft that holds products and has been idle past the inactivity window. */
+    public function needsAttention(SalesOrder $order, int $lineCount, ?Carbon $now = null): bool
+    {
+        return $lineCount > 0
+            && $order->source === \App\Enums\SalesOrderSource::Pos
+            && $order->status === \App\Enums\SalesOrderStatus::Draft
+            && $order->pos_converted_at === null
+            && $this->isInactive($order, $lineCount, $now);
     }
 
     /** Candidate query for the current environment (Production unless a Test context is bound). */
@@ -173,24 +188,83 @@ class PosDraftLifecycle
      */
     public function discard(?User $actor, SalesOrder $order, string $reason, bool $confirmed = false): array
     {
-        return DB::transaction(function () use ($actor, $order, $reason, $confirmed) {
-            $locked = SalesOrder::query()->posOpenDrafts()
-                ->where('organization_id', $order->organization_id)
-                ->whereKey($order->getKey())->lockForUpdate()->first();
-            if (! $locked) {
-                return ['outcome' => self::OUTCOME_SKIPPED_GONE];
-            }
+        try {
+            return DB::transaction(function () use ($actor, $order, $reason, $confirmed) {
+                return $this->discardLocked($actor, $order, $reason, $confirmed);
+            });
+        } catch (QueryException) {
+            // A concurrent request attached a child row (e.g. a line added in another tab) between
+            // our checks and the delete: the FK refused it, nothing was removed. Never an error.
+            return ['outcome' => self::OUTCOME_SKIPPED_ACTIVE];
+        }
+    }
 
-            $lineCount = $locked->lines()->count();
-            if ($reason !== self::REASON_MANUAL) {
-                // Scheduled paths recheck inactivity on the LOCKED row.
-                if (($reason === self::REASON_EMPTY && $lineCount > 0) || ! $this->isInactive($locked, $lineCount)) {
-                    return ['outcome' => self::OUTCOME_SKIPPED_ACTIVE];
-                }
-            } elseif ($lineCount > 0 && ! $confirmed) {
-                return ['outcome' => self::OUTCOME_CONFIRMATION_REQUIRED, 'lines' => $lineCount];
-            }
+    /**
+     * Event-driven cleanup: removes the terminal's EMPTY open carts other than $exceptId whose last
+     * activity is older than $graceSeconds. Every candidate is revalidated under its row lock by
+     * discard(); safe to call repeatedly (idempotent) and from several requests at once.
+     */
+    public function abandonEmptyCarts(User $actor, Organization $organization, \App\Models\Store $store, ?string $terminal, ?int $exceptId = null, int $graceSeconds = 0): int
+    {
+        $cutoff = now()->subSeconds(max(0, $graceSeconds));
+        $ids = $this->candidates($organization)
+            ->where('store_id', $store->getKey())
+            ->when($terminal, fn (Builder $q, string $id) => $q->where('pos_terminal_id', $id), fn (Builder $q) => $q->whereNull('pos_terminal_id'))
+            ->when($exceptId, fn (Builder $q, int $id) => $q->whereKeyNot($id))
+            ->whereDoesntHave('lines')
+            ->whereRaw('COALESCE(pos_last_activity_at, updated_at, created_at) <= ?', [$cutoff])
+            ->limit(25)->pluck('id');
 
+        $removed = 0;
+        foreach ($ids as $id) {
+            $candidate = SalesOrder::query()->posOpenDrafts()->find($id);
+            if ($candidate && $this->discard($actor, $candidate, self::REASON_ABANDONED)['outcome'] === self::OUTCOME_DISCARDED) {
+                $removed++;
+            }
+        }
+
+        return $removed;
+    }
+
+    /** @return array{outcome: string, reasons?: list<string>, lines?: int} */
+    private function discardLocked(?User $actor, SalesOrder $order, string $reason, bool $confirmed): array
+    {
+        $query = $reason === self::REASON_CANCELLED_DELETE
+            ? SalesOrder::query()
+                ->where('source', \App\Enums\SalesOrderSource::Pos->value)
+                ->where('status', \App\Enums\SalesOrderStatus::Cancelled->value)
+                ->whereNull('pos_converted_at')
+            : SalesOrder::query()->posOpenDrafts();
+        $locked = $query->where('organization_id', $order->organization_id)
+            ->whereKey($order->getKey())->lockForUpdate()->first();
+        if (! $locked) {
+            return ['outcome' => self::OUTCOME_SKIPPED_GONE];
+        }
+
+        $lineCount = $locked->lines()->count();
+        if ($actor === null && $lineCount > 0) {
+            // The unattended scheduler NEVER removes a cart that holds products (history is reported precisely).
+            $history = $this->blockers($locked);
+
+            return $history !== [] ? ['outcome' => self::OUTCOME_BLOCKED, 'reasons' => $history] : ['outcome' => self::OUTCOME_SKIPPED_ACTIVE];
+        }
+        if ($reason === self::REASON_EMPTY) {
+            if ($lineCount > 0 || ! $this->isInactive($locked, $lineCount)) {
+                return ['outcome' => self::OUTCOME_SKIPPED_ACTIVE];
+            }
+        } elseif ($reason === self::REASON_ABANDONED) {
+            if ($actor === null || $lineCount > 0) {
+                return ['outcome' => self::OUTCOME_SKIPPED_ACTIVE];
+            }
+        } elseif ($reason === self::REASON_CANCELLED_DELETE) {
+            if ($actor === null || $locked->confirmed_at !== null) {
+                return ['outcome' => self::OUTCOME_BLOCKED, 'reasons' => ['confirmed']];
+            }
+        } elseif ($lineCount > 0 && ! $confirmed) {
+            return ['outcome' => self::OUTCOME_CONFIRMATION_REQUIRED, 'lines' => $lineCount];
+        }
+
+        {
             $blockers = $this->blockers($locked, allowReservationRelease: $actor !== null);
             if ($blockers !== []) {
                 return ['outcome' => self::OUTCOME_BLOCKED, 'reasons' => $blockers];
@@ -233,10 +307,10 @@ class PosDraftLifecycle
                 $line->supplierAvailabilityRequests()->whereDoesntHave('derivedProcurement')->delete();
                 $line->delete();
             }
-            $this->audit->record('sales_order.pos_draft_discarded', $actor, $locked->organization, $locked->store, $locked, oldValues: ['status' => 'draft'], newValues: $snapshot);
+            $this->audit->record('sales_order.pos_draft_discarded', $actor, $locked->organization, $locked->store, $locked, oldValues: ['status' => $locked->status->value], newValues: $snapshot);
             $locked->delete();
 
             return ['outcome' => self::OUTCOME_DISCARDED, 'lines' => $lineCount];
-        });
+        }
     }
 }

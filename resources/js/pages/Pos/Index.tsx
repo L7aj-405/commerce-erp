@@ -9,7 +9,7 @@ import { useI18n } from '@/i18n';
 import PosLayout from '@/layouts/PosLayout';
 import { Head, Link, router } from '@inertiajs/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { isStaleDraftError, posJson } from './api';
+import { abandonEmptyCartKeepalive, isStaleDraftError, posJson } from './api';
 import HeldSalesDrawer from './HeldSalesDrawer';
 import PosCartPanel from './PosCartPanel';
 import PosCatalogue from './PosCatalogue';
@@ -156,6 +156,22 @@ export default function PosIndex({
     const ensureDraftRef = useRef<Promise<ActiveSale> | null>(null);
     const operationIdRef = useRef<string>('');
     activeSaleRef.current = activeSale;
+
+    // An EMPTY cart that the cashier leaves (tab close / reload / navigating away from the POS) is
+    // abandoned server-side. Read through a ref so the listener always sees the current cart; the
+    // server revalidates (still empty, no history) so a stale or duplicate call can never delete a
+    // cart that has products.
+    useEffect(() => {
+        const abandon = () => {
+            const sale = activeSaleRef.current;
+            if (sale && sale.lines.length === 0) abandonEmptyCartKeepalive(sale.id);
+        };
+        window.addEventListener('pagehide', abandon);
+        return () => {
+            window.removeEventListener('pagehide', abandon);
+            abandon();
+        };
+    }, []);
 
     useEffect(() => {
         setActiveSale(initialActiveSale);

@@ -41,6 +41,14 @@ class SalesOrderPolicy
         return $this->allowed($user, $order, 'sales_orders.confirm');
     }
 
+    /** Hard delete of a cancelled POS draft: same permission as cancelling, scoped to the user's org/store access. */
+    public function deleteCancelledPosDraft(User $user, SalesOrder $order): bool
+    {
+        return $this->allowed($user, $order, 'sales_orders.cancel')
+            && $order->status === SalesOrderStatus::Cancelled
+            && $order->source === \App\Enums\SalesOrderSource::Pos;
+    }
+
     public function cancel(User $user, SalesOrder $order): bool
     {
         if (! $this->allowed($user, $order, 'sales_orders.cancel')) {

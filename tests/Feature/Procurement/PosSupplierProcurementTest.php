@@ -159,7 +159,7 @@ class PosSupplierProcurementTest extends PosTestCase
         $this->assertSame(0, SalesOrderProcurement::query()->where('sales_order_id', $draft->id)->count());
 
         // Even discarding the cart afterwards leaves no procurement behind.
-        $this->actingAs($owner)->deleteJson("/pos/drafts/{$draft->id}")->assertOk();
+        $this->actingAs($owner)->deleteJson("/pos/drafts/{$draft->id}", ['confirm' => true])->assertOk();
         $this->assertSame(0, SalesOrderProcurement::query()->count());
     }
 

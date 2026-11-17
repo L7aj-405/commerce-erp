@@ -77,7 +77,7 @@ class PosDraftBlockersTest extends DocumentTestCase
         Artisan::call('pos:cleanup-drafts', ['--execute' => true]);
         $this->assertStringContainsString('Blocked', Artisan::output());
         $this->assertNotNull(SalesOrder::query()->find($order->id));
-        $result = app(PosDraftLifecycle::class)->discard(null, SalesOrder::query()->findOrFail($order->id), PosDraftLifecycle::REASON_EXPIRED);
+        $result = app(PosDraftLifecycle::class)->discard(null, SalesOrder::query()->findOrFail($order->id), PosDraftLifecycle::REASON_EMPTY);
         $this->assertSame(PosDraftLifecycle::OUTCOME_BLOCKED, $result['outcome']);
         $manual = app(PosDraftLifecycle::class)->discard($owner, SalesOrder::query()->findOrFail($order->id), PosDraftLifecycle::REASON_MANUAL, true);
         $this->assertSame(PosDraftLifecycle::OUTCOME_BLOCKED, $manual['outcome']);

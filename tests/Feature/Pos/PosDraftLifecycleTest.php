@@ -115,6 +115,7 @@ class PosDraftLifecycleTest extends PosTestCase
     {
         $draft = $this->openCart();
         $this->assertNotNull(SalesOrder::query()->findOrFail($draft)->pos_last_activity_at);
+        $this->addLine($draft); // a cart WITH products: an idle EMPTY cart is (rightly) swept on reload
 
         $this->setActivity($draft, now()->subHours(5));
         $this->actingAs($this->owner)->get(route('pos.index'))->assertOk();
@@ -140,39 +141,40 @@ class PosDraftLifecycleTest extends PosTestCase
 
     // --- C. expiry cleanup -----------------------------------------------------------
 
-    public function test_expired_pos_drafts_are_cleaned_and_active_ones_are_kept(): void
+    public function test_scheduled_cleanup_removes_only_idle_empty_carts_and_never_carts_with_products(): void
     {
-        $expired = $this->draftWithLine('expired', now()->subHours(25));
+        $idleWithProducts = $this->draftWithLine('idle', now()->subHours(25));
         $recent = $this->draftWithLine('recent', now()->subHours(23));
         $emptyOld = $this->emptyDraft(now()->subHours(3));
         $emptyFresh = $this->emptyDraft(now()->subMinutes(10));
 
         $this->assertSame(0, Artisan::call('pos:cleanup-drafts', ['--execute' => true]));
 
-        $this->assertNull(SalesOrder::query()->find($expired));
         $this->assertNull(SalesOrder::query()->find($emptyOld));
-        $this->assertNotNull(SalesOrder::query()->find($recent), 'Active drafts are not expired prematurely.');
+        $this->assertNotNull(SalesOrder::query()->find($idleWithProducts), 'A cart with products is NEVER auto-deleted: it is only flagged.');
+        $this->assertNotNull(SalesOrder::query()->find($recent));
         $this->assertNotNull(SalesOrder::query()->find($emptyFresh));
-        $this->assertDatabaseHas('audit_logs', ['event' => 'sales_order.pos_draft_discarded', 'auditable_id' => $expired]);
+        $this->assertDatabaseHas('audit_logs', ['event' => 'sales_order.pos_draft_discarded', 'auditable_id' => $emptyOld]);
+        $this->assertDatabaseMissing('audit_logs', ['event' => 'sales_order.pos_draft_discarded', 'auditable_id' => $idleWithProducts]);
     }
 
     public function test_dry_run_reports_without_changing_anything(): void
     {
-        $expired = $this->draftWithLine('expired', now()->subHours(30));
+        $idle = $this->draftWithLine('idle', now()->subHours(30));
         $emptyOld = $this->emptyDraft(now()->subHours(3));
 
         Artisan::call('pos:cleanup-drafts');
         $output = Artisan::output();
 
         $this->assertStringContainsString('DRY RUN', $output);
-        $this->assertNotNull(SalesOrder::query()->find($expired));
+        $this->assertNotNull(SalesOrder::query()->find($idle));
         $this->assertNotNull(SalesOrder::query()->find($emptyOld));
         $this->assertDatabaseMissing('audit_logs', ['event' => 'sales_order.pos_draft_discarded']);
     }
 
     public function test_repeated_cleanup_is_idempotent(): void
     {
-        $this->draftWithLine('expired', now()->subHours(48));
+        $this->emptyDraft(now()->subHours(48));
 
         Artisan::call('pos:cleanup-drafts', ['--execute' => true]);
         $firstAuditCount = DB::table('audit_logs')->where('event', 'sales_order.pos_draft_discarded')->count();
@@ -193,18 +195,22 @@ class PosDraftLifecycleTest extends PosTestCase
         $this->assertSame(1, SalesOrder::query()->where('source', 'pos')->count());
     }
 
-    public function test_legacy_drafts_without_activity_use_updated_at_and_unknown_origin_is_never_touched(): void
+    public function test_legacy_empty_drafts_without_activity_use_updated_at_and_legacy_carts_with_products_are_kept(): void
     {
-        $legacy = $this->draftWithLine('legacy', null);
-        DB::table('sales_orders')->where('id', $legacy)->update(['pos_last_activity_at' => null, 'updated_at' => now()->subHours(2)]);
-        $this->assertNotNull(SalesOrder::query()->find($legacy), 'sanity');
+        $legacy = $this->emptyDraft(null);
+        DB::table('sales_orders')->where('id', $legacy)->update(['pos_last_activity_at' => null, 'updated_at' => now()->subMinutes(20)]);
 
         Artisan::call('pos:cleanup-drafts', ['--execute' => true]);
-        $this->assertNotNull(SalesOrder::query()->find($legacy), 'Recent updated_at keeps a legacy draft.');
+        $this->assertNotNull(SalesOrder::query()->find($legacy), 'A recent updated_at keeps a legacy empty draft.');
 
-        DB::table('sales_orders')->where('id', $legacy)->update(['updated_at' => now()->subHours(40)]);
+        DB::table('sales_orders')->where('id', $legacy)->update(['updated_at' => now()->subHours(3)]);
         Artisan::call('pos:cleanup-drafts', ['--execute' => true]);
         $this->assertNull(SalesOrder::query()->find($legacy));
+
+        $withProducts = $this->draftWithLine('legacy-products', null);
+        DB::table('sales_orders')->where('id', $withProducts)->update(['pos_last_activity_at' => null, 'updated_at' => now()->subDays(60)]);
+        Artisan::call('pos:cleanup-drafts', ['--execute' => true]);
+        $this->assertNotNull(SalesOrder::query()->find($withProducts), 'Legacy carts with products are never deleted.');
     }
 
     // --- E. other drafts / protected orders -------------------------------------------
@@ -232,23 +238,31 @@ class PosDraftLifecycleTest extends PosTestCase
 
         $this->assertNotNull(SalesOrder::query()->find($confirmed));
         $this->assertNotNull(SalesOrder::query()->find($converted));
-        $result = app(PosDraftLifecycle::class)->discard(null, SalesOrder::query()->findOrFail($confirmed), PosDraftLifecycle::REASON_EXPIRED);
+        $result = app(PosDraftLifecycle::class)->discard(null, SalesOrder::query()->findOrFail($confirmed), PosDraftLifecycle::REASON_EMPTY);
         $this->assertSame(PosDraftLifecycle::OUTCOME_SKIPPED_GONE, $result['outcome']);
     }
 
     public function test_cleanup_state_change_under_lock_wins_over_cleanup(): void
     {
-        // Confirmation (or an edit) that lands before cleanup takes the lock makes cleanup skip.
-        $draft = $this->draftWithLine('race', now()->subHours(48));
-        $stale = SalesOrder::query()->findOrFail($draft); // the cleaner read it as expired...
+        // Confirmation that lands before cleanup takes the lock makes cleanup skip.
+        $draft = $this->emptyDraft(now()->subHours(48));
+        $stale = SalesOrder::query()->findOrFail($draft); // the cleaner read it as an idle empty cart...
         DB::table('sales_orders')->where('id', $draft)->update(['status' => 'confirmed']); // ...then it was confirmed
-        $this->assertSame(PosDraftLifecycle::OUTCOME_SKIPPED_GONE, app(PosDraftLifecycle::class)->discard(null, $stale, PosDraftLifecycle::REASON_EXPIRED)['outcome']);
+        $this->assertSame(PosDraftLifecycle::OUTCOME_SKIPPED_GONE, app(PosDraftLifecycle::class)->discard(null, $stale, PosDraftLifecycle::REASON_EMPTY)['outcome']);
 
-        $edited = $this->draftWithLine('edited', now()->subHours(48));
+        // An edit that lands first refreshes the activity stamp: cleanup skips.
+        $edited = $this->emptyDraft(now()->subHours(48));
         $staleEdited = SalesOrder::query()->findOrFail($edited);
-        DB::table('sales_orders')->where('id', $edited)->update(['pos_last_activity_at' => now()]); // an operator edited it meanwhile
-        $this->assertSame(PosDraftLifecycle::OUTCOME_SKIPPED_ACTIVE, app(PosDraftLifecycle::class)->discard(null, $staleEdited, PosDraftLifecycle::REASON_EXPIRED)['outcome']);
+        DB::table('sales_orders')->where('id', $edited)->update(['pos_last_activity_at' => now()]);
+        $this->assertSame(PosDraftLifecycle::OUTCOME_SKIPPED_ACTIVE, app(PosDraftLifecycle::class)->discard(null, $staleEdited, PosDraftLifecycle::REASON_EMPTY)['outcome']);
         $this->assertNotNull(SalesOrder::query()->find($edited));
+
+        // A product added meanwhile turns it into a cart the scheduler must never remove.
+        $filled = $this->emptyDraft(now()->subHours(48));
+        $staleFilled = SalesOrder::query()->findOrFail($filled);
+        $this->addCatalogLine($this->owner, SalesOrder::query()->findOrFail($filled), $this->variant, $this->warehouse, ['quantity' => '1.0000']);
+        $this->assertSame(PosDraftLifecycle::OUTCOME_SKIPPED_ACTIVE, app(PosDraftLifecycle::class)->discard(null, $staleFilled, PosDraftLifecycle::REASON_EMPTY)['outcome']);
+        $this->assertNotNull(SalesOrder::query()->find($filled));
     }
 
     // --- D. manual deletion -----------------------------------------------------------
@@ -308,7 +322,11 @@ class PosDraftLifecycleTest extends PosTestCase
     {
         $draft = $this->draftWithLine('plain', now()->subHours(48));
 
+        // The scheduler leaves a cart with products alone; an authorized manual discard removes it.
         Artisan::call('pos:cleanup-drafts', ['--execute' => true]);
+        $this->assertNotNull(SalesOrder::query()->find($draft));
+        $this->actingAs($this->owner)->withCredentials()->withCookie(PosController::TERMINAL_COOKIE, $this->terminal)
+            ->deleteJson(route('pos.drafts.destroy', $draft), ['confirm' => true])->assertOk();
 
         $balance = $this->balance($this->organization, $this->warehouse, $this->variant);
         $this->assertNull(SalesOrder::query()->find($draft));

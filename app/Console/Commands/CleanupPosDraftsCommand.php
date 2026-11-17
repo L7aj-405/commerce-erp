@@ -10,7 +10,8 @@ use Illuminate\Console\Command;
 use Throwable;
 
 /**
- * Reports (default, read-only) or removes (--execute) abandoned POS carts.
+ * Reports (default, read-only) or removes (--execute) abandoned EMPTY POS carts. Carts that hold
+ * products are never removed here: those idle past the inactivity window are only reported.
  *
  * Scope: Production records only (no Test Mode context is bound in the CLI, so
  * the sandbox scope resolves to the Production environment), POS-origin drafts
@@ -24,7 +25,7 @@ class CleanupPosDraftsCommand extends Command
         {--organization= : Restrict to one organization id}
         {--batch= : Maximum drafts examined per run (default pos.drafts.cleanup_batch_size)}';
 
-    protected $description = 'Dry-run (default) or execute the cleanup of empty and expired POS cart drafts';
+    protected $description = 'Dry-run (default) or execute the cleanup of EMPTY abandoned POS cart drafts (never carts with products)';
 
     public function handle(PosDraftLifecycle $lifecycle, SandboxContext $sandbox): int
     {
@@ -37,7 +38,7 @@ class CleanupPosDraftsCommand extends Command
         $execute = (bool) $this->option('execute');
         $batch = max(1, min(1000, (int) ($this->option('batch') ?: config('pos.drafts.cleanup_batch_size', 200))));
         $examined = 0;
-        $totals = ['empty_eligible' => 0, 'expired_eligible' => 0, 'blocked' => 0, 'active' => 0, 'reservations' => 0, 'discarded' => 0, 'skipped' => 0, 'failed' => 0];
+        $totals = ['empty_eligible' => 0, 'attention' => 0, 'blocked' => 0, 'active' => 0, 'reservations' => 0, 'discarded' => 0, 'skipped' => 0, 'failed' => 0];
         $blockedReasons = [];
 
         $graceCutoff = $lifecycle->emptyGraceCutoff();
@@ -69,11 +70,12 @@ class CleanupPosDraftsCommand extends Command
             }
         }
 
+        $this->line('Scheduled cleanup gate (POS_DRAFT_CLEANUP_ENABLED): '.(config('pos.drafts.cleanup_enabled') ? 'ENABLED' : 'DISABLED (default) — only this manual command can remove empty carts'));
         $this->line($execute ? 'POS draft cleanup — EXECUTED' : 'POS draft cleanup — DRY RUN (nothing was changed; use --execute to apply)');
         $this->table(['Metric', 'Count'], [
             ['Examined (batch limit '.$batch.')', $examined],
             ['Eligible empty drafts', $totals['empty_eligible']],
-            ['Eligible expired non-empty drafts', $totals['expired_eligible']],
+            ['Non-empty drafts idle > '.config('pos.drafts.inactivity_hours').' h (flagged for attention, NEVER deleted)', $totals['attention']],
             ['Blocked (history / reservations)', $totals['blocked']],
             ['Still active (not expired)', $totals['active']],
             ['Active reservations tied to examined drafts', $totals['reservations']],
@@ -108,15 +110,12 @@ class CleanupPosDraftsCommand extends Command
             return;
         }
         $totals[$class['state']]++;
-        if (! $execute) {
+        if (! $execute || $class['state'] !== 'empty_eligible') {
+            // Dry run, or a cart with products: report only.
             return;
         }
         try {
-            $result = $lifecycle->discard(
-                null,
-                $order,
-                $class['state'] === 'empty_eligible' ? PosDraftLifecycle::REASON_EMPTY : PosDraftLifecycle::REASON_EXPIRED,
-            );
+            $result = $lifecycle->discard(null, $order, PosDraftLifecycle::REASON_EMPTY);
             match ($result['outcome']) {
                 PosDraftLifecycle::OUTCOME_DISCARDED => $totals['discarded']++,
                 default => $totals['skipped']++,

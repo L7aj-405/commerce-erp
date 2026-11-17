@@ -18,7 +18,11 @@ return [
         'cleanup_time' => env('POS_DRAFT_CLEANUP_TIME', '03:50'),
         'cleanup_timezone' => env('POS_DRAFT_CLEANUP_TIMEZONE', 'Africa/Casablanca'),
         // Master switch for the scheduled run (the dry-run command always works).
-        'cleanup_enabled' => (bool) env('POS_DRAFT_CLEANUP_ENABLED', true),
+        // Scheduled fallback cleanup of EMPTY carts only. OFF unless explicitly enabled (e.g. keep it off
+        // for the first Production rollout, review `php artisan pos:cleanup-drafts`, then switch it on).
+        'cleanup_enabled' => filter_var(env('POS_DRAFT_CLEANUP_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
+        // Page-load sweep: an empty cart idle this long is considered abandoned (refresh / closed tab).
+        'empty_abandon_seconds' => max(5, (int) env('POS_EMPTY_ABANDON_SECONDS', 20)),
         // Manual deletion reuses the existing `sales_orders.cancel` permission:
         // roles that hold it may discard POS drafts; no new permission is introduced.
         'manual_delete_permission' => 'sales_orders.cancel',

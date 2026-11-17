@@ -101,6 +101,12 @@ class PosController extends Controller
         $storeDefaultWarehouseId = $store?->default_warehouse_id && $warehouses->contains('id', (int) $store->default_warehouse_id)
             ? (int) $store->default_warehouse_id : null;
 
+        // Fallback to the client's abandon call: empty carts of this terminal idle past the short grace
+        // (a refresh / closed tab / lost request) are removed instead of lingering as orphans.
+        if ($store && $terminal && $request->user()->hasPermission($organization, 'sales_orders.update')) {
+            $this->lifecycle()->abandonEmptyCarts($request->user(), $organization, $store, $terminal, null, (int) config('pos.drafts.empty_abandon_seconds', 20));
+        }
+
         $activeSaleModel = $store ? $this->activeDraft($organization, $store, $terminal) : null;
 
         $initialWarehouseId = $store ? $locations->defaultId($organization, $store, $request->user()) : null;
@@ -616,12 +622,17 @@ class PosController extends Controller
             'warehouse_id' => ['nullable', 'integer'],
         ]);
 
-        $order->pos_held_at = now();
-        $order->save();
-        $audit->record('sales_order.pos_held', $request->user(), $organization, $store, $order, newValues: [
-            'order_number' => $order->order_number,
-            'pos_warehouse_id' => $order->pos_warehouse_id,
-        ]);
+        if ($order->lines()->doesntExist()) {
+            // Nothing to hold: an empty cart is transient working state, never parked as a held sale.
+            $this->lifecycle()->discard($request->user(), $order, PosDraftLifecycle::REASON_ABANDONED);
+        } else {
+            $order->pos_held_at = now();
+            $order->save();
+            $audit->record('sales_order.pos_held', $request->user(), $organization, $store, $order, newValues: [
+                'order_number' => $order->order_number,
+                'pos_warehouse_id' => $order->pos_warehouse_id,
+            ]);
+        }
 
         $active = null;
         if (($data['start_new_sale'] ?? false) === true) {
@@ -655,7 +666,11 @@ class PosController extends Controller
 
         $terminal = $this->terminalId($request);
         $current = $this->activeDraftQuery($organization, $store, $terminal)->where('id', '!=', $order->getKey())->first();
-        if ($current) {
+        if ($current && $current->lines()->doesntExist()) {
+            // Switching away from an EMPTY cart removes it (revalidated under lock); a cart with
+            // products is parked as a held sale exactly as before.
+            $this->lifecycle()->discard($request->user(), $current, PosDraftLifecycle::REASON_ABANDONED);
+        } elseif ($current) {
             $current->pos_held_at = now();
             $current->save();
             $audit->record('sales_order.pos_held', $request->user(), $organization, $store, $current, newValues: [
@@ -699,6 +714,23 @@ class PosController extends Controller
         };
 
         return $this->draftStateResponse($organization, $store, $this->activeDraft($organization, $store, $this->terminalId($request)), $posSummary);
+    }
+
+    /**
+     * The cashier left an empty cart (navigation, tab close, switch). Idempotent and race-safe:
+     * the draft is removed only if it is STILL an empty, history-free POS draft under its row lock;
+     * otherwise nothing happens. Best-effort for the browser, with the index sweep and the scheduled
+     * command as fallbacks.
+     */
+    public function abandonDraft(Request $request, ActiveTenantContext $context, SalesOrder $order): JsonResponse
+    {
+        [$organization, $store] = $this->operationalContext($request, $context);
+        abort_unless((int) $order->organization_id === (int) $organization->getKey() && (int) $order->store_id === (int) $store->getKey(), 404);
+        $this->authorize('update', $order);
+
+        $result = $this->lifecycle()->discard($request->user(), $order, PosDraftLifecycle::REASON_ABANDONED);
+
+        return response()->json(['outcome' => $result['outcome']]);
     }
 
     private function lifecycle(): PosDraftLifecycle

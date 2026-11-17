@@ -39,17 +39,19 @@ type Order = {
     returned_total: string;
     net_total: string;
     return_state: 'none' | 'partial' | 'full';
+    /** POS draft with products idle past the inactivity window (flag only, never auto-deleted). */
+    pos_attention?: boolean;
 };
 type PageLink = { url: string | null; label: string; active: boolean };
-type Filters = { search?: string; status?: string; fulfillment_status?: string; payment_status?: string; sale_date?: string };
+type Filters = { search?: string; status?: string; fulfillment_status?: string; payment_status?: string; sale_date?: string; attention?: string };
 type Props = {
     orders: { data: Order[]; links: PageLink[]; from?: number | null; to?: number | null; total?: number };
     filters: Filters;
-    summary: { total: number; a_preparer: number; partiellement_payees: number; payees: number };
+    summary: { total: number; a_preparer: number; partiellement_payees: number; payees: number; brouillons: number; annulees: number; pos_inactifs: number };
 };
 
 // Exactly the single-value params SalesOrderController@index validates.
-const FILTER_KEYS = ['search', 'status', 'fulfillment_status', 'payment_status', 'sale_date'] as const;
+const FILTER_KEYS = ['search', 'status', 'fulfillment_status', 'payment_status', 'sale_date', 'attention'] as const;
 
 export default function OrderIndex({ orders, filters, summary }: Props) {
     const { t } = useI18n();
@@ -81,6 +83,7 @@ export default function OrderIndex({ orders, filters, summary }: Props) {
         });
     if (filters.payment_status)
         chips.push({ key: 'payment_status', label: t('common.payment'), value: optionLabel(paymentOptions, filters.payment_status), onRemove: () => f.remove('payment_status') });
+    if (filters.attention) chips.push({ key: 'attention', label: t('sales.orders.posInactiveTile'), value: '> 24 h', onRemove: () => f.remove('attention') });
     if (filters.sale_date) chips.push({ key: 'sale_date', label: t('common.date'), value: formatDate(filters.sale_date), onRemove: () => f.remove('sale_date') });
 
     // Each tile applies exactly the condition its count uses server-side.
@@ -89,6 +92,9 @@ export default function OrderIndex({ orders, filters, summary }: Props) {
         { key: 'prepare', label: t('sales.orders.toPrepare'), value: summary.a_preparer, filters: { status: 'confirmed', fulfillment_status: 'unfulfilled' }, tone: 'warning' },
         { key: 'partial', label: t('sales.orders.partiallyPaid'), value: summary.partiellement_payees, filters: { payment_status: 'partially_paid' }, tone: 'warning' },
         { key: 'paid', label: t('sales.orders.paid'), value: summary.payees, filters: { payment_status: 'paid' }, tone: 'success' },
+        { key: 'drafts', label: t('sales.orders.draftsTile'), value: summary.brouillons, filters: { status: 'draft' }, tone: 'neutral' },
+        { key: 'posInactive', label: t('sales.orders.posInactiveTile'), value: summary.pos_inactifs, filters: { status: 'draft', attention: '1' }, tone: 'warning' },
+        { key: 'cancelled', label: t('sales.orders.cancelledTile'), value: summary.annulees, filters: { status: 'cancelled' }, tone: 'neutral' },
     ];
     const tileActive = (tile: (typeof tiles)[number]) =>
         f.activeCount === Object.keys(tile.filters).length && Object.entries(tile.filters).every(([key, value]) => filters[key as keyof Filters] === value);
@@ -101,6 +107,7 @@ export default function OrderIndex({ orders, filters, summary }: Props) {
     const statusBadges = (order: Order) => (
         <>
             <DocBadge tone={orderStatusTone(order.status)}>{label(orderStatusLabel, order.status)}</DocBadge>
+            {order.pos_attention && <DocBadge tone="warning">{t('sales.orders.posInactive')}</DocBadge>}
             {order.return_state === 'partial' && <DocBadge tone="warning">{t('sales.orders.partialReturn')}</DocBadge>}
             {order.return_state === 'full' && <DocBadge tone="danger">{t('sales.orders.fullReturn')}</DocBadge>}
         </>
@@ -148,7 +155,7 @@ export default function OrderIndex({ orders, filters, summary }: Props) {
             />
 
             {/* Summary tiles double as one-click filters */}
-            <nav aria-label={t('sales.orders.tileHint')} className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <nav aria-label={t('sales.orders.tileHint')} className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4 xl:grid-cols-7">
                 {tiles.map((tile) => {
                     const active = tileActive(tile);
                     return (
