@@ -26,7 +26,7 @@ class RecordSalesOrderPaymentsAction
                 ->count();
             if ($existingCount > 0 && $existingCount !== count($payments)) {
                 throw ValidationException::withMessages([
-                    'client_operation_id' => 'This Payment operation identifier was already used with a different number of entries.',
+                    'client_operation_id' => 'Cet identifiant d’opération de paiement a déjà été utilisé avec un nombre de lignes différent.',
                 ]);
             }
 

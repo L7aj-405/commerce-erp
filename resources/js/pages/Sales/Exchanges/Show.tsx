@@ -2,8 +2,10 @@ import SandboxReturnsBadge from "@/components/SandboxReturnsBadge";
 import { Button } from "@/components/ui/Button";
 import SalesLayout from "@/layouts/SalesLayout";
 import { useI18n } from "@/i18n";
+import { useBusinessToday } from "@/utils/businessDate";
 import { formatMoney, formatQuantity } from "@/utils/format";
 import { Head, Link, router, useForm } from "@inertiajs/react";
+import { newOperationId } from '@/utils/uuid';
 
 type Props = {
     exchange: any;
@@ -18,7 +20,6 @@ type Props = {
     financialAccounts: any[];
     can: { process: boolean; refund: boolean };
 };
-const today = () => new Date().toISOString().slice(0, 10);
 
 export default function ShowExchange({
     exchange,
@@ -29,21 +30,22 @@ export default function ShowExchange({
     can,
 }: Props) {
     const { t } = useI18n();
+    const businessToday = useBusinessToday();
     const difference = Number(exchange.difference_amount);
     const paymentForm = useForm({
-        client_operation_id: crypto.randomUUID(),
+        client_operation_id: newOperationId(),
         payments: [
             {
                 method: "cash",
                 financial_account_id: "",
                 amount: settlementSummary.remaining,
-                payment_date: today(),
+                payment_date: businessToday,
                 reference: `Échange ${exchange.exchange_number}`,
             },
         ],
     });
     const refundForm = useForm({
-        client_operation_id: crypto.randomUUID(),
+        client_operation_id: newOperationId(),
         payment_id: "",
         amount: settlementSummary.remaining,
         reason: `Échange ${exchange.exchange_number}`,

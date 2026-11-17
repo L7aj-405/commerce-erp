@@ -1,9 +1,11 @@
 import TransferLinePicker, { type PickerItem, type PickerLine } from '@/components/inventory/TransferLinePicker';
+import { Alert } from '@/components/ui/Alert';
 import { Button, ButtonLink } from '@/components/ui/Button';
 import EmptyState from '@/components/ui/EmptyState';
 import SandboxStockBadge from '@/components/SandboxStockBadge';
 import PageHeader from '@/components/ui/PageHeader';
 import { useI18n } from '@/i18n';
+import { newOperationId } from '@/utils/uuid';
 import InventoryLayout from '@/layouts/InventoryLayout';
 import { Head, Link, router, useForm } from '@inertiajs/react';
 import { useEffect, useState } from 'react';
@@ -45,6 +47,17 @@ export default function TransferCreate({ filters, warehouses, searchResults, pre
     const [search, setSearch] = useState(filters.search ?? '');
     const [searching, setSearching] = useState(false);
     const [lines, setLines] = useState<PickerLine[]>([]);
+    // One idempotency key per form instance: a retry / double click replays the same transfer.
+    // It only changes when the user explicitly starts a NEW transfer, never on a retry.
+    const [operationId, setOperationId] = useState(newOperationId);
+    const [submitted, setSubmitted] = useState(false);
+    // The request ended without a server answer (network drop, 5xx, non-Inertia reply): the
+    // transfer may or may not exist. The same operation id is replayed on retry.
+    const [uncertain, setUncertain] = useState(false);
+    // The lookup by operation id proved no transfer exists for it (yet): retrying is safe.
+    const [notCreated, setNotCreated] = useState(false);
+    const [checking, setChecking] = useState(false);
+    const [created, setCreated] = useState<{ url: string; number: string } | null>(null);
     const form = useForm({
         source_warehouse_id: filters.source_warehouse_id ? String(filters.source_warehouse_id) : '',
         destination_warehouse_id: filters.destination_warehouse_id ? String(filters.destination_warehouse_id) : '',
@@ -54,7 +67,7 @@ export default function TransferCreate({ filters, warehouses, searchResults, pre
 
     const sameRoute = Boolean(form.data.source_warehouse_id && form.data.source_warehouse_id === form.data.destination_warehouse_id);
     const sourceSelected = form.data.source_warehouse_id !== '';
-    const canSubmit = !form.processing && !sameRoute && lines.length > 0 && Boolean(form.data.source_warehouse_id && form.data.destination_warehouse_id && form.data.reason.trim());
+    const canSubmit = !form.processing && !submitted && !sameRoute && lines.length > 0 && Boolean(form.data.source_warehouse_id && form.data.destination_warehouse_id && form.data.reason.trim());
     const errors = form.errors as Record<string, string | undefined>;
 
     useEffect(() => {
@@ -76,7 +89,9 @@ export default function TransferCreate({ filters, warehouses, searchResults, pre
     }, [preselectedVariant?.id]);
 
     useEffect(() => {
-        if (!sourceSelected) return;
+        // Never fire a partial reload while a submit is in flight / being resolved: Inertia would
+        // cancel the POST client-side even though the server still commits it.
+        if (!sourceSelected || form.processing || submitted || checking) return;
         const timer = window.setTimeout(() => {
             router.get('/inventory/transfers/create', {
                 source_warehouse_id: form.data.source_warehouse_id || undefined,
@@ -94,7 +109,7 @@ export default function TransferCreate({ filters, warehouses, searchResults, pre
         }, 280);
 
         return () => window.clearTimeout(timer);
-    }, [search, form.data.source_warehouse_id, form.data.destination_warehouse_id]);
+    }, [search, form.data.source_warehouse_id, form.data.destination_warehouse_id, form.processing, submitted, checking]);
 
     // Keep the stock shown next to each selected line in sync with the latest search.
     useEffect(() => {
@@ -104,12 +119,78 @@ export default function TransferCreate({ filters, warehouses, searchResults, pre
         }));
     }, [searchResults]);
 
+    /**
+     * The submit ended without a clean Inertia success/validation answer (cancelled visit, dropped
+     * connection, unfollowed redirect...). Do not guess: ask the server whether this exact
+     * operation id created a transfer. Read-only, so it can never duplicate anything.
+     */
+    async function resolveOutcome(operation: string) {
+        setChecking(true);
+        try {
+            const response = await fetch(`/inventory/transfers/operations/${operation}`, {
+                headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                credentials: 'same-origin',
+            });
+            if (!response.ok) throw new Error(`lookup ${response.status}`);
+            const body = await response.json() as { found?: boolean; url?: string; transfer_number?: string };
+            if (body.found === true && typeof body.url === 'string') {
+                setCreated({ url: body.url, number: String(body.transfer_number ?? '') });
+                setSubmitted(true);
+                setLines([]);
+                form.reset();
+            } else if (body.found === false) {
+                setNotCreated(true);
+            } else {
+                setUncertain(true);
+            }
+        } catch {
+            // The lookup itself failed: this is the only genuinely ambiguous case.
+            setUncertain(true);
+        } finally {
+            setChecking(false);
+        }
+    }
+
     function submit() {
+        if (submitted || form.processing || checking) return;
         form.transform((data) => ({
             ...data,
             lines: lines.map((line) => ({ product_variant_id: line.product_variant_id, quantity: Number(line.quantity) })),
+            client_operation_id: operationId,
         }));
-        form.post('/inventory/transfers', { preserveScroll: true });
+        setUncertain(false);
+        setNotCreated(false);
+        const operation = operationId;
+        // A success or a validation error is a definite answer; anything else is resolved by lookup.
+        let answered = false;
+        form.post('/inventory/transfers', {
+            preserveScroll: true,
+            onSuccess: () => {
+                answered = true;
+                // The server normally redirects to the created transfer. If this component is
+                // still mounted, lock the form and show an explicit confirmation instead.
+                setSubmitted(true);
+                setLines([]);
+                form.reset();
+            },
+            onError: () => {
+                answered = true;
+            },
+            onFinish: () => {
+                if (!answered) void resolveOutcome(operation);
+            },
+        });
+    }
+
+    function startNewTransfer() {
+        setOperationId(newOperationId());
+        setSubmitted(false);
+        setUncertain(false);
+        setNotCreated(false);
+        setCreated(null);
+        setLines([]);
+        form.reset();
+        form.clearErrors();
     }
 
     if (warehouses.length < 2) {
@@ -139,6 +220,34 @@ export default function TransferCreate({ filters, warehouses, searchResults, pre
                 description={t('inventory.transferCreate.description')}
                 actions={<ButtonLink href="/inventory/transfers" variant="secondary">{t('inventory.transferCreate.back')}</ButtonLink>}
             />
+
+            {submitted && (
+                <Alert tone="success" className="mb-4 px-4 py-3" title={t('inventory.transferCreate.successTitle')}>
+                    <p>{t('inventory.transferCreate.successBody')}</p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                        <ButtonLink href={created?.url ?? '/inventory/transfers'} variant="secondary">{created?.number ? `${t('inventory.transferCreate.viewTransfer')} ${created.number}` : t('inventory.transferCreate.viewTransfers')}</ButtonLink>
+                        <Button type="button" variant="secondary" onClick={startNewTransfer}>{t('inventory.transferCreate.newTransfer')}</Button>
+                    </div>
+                </Alert>
+            )}
+            {checking && (
+                <Alert tone="info" className="mb-4 px-4 py-3">{t('inventory.transferCreate.checking')}</Alert>
+            )}
+            {notCreated && !submitted && !checking && (
+                <Alert tone="danger" className="mb-4 px-4 py-3" title={t('inventory.transferCreate.notCreatedTitle')}>
+                    {t('inventory.transferCreate.notCreatedBody')}
+                </Alert>
+            )}
+            {Object.keys(form.errors).length > 0 && !submitted && (
+                <Alert tone="danger" className="mb-4 px-4 py-3" title={t('inventory.transferCreate.failedTitle')}>
+                    {Object.values(form.errors as Record<string, string>)[0]}
+                </Alert>
+            )}
+            {uncertain && !submitted && !checking && (
+                <Alert tone="warning" className="mb-4 px-4 py-3" title={t('inventory.transferCreate.uncertainTitle')}>
+                    {t('inventory.transferCreate.uncertainBody')}
+                </Alert>
+            )}
 
             <section className="mb-4 surface-card p-4 shadow-soft sm:p-5">
                 <h2 className="text-base font-semibold text-ink">{t('inventory.transferCreate.info')}</h2>
@@ -186,8 +295,8 @@ export default function TransferCreate({ filters, warehouses, searchResults, pre
                         {sameRoute && <p className="rounded-field border border-warning/30 bg-warning-soft px-3 py-2 text-xs text-warning">{t('inventory.transferCreate.destinationDifferent')}</p>}
                         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
                             <Link href="/inventory/transfers" className="inline-flex min-h-10 items-center justify-center rounded-field border border-line-strong bg-surface px-4 text-sm font-medium text-ink transition-soft hover:bg-sage">{t('common.cancel')}</Link>
-                            <Button type="button" onClick={submit} disabled={!canSubmit} loading={form.processing} loadingText={t('inventory.transferCreate.creating')}>
-                                {t('inventory.transferCreate.create')}
+                            <Button type="button" onClick={submit} disabled={!canSubmit || checking} loading={form.processing || checking} loadingText={t('inventory.transferCreate.creating')}>
+                                {uncertain || notCreated ? t('inventory.transferCreate.retry') : t('inventory.transferCreate.create')}
                             </Button>
                         </div>
                         <p className="text-xs leading-relaxed text-ink-muted">{t('inventory.transferCreate.serverValidation')}</p>

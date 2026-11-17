@@ -1,6 +1,9 @@
 import DatePicker from '@/components/ui/DatePicker';
 import { Dialog } from '@/components/ui/Dialog';
+import { Alert } from '@/components/ui/Alert';
+import { useConfirm } from '@/components/ui/ConfirmDialog';
 import DocBadge from '@/components/ui/DocBadge';
+import { posJson } from '@/pages/Pos/api';
 import InfoTip from '@/components/ui/InfoTip';
 import SandboxPaymentBadge from '@/components/SandboxPaymentBadge';
 import { Button, ButtonLink } from '@/components/ui/Button';
@@ -11,6 +14,7 @@ import { useI18n } from '@/i18n';
 import type { TranslationKey } from '@/i18n/translations';
 import FulfillmentCard, { type FulfillmentPayload } from './FulfillmentCard';
 import ProcurementReadinessCard, { type ProcurementPlan } from './ProcurementReadinessCard';
+import { useBusinessToday } from '@/utils/businessDate';
 import { formatDate, formatDateTime, formatMoney, formatQuantity } from '@/utils/format';
 import {
     deliveryNoteStatusLabel,
@@ -29,6 +33,7 @@ import {
 import { Head, Link, router, useForm } from '@inertiajs/react';
 import type { FormEvent, ReactNode } from 'react';
 import { useState } from 'react';
+import { newOperationId } from '@/utils/uuid';
 
 type Allocation = { quantity: string; warehouse: { name: string; code: string }; inventory_reservation: { status: string } | null };
 type OutOfStockArticleRef = { id: number; status: string } | null;
@@ -55,6 +60,7 @@ type Line = {
     allocations: Allocation[];
     out_of_stock_article: OutOfStockArticleRef;
     addendum: { id: number; sequence: number } | null;
+    handed_over_quantity?: string | null;
 };
 type Customer = {
     id: number;
@@ -261,6 +267,8 @@ type Props = {
     marginSummary: { net_revenue_excl_tax: string; covered_revenue_excl_tax: string; cost_total: string; gross_margin_amount: string; gross_margin_rate: string | null; missing_cost_line_count: number } | null;
     salespersons: { id: number; name: string }[];
     completionEligibility: CompletionEligibility;
+    /** POS-specific state (null for non-POS orders). */
+    posDraft: { attention: boolean; inactive_hours: number | null; last_activity_at: string | null; lines: number; can_delete: boolean } | null;
     can: {
         update: boolean;
         confirm: boolean;
@@ -280,15 +288,11 @@ type Props = {
     };
 };
 
-const today = () => {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-};
-const blankPayment = (remaining = ''): PaymentEntry => ({
+const blankPayment = (today: string, remaining = ''): PaymentEntry => ({
     method: 'cash',
     financial_account_id: '',
     amount: remaining,
-    payment_date: today(),
+    payment_date: today,
     reference: '',
     external_reference: '',
     notes: '',
@@ -303,9 +307,15 @@ function Card({ label: l, children }: { label: string; children: ReactNode }) {
     );
 }
 
-export default function ShowOrder({ order, paymentSummary, payments, refunds, financialAccounts, documents, awaitingReplenishment, fulfillmentRouting, procurement, procurementPlan, fulfillment, transferRequests, revisions, activeCorrection, pendingReplacementInvoice, invoiceStaleAfterCompletion, addenda, customerReturns, customerExchanges, returnPolicy, commercialSummary, marginSummary, salespersons, completionEligibility, can }: Props) {
+export default function ShowOrder({ order, paymentSummary, payments, refunds, financialAccounts, documents, awaitingReplenishment, fulfillmentRouting, procurement, procurementPlan, fulfillment, transferRequests, revisions, activeCorrection, pendingReplacementInvoice, invoiceStaleAfterCompletion, addenda, customerReturns, customerExchanges, returnPolicy, commercialSummary, marginSummary, salespersons, completionEligibility, posDraft, can }: Props) {
     const { t } = useI18n();
+    const businessToday = useBusinessToday();
     const [confirmCancel, setConfirmCancel] = useState(false);
+    const [resuming, setResuming] = useState(false);
+    const [resumeError, setResumeError] = useState('');
+    const [deleting, setDeleting] = useState(false);
+    const [deleteError, setDeleteError] = useState('');
+    const confirmDialog = useConfirm();
     const cancellation = useForm({ reason: '' });
     const createInvoice = useForm({});
     const correctionForm = useForm({ reason: '' });
@@ -313,8 +323,8 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
     const [showSalespersonCorrection, setShowSalespersonCorrection] = useState(false);
     const salespersonForm = useForm({ salesperson_id: order.salesperson_id, reason: '' });
     const paymentForm = useForm<{ client_operation_id: string; payments: PaymentEntry[] }>({
-        client_operation_id: crypto.randomUUID(),
-        payments: [blankPayment(paymentSummary.remaining)],
+        client_operation_id: newOperationId(),
+        payments: [blankPayment(businessToday, paymentSummary.remaining)],
     });
 
     const activeInvoice = documents.invoices.find((i) => i.status !== 'cancelled') ?? null;
@@ -368,7 +378,7 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
         event.preventDefault();
         paymentForm.post(`/sales/orders/${order.id}/payments`, {
             preserveScroll: true,
-            onSuccess: () => paymentForm.setData({ client_operation_id: crypto.randomUUID(), payments: [blankPayment()] }),
+            onSuccess: () => paymentForm.setData({ client_operation_id: newOperationId(), payments: [blankPayment(businessToday)] }),
         });
     };
     const setEntry = (index: number, key: keyof PaymentEntry, value: string) =>
@@ -377,9 +387,58 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
             paymentForm.data.payments.map((entry, position) => (position === index ? { ...entry, [key]: value } : entry)),
         );
 
+    // Reopen this POS draft as the terminal's active cart (same server path as the POS held-sales drawer).
+    const resumeInPos = async () => {
+        setResuming(true);
+        setResumeError('');
+        try {
+            await posJson(`/pos/drafts/${order.id}/resume`, { method: 'POST' });
+            router.visit('/pos');
+        } catch {
+            setResumeError(t('orders.show.posResumeFailed'));
+            setResuming(false);
+        }
+    };
+
     return (
         <SalesLayout>
             <Head title={order.order_number} />
+
+            {posDraft?.attention && order.status === 'draft' && (
+                <Alert tone="warning" className="mb-4 px-4 py-3" title={t('orders.show.posInactiveTitle')}>
+                    <p>{t('orders.show.posInactiveBody').replace('{hours}', String(posDraft.inactive_hours ?? 24))}</p>
+                    {resumeError && <p className="mt-1 text-danger">{resumeError}</p>}
+                    <div className="mt-2 flex flex-wrap gap-2">
+                        {can.update && <Button type="button" variant="secondary" loading={resuming} onClick={() => void resumeInPos()}>{t('orders.show.posResume')}</Button>}
+                        {can.cancel && <Button type="button" variant="danger" onClick={() => setConfirmCancel(true)}>{t('orders.show.cancelOrder')}</Button>}
+                    </div>
+                </Alert>
+            )}
+
+            {posDraft?.can_delete && order.status === 'cancelled' && (
+                <Alert tone="info" className="mb-4 px-4 py-3">
+                    <p>{t('orders.show.deleteHelp')}</p>
+                    {deleteError && <p className="mt-1 text-danger">{deleteError}</p>}
+                    <div className="mt-2">
+                        <Button
+                            type="button"
+                            variant="danger"
+                            loading={deleting}
+                            onClick={async () => {
+                                if (!(await confirmDialog({ title: t('orders.show.deleteConfirm'), danger: true }))) return;
+                                setDeleting(true);
+                                setDeleteError('');
+                                router.delete(`/sales/orders/${order.id}`, {
+                                    onError: (errors) => setDeleteError(String(errors.order ?? Object.values(errors)[0] ?? '')),
+                                    onFinish: () => setDeleting(false),
+                                });
+                            }}
+                        >
+                            {t('orders.show.deleteOrder')}
+                        </Button>
+                    </div>
+                </Alert>
+            )}
 
             <div className="mb-6">
                 <ButtonLink href="/sales/orders" variant="ghost" size="sm" className="-ms-2 mb-1">
@@ -686,9 +745,17 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
                                         {[line.variant_name, line.reference ?? line.sku].filter(Boolean).join(' · ')}
                                     </div>
                                     <div className="mt-0.5 text-xs text-ink-faint">
-                                        {line.addendum
-                                            ? t('orders.show.addendumDelivered').replace('{sequence}', String(line.addendum.sequence))
-                                            : t('orders.show.initialDelivered')}
+                                        {Number(line.handed_over_quantity ?? 0) <= 0
+                                            ? (line.addendum
+                                                ? t('orders.show.addendumPending').replace('{sequence}', String(line.addendum.sequence))
+                                                : t('orders.show.initialPending'))
+                                            : Number(line.handed_over_quantity) < Number(line.quantity)
+                                                ? (line.addendum
+                                                    ? t('orders.show.addendumPartial').replace('{sequence}', String(line.addendum.sequence))
+                                                    : t('orders.show.initialPartial')).replace('{delivered}', formatQuantity(line.handed_over_quantity as string))
+                                                : (line.addendum
+                                                    ? t('orders.show.addendumDelivered').replace('{sequence}', String(line.addendum.sequence))
+                                                    : t('orders.show.initialDelivered'))}
                                     </div>
                                     {line.allocations.length > 0 && (
                                         <div className="mt-0.5 text-xs text-ink-faint">
@@ -1093,7 +1160,7 @@ export default function ShowOrder({ order, paymentSummary, payments, refunds, fi
                         <div className="flex gap-2">
                             <button
                                 type="button"
-                                onClick={() => paymentForm.setData('payments', [...paymentForm.data.payments, blankPayment()])}
+                                onClick={() => paymentForm.setData('payments', [...paymentForm.data.payments, blankPayment(businessToday)])}
                                 className="rounded-field border border-line-strong px-4 py-2 text-sm"
                             >
                                 {t('orders.show.addMethod')}

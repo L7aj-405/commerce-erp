@@ -10,6 +10,7 @@ use App\Models\TransferRequest;
 use App\Models\Warehouse;
 use App\Services\ActiveTenantContext;
 use App\Support\InventoryQuantity;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -195,6 +196,7 @@ class StockTransferController extends Controller
             'source_warehouse_id' => ['required', 'integer', Rule::exists('warehouses', 'id')->where(fn ($query) => $query->where('organization_id', $organization->getKey())->where('status', 'active'))],
             'destination_warehouse_id' => ['required', 'integer', 'different:source_warehouse_id', Rule::exists('warehouses', 'id')->where(fn ($query) => $query->where('organization_id', $organization->getKey())->where('status', 'active'))],
             'reason' => ['required', 'string', 'max:2000'],
+            'client_operation_id' => ['nullable', 'uuid'],
             'lines' => ['required', 'array', 'min:1'],
             'lines.*.product_variant_id' => ['required', 'integer', 'distinct', Rule::exists('product_variants', 'id')->where(fn ($query) => $query->where('organization_id', $organization->getKey())->where('status', 'active'))],
             'lines.*.quantity' => ['required', 'integer', 'min:1'],
@@ -208,6 +210,8 @@ class StockTransferController extends Controller
             ->get()
             ->keyBy('id');
 
+        // Durable idempotency lives in CreateStockTransferAction (unique DB key): a retry or
+        // double click returns the transfer already created instead of moving stock again.
         $transfer = $action->execute(
             $request->user(),
             $organization,
@@ -218,11 +222,32 @@ class StockTransferController extends Controller
                 'quantity' => $line['quantity'],
             ])->values()->all(),
             $data['reason'],
+            clientOperationId: $data['client_operation_id'] ?? null,
         );
 
         return redirect()
             ->route('inventory.transfers.show', $transfer)
             ->with('success', 'Transfert effectue avec succes.');
+    }
+
+    /**
+     * Read-only: did the submit carrying this client_operation_id create a transfer?
+     * Lets the form tell a committed transfer from a lost one when the HTTP outcome was ambiguous
+     * (cancelled visit, dropped connection, unfollowed redirect). Never writes anything.
+     */
+    public function operation(string $operationId, ActiveTenantContext $context): JsonResponse
+    {
+        $organization = $context->organizationOrFail();
+        $this->authorize('create', [StockTransfer::class, $organization]);
+
+        $transfer = StockTransfer::query()
+            ->where('organization_id', $organization->getKey())
+            ->where('client_operation_id', $operationId)
+            ->first(['id', 'transfer_number', 'status']);
+
+        return response()->json($transfer === null
+            ? ['found' => false]
+            : ['found' => true, 'id' => $transfer->getKey(), 'transfer_number' => $transfer->transfer_number, 'status' => $transfer->status, 'url' => route('inventory.transfers.show', $transfer, false)]);
     }
 
     public function show(StockTransfer $transfer): Response

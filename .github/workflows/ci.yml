@@ -1,0 +1,327 @@
+name: CI
+
+# Continuous integration only: this workflow never deploys, never reads application secrets and never
+# connects to a Staging or Production service. Every job runs on a fresh, ephemeral runner with
+# SQLite in memory (see phpunit.xml). Actions are pinned to immutable commit SHAs (tag in the comment).
+
+on:
+  pull_request:
+    branches: [main, staging]
+  push:
+    branches: [main, staging]
+  workflow_dispatch:
+
+# Least privilege: the token can only read the repository contents.
+permissions:
+  contents: read
+
+# `shell: bash` makes GitHub run every step as `bash -eo pipefail`. Without it a pipeline such as
+# `phpunit | tee file` takes the exit status of `tee` and a failing test run would be reported as success.
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  PHP_VERSION: '8.4'
+  NODE_VERSION: '22'
+  # composer.json requires these (plus the framework / PDF / spreadsheet needs); pcntl is used by queue timeouts.
+  PHP_EXTENSIONS: bcmath, ctype, dom, fileinfo, filter, gd, hash, iconv, json, libxml, mbstring, openssl, pcntl, pdo_mysql, pdo_sqlite, phar, session, sqlite3, tokenizer, xml, xmlreader, xmlwriter, zip, timezonedb
+
+jobs:
+  php-tests:
+    name: PHP tests (full suite)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@bf6b4fbd49ca58e4608c9c89fba0b8d90bd2a39f # 2.35.5
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          extensions: ${{ env.PHP_EXTENSIONS }}
+          coverage: none
+          tools: composer:v2
+
+      - name: Locate the Composer cache
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Composer downloads
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: composer-${{ runner.os }}-php${{ env.PHP_VERSION }}-${{ hashFiles('composer.lock') }}
+          restore-keys: composer-${{ runner.os }}-php${{ env.PHP_VERSION }}-
+
+      - name: Validate composer files and platform requirements
+        run: |
+          composer validate --no-check-publish --strict
+          composer install --no-interaction --no-progress --prefer-dist
+          composer check-platform-reqs
+
+      - name: Prepare an isolated test environment
+        run: |
+          # A throw-away environment file: placeholders only, no real credentials. phpunit.xml forces
+          # DB_CONNECTION=sqlite / DB_DATABASE=:memory:, array cache + session and the sync queue.
+          cp .env.example .env
+          php artisan key:generate --no-interaction
+          php artisan config:clear
+
+      - name: Guard - no shared build assets, no external database
+        run: |
+          # Tests must not depend on (or race with) a frontend build: it lives in a separate job/runner.
+          test ! -e public/build
+          grep -q 'name="DB_CONNECTION" value="sqlite"' phpunit.xml
+          grep -q 'name="DB_DATABASE" value=":memory:"' phpunit.xml
+
+      - name: Record the PHP environment
+        run: |
+          php -r '
+            $off = static fn (string $utc) => (new DateTime($utc, new DateTimeZone("UTC")))->setTimezone(new DateTimeZone("Africa/Casablanca"))->format("Y-m-d H:i P");
+            echo "::notice title=PHP environment::php=", PHP_VERSION, " os=", PHP_OS,
+              " icu=", (defined("INTL_ICU_VERSION") ? INTL_ICU_VERSION : "no-intl"),
+              " sqlite=", (class_exists("SQLite3") ? SQLite3::version()["versionString"] : "none"),
+              " tz=", date_default_timezone_get(), " tzdb=", timezone_version_get(),
+              " casablanca[2026-11-04 23:30Z]=", $off("2026-11-04 23:30:00"),
+              " casablanca[2026-03-01 23:30Z]=", $off("2026-03-01 23:30:00"),
+              " casablanca[2026-10-31 23:30Z]=", $off("2026-10-31 23:30:00"), PHP_EOL;'
+
+      - name: Run the complete PHP test suite
+        run: |
+          mkdir -p build
+          vendor/bin/phpunit \
+            --no-progress \
+            --display-warnings --display-deprecations --display-notices --display-skipped \
+            --log-junit build/phpunit-junit.xml 2>&1 | tee build/phpunit-output.txt
+
+      - name: Summarise failures as annotations
+        if: failure()
+        run: |
+          python3 .github/scripts/ci_annotate.py junit build/phpunit-junit.xml
+          python3 .github/scripts/ci_annotate.py tail build/phpunit-output.txt "PHPUnit output (tail)"
+
+      - name: Upload JUnit report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: phpunit-junit
+          path: |
+            build/phpunit-junit.xml
+            build/phpunit-output.txt
+          if-no-files-found: ignore
+          retention-days: 14
+
+  frontend:
+    name: Frontend (typecheck and production build)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies from the lockfile
+        # Lifecycle scripts are not needed for the build (same flag as the project's own setup script).
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Production build
+        run: npm run build
+
+  pint-changed:
+    name: Code style (Pint on changed PHP files)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@bf6b4fbd49ca58e4608c9c89fba0b8d90bd2a39f # 2.35.5
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          extensions: ${{ env.PHP_EXTENSIONS }}
+          coverage: none
+          tools: composer:v2
+
+      - name: Locate the Composer cache
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Composer downloads
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: composer-${{ runner.os }}-php${{ env.PHP_VERSION }}-${{ hashFiles('composer.lock') }}
+          restore-keys: composer-${{ runner.os }}-php${{ env.PHP_VERSION }}-
+
+      - name: Install dependencies
+        run: composer install --no-interaction --no-progress --prefer-dist
+
+      - name: Determine the PHP files changed by this change set
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          case "$EVENT" in
+            pull_request) base="$PR_BASE" ;;
+            push) base="$PUSH_BEFORE" ;;
+            *) base="$(git merge-base origin/main HEAD)" ;;
+          esac
+          if [ -z "$base" ] || [ "$base" = "0000000000000000000000000000000000000000" ] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
+            base="$(git rev-parse HEAD~1)"
+          fi
+          git diff --name-only --diff-filter=ACMR "$base" HEAD -- '*.php' > changed-php.txt
+          echo "Comparing against $base: $(wc -l < changed-php.txt) changed PHP files"
+
+      - name: Pint (check only, never rewrites files) on the changed files
+        run: |
+          if [ ! -s changed-php.txt ]; then echo "No PHP files changed."; exit 0; fi
+          xargs -a changed-php.txt vendor/bin/pint --test
+
+  pint-baseline:
+    name: Code style baseline (Pint, whole repo - advisory)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    # Legacy files predate the Pint check. This job keeps the remaining debt VISIBLE (count + rules in an
+    # annotation) until a mechanical formatting baseline is approved; new and changed code is gated above.
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@bf6b4fbd49ca58e4608c9c89fba0b8d90bd2a39f # 2.35.5
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          extensions: ${{ env.PHP_EXTENSIONS }}
+          coverage: none
+          tools: composer:v2
+
+      - name: Locate the Composer cache
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Composer downloads
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: composer-${{ runner.os }}-php${{ env.PHP_VERSION }}-${{ hashFiles('composer.lock') }}
+          restore-keys: composer-${{ runner.os }}-php${{ env.PHP_VERSION }}-
+
+      - name: Install dependencies
+        run: composer install --no-interaction --no-progress --prefer-dist
+
+      - name: Pint (whole repository, check only)
+        run: |
+          set +e
+          vendor/bin/pint --test --format=json > pint-report.json 2> pint-report.err
+          code=$?
+          echo "::notice title=Pint baseline run::pint exit=$code, report=$(wc -c < pint-report.json) bytes, stderr=$(wc -c < pint-report.err) bytes, head: $(head -c 160 pint-report.json | tr '\n' ' ')"
+          python3 .github/scripts/ci_annotate.py pint pint-report.json || echo "::error title=Pint annotation helper failed::exit $?"
+          exit $code
+
+  composer-audit:
+    name: Composer audit (locked dependencies)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    # BLOCKING (part of ci-gate). No audit.ignore entries: every advisory in composer.lock fails the job.
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@bf6b4fbd49ca58e4608c9c89fba0b8d90bd2a39f # 2.35.5
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          coverage: none
+          tools: composer:v2
+
+      - name: "Composer audit (--locked - audits composer.lock itself, nothing is installed)"
+        run: |
+          set +e
+          composer audit --locked --no-interaction --format=json > composer-audit.json 2> composer-audit.err
+          code=$?
+          composer audit --locked --no-interaction   # human-readable copy for the log; its status is ignored here
+          # The decision is made by the helper from BOTH the exit code and the parsed report. A crash,
+          # an unparsable report or a mismatch is a failure; only a clean parsed report passes.
+          python3 .github/scripts/ci_annotate.py composer composer-audit.json composer-audit.err "$code"
+          status=$?
+          if [ "$status" -ne 0 ]; then
+            echo "composer audit gate FAILED (helper status $status, composer exit $code)"
+            exit 1
+          fi
+          # composer exit 1/3 means vulnerabilities even if a bug made the helper succeed
+          if [ $((code & 1)) -ne 0 ]; then
+            echo "composer audit exit code $code indicates vulnerabilities"
+            exit 1
+          fi
+
+  npm-audit:
+    name: npm audit (production dependencies)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: npm audit (blocks on high/critical; moderate and below are annotated)
+        run: |
+          set +e
+          npm audit --omit=dev --json > npm-audit.json 2> npm-audit.err
+          code=$?
+          npm audit --omit=dev || true
+          python3 .github/scripts/ci_annotate.py npm npm-audit.json "$code"
+          # Fail on high/critical findings, or when the audit itself could not run.
+          python3 .github/scripts/ci_annotate.py npm-gate npm-audit.json
+
+  # One stable status to require in branch protection: green only when every BLOCKING job passed
+  # (php-tests, frontend, pint-changed, npm-audit, composer-audit). Only the whole-repo Pint baseline is advisory.
+  ci-gate:
+    name: CI gate
+    if: always()
+    needs: [php-tests, frontend, pint-changed, npm-audit, composer-audit]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require all blocking jobs to succeed
+        run: |
+          echo "php-tests=${{ needs.php-tests.result }} frontend=${{ needs.frontend.result }} pint-changed=${{ needs.pint-changed.result }} npm-audit=${{ needs.npm-audit.result }} composer-audit=${{ needs.composer-audit.result }}"
+          test "${{ needs.php-tests.result }}" = "success"
+          test "${{ needs.frontend.result }}" = "success"
+          test "${{ needs.pint-changed.result }}" = "success"
+          test "${{ needs.npm-audit.result }}" = "success"
+          test "${{ needs.composer-audit.result }}" = "success"

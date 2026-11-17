@@ -1,14 +1,16 @@
 <?php
 
+use App\Actions\Finance\GenerateRecurringFinanceObligationsAction;
 use App\Jobs\RecordQueueWorkerHeartbeatJob;
+use App\Models\McpOAuthAuthorizationCode;
+use App\Models\McpOAuthToken;
 use App\Models\McpOperation;
 use App\Models\McpOperationItem;
+use App\Models\Organization;
 use App\Models\ProductImport;
 use App\Models\SystemHealthHeartbeat;
 use App\Models\TrustedTwoFactorDevice;
 use App\Models\UserNotification;
-use App\Models\Organization;
-use App\Actions\Finance\GenerateRecurringFinanceObligationsAction;
 use App\Services\Notifications\SystemHealthNotificationMonitor;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
@@ -74,7 +76,9 @@ Artisan::command('finance:generate-recurring-obligations {--organization=}', fun
             foreach ($organizations as $organization) {
                 try {
                     $result = app(GenerateRecurringFinanceObligationsAction::class)->execute($organization, $month);
-                    $created += $result['created']; $existing += $result['existing']; $skipped += $result['skipped'];
+                    $created += $result['created'];
+                    $existing += $result['existing'];
+                    $skipped += $result['skipped'];
                 } catch (Throwable $exception) {
                     $failed++;
                     report($exception);
@@ -83,6 +87,7 @@ Artisan::command('finance:generate-recurring-obligations {--organization=}', fun
             }
         });
     $this->info("Recurring obligations: {$created} created, {$existing} existing, {$skipped} skipped, {$failed} organization(s) failed.");
+
     return $failed === 0 ? self::SUCCESS : self::FAILURE;
 })->purpose('Generate the current month recurring Finance obligations idempotently');
 
@@ -116,14 +121,19 @@ Artisan::command('mcp:prune-operations', function () {
 Artisan::command('mcp:prune-oauth', function () {
     // Codes live minutes; tokens are kept a week past their last possible use
     // so replay detection still sees recently rotated/revoked refresh tokens.
-    $codes = \App\Models\McpOAuthAuthorizationCode::query()->where('expires_at', '<', now()->subDay())->delete();
-    $tokens = \App\Models\McpOAuthToken::query()
+    $codes = McpOAuthAuthorizationCode::query()->where('expires_at', '<', now()->subDay())->delete();
+    $tokens = McpOAuthToken::query()
         ->where('access_expires_at', '<', now()->subDays(7))
         ->where(fn ($query) => $query->whereNull('refresh_expires_at')->orWhere('refresh_expires_at', '<', now()->subDays(7)))
         ->delete();
     $this->info("MCP OAuth: {$codes} code(s) and {$tokens} token row(s) pruned.");
 })->purpose('Delete expired MCP OAuth authorization codes and long-dead tokens');
 
+// POS draft lifecycle: removes abandoned POS carts (Production only; dry-run: `php artisan pos:cleanup-drafts`).
+// Row locks make it safe if two schedulers ever overlap, but run exactly ONE scheduler.
+Schedule::command('pos:cleanup-drafts --execute')->dailyAt((string) config('pos.drafts.cleanup_time', '03:50'))
+    ->timezone((string) config('pos.drafts.cleanup_timezone', 'Africa/Casablanca'))
+    ->when(fn () => (bool) config('pos.drafts.cleanup_enabled', true))->withoutOverlapping();
 Schedule::command('catalog:cleanup-product-imports')->daily();
 Schedule::command('mcp:prune-oauth')->dailyAt('03:35')->withoutOverlapping();
 Schedule::command('mcp:prune-operations')->dailyAt('03:20')->withoutOverlapping();
@@ -139,7 +149,8 @@ Schedule::command('attention:scan')->everyFifteenMinutes()->withoutOverlapping()
 Schedule::call(fn () => SystemHealthHeartbeat::beat('scheduler'))
     ->name('system-health:scheduler-heartbeat')->everyMinute()->withoutOverlapping();
 Schedule::job(new RecordQueueWorkerHeartbeatJob)
-    ->name('system-health:queue-worker-heartbeat')->everyMinute();
+    ->name('system-health:queue-worker-heartbeat')->everyMinute()
+    ->when(fn () => ! RecordQueueWorkerHeartbeatJob::alreadyPending());
 Schedule::call(fn () => app(SystemHealthNotificationMonitor::class)->evaluateAll())
     ->name('notifications:system-health-transitions')->everyFiveMinutes()->withoutOverlapping();
 Schedule::call(function () {

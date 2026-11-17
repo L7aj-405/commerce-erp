@@ -9,6 +9,7 @@ use App\Models\PaymentAllocation;
 use App\Models\SalesOrder;
 use App\Models\User;
 use App\Services\AuditLogger;
+use App\Services\Finance\FinanceClosedPeriodGuard;
 use App\Services\SalesOrderPaymentCalculator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -17,7 +18,11 @@ class ReversePaymentAction
 {
     use AuthorizesPaymentAction;
 
-    public function __construct(private readonly SalesOrderPaymentCalculator $calculator, private readonly AuditLogger $audit) {}
+    public function __construct(
+        private readonly SalesOrderPaymentCalculator $calculator,
+        private readonly AuditLogger $audit,
+        private readonly FinanceClosedPeriodGuard $periods,
+    ) {}
 
     public function execute(User $actor, Payment $payment, string $reason): Payment
     {
@@ -25,7 +30,7 @@ class ReversePaymentAction
         $this->authorizePayment($actor, $order, 'payments.reverse');
 
         if (trim($reason) === '') {
-            throw ValidationException::withMessages(['reason' => 'A reversal reason is required.']);
+            throw ValidationException::withMessages(['reason' => 'Un motif d’annulation est obligatoire.']);
         }
 
         return DB::transaction(function () use ($actor, $payment, $reason) {
@@ -51,13 +56,16 @@ class ReversePaymentAction
                 ->with(['allocations', 'refunds'])
                 ->firstOrFail();
             if ($payment->status !== PaymentStatus::Posted) {
-                throw ValidationException::withMessages(['payment' => 'Only a posted Payment can be reversed.']);
+                throw ValidationException::withMessages(['payment' => 'Seul un paiement comptabilisé peut être annulé.']);
             }
             if ($payment->refunds->isNotEmpty()) {
                 throw ValidationException::withMessages([
-                    'payment' => 'A Payment with a posted refund cannot be reversed; both financial movements must remain historical.',
+                    'payment' => 'Un paiement déjà remboursé ne peut pas être annulé : les deux mouvements financiers restent historiques.',
                 ]);
             }
+            // A reversal removes the payment from its own month (it has no
+            // reversal date of its own): refused while that month is closed.
+            $this->periods->assertOpen($payment->organization_id, $payment->payment_date, 'payment');
 
             $payment->status = PaymentStatus::Reversed;
             $payment->reversed_at = now();

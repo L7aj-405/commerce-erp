@@ -9,6 +9,7 @@ import ProcurementLayout from '@/layouts/ProcurementLayout';
 import { formatDate, formatDateTime, formatMoney, formatQuantity } from '@/utils/format';
 import { Head, Link, useForm } from '@inertiajs/react';
 import { useState } from 'react';
+import { newOperationId } from '@/utils/uuid';
 
 type Receipt = {
     id: number;
@@ -272,7 +273,7 @@ function ReceiveForm({ po, line, warehouses, today, onDone }: { po: PurchaseOrde
         received_on: today,
         supplier_delivery_reference: '',
         notes: '',
-        client_operation_id: crypto.randomUUID(),
+        client_operation_id: newOperationId(),
         expected_received_quantity: line.requirement?.received_quantity ?? '0',
     });
     const errors = form.errors as Record<string, string>;

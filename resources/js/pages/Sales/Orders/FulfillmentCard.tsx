@@ -12,6 +12,7 @@ import { router, useForm, usePage } from '@inertiajs/react';
 import axios from 'axios';
 import type { FormEvent, ReactNode } from 'react';
 import { useEffect, useMemo, useState } from 'react';
+import { newOperationId } from '@/utils/uuid';
 
 type Status = 'preparing' | 'ready' | 'handed_to_carrier' | 'in_transit' | 'delivered' | 'closed' | 'cancelled';
 type Action = 'mark_ready' | 'hand_to_carrier' | 'mark_in_transit' | 'mark_delivered' | 'close' | 'cancel' | 'edit_details' | 'share_with_customer';
@@ -328,7 +329,7 @@ function Field({ label, error, children }: { label: string; error?: string; chil
 function DispatchDialog({ base, shipment, lines, onClose }: { base: string; shipment: Shipment | null; lines: Line[]; onClose: () => void }) {
     const { t } = useI18n();
     const k = (key: string) => t(`fulfillment.${key}` as TranslationKey);
-    const operationId = useMemo(() => crypto.randomUUID(), []);
+    const operationId = useMemo(() => newOperationId(), []);
     const test = !!usePage<{ sandbox?: { active: boolean } }>().props.sandbox?.active;
     const [carrierSearch, setCarrierSearch] = useState('');
     const carriers = useCarrierOptions(base, carrierSearch);
@@ -402,7 +403,7 @@ function DispatchDialog({ base, shipment, lines, onClose }: { base: string; ship
 function PrepareDialog({ base, lines, onClose }: { base: string; lines: Line[]; onClose: () => void }) {
     const { t } = useI18n();
     const k = (key: string) => t(`fulfillment.${key}` as TranslationKey);
-    const operationId = useMemo(() => crypto.randomUUID(), []);
+    const operationId = useMemo(() => newOperationId(), []);
     const form = useForm<{ items: Record<number, string>; note: string; client_operation_id: string }>({
         items: Object.fromEntries(lines.map((line) => [line.line_id, plain(line.shippable)])), note: '', client_operation_id: operationId,
     });
@@ -520,7 +521,7 @@ function ShareDialog({ base, shipment, onClose }: { base: string; shipment: Ship
     const [resend, setResend] = useState(false);
     const [phone, setPhone] = useState('');
     const [message, setMessage] = useState('');
-    const [operationId, setOperationId] = useState(() => crypto.randomUUID());
+    const [operationId, setOperationId] = useState(() => newOperationId());
     const [errors, setErrors] = useState<Record<string, string>>({});
     const [processing, setProcessing] = useState(false);
     const [followUpProposal, setFollowUpProposal] = useState<ShipmentFollowUpProposal | null>(null);
@@ -552,7 +553,7 @@ function ShareDialog({ base, shipment, onClose }: { base: string; shipment: Ship
                 else onClose();
             },
             // A failed attempt is final for its operation id: a new attempt gets a new one.
-            onError: (failed) => { setErrors(failed as Record<string, string>); setOperationId(crypto.randomUUID()); },
+            onError: (failed) => { setErrors(failed as Record<string, string>); setOperationId(newOperationId()); },
             onFinish: () => setProcessing(false),
         });
     };

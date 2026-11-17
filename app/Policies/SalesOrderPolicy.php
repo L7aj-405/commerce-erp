@@ -3,6 +3,7 @@
 namespace App\Policies;
 
 use App\Enums\SalesOrderFulfillmentStatus;
+use App\Enums\SalesOrderSource;
 use App\Enums\SalesOrderStatus;
 use App\Models\Organization;
 use App\Models\SalesOrder;
@@ -39,6 +40,14 @@ class SalesOrderPolicy
     public function confirm(User $user, SalesOrder $order): bool
     {
         return $this->allowed($user, $order, 'sales_orders.confirm');
+    }
+
+    /** Hard delete of a cancelled POS draft: same permission as cancelling, scoped to the user's org/store access. */
+    public function deleteCancelledPosDraft(User $user, SalesOrder $order): bool
+    {
+        return $this->allowed($user, $order, 'sales_orders.cancel')
+            && $order->status === SalesOrderStatus::Cancelled
+            && $order->source === SalesOrderSource::Pos;
     }
 
     public function cancel(User $user, SalesOrder $order): bool

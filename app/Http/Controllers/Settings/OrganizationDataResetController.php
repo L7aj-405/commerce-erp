@@ -2,10 +2,15 @@
 
 namespace App\Http\Controllers\Settings;
 
+use App\Actions\Settings\SetOrganizationFiscalDataModeAction;
 use App\Http\Controllers\Controller;
+use App\Models\Organization;
+use App\Models\User;
+use App\Models\Warehouse;
 use App\Services\ActiveTenantContext;
-use App\Services\OrganizationDataReset\OrganizationDataResetBlockedException;
+use App\Services\Finance\FiscalDocumentProtection;
 use App\Services\OrganizationDataReset\OrganizationDataResetAlreadyExecutedException;
+use App\Services\OrganizationDataReset\OrganizationDataResetBlockedException;
 use App\Services\OrganizationDataReset\OrganizationDataResetConfirmation;
 use App\Services\OrganizationDataReset\OrganizationDataResetException;
 use App\Services\OrganizationDataReset\OrganizationDataResetExecutor;
@@ -14,24 +19,23 @@ use App\Services\OrganizationDataReset\OrganizationDataResetPlan;
 use App\Services\OrganizationDataReset\OrganizationDataResetPreviewService;
 use App\Services\OrganizationDataReset\OrganizationDataResetScope;
 use App\Services\OrganizationDataReset\OrganizationDataResetStalePlanException;
-use App\Services\Security\FreshAuthentication;
-use App\Models\Warehouse;
 use App\Services\OrganizationDataReset\Selective\SelectiveResetCategoryRegistry;
 use App\Services\OrganizationDataReset\Selective\SelectiveResetExecutor;
 use App\Services\OrganizationDataReset\Selective\SelectiveResetPlan;
 use App\Services\OrganizationDataReset\Selective\SelectiveResetPlanner;
 use App\Services\OrganizationDataReset\Selective\SelectiveResetSelection;
+use App\Services\Security\FreshAuthentication;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
-use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class OrganizationDataResetController extends Controller
 {
-    public function index(Request $request, ActiveTenantContext $context, SelectiveResetCategoryRegistry $registry): Response
+    public function index(Request $request, ActiveTenantContext $context, SelectiveResetCategoryRegistry $registry, FiscalDocumentProtection $fiscal): Response
     {
         $organization = $context->organizationOrFail();
         $this->authorizeActor($request, $organization);
@@ -57,7 +61,50 @@ class OrganizationDataResetController extends Controller
             ])->values(),
             'warehouses' => Warehouse::query()->where('organization_id', $organizationId)->orderBy('name')->get(['id', 'name']),
             'selectiveConfirmationPhrase' => SelectiveResetExecutor::PHRASE,
+            'fiscal' => $this->fiscalState($organization, $request->user(), $fiscal),
         ]);
+    }
+
+    /**
+     * Declare the organization's fiscal data as real (protected) or as test
+     * data. Declaring test mode requires the Owner, a fresh 2FA and that no
+     * protected fiscal document exists (enforced by the action).
+     */
+    public function fiscalMode(
+        Request $request,
+        ActiveTenantContext $context,
+        SetOrganizationFiscalDataModeAction $action,
+        FreshAuthentication $freshAuthentication,
+        FiscalDocumentProtection $fiscal,
+    ): JsonResponse {
+        $organization = $context->organizationOrFail();
+        $this->authorizeActor($request, $organization);
+        $validated = $request->validate([
+            'mode' => ['required', Rule::in([FiscalDocumentProtection::MODE_PROTECTED, FiscalDocumentProtection::MODE_TEST])],
+            'reason' => ['required', 'string', 'max:1000'],
+            'organization_id' => ['prohibited'],
+        ]);
+        // Declaring test fiscal data is a platform-operator action (Test Mode
+        // owns test data); the action refuses it for tenant users.
+        $organization = $action->execute($request->user(), $organization, $validated['mode'], $validated['reason']);
+
+        return response()->json(['data' => $this->fiscalState($organization, $request->user(), $fiscal)]);
+    }
+
+    /** @return array<string,mixed> */
+    private function fiscalState(Organization $organization, User $user, FiscalDocumentProtection $fiscal): array
+    {
+        $counts = $fiscal->protectedCounts($organization);
+        $isOwner = (int) $organization->owner_id === (int) $user->getKey();
+
+        return [
+            'mode' => $fiscal->mode($organization),
+            'protection_started_at' => $organization->fiscal_protection_started_at?->toIso8601String(),
+            'protected_counts' => $counts,
+            'protected_total' => array_sum($counts),
+            'can_declare_test' => false,
+            'can_protect' => $fiscal->mode($organization) === FiscalDocumentProtection::MODE_TEST,
+        ];
     }
 
     /**
@@ -290,7 +337,7 @@ class OrganizationDataResetController extends Controller
         ]);
     }
 
-    private function authorizeActor(Request $request, \App\Models\Organization $organization): void
+    private function authorizeActor(Request $request, Organization $organization): void
     {
         $user = $request->user();
         abort_unless(

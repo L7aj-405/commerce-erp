@@ -13,6 +13,7 @@ use App\Services\Mcp\McpExecutionContext;
 use App\Services\Mcp\Parties\McpPartyPreviews;
 use App\Services\Mcp\Sales\SalesOrderReadService;
 use App\Services\SalesOrderPaymentCalculator;
+use App\Support\BusinessTime;
 use App\Support\Decimal;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\Validator;
@@ -49,14 +50,16 @@ final class McpPaymentService
      * Canonical candidate: known fields, the web payment form rules, today
      * (organization server date, as the ERP action compares) when no date.
      *
-     * @param array<string, mixed> $data
+     * @param  array<string, mixed>  $data
      * @return array<string, mixed>
      */
     public function normalize(array $data): array
     {
-        if (array_diff(array_keys($data), self::FIELDS) !== []) throw new InvalidArgumentException('forbidden_fields');
+        if (array_diff(array_keys($data), self::FIELDS) !== []) {
+            throw new InvalidArgumentException('forbidden_fields');
+        }
         $payload = array_map(fn ($value) => is_string($value) && trim($value) === '' ? null : (is_string($value) ? trim($value) : $value), $data);
-        $payload['payment_date'] ??= now()->toDateString();
+        $payload['payment_date'] ??= BusinessTime::today($this->context->organization());
         foreach (['reference', 'external_reference', 'notes'] as $optional) {
             $payload[$optional] ??= null;
         }
@@ -90,7 +93,7 @@ final class McpPaymentService
             } catch (ValidationException $exception) {
                 $issues = $this->issues($exception, $payload, $before, $order);
             } catch (HttpExceptionInterface) {
-                $issues[] = ['path' => 'payment', 'code' => 'not_permitted', 'message' => $payload['payment_date'] !== now()->toDateString()
+                $issues[] = ['path' => 'payment', 'code' => 'not_permitted', 'message' => $payload['payment_date'] !== BusinessTime::today($this->context->organization())
                     ? 'Recording a payment on another date than today needs the ERP payments.backdate permission.'
                     : 'The ERP refused this payment for the connection user (permission or store membership).'];
             } catch (ModelNotFoundException) {
@@ -135,7 +138,7 @@ final class McpPaymentService
      * operation id is derived from the connection + idempotency key, so the
      * ERP's own payment idempotency also refuses a duplicate.
      *
-     * @param array<string, mixed> $payload
+     * @param  array<string, mixed>  $payload
      * @return array<string, mixed>
      */
     public function record(array $payload, string $fingerprint, string $idempotencyKey): array
@@ -189,8 +192,8 @@ final class McpPaymentService
      * Label the ERP's refusal. The decision is the action's; the payment
      * state only names it (e.g. an amount above the remaining balance).
      *
-     * @param array<string, mixed> $payload
-     * @param array<string, mixed> $before
+     * @param  array<string, mixed>  $payload
+     * @param  array<string, mixed>  $before
      * @return list<array<string, mixed>>
      */
     private function issues(ValidationException $exception, array $payload, array $before, SalesOrder $order): array

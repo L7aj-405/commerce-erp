@@ -28,30 +28,31 @@ use App\Models\Customer;
 use App\Models\FinancialAccount;
 use App\Models\InventoryBalance;
 use App\Models\Organization;
-use App\Models\OrganizationMembership;
 use App\Models\ProductVariant;
 use App\Models\QuotationSupplierAvailabilityRequest;
 use App\Models\SalesOrder;
 use App\Models\SalesOrderLine;
 use App\Models\Store;
 use App\Models\Supplier;
-use App\Models\User;
 use App\Models\Warehouse;
 use App\Services\ActiveTenantContext;
 use App\Services\AuditLogger;
 use App\Services\CustomerManager;
 use App\Services\Pos\PosCartSourcing;
+use App\Services\Pos\PosDraftLifecycle;
 use App\Services\Pos\PosLocations;
+use App\Services\PosDraftCheckoutCalculator;
 use App\Services\Procurement\SupplierCatalogQuery;
 use App\Services\Procurement\SupplierOptionsQuery;
 use App\Services\Procurement\SupplierRecommendationService;
-use App\Services\PosDraftCheckoutCalculator;
 use App\Services\ProductPriceResolver;
 use App\Services\SalesOrderPaymentCalculator;
+use App\Support\BusinessTime;
 use App\Support\Decimal;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cookie;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -98,6 +99,12 @@ class PosController extends Controller
         $memberDefaultWarehouseId = $store ? $locations->memberDefaultId($organization, $store, $request->user()) : null;
         $storeDefaultWarehouseId = $store?->default_warehouse_id && $warehouses->contains('id', (int) $store->default_warehouse_id)
             ? (int) $store->default_warehouse_id : null;
+
+        // Fallback to the client's abandon call: empty carts of this terminal idle past the short grace
+        // (a refresh / closed tab / lost request) are removed instead of lingering as orphans.
+        if ($store && $terminal && $request->user()->hasPermission($organization, 'sales_orders.update')) {
+            $this->lifecycle()->abandonEmptyCarts($request->user(), $organization, $store, $terminal, null, (int) config('pos.drafts.empty_abandon_seconds', 20));
+        }
 
         $activeSaleModel = $store ? $this->activeDraft($organization, $store, $terminal) : null;
 
@@ -417,26 +424,35 @@ class PosController extends Controller
 
         $warehouse = app(PosLocations::class)->assertEligible($organization, $store, (int) $data['warehouse_id']);
         $terminal = $this->terminalId($request);
-        $active = $this->activeDraft($organization, $store, $terminal);
 
-        if (! $active) {
-            $active = $createOrder->execute($request->user(), $organization, $store, [
-                'customer_id' => $data['customer_id'] ?? null,
-                'sale_date' => now()->toDateString(),
-                'currency_code' => config('platform.currency_code', 'MAD'),
-                'notes' => null,
-            ], SalesOrderSource::Pos);
-            $active->pos_warehouse_id = $warehouse->getKey();
-            $active->pos_terminal_id = $terminal;
-            $active->pos_global_discount_type = SalesOrderDiscountType::None->value;
-            $active->pos_global_discount_value = '0.0000';
-            $active->pos_fulfillment_mode = 'pickup';
-            $active->pos_shipping_fee = '0.0000';
-            $active->save();
-            $active->load($this->draftRelations());
-        } elseif (! $active->lines()->exists()) {
-            $this->syncDraftHeader($request, $active, $data);
-        }
+        // Creation is serialized per Store: rapid double clicks, retries and two tabs of
+        // the same terminal all queue on this lock and re-read, so only ONE draft exists.
+        $active = DB::transaction(function () use ($request, $organization, $store, $terminal, $data, $warehouse, $createOrder) {
+            Store::query()->whereKey($store->getKey())->lockForUpdate()->first();
+            $active = $this->activeDraft($organization, $store, $terminal);
+
+            if (! $active) {
+                $active = $createOrder->execute($request->user(), $organization, $store, [
+                    'customer_id' => $data['customer_id'] ?? null,
+                    'sale_date' => BusinessTime::today($organization),
+                    'currency_code' => config('platform.currency_code', 'MAD'),
+                    'notes' => null,
+                ], SalesOrderSource::Pos);
+                $active->pos_warehouse_id = $warehouse->getKey();
+                $active->pos_terminal_id = $terminal;
+                $active->pos_global_discount_type = SalesOrderDiscountType::None->value;
+                $active->pos_global_discount_value = '0.0000';
+                $active->pos_fulfillment_mode = 'pickup';
+                $active->pos_shipping_fee = '0.0000';
+                $active->pos_last_activity_at = now();
+                $active->save();
+                $active->load($this->draftRelations());
+            } elseif (! $active->lines()->exists()) {
+                $this->syncDraftHeader($request, $active, $data);
+            }
+
+            return $active;
+        });
 
         return $this->draftStateResponse($organization, $store, $active, $posSummary);
     }
@@ -523,6 +539,7 @@ class PosController extends Controller
             $order->pos_delivery_notes = null;
         }
 
+        $order->pos_last_activity_at = now();
         $order->save();
 
         return $this->draftStateResponse($organization, $store, $order->fresh($this->draftRelations()), $posSummary);
@@ -553,6 +570,7 @@ class PosController extends Controller
         } else {
             $saveLine->execute($request->user(), $order, $data);
         }
+        $this->lifecycle()->touch($order);
 
         return $this->draftStateResponse($organization, $store, $order->fresh($this->draftRelations()), $posSummary);
     }
@@ -573,6 +591,7 @@ class PosController extends Controller
         }
 
         $saveLine->execute($request->user(), $order, $data, $line);
+        $this->lifecycle()->touch($order);
 
         return $this->draftStateResponse($organization, $store, $order->fresh($this->draftRelations()), $posSummary);
     }
@@ -584,6 +603,10 @@ class PosController extends Controller
         $this->ensurePosDraft($order);
         abort_unless($line->sales_order_id === $order->getKey(), 404);
         $removeLine->execute($request->user(), $order, $line);
+        // The (now possibly empty) cart is KEPT and reused by the next add: no new draft
+        // number is burned per add/remove cycle. Empty carts are hidden from Sales Order
+        // lists and swept by pos:cleanup-drafts after the empty-cart grace period.
+        $this->lifecycle()->touch($order);
 
         return $this->draftStateResponse($organization, $store, $order->fresh($this->draftRelations()), $posSummary);
     }
@@ -598,12 +621,17 @@ class PosController extends Controller
             'warehouse_id' => ['nullable', 'integer'],
         ]);
 
-        $order->pos_held_at = now();
-        $order->save();
-        $audit->record('sales_order.pos_held', $request->user(), $organization, $store, $order, newValues: [
-            'order_number' => $order->order_number,
-            'pos_warehouse_id' => $order->pos_warehouse_id,
-        ]);
+        if ($order->lines()->doesntExist()) {
+            // Nothing to hold: an empty cart is transient working state, never parked as a held sale.
+            $this->lifecycle()->discard($request->user(), $order, PosDraftLifecycle::REASON_ABANDONED);
+        } else {
+            $order->pos_held_at = now();
+            $order->save();
+            $audit->record('sales_order.pos_held', $request->user(), $organization, $store, $order, newValues: [
+                'order_number' => $order->order_number,
+                'pos_warehouse_id' => $order->pos_warehouse_id,
+            ]);
+        }
 
         $active = null;
         if (($data['start_new_sale'] ?? false) === true) {
@@ -611,7 +639,7 @@ class PosController extends Controller
             $warehouse = $locations->assertEligible($organization, $store, (int) ($data['warehouse_id'] ?? $locations->defaultId($organization, $store, $request->user())));
             $active = $createOrder->execute($request->user(), $organization, $store, [
                 'customer_id' => null,
-                'sale_date' => now()->toDateString(),
+                'sale_date' => BusinessTime::today($organization),
                 'currency_code' => config('platform.currency_code', 'MAD'),
                 'notes' => null,
             ], SalesOrderSource::Pos);
@@ -621,6 +649,7 @@ class PosController extends Controller
             $active->pos_global_discount_value = '0.0000';
             $active->pos_fulfillment_mode = 'pickup';
             $active->pos_shipping_fee = '0.0000';
+            $active->pos_last_activity_at = now();
             $active->save();
             $active->load($this->draftRelations());
         }
@@ -636,7 +665,11 @@ class PosController extends Controller
 
         $terminal = $this->terminalId($request);
         $current = $this->activeDraftQuery($organization, $store, $terminal)->where('id', '!=', $order->getKey())->first();
-        if ($current) {
+        if ($current && $current->lines()->doesntExist()) {
+            // Switching away from an EMPTY cart removes it (revalidated under lock); a cart with
+            // products is parked as a held sale exactly as before.
+            $this->lifecycle()->discard($request->user(), $current, PosDraftLifecycle::REASON_ABANDONED);
+        } elseif ($current) {
             $current->pos_held_at = now();
             $current->save();
             $audit->record('sales_order.pos_held', $request->user(), $organization, $store, $current, newValues: [
@@ -648,6 +681,7 @@ class PosController extends Controller
         $order->pos_held_at = null;
         // Resuming makes it THIS terminal's active cart.
         $order->pos_terminal_id = $terminal;
+        $order->pos_last_activity_at = now();
         $order->touch();
         $order->save();
         $audit->record('sales_order.pos_resumed', $request->user(), $organization, $store, $order, newValues: [
@@ -663,9 +697,44 @@ class PosController extends Controller
         [$organization, $store] = $this->operationalContext($request, $context);
         $this->authorize('cancel', $order);
         $this->ensurePosDraft($order);
-        $cancelOrder->execute($request->user(), $order, 'POS hold discarded');
+        $confirmed = $request->boolean('confirm');
+
+        // Eligible POS drafts are removed outright (audited, reservations released
+        // through the reservation service). A draft that already carries commercial
+        // history (supplier procurement, ...) keeps the previous behaviour: the
+        // existing cancellation workflow, which has its own safeguards.
+        $result = $this->lifecycle()->discard($request->user(), $order, PosDraftLifecycle::REASON_MANUAL, $confirmed);
+        match ($result['outcome']) {
+            PosDraftLifecycle::OUTCOME_CONFIRMATION_REQUIRED => throw ValidationException::withMessages([
+                'confirm' => 'Ce panier contient des articles : confirmez la suppression.',
+            ]),
+            PosDraftLifecycle::OUTCOME_BLOCKED => $cancelOrder->execute($request->user(), $order, 'POS hold discarded'),
+            default => null,
+        };
 
         return $this->draftStateResponse($organization, $store, $this->activeDraft($organization, $store, $this->terminalId($request)), $posSummary);
+    }
+
+    /**
+     * The cashier left an empty cart (navigation, tab close, switch). Idempotent and race-safe:
+     * the draft is removed only if it is STILL an empty, history-free POS draft under its row lock;
+     * otherwise nothing happens. Best-effort for the browser, with the index sweep and the scheduled
+     * command as fallbacks.
+     */
+    public function abandonDraft(Request $request, ActiveTenantContext $context, SalesOrder $order): JsonResponse
+    {
+        [$organization, $store] = $this->operationalContext($request, $context);
+        abort_unless((int) $order->organization_id === (int) $organization->getKey() && (int) $order->store_id === (int) $store->getKey(), 404);
+        $this->authorize('update', $order);
+
+        $result = $this->lifecycle()->discard($request->user(), $order, PosDraftLifecycle::REASON_ABANDONED);
+
+        return response()->json(['outcome' => $result['outcome']]);
+    }
+
+    private function lifecycle(): PosDraftLifecycle
+    {
+        return app(PosDraftLifecycle::class);
     }
 
     public function complete(CompletePosSaleRequest $request, ActiveTenantContext $context, CreatePosSaleAction $action): RedirectResponse|JsonResponse
@@ -1243,10 +1312,10 @@ class PosController extends Controller
      * of the organisation covers, and what is missing (→ À sourcer). A confirmed
      * legacy special-order quantity is neither stock nor missing.
      *
-     * @param  \Illuminate\Support\Collection<string, InventoryBalance>  $balances  keyed "variant:warehouse"
+     * @param  Collection<string, InventoryBalance>  $balances  keyed "variant:warehouse"
      * @return array<int, array{location: ?array<string, mixed>, here: string, elsewhere: string, missing: string}>
      */
-    private function stockSources(SalesOrder $order, \Illuminate\Support\Collection $balances): array
+    private function stockSources(SalesOrder $order, Collection $balances): array
     {
         $here = [];
         $elsewhere = [];

@@ -1,0 +1,127 @@
+name: Flaky-test soak
+
+# Investigation tool, not a merge gate. It re-runs the COMPLETE PHP suite several times, each time on a
+# fresh runner (clean checkout, no frontend build, SQLite in memory), optionally in random order, so an
+# intermittent or order-dependent failure shows up with its seed and a JUnit report instead of being
+# hidden. No test is skipped or excluded. Manual trigger + weekly schedule (the schedule only runs from
+# the default branch).
+
+on:
+  workflow_dispatch:
+    inputs:
+      order:
+        description: 'Test order: defined (as written) or random (prints the seed)'
+        type: choice
+        options: [random, defined]
+        default: random
+      repeat:
+        description: 'Number of independent full runs (1-6)'
+        type: choice
+        options: ['3', '1', '2', '4', '5', '6']
+        default: '3'
+  schedule:
+    - cron: '17 3 * * 1'
+  # Also runs when this workflow file itself is changed on staging (default inputs: random order, 3 runs),
+  # so a soak can be started with a normal push when workflow_dispatch is not available.
+  push:
+    branches: [staging]
+    paths: ['.github/workflows/flaky-soak.yml']
+
+permissions:
+  contents: read
+
+# `shell: bash` makes GitHub run every step as `bash -eo pipefail`. Without it a pipeline such as
+# `phpunit | tee file` takes the exit status of `tee` and a failing test run would be reported as success.
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: soak-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  PHP_VERSION: '8.4'
+  PHP_EXTENSIONS: bcmath, ctype, dom, fileinfo, filter, gd, hash, iconv, json, libxml, mbstring, openssl, pcntl, pdo_mysql, pdo_sqlite, phar, session, sqlite3, tokenizer, xml, xmlreader, xmlwriter, zip, timezonedb
+
+jobs:
+  plan:
+    name: Plan runs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    outputs:
+      runs: ${{ steps.plan.outputs.runs }}
+    steps:
+      - id: plan
+        env:
+          REPEAT: ${{ inputs.repeat || '3' }}
+        run: |
+          runs="$(seq -s, 1 "$REPEAT" | sed 's/^/[/; s/$/]/')"
+          echo "runs=$runs" >> "$GITHUB_OUTPUT"
+
+  soak:
+    name: Full suite, run ${{ matrix.run }}
+    needs: plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        run: ${{ fromJSON(needs.plan.outputs.runs) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@bf6b4fbd49ca58e4608c9c89fba0b8d90bd2a39f # 2.35.5
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          extensions: ${{ env.PHP_EXTENSIONS }}
+          coverage: none
+          tools: composer:v2
+
+      - name: Install dependencies
+        run: composer install --no-interaction --no-progress --prefer-dist
+
+      - name: Prepare an isolated test environment
+        run: |
+          cp .env.example .env
+          php artisan key:generate --no-interaction
+          php artisan config:clear
+          test ! -e public/build
+
+      - name: Run the complete suite
+        env:
+          ORDER: ${{ inputs.order || 'random' }}
+        run: |
+          mkdir -p build
+          args=(--no-progress --display-warnings --display-deprecations --display-notices --display-skipped --log-junit build/soak-junit.xml)
+          if [ "$ORDER" = "random" ]; then
+            seed="$(date +%s)${{ matrix.run }}"
+            echo "::notice title=Soak seed::run=${{ matrix.run }} order=random seed=$seed (reproduce: vendor/bin/phpunit --order-by=random --random-order-seed=$seed)"
+            args+=(--order-by=random --random-order-seed="$seed")
+          else
+            echo "::notice title=Soak order::run=${{ matrix.run }} order=defined"
+          fi
+          vendor/bin/phpunit "${args[@]}" 2>&1 | tee build/soak-output.txt
+
+      - name: Record the result (annotation; failures include the failing tests)
+        if: always()
+        run: |
+          python3 .github/scripts/ci_annotate.py junit build/soak-junit.xml
+          if [ "${{ job.status }}" != "success" ]; then
+            python3 .github/scripts/ci_annotate.py tail build/soak-output.txt "Soak output (tail)"
+          fi
+
+      - name: Upload JUnit report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: soak-junit-run-${{ matrix.run }}
+          path: |
+            build/soak-junit.xml
+            build/soak-output.txt
+          if-no-files-found: ignore
+          retention-days: 14

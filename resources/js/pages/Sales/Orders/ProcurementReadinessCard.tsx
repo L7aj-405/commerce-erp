@@ -4,6 +4,7 @@ import type { TranslationKey } from '@/i18n/translations';
 import { formatDate, formatMoney, formatQuantity } from '@/utils/format';
 import { Link, router, useForm } from '@inertiajs/react';
 import { useState } from 'react';
+import { newOperationId } from '@/utils/uuid';
 
 type PlanLine = {
     line_id: number;
@@ -241,7 +242,7 @@ function CreatePurchaseOrder({
         supplier_id: group.supplier.id,
         expected_delivery_date: '',
         notes: '',
-        client_operation_id: crypto.randomUUID(),
+        client_operation_id: newOperationId(),
     });
     const label = showSupplier ? `${k('createPo')} — ${group.supplier.name}` : k('createPo');
 

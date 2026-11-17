@@ -14,6 +14,7 @@ import type { StatusVariant } from "@/components/ui/StatusBadge";
 import { TablePager } from "@/components/ui/TableShell";
 import { Sheet } from "@/components/ui/Sheet";
 import ApplicationShell from "@/layouts/ApplicationShell";
+import { useBusinessToday } from "@/utils/businessDate";
 import { useI18n } from "@/i18n";
 import {
     formatDate,
@@ -30,6 +31,7 @@ import {
     useMemo,
     useState,
 } from "react";
+import { newOperationId } from '@/utils/uuid';
 
 type Option = { value: string; label: string };
 type Entity = {
@@ -205,7 +207,7 @@ type Props = {
     obligations: Paginator;
     futureObligations: FutureObligation[];
     recurringTemplatesCount: number;
-    can: { manage: boolean; pay: boolean; export: boolean };
+    can: { manage: boolean; pay: boolean; export: boolean; reopen?: boolean };
     treasury: Treasury;
     expectedCollections: ExpectedCollection[];
     receivableOrders: ReceivableOrder[];
@@ -217,14 +219,14 @@ const inputClass = "control-input";
 const selectClass = "control-select";
 const textareaClass = "control-input min-h-24 py-2";
 
-const emptyObligation = (currency: string) => ({
+const emptyObligation = (currency: string, today: string) => ({
     store_id: "",
     category: "other",
     label: "",
     supplier_id: "",
     beneficiary_name: "",
     reference: "",
-    due_date: new Date().toISOString().slice(0, 10),
+    due_date: today,
     planned_amount: "",
     currency_code: currency,
     planned_payment_method: "",
@@ -242,6 +244,8 @@ const subtractExact = (left: string, right: string) => {
 };
 
 export default function MonthlySituation(props: Props) {
+    const businessToday = useBusinessToday();
+    const [clearedOn, setClearedOn] = useState<Record<number, string>>({});
     const { t } = useI18n();
     const { submit: submitProtected } = useFreshAuth();
     const {
@@ -278,7 +282,7 @@ export default function MonthlySituation(props: Props) {
     const [reopeningMonth, setReopeningMonth] = useState(false);
     const [protectedProcessing, setProtectedProcessing] = useState<string | null>(null);
 
-    const obligationForm = useForm(emptyObligation(currencyCode));
+    const obligationForm = useForm(emptyObligation(currencyCode, businessToday));
     const paymentForm = useForm({
         store_id: "",
         financial_account_id: "",
@@ -287,7 +291,7 @@ export default function MonthlySituation(props: Props) {
         payment_method: "bank_transfer",
         amount: "",
         currency_code: currencyCode,
-        payment_date: new Date().toISOString().slice(0, 10),
+        payment_date: businessToday,
         reference: "",
         notes: "",
         idempotency_key: "",
@@ -300,8 +304,8 @@ export default function MonthlySituation(props: Props) {
         type: "cheque",
         external_reference: "",
         amount: "",
-        issue_date: new Date().toISOString().slice(0, 10),
-        maturity_date: new Date().toISOString().slice(0, 10),
+        issue_date: businessToday,
+        maturity_date: businessToday,
         financial_account_id: "",
         notes: "",
     });
@@ -310,7 +314,7 @@ export default function MonthlySituation(props: Props) {
         sales_order_id: "",
         label: "",
         reference: "",
-        expected_date: new Date().toISOString().slice(0, 10),
+        expected_date: businessToday,
         expected_amount: "",
         notes: "",
     });
@@ -379,7 +383,7 @@ export default function MonthlySituation(props: Props) {
     pushChip("supplier_id", t("common.supplier"), supplierOptions);
 
     const openCreate = () => {
-        obligationForm.setData(emptyObligation(currencyCode));
+        obligationForm.setData(emptyObligation(currencyCode, businessToday));
         obligationForm.clearErrors();
         setCreating(true);
     };
@@ -416,10 +420,10 @@ export default function MonthlySituation(props: Props) {
                 subtractExact(row.remaining_amount, row.committed_amount),
             ),
             currency_code: row.currency_code,
-            payment_date: new Date().toISOString().slice(0, 10),
+            payment_date: businessToday,
             reference: row.reference ?? "",
             notes: "",
-            idempotency_key: crypto.randomUUID(),
+            idempotency_key: newOperationId(),
             allocations: [
                 {
                     obligation_id: row.id,
@@ -442,7 +446,7 @@ export default function MonthlySituation(props: Props) {
             amount: formatEditableNumber(
                 subtractExact(row.remaining_amount, row.committed_amount),
             ),
-            issue_date: new Date().toISOString().slice(0, 10),
+            issue_date: businessToday,
             maturity_date: row.due_date,
             financial_account_id: row.preferred_financial_account_id
                 ? String(row.preferred_financial_account_id)
@@ -529,7 +533,7 @@ export default function MonthlySituation(props: Props) {
                                     expectedForm.reset();
                                     expectedForm.setData(
                                         "expected_date",
-                                        new Date().toISOString().slice(0, 10),
+                                        businessToday,
                                     );
                                     setExpectedCreating(true);
                                 }}
@@ -599,7 +603,16 @@ export default function MonthlySituation(props: Props) {
                         )}
                     </div>
                     {can.manage && (
-                        <div className="flex flex-wrap gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                            {props.monthReview.status !== "closed" &&
+                                !props.monthReview.can_close && (
+                                    <p
+                                        className="max-w-sm text-xs text-ink-muted"
+                                        data-testid="month-close-unavailable"
+                                    >
+                                        {t("finance.monthEnd.closeUnavailable")}
+                                    </p>
+                                )}
                             {props.monthReview.status !== "closed" &&
                                 props.monthReview.can_review && (
                                     <Button
@@ -623,7 +636,7 @@ export default function MonthlySituation(props: Props) {
                                         {t("finance.monthEnd.close")}
                                     </Button>
                                 )}
-                            {props.monthReview.status === "closed" && (
+                            {props.monthReview.status === "closed" && can.reopen !== false && (
                                 <Button
                                     variant="secondary"
                                     onClick={() => setReopeningMonth(true)}
@@ -1521,13 +1534,28 @@ export default function MonthlySituation(props: Props) {
                                                         "issued",
                                                         "presented",
                                                     ].includes(i.state) && (
+                                                        <input
+                                                            type="date"
+                                                            aria-label={t("finance.monthEnd.clearedOn")}
+                                                            title={t("finance.monthEnd.clearedOn")}
+                                                            className="control-input h-8 w-36 text-xs"
+                                                            max={businessToday}
+                                                            value={clearedOn[i.id] ?? businessToday}
+                                                            onChange={(event) => setClearedOn((current) => ({ ...current, [i.id]: event.target.value }))}
+                                                        />
+                                                    )}
+                                                {can.pay &&
+                                                    [
+                                                        "issued",
+                                                        "presented",
+                                                    ].includes(i.state) && (
                                                         <Button
                                                             size="sm"
                                                             onClick={() =>
                                                                 void submitProtected({
                                                                     method: "post",
                                                                     url: `/finance/situation-fin-de-mois/instruments/${i.id}/clear`,
-                                                                    data: {},
+                                                                    data: { cleared_on: clearedOn[i.id] ?? businessToday },
                                                                     preserveScroll: true,
                                                                 })
                                                             }

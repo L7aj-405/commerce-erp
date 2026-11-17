@@ -9,6 +9,7 @@ use App\Models\Store;
 use App\Models\Supplier;
 use App\Models\User;
 use App\Services\AuditLogger;
+use App\Services\Finance\FinanceClosedPeriodGuard;
 use App\Services\Finance\FinanceNumberGenerator;
 use App\Services\Finance\FinanceObligationCalculator;
 use App\Support\Decimal;
@@ -22,6 +23,7 @@ class ManageFinanceObligationAction
         private readonly FinanceNumberGenerator $numbers,
         private readonly FinanceObligationCalculator $calculator,
         private readonly AuditLogger $audit,
+        private readonly FinanceClosedPeriodGuard $periods,
     ) {}
 
     /** @param array<string, mixed> $data */
@@ -32,6 +34,7 @@ class ManageFinanceObligationAction
         return DB::transaction(function () use ($actor, $organization, $data) {
             $this->assertReferences($organization, $data);
             $dueDate = Carbon::parse($data['due_date']);
+            $this->periods->assertOpen($organization, $dueDate, 'due_date');
             $obligation = new FinanceObligation;
             $obligation->organization_id = $organization->getKey();
             $obligation->obligation_number = $this->numbers->nextObligation($organization, (int) $dueDate->format('Y'));
@@ -55,6 +58,8 @@ class ManageFinanceObligationAction
             if ($obligation->cancelled_at) {
                 throw ValidationException::withMessages(['obligation' => 'Une obligation annulée ne peut plus être modifiée.']);
             }
+            // Both the month it leaves and the month it lands in must be open.
+            $this->periods->assertOpen($obligation->organization_id, [$obligation->due_date, Carbon::parse($data['due_date'])], 'due_date');
 
             $this->assertReferences($obligation->organization, $data);
             $amount = Decimal::positive($data['planned_amount'], 'planned_amount');
@@ -87,6 +92,7 @@ class ManageFinanceObligationAction
             if ($obligation->cancelled_at) {
                 throw ValidationException::withMessages(['obligation' => 'Cette obligation est déjà annulée.']);
             }
+            $this->periods->assertOpen($obligation->organization_id, $obligation->due_date, 'obligation');
             if (Decimal::compare($this->calculator->paid($obligation, true), '0.0000') > 0) {
                 throw ValidationException::withMessages(['obligation' => 'Inversez d’abord les paiements comptabilisés avant d’annuler cette obligation.']);
             }

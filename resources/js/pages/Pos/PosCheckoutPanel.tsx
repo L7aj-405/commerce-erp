@@ -5,10 +5,11 @@ import { Button, IconButton } from '@/components/ui/Button';
 import { Spinner } from '@/components/ui/Spinner';
 import { useI18n } from '@/i18n';
 import { Link } from '@inertiajs/react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import PosCustomerCard from './PosCustomerCard';
 import { PlusIcon } from './PosCustomerDialog';
+import { loadPaymentSnapshot, savePaymentSnapshot } from './paymentStore';
 import {
     type Account,
     type CheckoutState,
@@ -151,13 +152,20 @@ export default function PosCheckoutPanel({
         delivery_phone: sale.checkout.delivery_phone ?? '',
         delivery_notes: sale.checkout.delivery_notes ?? '',
     });
-    const [settlementMode, setSettlementMode] = useState<SettlementMode>('full');
-    const [payments, setPayments] = useState<PaymentDraft[]>(() => [buildInitialPayment(sale.summary.total, financialAccounts)]);
+    // The payment choice is restored from the per-draft store, never re-defaulted on remount.
+    const [restored] = useState(() => loadPaymentSnapshot(sale.id));
+    const [settlementMode, setSettlementMode] = useState<SettlementMode>(restored?.settlementMode ?? 'full');
+    const [payments, setPayments] = useState<PaymentDraft[]>(() => restored?.payments ?? [buildInitialPayment(sale.summary.total, financialAccounts)]);
     const [error, setError] = useState('');
     /** Every blocking payment problem found by the last "review" attempt (shown together). */
     const [paymentIssues, setPaymentIssues] = useState<string[]>([]);
     const [attempted, setAttempted] = useState(false);
+    // Debounces double clicks on "Vérifier la commande".
+    const reviewing = useRef(false);
     const [savingState, setSavingState] = useState(false);
+    // Serialised JSON of the checkout state the draft is known to hold, and the tail of the save chain.
+    const lastSavedCheckout = useRef<string>(JSON.stringify(checkoutPayload(checkoutState)));
+    const saveChain = useRef<Promise<unknown>>(Promise.resolve());
 
     const selectedCustomer = sale.customer;
 
@@ -169,6 +177,30 @@ export default function PosCheckoutPanel({
     const currentTotal = useMemo(() => Math.max(0, merchandiseNetTtc + shippingNumeric).toFixed(4), [merchandiseNetTtc, shippingNumeric]);
     const paid = useMemo(() => payments.reduce((carry, payment) => carry + positiveAmount(payment.amount), 0), [payments]);
     const remaining = useMemo(() => Math.max(0, Number(currentTotal) - paid).toFixed(4), [currentTotal, paid]);
+
+    // Persist every change so leaving/re-entering the panel keeps the cashier's selection.
+    useEffect(() => {
+        savePaymentSnapshot(sale.id, { settlementMode, payments });
+    }, [sale.id, settlementMode, payments]);
+
+    // A full-payment line the cashier never edited tracks the order total (cart or shipping
+    // changes), so a restored selection cannot go stale. Deferred / edited lines are untouched.
+    useEffect(() => {
+        if (settlementMode !== 'full') return;
+        setPayments((current) => {
+            let changed = false;
+            const next = current.map((payment) => {
+                if (!payment.method || payment.amountTouched) return payment;
+                const amount = normalizeAmount(currentTotal);
+                if (payment.amount === amount) return payment;
+                changed = true;
+
+                return { ...payment, amount, cash_received: payment.method === 'cash' && !payment.cashReceivedTouched ? amount : payment.cash_received };
+            });
+
+            return changed ? next : current;
+        });
+    }, [currentTotal, settlementMode]);
 
     const cashErrors = payments
         .map((payment, index) => {
@@ -188,23 +220,43 @@ export default function PosCheckoutPanel({
         })
         .filter((message): message is string => message !== null);
 
-    async function saveCheckoutState(next = checkoutState) {
-        setSavingState(true);
-        setError('');
-        try {
-            await onCheckoutStateSave({
-                fulfillment_mode: next.fulfillment_mode,
-                fulfillment_origin: next.fulfillment_origin,
-                shipping_fee: next.fulfillment_mode === 'delivery' ? next.shipping_fee || '0' : '0',
-                delivery_address: next.fulfillment_mode === 'delivery' ? next.delivery_address : '',
-                delivery_phone: next.fulfillment_mode === 'delivery' ? next.delivery_phone : '',
-                delivery_notes: next.fulfillment_mode === 'delivery' ? next.delivery_notes : '',
-            });
-        } catch {
-            setError(t('pos.fulfillmentUpdateFailed'));
-        } finally {
-            setSavingState(false);
-        }
+    function checkoutPayload(next: CheckoutState) {
+        return {
+            fulfillment_mode: next.fulfillment_mode,
+            fulfillment_origin: next.fulfillment_origin,
+            shipping_fee: next.fulfillment_mode === 'delivery' ? next.shipping_fee || '0' : '0',
+            delivery_address: next.fulfillment_mode === 'delivery' ? next.delivery_address : '',
+            delivery_phone: next.fulfillment_mode === 'delivery' ? next.delivery_phone : '',
+            delivery_notes: next.fulfillment_mode === 'delivery' ? next.delivery_notes : '',
+        };
+    }
+
+    /**
+     * Persists the checkout state to the draft. Saves are chained so they never overlap, and a
+     * save whose payload equals the last persisted one is skipped (a blur without edits must not
+     * trigger a network call). Resolves true only when the draft really holds `next`.
+     */
+    function saveCheckoutState(next = checkoutState): Promise<boolean> {
+        const run = async (): Promise<boolean> => {
+            const payload = checkoutPayload(next);
+            const serialized = JSON.stringify(payload);
+            if (serialized === lastSavedCheckout.current) return true;
+            setSavingState(true);
+            setError('');
+            try {
+                await onCheckoutStateSave(payload);
+                lastSavedCheckout.current = serialized;
+                return true;
+            } catch {
+                setError(t('pos.fulfillmentUpdateFailed'));
+                return false;
+            } finally {
+                setSavingState(false);
+            }
+        };
+        const chained = saveChain.current.then(run, run);
+        saveChain.current = chained.then(() => undefined, () => undefined);
+        return chained;
     }
 
     function setFulfillment(mode: 'pickup' | 'delivery') {
@@ -269,7 +321,8 @@ export default function PosCheckoutPanel({
         );
     }
 
-    function submitReview() {
+    async function submitReview() {
+        if (reviewing.current) return;
         setAttempted(true);
         if (settlementMode !== 'deferred') {
             // Same rules and order as before; all failing rules are now listed together.
@@ -287,6 +340,25 @@ export default function PosCheckoutPanel({
         setError('');
 
         const active = payments.filter((payment) => payment.method && positiveAmount(payment.amount) > 0);
+        reviewing.current = true;
+        try {
+            // Make sure the draft (delivery address, notes, fee...) is persisted before reviewing.
+            // A blur-triggered save may still be in flight: wait for it, then save any unsaved edits.
+            const persisted = await saveCheckoutState(checkoutState);
+            if (!persisted) {
+                // saveCheckoutState already displayed the actionable error.
+                return;
+            }
+            buildAndOpenReview(active);
+        } catch {
+            // Never fail silently: any unexpected error becomes a visible, actionable message.
+            setError(t('pos.reviewFailed'));
+        } finally {
+            reviewing.current = false;
+        }
+    }
+
+    function buildAndOpenReview(active: PaymentDraft[]) {
         onReview({
             fulfillment_mode: checkoutState.fulfillment_mode,
             fulfillment_origin: checkoutState.fulfillment_origin,
@@ -633,8 +705,11 @@ export default function PosCheckoutPanel({
                     </Button>
                     <Button
                         size="lg"
-                        disabled={savingCheckout || savingState || attachingCustomer || sale.procurement_deficit === true}
-                        onClick={submitReview}
+                        // Deliberately NOT disabled while a blur-save is running: disabling a button on
+                        // mousedown swallows the click that caused the blur. submitReview awaits the save.
+                        disabled={attachingCustomer || sale.procurement_deficit === true}
+                        aria-busy={savingCheckout || savingState || undefined}
+                        onClick={() => void submitReview()}
                     >
                         {(savingCheckout || savingState) && <Spinner size="sm" />}
                         {t('pos.reviewOrder')} <span aria-hidden="true">{direction === 'rtl' ? '←' : '→'}</span>

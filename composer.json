@@ -12,7 +12,7 @@
         "ext-zip": "*",
         "dompdf/dompdf": "~3.1.0",
         "inertiajs/inertia-laravel": "^3.3",
-        "laravel/framework": "^13.30",
+        "laravel/framework": "^13.40",
         "laravel/tinker": "^3.0",
         "mcp/sdk": "^0.9",
         "openspout/openspout": "~4.32.0",

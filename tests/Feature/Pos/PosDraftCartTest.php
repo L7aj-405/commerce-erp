@@ -2,8 +2,12 @@
 
 namespace Tests\Feature\Pos;
 
+use App\Models\Organization;
 use App\Models\ProductVariant;
+use App\Models\Store;
 use App\Models\User;
+use App\Models\Warehouse;
+use Illuminate\Support\Facades\DB;
 use Tests\Support\PosTestCase;
 
 class PosDraftCartTest extends PosTestCase
@@ -139,7 +143,32 @@ class PosDraftCartTest extends PosTestCase
             ->assertJsonPath('active_sale.checkout.delivery_notes', null);
     }
 
-    /** @return array{User, \App\Models\Organization, \App\Models\Store, \App\Models\Warehouse, ProductVariant} */
+    /** Round 2 BUG 1: the checkout panel now re-sends the same delivery state (blur + review click); that must be harmless. */
+    public function test_resaving_the_same_delivery_state_is_idempotent_and_creates_nothing(): void
+    {
+        [$owner, $organization, $store, $warehouse] = $this->context();
+        $draft = $this->createPosDraft($owner, $organization, $store, $warehouse);
+        $payload = [
+            'fulfillment_mode' => 'delivery',
+            'fulfillment_origin' => 'showroom',
+            'shipping_fee' => '0',
+            'delivery_address' => '1 Rue Atlas',
+            'delivery_phone' => '',
+            'delivery_notes' => 'Appeler avant',
+        ];
+
+        $movementsBefore = DB::table('inventory_movements')->count();
+        $first = $this->actingAs($owner)->patchJson(route('pos.drafts.update', $draft), $payload)->assertOk()->json('active_sale.checkout');
+        $second = $this->actingAs($owner)->patchJson(route('pos.drafts.update', $draft), $payload)->assertOk()->json('active_sale.checkout');
+
+        $this->assertSame($first, $second);
+        $this->assertSame('1 Rue Atlas', $second['delivery_address']);
+        $this->assertSame('Appeler avant', $second['delivery_notes']);
+        $this->assertDatabaseCount('sales_orders', 1);
+        $this->assertDatabaseCount('inventory_movements', $movementsBefore);
+    }
+
+    /** @return array{User, Organization, Store, Warehouse, ProductVariant} */
     private function context(string $stock = '8.0000'): array
     {
         $owner = User::factory()->create();

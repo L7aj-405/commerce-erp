@@ -7,6 +7,7 @@ use App\Models\FinanceRecurringObligationTemplate;
 use App\Models\FinancialAccount;
 use App\Models\Organization;
 use App\Models\Store;
+use App\Support\BusinessTime;
 use App\Support\Decimal;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
@@ -45,8 +46,8 @@ class FinanceMonthReviewService
             'note' => $review?->note,
             'stale' => $stale,
             'warnings' => $warnings,
-            'can_review' => $period->start->lte(now()->startOfMonth()),
-            'can_close' => $period->end->lt(now()->startOfDay()),
+            'can_review' => $period->month <= BusinessTime::now($organization)->format('Y-m'),
+            'can_close' => $period->end->toDateString() < BusinessTime::today($organization),
             'scope_note' => $store ? 'Le suivi de clôture reste organisationnel malgré le filtre boutique.' : null,
         ];
     }
@@ -124,7 +125,9 @@ class FinanceMonthReviewService
         ];
 
         foreach ($checks as $query) {
-            if ($query->exists()) return true;
+            if ($query->exists()) {
+                return true;
+            }
         }
 
         return false;

@@ -2,23 +2,27 @@
 
 namespace Tests\Feature\Settings;
 
+use App\Actions\Inventory\CreateStockTransferAction;
 use App\Actions\Quotations\CreateQuotationAction;
 use App\Actions\Sales\ConfirmSalesOrderAction;
 use App\Actions\Sales\FulfillSalesOrderAction;
-use App\Actions\Inventory\CreateStockTransferAction;
-use App\Models\InventoryMovement;
 use App\Models\Customer;
 use App\Models\FinanceRecurringObligationTemplate;
+use App\Models\InventoryMovement;
+use App\Models\InventoryReservation;
 use App\Models\Organization;
 use App\Models\OrganizationContact;
 use App\Models\SalesOrder;
+use App\Models\SalesOrderProcurement;
 use App\Models\User;
 use App\Services\OrganizationDataReset\OrganizationDataResetException;
 use App\Services\OrganizationDataReset\OrganizationDataResetExecutor;
+use App\Services\OrganizationDataReset\OrganizationDataResetFailedException;
 use App\Services\OrganizationDataReset\OrganizationDataResetOperation;
 use App\Services\OrganizationDataReset\OrganizationDataResetOperationQuery;
 use App\Services\OrganizationDataReset\OrganizationDataResetPreviewService;
 use App\Services\OrganizationDataReset\OrganizationDataResetScope;
+use App\Services\OrganizationDataReset\OrganizationDataResetSequenceGuard;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Mockery;
@@ -30,6 +34,9 @@ class OrganizationDataResetEngineTest extends DocumentTestCase
     {
         $owner = User::factory()->create();
         $organization = $this->createOrganization($owner, 'Commercial reset');
+        // This scenario deletes payments and refunds: it is explicitly declared
+        // test data (a protected organization blocks it — FiscalDataProtectionTest).
+        $organization->forceFill(['fiscal_data_mode' => 'test'])->save();
         $store = $this->createStore($organization, $owner);
         $warehouse = $this->createWarehouse($organization);
         $destinationWarehouse = $this->createWarehouse($organization, 'Destination warehouse');
@@ -64,7 +71,7 @@ class OrganizationDataResetEngineTest extends DocumentTestCase
         $stockOrder = app(FulfillSalesOrderAction::class)->execute($owner, $stockOrder)->fresh();
         $saleMovementId = (int) DB::table('inventory_movements')
             ->where('organization_id', $organization->id)
-            ->where('reference_type', \App\Models\InventoryReservation::class)
+            ->where('reference_type', InventoryReservation::class)
             ->where('reference_id', $reservationId)
             ->value('id');
         DB::table('woocommerce_stock_tasks')->insert([
@@ -148,7 +155,7 @@ class OrganizationDataResetEngineTest extends DocumentTestCase
             'quantity' => 1,
             'quantity_before' => 8,
             'quantity_after' => 9,
-            'reference_type' => \App\Models\SalesOrderProcurement::class,
+            'reference_type' => SalesOrderProcurement::class,
             'reference_id' => $procurementId,
             'reference' => $stockOrder->order_number,
             'reason' => 'Sales procurement fixture',
@@ -383,7 +390,7 @@ class OrganizationDataResetEngineTest extends DocumentTestCase
             'created_at' => now(),
             'updated_at' => now(),
         ]);
-        $sequences = app(\App\Services\OrganizationDataReset\OrganizationDataResetSequenceGuard::class)->snapshot($organization);
+        $sequences = app(OrganizationDataResetSequenceGuard::class)->snapshot($organization);
 
         $plan = app(OrganizationDataResetPreviewService::class)->preview($organization, OrganizationDataResetScope::TransactionalFinance);
         $this->assertTrue($plan->isExecutable(), json_encode($plan->blockers));
@@ -395,7 +402,7 @@ class OrganizationDataResetEngineTest extends DocumentTestCase
         $this->assertDatabaseHas('commission_rule_sets', ['id' => $ruleSetId]);
         $this->assertDatabaseHas('commission_rule_tiers', ['commission_rule_set_id' => $ruleSetId]);
         $this->assertDatabaseHas('sales_orders', ['id' => $order->id]);
-        $this->assertSame($sequences, app(\App\Services\OrganizationDataReset\OrganizationDataResetSequenceGuard::class)->snapshot($organization));
+        $this->assertSame($sequences, app(OrganizationDataResetSequenceGuard::class)->snapshot($organization));
     }
 
     public function test_sales_reset_blocks_only_a_stock_transfer_shared_with_retained_non_sales_logistics(): void
@@ -501,6 +508,7 @@ class OrganizationDataResetEngineTest extends DocumentTestCase
         $this->assertDatabaseHas('woocommerce_integrations', ['id' => $integrationId]);
         $this->assertNoForeignKeyViolations();
     }
+
     public function test_preview_counts_are_exact_and_tenant_scoped(): void
     {
         $ownerA = User::factory()->create();
@@ -661,7 +669,7 @@ class OrganizationDataResetEngineTest extends DocumentTestCase
             $this->fail('The injected reset failure was not thrown.');
         } catch (OrganizationDataResetException $exception) {
             // Rolled back with a diagnostic reference; the real cause is chained (and logged).
-            $this->assertInstanceOf(\App\Services\OrganizationDataReset\OrganizationDataResetFailedException::class, $exception);
+            $this->assertInstanceOf(OrganizationDataResetFailedException::class, $exception);
             $this->assertMatchesRegularExpression('/^RST-\d{6}-[A-Z0-9]{6}$/', $exception->reference);
             $this->assertSame('Injected reset failure.', $exception->getPrevious()?->getMessage());
         }

@@ -8,6 +8,7 @@ use App\Models\FinanceRecurringObligationTemplate;
 use App\Models\Organization;
 use App\Models\User;
 use App\Services\AuditLogger;
+use App\Services\Finance\FinanceClosedPeriodGuard;
 use App\Services\Finance\FinanceNumberGenerator;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Carbon;
@@ -17,6 +18,7 @@ class GenerateRecurringFinanceObligationsAction
 {
     public function __construct(
         private readonly FinanceNumberGenerator $numbers,
+        private readonly FinanceClosedPeriodGuard $periods,
         private readonly AuditLogger $audit,
     ) {}
 
@@ -75,6 +77,11 @@ class GenerateRecurringFinanceObligationsAction
                 if (FinanceObligation::query()->where('organization_id', $organization->getKey())
                     ->where('recurring_template_id', $locked->getKey())->whereDate('recurring_period', $period)->exists()) {
                     return 'existing';
+                }
+                // A closed month is frozen: the scheduled generation skips it
+                // (never fails, never back-fills it silently).
+                if ($this->periods->isClosed((int) $organization->getKey(), $dueDate->format('Y-m'))) {
+                    return 'skipped';
                 }
 
                 $obligation = new FinanceObligation;

@@ -23,12 +23,36 @@ class FinancePaymentInstrumentController extends Controller
             'amount' => ['required', 'decimal:0,4', 'gt:0'], 'issue_date' => ['required', 'date'], 'maturity_date' => ['required', 'date'],
             'financial_account_id' => ['required', 'integer'], 'notes' => ['nullable', 'string', 'max:5000'],
         ]));
+
         return back()->with('success', 'Instrument de règlement programmé. Aucun décaissement n’a encore été comptabilisé.');
     }
+
     public function present(Request $request, FinancePaymentInstrument $instrument, FinanceAccessGuard $guard, ManageFinancePaymentInstrumentAction $action): RedirectResponse
-    { $guard->authorizeMonthlySituationManage($request->user(), $instrument->organization); $action->present($request->user(), $instrument); return back()->with('success', 'Instrument marqué comme présenté.'); }
+    {
+        $guard->authorizeMonthlySituationManage($request->user(), $instrument->organization);
+        $action->present($request->user(), $instrument);
+
+        return back()->with('success', 'Instrument marqué comme présenté.');
+    }
+
     public function cancel(Request $request, FinancePaymentInstrument $instrument, FinanceAccessGuard $guard, FreshAuthentication $fresh, ManageFinancePaymentInstrumentAction $action): RedirectResponse
-    { $guard->authorizeMonthlySituationManage($request->user(), $instrument->organization); $fresh->ensure($request, FreshAuthentication::LEVEL_ACCOUNT); $data = $request->validate(['reason' => ['required', 'string', 'max:2000']]); $action->cancel($request->user(), $instrument, $data['reason']); return back()->with('success', 'Instrument annulé.'); }
+    {
+        $guard->authorizeMonthlySituationManage($request->user(), $instrument->organization);
+        $fresh->ensure($request, FreshAuthentication::LEVEL_ACCOUNT);
+        $data = $request->validate(['reason' => ['required', 'string', 'max:2000']]);
+        $action->cancel($request->user(), $instrument, $data['reason']);
+
+        return back()->with('success', 'Instrument annulé.');
+    }
+
     public function clear(Request $request, FinancePaymentInstrument $instrument, FinanceAccessGuard $guard, FreshAuthentication $fresh, ManageFinancePaymentInstrumentAction $action): RedirectResponse
-    { $guard->authorizeOutgoingPaymentManage($request->user(), $instrument->organization); $fresh->ensure($request, FreshAuthentication::LEVEL_ACCOUNT); $action->clear($request->user(), $instrument); return back()->with('success', 'Instrument compensé et décaissement comptabilisé.'); }
+    {
+        $guard->authorizeOutgoingPaymentManage($request->user(), $instrument->organization);
+        $fresh->ensure($request, FreshAuthentication::LEVEL_ACCOUNT);
+        // Optional bank value date (organization-local); defaults to the business today.
+        $data = $request->validate(['cleared_on' => ['nullable', 'date_format:Y-m-d']]);
+        $action->clear($request->user(), $instrument, $data['cleared_on'] ?? null);
+
+        return back()->with('success', 'Instrument compensé et décaissement comptabilisé.');
+    }
 }

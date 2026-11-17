@@ -2,20 +2,24 @@
 
 namespace Tests\Feature\Sandbox;
 
+use App\Actions\Inventory\ReleaseReservationAction;
 use App\Actions\Procurement\CreateProcurementAction;
 use App\Actions\Procurement\CreatePurchaseOrderFromProcurementRequirementsAction;
-use App\Actions\Inventory\ReleaseReservationAction;
+use App\Actions\Sales\CreateSalesOrderAction;
 use App\Actions\Sales\SaveSalesOrderLineAction;
 use App\Http\Controllers\PosController;
 use App\Models\InventoryReservation;
 use App\Models\Organization;
+use App\Models\ProductVariant;
 use App\Models\PurchaseOrderLine;
-use App\Models\Sandbox;
 use App\Models\SalesOrder;
 use App\Models\SalesOrderInventoryAllocation;
+use App\Models\Sandbox;
+use App\Models\Store;
 use App\Models\Supplier;
 use App\Models\User;
 use App\Models\UserNotification;
+use App\Models\Warehouse;
 use App\Services\Sandbox\SandboxResetExecutor;
 use App\Services\Sandbox\SandboxResetPlanner;
 use App\Services\Sandbox\SandboxStaleGenerationException;
@@ -45,10 +49,36 @@ class SandboxRaceWindowsTest extends QuotationTestCase
         $this->withCookie(PosController::TERMINAL_COOKIE, (string) Str::uuid());
         $this->enterTest();
         // The order is created (its own transaction), then the POS header is saved: the reset lands in between.
+        // Since the POS draft lifecycle change, creation AND the POS header are ONE transaction (serialized
+        // per Store), so the former "reset lands between the two writes" window no longer exists: the
+        // header save runs in the same transaction as the insert, and the reset can only commit before
+        // or after the whole unit. Both outcomes are asserted below.
         $this->recordLevel(SalesOrder::class, 'saving', fn (SalesOrder $o) => $o->exists && $o->isDirty('pos_terminal_id'));
         $this->resetAfterCommitOf(SalesOrder::class, $org, $owner);
-        $this->postJson('/pos/drafts', ['warehouse_id' => $warehouse->id])->assertStatus(409)->assertJson(['code' => 'SANDBOX_STALE_GENERATION']);
+        // Reset AFTER the request's transaction committed: the request legitimately won, the reset then
+        // wiped everything. Atomic (header write inside the transaction), nothing survives.
+        $this->postJson('/pos/drafts', ['warehouse_id' => $warehouse->id])->assertOk();
         $this->assertTransactional();
+        $this->assertNothingSurvived($org, writeAudited: false);
+        $this->assertSame(0, DB::table('sales_orders')->count());
+    }
+
+    public function test_pos_draft_creation_after_a_reset_is_refused_as_stale_and_leaves_nothing(): void
+    {
+        [$owner, $org, , , $warehouse] = $this->fixture();
+        $this->withCookie(PosController::TERMINAL_COOKIE, (string) Str::uuid());
+        $this->enterTest();
+        // Reset commits BEFORE the request's first write (right after its action is resolved).
+        $done = false;
+        $this->app->afterResolving(CreateSalesOrderAction::class, function () use (&$done, $org, $owner) {
+            if (! $done) {
+                $done = true;
+                $this->resetTestData($org, $owner);
+            }
+        });
+
+        $this->postJson('/pos/drafts', ['warehouse_id' => $warehouse->id])->assertStatus(409)->assertJson(['code' => 'SANDBOX_STALE_GENERATION']);
+
         $this->assertNothingSurvived($org);
         $this->assertSame(0, DB::table('sales_orders')->count());
     }
@@ -166,7 +196,7 @@ class SandboxRaceWindowsTest extends QuotationTestCase
         $this->assertEquals($production, $this->getJson('/notifications/feed')->assertOk()->json());
     }
 
-    /** @return array{User, Organization, \App\Models\Store, \App\Models\ProductVariant, \App\Models\Warehouse} */
+    /** @return array{User, Organization, Store, ProductVariant, Warehouse} */
     private function fixture(): array
     {
         [$owner, $org, $store, $variant] = $this->quotationCatalogFixture();

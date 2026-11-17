@@ -21,6 +21,7 @@ class Organization extends Model
     {
         return [
             'settings' => 'array',
+            'fiscal_protection_started_at' => 'datetime',
         ];
     }
 
@@ -203,13 +204,30 @@ class Organization extends Model
         return $this->hasMany(FinanceRecurringObligationTemplate::class);
     }
 
-    public function financeSupplierInstallmentPlans(): HasMany { return $this->hasMany(FinanceSupplierInstallmentPlan::class); }
+    public function financeSupplierInstallmentPlans(): HasMany
+    {
+        return $this->hasMany(FinanceSupplierInstallmentPlan::class);
+    }
 
-    public function financialAccountOpeningPositions(): HasMany { return $this->hasMany(FinancialAccountOpeningPosition::class); }
+    public function financialAccountOpeningPositions(): HasMany
+    {
+        return $this->hasMany(FinancialAccountOpeningPosition::class);
+    }
 
-    public function financeExpectedCollections(): HasMany { return $this->hasMany(FinanceExpectedCollection::class); }
-    public function financeMonthReviews(): HasMany { return $this->hasMany(FinanceMonthReview::class); }
-    public function financePaymentInstruments(): HasMany { return $this->hasMany(FinancePaymentInstrument::class); }
+    public function financeExpectedCollections(): HasMany
+    {
+        return $this->hasMany(FinanceExpectedCollection::class);
+    }
+
+    public function financeMonthReviews(): HasMany
+    {
+        return $this->hasMany(FinanceMonthReview::class);
+    }
+
+    public function financePaymentInstruments(): HasMany
+    {
+        return $this->hasMany(FinancePaymentInstrument::class);
+    }
 
     public function invoices(): HasMany
     {

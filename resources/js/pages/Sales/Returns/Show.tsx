@@ -8,6 +8,7 @@ import SalesLayout from "@/layouts/SalesLayout";
 import { useI18n } from "@/i18n";
 import { formatDate, formatMoney, formatQuantity } from "@/utils/format";
 import { Head, Link, useForm } from "@inertiajs/react";
+import { newOperationId } from '@/utils/uuid';
 
 type PaymentOption = {
     id: number;
@@ -45,7 +46,7 @@ export default function ReturnShow({
         payment_id: payments[0]?.id ?? 0,
         amount: payments[0]?.suggested_amount ?? refundSummary.remaining,
         reason: "",
-        client_operation_id: crypto.randomUUID(),
+        client_operation_id: newOperationId(),
     });
 
     const selectPayment = (paymentId: number) => {

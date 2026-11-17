@@ -42,6 +42,7 @@ type Summary = {
     invoiced_total: string | null;
     paid_total: string | null;
     outstanding: string | null;
+    unbilled_outstanding?: string | null;
     last_activity: string | null;
 };
 const money = (value: string | null) => (value === null ? "—" : formatMoney(value));
@@ -256,7 +257,7 @@ export default function CustomerShow({
                 </div>
             </div>
 
-            <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
                 <SummaryTile
                     label={t("customers.show.confirmedSales")}
                     value={money(summary.sales_total)}
@@ -270,12 +271,21 @@ export default function CustomerShow({
                     value={money(summary.paid_total)}
                 />
                 <SummaryTile
-                    label={t("orders.show.remaining")}
+                    label={t("customers.show.invoicedBalance")}
                     value={money(summary.outstanding)}
                     tone={
                         Number(summary.outstanding) > 0 ? "warning" : "neutral"
                     }
                 />
+                {summary.unbilled_outstanding != null && (
+                    <SummaryTile
+                        label={t("customers.show.unbilledBalance")}
+                        value={money(summary.unbilled_outstanding)}
+                        tone={
+                            Number(summary.unbilled_outstanding) > 0 ? "warning" : "neutral"
+                        }
+                    />
+                )}
                 <SummaryTile
                     label={t("customers.show.lastActivity")}
                     value={

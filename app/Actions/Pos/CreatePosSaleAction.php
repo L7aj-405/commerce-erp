@@ -21,6 +21,7 @@ use App\Services\Pos\PosCartStockGuard;
 use App\Services\PosDraftCheckoutCalculator;
 use App\Services\SalesOrderPaymentCalculator;
 use App\Services\SalespersonEligibilityService;
+use App\Support\BusinessTime;
 use App\Support\Decimal;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
@@ -142,7 +143,7 @@ class CreatePosSaleAction
                         'method' => $payment['method'],
                         'financial_account_id' => $payment['financial_account_id'],
                         'amount' => $payment['amount'],
-                        'payment_date' => now()->toDateString(),
+                        'payment_date' => BusinessTime::today($organization),
                         'reference' => $payment['reference'],
                     ], $payments),
                     $data['client_operation_id'],
@@ -203,7 +204,7 @@ class CreatePosSaleAction
                     $store,
                     [
                         'customer_id' => $data['customer_id'] ?? null,
-                        'sale_date' => now()->toDateString(),
+                        'sale_date' => BusinessTime::today($organization),
                         'currency_code' => config('platform.currency_code', 'MAD'),
                         'notes' => null,
                     ],
@@ -249,7 +250,7 @@ class CreatePosSaleAction
                         'method' => $payment['method'],
                         'financial_account_id' => $payment['financial_account_id'],
                         'amount' => $payment['amount'],
-                        'payment_date' => now()->toDateString(),
+                        'payment_date' => BusinessTime::today($organization),
                         'reference' => $payment['reference'],
                     ], $payments),
                     $data['client_operation_id'],
@@ -335,13 +336,13 @@ class CreatePosSaleAction
     {
         if (! $order->pos_checkout_hash || ! hash_equals($order->pos_checkout_hash, $checkoutHash)) {
             throw ValidationException::withMessages([
-                'client_operation_id' => 'This POS operation identifier was already used with different checkout data.',
+                'client_operation_id' => 'Cet identifiant d’opération POS a déjà été utilisé avec des données d’encaissement différentes.',
             ]);
         }
 
         if ($order->source !== SalesOrderSource::Pos || $order->status !== SalesOrderStatus::Confirmed) {
             throw ValidationException::withMessages([
-                'client_operation_id' => 'This POS operation exists but is not a completed POS checkout.',
+                'client_operation_id' => 'Cette opération POS existe mais n’est pas un encaissement POS terminé.',
             ]);
         }
 
@@ -358,7 +359,7 @@ class CreatePosSaleAction
             $amount = Decimal::positive($payment['amount'], 'payments.amount');
             if ($method === PaymentMethod::Cash && empty($payment['cash_received'])) {
                 throw ValidationException::withMessages([
-                    'payments' => 'Cash received is required for a Cash Payment.',
+                    'payments' => 'Le montant remis est obligatoire pour un paiement en espèces.',
                 ]);
             }
             $cashReceived = $method === PaymentMethod::Cash
@@ -366,7 +367,7 @@ class CreatePosSaleAction
                 : null;
             if ($cashReceived !== null && Decimal::compare($cashReceived, $amount) < 0) {
                 throw ValidationException::withMessages([
-                    'payments' => 'Cash received must be greater than or equal to the Cash Payment amount.',
+                    'payments' => 'Le montant remis doit être supérieur ou égal au montant du paiement en espèces.',
                 ]);
             }
 

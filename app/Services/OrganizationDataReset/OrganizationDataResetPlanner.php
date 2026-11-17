@@ -3,6 +3,7 @@
 namespace App\Services\OrganizationDataReset;
 
 use App\Models\Organization;
+use App\Services\Finance\FiscalDocumentProtection;
 use App\Services\Sandbox\SandboxProductionResetGuard;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
@@ -18,6 +19,7 @@ class OrganizationDataResetPlanner
         private readonly OrganizationDataResetLogicalReferenceRegistry $logicalReferences,
         private readonly OrganizationDataResetForeignKeyMap $foreignKeys,
         private readonly SandboxProductionResetGuard $sandboxGuard,
+        private readonly FiscalDocumentProtection $fiscal,
     ) {}
 
     public function plan(Organization $organization, OrganizationDataResetScope $scope): OrganizationDataResetPlan
@@ -32,7 +34,7 @@ class OrganizationDataResetPlanner
             $states[$operation->key] = $this->queries->stateFingerprint($organization, $operation);
         }
 
-        $explicit = $this->blockers($organization, $scope);
+        $explicit = [...$this->blockers($organization, $scope), ...$this->fiscalBlockers($organization, $operations)];
         // Phase 10: Test Mode data is never deleted by, nor left dangling by, a Production reset.
         $touched = [];
         foreach ($operations as $operation) {
@@ -192,7 +194,7 @@ class OrganizationDataResetPlanner
     }
 
     /**
-     * @param list<OrganizationDataResetOperation> $operations
+     * @param  list<OrganizationDataResetOperation>  $operations
      * @return list<OrganizationDataResetBlocker>
      */
     private function retainedReferenceBlockers(Organization $organization, array $operations): array
@@ -242,6 +244,46 @@ class OrganizationDataResetPlanner
                         );
                     }
                 }
+            }
+        }
+
+        return $blockers;
+    }
+
+    /**
+     * Protected fiscal documents (see FiscalDocumentProtection) this plan
+     * would delete. One blocker per document table; no required scope can
+     * lift it — only an organization explicitly declared as test data.
+     *
+     * @param  list<OrganizationDataResetOperation>  $operations
+     * @return list<OrganizationDataResetBlocker>
+     */
+    private function fiscalBlockers(Organization $organization, array $operations): array
+    {
+        $protected = array_fill_keys($this->fiscal->tables(), true);
+        $counts = [];
+        foreach ($operations as $operation) {
+            foreach (OrganizationDataResetDependencyGraph::tablesDeletedBy($operation) as $table) {
+                if (! isset($protected[$table])) {
+                    continue;
+                }
+                $ids = $this->queries->deletedIds($organization, $operation, $table);
+                if ($ids !== null) {
+                    $counts[$table] = max($counts[$table] ?? 0, $this->fiscal->protectedAmong($organization, $table, $ids));
+                }
+            }
+        }
+
+        $blockers = [];
+        foreach ($counts as $table => $count) {
+            if ($count > 0) {
+                $blockers[] = new OrganizationDataResetBlocker(
+                    'fiscal.protected_documents.'.$table,
+                    "{$count} protected fiscal document(s) in {$table} cannot be deleted.",
+                    $count,
+                    [],
+                    $table,
+                );
             }
         }
 

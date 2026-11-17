@@ -10,7 +10,9 @@ use App\Models\OrganizationBackupSetting;
 use App\Models\OrganizationMailSetting;
 use App\Models\SystemHealthHeartbeat;
 use App\Models\WooCommerceSyncRun;
+use App\Support\ReleaseIdentity;
 use App\Support\SensitiveDataRedactor;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -61,14 +63,56 @@ final class SystemHealthService
     {
         $manifest = public_path('build/manifest.json');
         $debug = (bool) config('app.debug');
+        $declaredBuildAt = ReleaseIdentity::buildAt();
+        $builtAt = $declaredBuildAt ?? (is_file($manifest) ? date(DATE_ATOM, (int) filemtime($manifest)) : null);
 
         return $this->check($debug ? 'degraded' : 'operational', $debug ? 'APP_DEBUG est activé.' : 'Configuration de production sûre.', [
             'environment' => app()->environment(),
             'debug_safe' => ! $debug,
             'version' => config('app.version') ?: config('system-health.app_version'),
-            'commit' => config('system-health.commit_sha'),
-            'build_at' => is_file($manifest) ? date(DATE_ATOM, filemtime($manifest)) : null,
-        ]);
+            'commit' => ReleaseIdentity::commit() ?? 'Unverified',
+            'commit_source' => ReleaseIdentity::commitSource() ?? 'Unverified',
+            'build_at' => $this->isoOrUnverified($builtAt),
+            'build_at_source' => $builtAt === null ? 'Unverified' : ($declaredBuildAt !== null ? 'APP_BUILD_AT' : 'build manifest mtime'),
+        ] + $this->workerBuild());
+    }
+
+    /**
+     * A timestamp is only ever exposed as a valid ISO-8601 string; null, empty or malformed
+     * input becomes "Unverified" so the UI never has to guess (or crash) on it.
+     */
+    private function isoOrUnverified(mixed $value): string
+    {
+        if (! is_string($value) || trim($value) === '') {
+            return 'Unverified';
+        }
+        try {
+            return Carbon::parse($value)->toIso8601String();
+        } catch (Throwable) {
+            return 'Unverified';
+        }
+    }
+
+    /**
+     * Worker build identity as reported by the worker's own heartbeat. Anything the
+     * worker did not report (or a stale probe) is "Unverified", never guessed.
+     *
+     * @return array<string, string>
+     */
+    private function workerBuild(): array
+    {
+        $heartbeat = SystemHealthHeartbeat::query()->find('queue_worker');
+        $fresh = $heartbeat?->last_seen_at?->gte(now()->subMinutes(max(1, (int) config('system-health.queue_heartbeat_stale_minutes')))) ?? false;
+        $metadata = is_array($heartbeat?->metadata) ? $heartbeat->metadata : [];
+        $commit = $fresh ? ReleaseIdentity::normalizeCommit($metadata['commit'] ?? null) : null;
+        $app = ReleaseIdentity::commit();
+        $same = ReleaseIdentity::matches($commit, $app);
+
+        return [
+            'worker_commit' => $commit ?? 'Unverified',
+            'worker_build_at' => $fresh ? $this->isoOrUnverified($metadata['build_at'] ?? null) : 'Unverified',
+            'worker_matches_app' => $same === null ? 'Unverified' : ($same ? 'yes' : 'NO — redeploy worker'),
+        ];
     }
 
     /** @return array<string, mixed> */
@@ -129,19 +173,53 @@ final class SystemHealthService
         $fresh = $heartbeat?->last_seen_at?->gte(now()->subMinutes(max(1, (int) config('system-health.queue_heartbeat_stale_minutes')))) ?? false;
         $status = $fresh ? ($failed > 0 ? 'degraded' : 'operational') : ($waiting > 0 ? 'critical' : 'degraded');
         $message = $fresh ? 'Le worker traite les sondes de santé.' : ($waiting > 0 ? 'Aucun worker récent alors que des tâches attendent.' : 'Aucune sonde worker récente.');
+        // The worker probe is DISPATCHED by the scheduler. With no live scheduler there is no
+        // probe to process, so a silent probe does NOT prove the worker is stopped: it is unverifiable.
+        $scheduler = SystemHealthHeartbeat::query()->find('scheduler');
+        $schedulerAlive = $scheduler?->last_seen_at?->gte(now()->subMinutes(max(1, (int) config('system-health.scheduler_heartbeat_stale_minutes')))) ?? false;
+        if (! $fresh && $waiting === 0 && ! $schedulerAlive) {
+            $status = 'unknown';
+            $message = 'Worker non vérifiable : le scheduler n’envoie aucune sonde (monitoring absent, pas nécessairement un worker arrêté).';
+        }
 
         return $this->check($status, $message, [
             'driver' => $driver, 'waiting_jobs' => $waiting, 'failed_jobs' => $failed,
             'oldest_pending_age_seconds' => $oldest ? max(0, now()->timestamp - (int) $oldest) : null,
             'last_processed_at' => $heartbeat?->last_seen_at?->toIso8601String(),
-        ]);
+        ] + $this->pendingJobTypes());
+    }
+
+    /**
+     * Read-only breakdown of WHAT is waiting (top 5 job classes), so an operator can decide whether
+     * restarting the worker is safe before doing it. Bounded to the oldest 1000 rows; never executes
+     * or modifies a job.
+     *
+     * @return array<string, array<string, int>>
+     */
+    private function pendingJobTypes(): array
+    {
+        try {
+            $counts = [];
+            foreach (DB::table('jobs')->orderBy('id')->limit(1000)->pluck('payload') as $payload) {
+                $name = (string) (json_decode((string) $payload, true)['displayName'] ?? 'unknown');
+                $name = class_basename(str_replace(chr(92), '/', $name));
+                $counts[$name] = ($counts[$name] ?? 0) + 1;
+            }
+            arsort($counts);
+
+            return $counts === [] ? [] : ['pending_types' => array_slice($counts, 0, 5, true)];
+        } catch (Throwable) {
+            return [];
+        }
     }
 
     /** @return array<string, mixed> */
     private function scheduler(): array
     {
         $heartbeat = SystemHealthHeartbeat::query()->find('scheduler');
-        if (! $heartbeat?->last_seen_at) return $this->check('degraded', 'Aucun heartbeat du scheduler reçu.', ['last_seen_at' => null, 'expected_cadence_seconds' => 60]);
+        if (! $heartbeat?->last_seen_at) {
+            return $this->check('degraded', 'Aucun heartbeat du scheduler reçu.', ['last_seen_at' => null, 'expected_cadence_seconds' => 60]);
+        }
         $fresh = $heartbeat->last_seen_at->gte(now()->subMinutes(max(1, (int) config('system-health.scheduler_heartbeat_stale_minutes'))));
 
         return $this->check($fresh ? 'operational' : 'degraded', $fresh ? 'Le scheduler s’exécute normalement.' : 'Le heartbeat du scheduler est ancien.', [
@@ -198,7 +276,9 @@ final class SystemHealthService
     {
         $total = @disk_total_space(storage_path());
         $free = @disk_free_space(storage_path());
-        if (! is_numeric($total) || ! is_numeric($free) || $total <= 0) return $this->check('unknown', 'Statistiques disque indisponibles.');
+        if (! is_numeric($total) || ! is_numeric($free) || $total <= 0) {
+            return $this->check('unknown', 'Statistiques disque indisponibles.');
+        }
         $used = $total - $free;
         $percent = round(($used / $total) * 100, 1);
         $status = $this->classifyDiskUsage($percent);
@@ -217,7 +297,9 @@ final class SystemHealthService
     private function smtp(Organization $organization): array
     {
         $setting = OrganizationMailSetting::query()->where('organization_id', $organization->getKey())->first();
-        if (! $setting) return $this->check('unknown', 'SMTP non configuré.', ['configured' => false]);
+        if (! $setting) {
+            return $this->check('unknown', 'SMTP non configuré.', ['configured' => false]);
+        }
         $status = $setting->last_test_ok === false ? 'degraded' : ($setting->last_test_ok === true ? 'operational' : 'unknown');
 
         return $this->check($status, $setting->last_test_ok === true ? 'Dernier test SMTP réussi.' : ($setting->last_test_ok === false ? 'Dernier test SMTP échoué.' : 'SMTP configuré mais non testé.'), [
@@ -230,7 +312,10 @@ final class SystemHealthService
     /** @return list<array<string, mixed>> */
     private function recentFailedJobs(): array
     {
-        if (! Schema::hasTable('failed_jobs')) return [];
+        if (! Schema::hasTable('failed_jobs')) {
+            return [];
+        }
+
         return DB::table('failed_jobs')->latest('failed_at')->limit(10)->get(['uuid', 'connection', 'queue', 'failed_at'])
             ->map(fn ($job) => ['uuid' => $job->uuid, 'connection' => $job->connection, 'queue' => $job->queue, 'failed_at' => $job->failed_at])->all();
     }
@@ -247,7 +332,10 @@ final class SystemHealthService
     /** @return array<string, mixed>|null */
     private function syncSummary(?WooCommerceSyncRun $run): ?array
     {
-        if (! $run) return null;
+        if (! $run) {
+            return null;
+        }
+
         return ['id' => $run->id, 'status' => $run->status, 'started_at' => $run->started_at?->toIso8601String(), 'completed_at' => $run->completed_at?->toIso8601String(),
             'duration_seconds' => $run->started_at && $run->completed_at ? $run->started_at->diffInSeconds($run->completed_at) : null,
             'products_read' => $run->products_read, 'products_created' => $run->products_created, 'products_updated' => $run->products_updated,

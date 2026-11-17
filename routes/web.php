@@ -4,8 +4,8 @@ use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\Auth\ConfirmablePasswordController;
 use App\Http\Controllers\Auth\EmailVerificationNotificationController;
 use App\Http\Controllers\Auth\EmailVerificationPromptController;
-use App\Http\Controllers\Auth\GoogleAuthenticationController;
 use App\Http\Controllers\Auth\FreshAuthenticationController;
+use App\Http\Controllers\Auth\GoogleAuthenticationController;
 use App\Http\Controllers\Auth\InvitationAcceptController;
 use App\Http\Controllers\Auth\NewPasswordController;
 use App\Http\Controllers\Auth\PasswordResetLinkController;
@@ -21,29 +21,35 @@ use App\Http\Controllers\Catalog\ProductImportController;
 use App\Http\Controllers\Catalog\ProductVariantController;
 use App\Http\Controllers\Catalog\TaxRateController;
 use App\Http\Controllers\Catalog\UnitOfMeasureController;
+use App\Http\Controllers\Commissions\MyCommissionController;
 use App\Http\Controllers\Contacts\OrganizationContactController;
+use App\Http\Controllers\Documents\CreditNoteController;
 use App\Http\Controllers\Documents\DeliveryNoteController;
 use App\Http\Controllers\Documents\DocumentEmailController;
+use App\Http\Controllers\Documents\DocumentOpenController;
 use App\Http\Controllers\Documents\DocumentProfileController;
-use App\Http\Controllers\Documents\DocumentTemplateStudioController;
 use App\Http\Controllers\Documents\DocumentRenderingController;
 use App\Http\Controllers\Documents\DocumentStampController;
+use App\Http\Controllers\Documents\DocumentTemplateStudioController;
 use App\Http\Controllers\Documents\InvoiceController;
 use App\Http\Controllers\Documents\InvoiceCorrectionLineController;
-use App\Http\Controllers\Documents\CreditNoteController;
+use App\Http\Controllers\Finance\CommissionDashboardController;
+use App\Http\Controllers\Finance\CommissionLedgerController;
+use App\Http\Controllers\Finance\CommissionRuleController;
 use App\Http\Controllers\Finance\FinanceDashboardController;
+use App\Http\Controllers\Finance\FinanceExpectedCollectionController;
 use App\Http\Controllers\Finance\FinanceExportController;
 use App\Http\Controllers\Finance\FinanceJournalController;
 use App\Http\Controllers\Finance\FinanceMonthlySituationController;
 use App\Http\Controllers\Finance\FinanceMonthReviewController;
-use App\Http\Controllers\Finance\FinanceExpectedCollectionController;
+use App\Http\Controllers\Finance\FinancePaymentInstrumentController;
 use App\Http\Controllers\Finance\FinanceRecurringObligationController;
 use App\Http\Controllers\Finance\FinanceSupplierInstallmentController;
-use App\Http\Controllers\Finance\FinancePaymentInstrumentController;
-use App\Http\Controllers\Finance\CommissionRuleController;
-use App\Http\Controllers\Finance\CommissionLedgerController;
-use App\Http\Controllers\Finance\CommissionDashboardController;
-use App\Http\Controllers\Commissions\MyCommissionController;
+use App\Http\Controllers\FollowUps\AttentionController;
+use App\Http\Controllers\FollowUps\FollowUpController;
+use App\Http\Controllers\FollowUps\FollowUpRecurringController;
+use App\Http\Controllers\FollowUps\FollowUpTemplateController;
+use App\Http\Controllers\FollowUps\TeamWorkController;
 use App\Http\Controllers\Integrations\WooCommerceIntegrationController;
 use App\Http\Controllers\Integrations\WooCommerceStockTaskController;
 use App\Http\Controllers\Inventory\InventoryMovementController;
@@ -53,13 +59,10 @@ use App\Http\Controllers\Inventory\StockTransferController;
 use App\Http\Controllers\Inventory\TransferRequestController;
 use App\Http\Controllers\Inventory\WarehouseController;
 use App\Http\Controllers\Inventory\WarehouseReplenishmentController;
-use App\Http\Controllers\FollowUps\AttentionController;
-use App\Http\Controllers\FollowUps\FollowUpController;
-use App\Http\Controllers\FollowUps\FollowUpRecurringController;
-use App\Http\Controllers\FollowUps\FollowUpTemplateController;
-use App\Http\Controllers\FollowUps\TeamWorkController;
-use App\Http\Controllers\Timeline\ActivityTimelineController;
-use App\Http\Controllers\Documents\DocumentOpenController;
+use App\Http\Controllers\Mcp\McpInvoiceDocumentController;
+use App\Http\Controllers\Mcp\McpQuotationDocumentController;
+use App\Http\Controllers\Mcp\OAuth\McpOAuthAuthorizationController;
+use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\OrganizationController;
 use App\Http\Controllers\OrganizationInvitationController;
 use App\Http\Controllers\OrganizationMembershipController;
@@ -82,40 +85,37 @@ use App\Http\Controllers\Quotations\QuotationRenderingController;
 use App\Http\Controllers\Quotations\QuotationSettingsController;
 use App\Http\Controllers\Quotations\QuotationSourcingController;
 use App\Http\Controllers\RoleController;
-use App\Http\Controllers\Sales\FulfillmentController;
 use App\Http\Controllers\Sales\CustomerController;
+use App\Http\Controllers\Sales\CustomerExchangeController;
+use App\Http\Controllers\Sales\CustomerReturnController;
+use App\Http\Controllers\Sales\FulfillmentController;
+use App\Http\Controllers\Sales\PosOrderCompletionController;
 use App\Http\Controllers\Sales\SalesOrderController;
 use App\Http\Controllers\Sales\SalesOrderLifecycleController;
 use App\Http\Controllers\Sales\SalesOrderLineController;
-use App\Http\Controllers\Sales\PosOrderCompletionController;
-use App\Http\Controllers\Sales\CustomerReturnController;
-use App\Http\Controllers\Sales\CustomerExchangeController;
 use App\Http\Controllers\Settings\ActiveSessionController;
 use App\Http\Controllers\Settings\ActivityAuditController;
-use App\Http\Controllers\Settings\SystemHealthController;
-use App\Http\Controllers\Settings\NotificationPreferenceController;
-use App\Http\Controllers\NotificationController;
-use App\Http\Controllers\Settings\OrganizationDocumentStampController;
-use App\Http\Controllers\Settings\OrganizationMailSettingController;
-use App\Http\Controllers\Settings\OrganizationBackupController;
-use App\Http\Controllers\Settings\OrganizationBackupCloudController;
-use App\Http\Controllers\Settings\OrganizationDataResetController;
 use App\Http\Controllers\Settings\McpConnectionController;
-use App\Http\Controllers\Mcp\McpInvoiceDocumentController;
-use App\Http\Controllers\Mcp\McpQuotationDocumentController;
-use App\Http\Middleware\ValidateMcpDocumentSignature;
-use App\Http\Controllers\Mcp\OAuth\McpOAuthAuthorizationController;
+use App\Http\Controllers\Settings\NotificationPreferenceController;
+use App\Http\Controllers\Settings\OrganizationBackupCloudController;
+use App\Http\Controllers\Settings\OrganizationBackupController;
+use App\Http\Controllers\Settings\OrganizationDataResetController;
+use App\Http\Controllers\Settings\OrganizationDocumentStampController;
+use App\Http\Controllers\Settings\OrganizationFulfillmentModeController;
+use App\Http\Controllers\Settings\OrganizationMailSettingController;
+use App\Http\Controllers\Settings\OrganizationTimezoneController;
 use App\Http\Controllers\Settings\PasswordController;
 use App\Http\Controllers\Settings\ProfileController;
-use App\Http\Controllers\Settings\TwoFactorAuthenticationController;
-use App\Http\Controllers\Settings\TrustedTwoFactorDeviceController;
-use App\Http\Controllers\Settings\OrganizationFulfillmentModeController;
-use App\Http\Controllers\Settings\OrganizationTimezoneController;
 use App\Http\Controllers\Settings\ReturnPolicyController;
+use App\Http\Controllers\Settings\SystemHealthController;
+use App\Http\Controllers\Settings\TrustedTwoFactorDeviceController;
+use App\Http\Controllers\Settings\TwoFactorAuthenticationController;
 use App\Http\Controllers\StoreController;
 use App\Http\Controllers\StoreMembershipController;
 use App\Http\Controllers\TenantContextController;
+use App\Http\Controllers\Timeline\ActivityTimelineController;
 use App\Http\Controllers\UsersAccessController;
+use App\Http\Middleware\ValidateMcpDocumentSignature;
 use App\Support\LegalMetadata;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -322,6 +322,10 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
     Route::post('/settings/data-reset/selective/execute', [OrganizationDataResetController::class, 'selectiveExecute'])
         ->middleware('throttle:data-reset-execute')
         ->name('settings.data-reset.selective.execute');
+    // Real (protected) vs declared test fiscal data — see FiscalDocumentProtection.
+    Route::post('/settings/data-reset/fiscal-mode', [OrganizationDataResetController::class, 'fiscalMode'])
+        ->middleware('throttle:10,1')
+        ->name('settings.data-reset.fiscal-mode');
     Route::get('/settings/ai-mcp', [McpConnectionController::class, 'index'])->name('settings.ai-mcp.index');
     Route::put('/settings/ai-mcp/policy', [McpConnectionController::class, 'policy'])->middleware('fresh-auth:2')->name('settings.ai-mcp.policy');
     Route::post('/settings/ai-mcp/connections', [McpConnectionController::class, 'store'])->middleware('fresh-auth:2')->name('settings.ai-mcp.store');
@@ -399,6 +403,7 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
         Route::post('/drafts/{order}/hold', [PosController::class, 'holdDraft'])->name('drafts.hold');
         Route::post('/drafts/{order}/resume', [PosController::class, 'resumeDraft'])->name('drafts.resume');
         Route::delete('/drafts/{order}', [PosController::class, 'destroyDraft'])->name('drafts.destroy');
+        Route::post('/drafts/{order}/abandon', [PosController::class, 'abandonDraft'])->name('drafts.abandon');
         Route::post('/sales', [PosController::class, 'complete'])->name('sales.store');
         // F2 — supplier sourcing of cart shortages ("Articles à sourcer") and
         // hand-over of a fully sourced cart as a Sales Order Draft.
@@ -517,6 +522,8 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
         Route::get('/transfers', [StockTransferController::class, 'index'])->name('transfers.index');
         Route::get('/transfers/create', [StockTransferController::class, 'create'])->name('transfers.create');
         Route::post('/transfers', [StockTransferController::class, 'store'])->name('transfers.store');
+        // Read-only outcome lookup by client_operation_id (resolves an ambiguous submit without re-posting).
+        Route::get('/transfers/operations/{operationId}', [StockTransferController::class, 'operation'])->whereUuid('operationId')->name('transfers.operation');
         Route::get('/transfers/{transfer}', [StockTransferController::class, 'show'])->name('transfers.show');
 
         // Internal transfer REQUESTS (logistics lifecycle: requested → preparing
@@ -680,6 +687,8 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
         Route::post('/exchanges/{exchange}/refunds', [CustomerExchangeController::class, 'refund'])->name('exchanges.refunds.store');
         Route::post('/exchanges/{exchange}/cancel', [CustomerExchangeController::class, 'cancel'])->name('exchanges.cancel');
         Route::post('/orders/{order}/cancel', [SalesOrderLifecycleController::class, 'cancel'])->name('orders.cancel');
+        // Hard delete of a CANCELLED, never-confirmed POS draft with no commercial history (else 422).
+        Route::delete('/orders/{order}', [SalesOrderLifecycleController::class, 'destroyCancelledPosDraft'])->name('orders.destroy');
         Route::post('/orders/{order}/fulfill', [SalesOrderLifecycleController::class, 'fulfill'])->name('orders.fulfill');
         // Expédition & Livraison (F1.1): shipments of a confirmed order. Canonical rules live in App\Actions\Fulfillment.
         Route::prefix('/orders/{order}/fulfillments')->name('orders.fulfillments.')->group(function () {

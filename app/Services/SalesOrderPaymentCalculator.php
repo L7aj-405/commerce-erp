@@ -6,12 +6,15 @@ use App\Enums\PaymentStatus;
 use App\Enums\SalesOrderPaymentStatus;
 use App\Enums\SalesOrderStatus;
 use App\Models\CustomerReturn;
+use App\Models\Organization;
 use App\Models\Payment;
 use App\Models\PaymentAllocation;
 use App\Models\PaymentRefund;
 use App\Models\SalesOrder;
+use App\Support\BusinessTime;
 use App\Support\Decimal;
 use App\Support\Money;
+use Carbon\CarbonInterface;
 use Illuminate\Support\Carbon;
 use LogicException;
 
@@ -84,7 +87,7 @@ class SalesOrderPaymentCalculator
      * Batch form of summary(), used by paginated read models to keep the
      * authoritative payment/return rules without introducing an N+1 query.
      *
-     * @param iterable<int, SalesOrder> $orders
+     * @param  iterable<int, SalesOrder>  $orders
      * @return array<int, array{paid: string, collected: string, refunded: string, net: string, returned: string, commercial_total: string, remaining: string, status: string, last_payment_date: ?string}>
      */
     public function summaries(iterable $orders, ?Carbon $asOf = null): array
@@ -121,11 +124,14 @@ class SalesOrderPaymentCalculator
                 ->selectRaw('SUM(amount) as aggregate')
                 ->groupBy('sales_order_id')
                 ->pluck('aggregate', 'sales_order_id');
+            // received_at is a UTC instant: "received on or before the as-of
+            // date" means before the start of the NEXT local day.
+            $returnsCutoff = $asOf ? self::endOfLocalDayUtc((int) $organizationId, $asOf) : null;
             $returned = CustomerReturn::query()
                 ->where('organization_id', $organizationId)
                 ->whereIn('sales_order_id', $orderIds)
                 ->where('status', 'received')
-                ->when($asOf, fn ($query) => $query->whereDate('received_at', '<=', $asOf->toDateString()))
+                ->when($returnsCutoff, fn ($query) => $query->where('received_at', '<', $returnsCutoff))
                 ->select('sales_order_id')
                 ->selectRaw('SUM(total_incl_tax) as aggregate')
                 ->groupBy('sales_order_id')
@@ -148,8 +154,13 @@ class SalesOrderPaymentCalculator
         return $summaries;
     }
 
-    /** @return array{paid: string, collected: string, refunded: string, net: string, returned: string, commercial_total: string, remaining: string, status: string, last_payment_date: ?string} */
-    private function summaryFromAmounts(SalesOrder $order, string $collected, string $refunded, string $returned, ?string $lastPaymentDate = null): array
+    /**
+     * The canonical order-exposure rule from already-aggregated components
+     * (shared with the set-based FinanceReceivablesService read model).
+     *
+     * @return array{paid: string, collected: string, refunded: string, net: string, returned: string, commercial_total: string, remaining: string, status: string, last_payment_date: ?string}
+     */
+    public function summaryFromAmounts(SalesOrder $order, string $collected, string $refunded, string $returned, ?string $lastPaymentDate = null): array
     {
         $collected = Decimal::normalize($collected);
         $refunded = Decimal::normalize($refunded);
@@ -174,6 +185,21 @@ class SalesOrderPaymentCalculator
             'status' => $this->status($order, $commercialTotal, $paid)->value,
             'last_payment_date' => $lastPaymentDate,
         ];
+    }
+
+    /**
+     * Exclusive UTC bound (`Y-m-d H:i:s`) of an organization-local calendar
+     * day: the start of the following local day. Used to compare UTC instants
+     * (customer_returns.received_at) with an as-of business date.
+     */
+    public static function endOfLocalDayUtc(int $organizationId, CarbonInterface $asOf): string
+    {
+        $organization = Organization::query()->find($organizationId);
+        $nextDay = $asOf->copy()->addDay()->format('Y-m-d');
+
+        return $organization
+            ? BusinessTime::localToUtc($organization, $nextDay)->format('Y-m-d H:i:s')
+            : $nextDay.' 00:00:00';
     }
 
     public function recalculate(SalesOrder $order): SalesOrder

@@ -41,6 +41,32 @@ final class Money
     }
 
     /**
+     * SQL twin of outstanding()'s "is anything payable left?" rule, for
+     * set-based aggregation: a positive difference is payable iff it does not
+     * round half-up to zero at the currency precision, i.e. iff it is >= half
+     * of one minor unit (0.005 MAD). Returns a CASE expression giving that
+     * threshold for the currency held in `$currencyColumn`.
+     */
+    public static function payableThresholdSql(string $currencyColumn): string
+    {
+        $byScale = [];
+        foreach (self::MINOR_UNITS as $currency => $scale) {
+            $byScale[$scale][] = "'".$currency."'";
+        }
+        $case = 'CASE';
+        foreach ($byScale as $scale => $currencies) {
+            $case .= ' WHEN UPPER('.$currencyColumn.') IN ('.implode(',', $currencies).') THEN '.self::halfMinorUnit($scale);
+        }
+
+        return $case.' ELSE '.self::halfMinorUnit(self::DEFAULT_MINOR_UNITS).' END';
+    }
+
+    private static function halfMinorUnit(int $scale): string
+    {
+        return $scale === 0 ? '0.5' : '0.'.str_repeat('0', $scale).'5';
+    }
+
+    /**
      * Amount still due: total - paid at the internal 4-decimal scale, or an
      * exact '0.0000' when nothing payable remains in this currency (settled,
      * overpaid, or only a sub-minor-unit residue).

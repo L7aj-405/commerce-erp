@@ -2,7 +2,8 @@ import PageHeader from '@/components/ui/PageHeader';
 import { Spinner } from '@/components/ui/Spinner';
 import ApplicationShell from '@/layouts/ApplicationShell';
 import { useI18n } from '@/i18n';
-import { formatDateTime } from '@/utils/format';
+import type { TranslationKey } from '@/i18n/translations';
+import { formatDateTime, parseDateValue } from '@/utils/format';
 import { Head } from '@inertiajs/react';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 
@@ -45,31 +46,42 @@ export default function SystemHealthIndex({ snapshot: initial, pollSeconds }: Pr
         <Head title={t('health.title')} />
         <PageHeader title={t('health.title')} description={t('health.description')} />
         <section className="mb-6 flex flex-col gap-4 surface-card p-5 sm:flex-row sm:items-center sm:justify-between">
-            <div><p className="text-xs font-semibold text-ink-faint">{t('health.overall')}</p><div className="mt-2 flex items-center gap-3"><StatusBadge status={snapshot.status} large /><span className="text-sm text-ink-muted">{t('health.updated')} {formatDateTime(snapshot.checked_at)}</span></div></div>
+            <div><p className="text-xs font-semibold text-ink-faint">{t('health.overall')}</p><div className="mt-2 flex items-center gap-3"><StatusBadge status={snapshot.status} large /><span className="text-sm text-ink-muted">{t('health.updated')} {healthDate(snapshot.checked_at, t)}</span></div></div>
             <button onClick={() => void refresh()} disabled={refreshing} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-field border border-line-strong px-4 text-sm font-semibold text-ink disabled:opacity-50">{refreshing && <Spinner size="sm" />}{t('health.refresh')}</button>
         </section>
         {refreshError && <p className="mb-4 rounded-field bg-danger-soft px-4 py-3 text-sm text-danger">{refreshError}</p>}
 
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            {Object.entries(snapshot.checks).map(([key, check]) => <HealthCard key={key} title={labels[key] ?? key} check={check} />)}
+            {Object.entries(snapshot.checks ?? {}).map(([key, check]) => <HealthCard key={key} title={labels[key] ?? key} check={check} />)}
         </div>
 
         <div className="mt-6 grid gap-6 xl:grid-cols-2">
             <Section title={t('health.failedJobs')} subtitle={t('health.failedJobsHelp')}>
-                {snapshot.failed_jobs.length === 0 ? <Empty text={t('health.noFailedJob')} /> : <ul className="divide-y divide-line">{snapshot.failed_jobs.map(job => <li key={job.uuid} className="grid grid-cols-[1fr_auto] gap-3 py-3 text-sm"><div><p className="font-medium text-ink">{job.queue}</p><p className="text-xs text-ink-faint">{job.connection}</p></div><time className="text-ink-muted">{formatDateTime(job.failed_at)}</time></li>)}</ul>}
+                {(snapshot.failed_jobs ?? []).length === 0 ? <Empty text={t('health.noFailedJob')} /> : <ul className="divide-y divide-line">{(snapshot.failed_jobs ?? []).map(job => <li key={job.uuid} className="grid grid-cols-[1fr_auto] gap-3 py-3 text-sm"><div><p className="font-medium text-ink">{job.queue}</p><p className="text-xs text-ink-faint">{job.connection}</p></div><time className="text-ink-muted">{healthDate(job.failed_at, t)}</time></li>)}</ul>}
             </Section>
             <Section title={t('health.securityEvents')} subtitle={t('health.securityEventsHelp')}>
-                {snapshot.security_events.length === 0 ? <Empty text={t('health.noRecentEvent')} /> : <ul className="divide-y divide-line">{snapshot.security_events.map(event => <li key={event.id} className="grid grid-cols-[1fr_auto] gap-3 py-3 text-sm"><div><p className="font-medium text-ink">{event.event.replaceAll('_', ' ')}</p><p className="text-xs text-ink-faint">{event.actor?.name ?? t('notifications.system')}</p></div><time className="text-ink-muted">{formatDateTime(event.created_at)}</time></li>)}</ul>}
+                {(snapshot.security_events ?? []).length === 0 ? <Empty text={t('health.noRecentEvent')} /> : <ul className="divide-y divide-line">{(snapshot.security_events ?? []).map(event => <li key={event.id} className="grid grid-cols-[1fr_auto] gap-3 py-3 text-sm"><div><p className="font-medium text-ink">{String(event.event ?? '').replaceAll('_', ' ')}</p><p className="text-xs text-ink-faint">{event.actor?.name ?? t('notifications.system')}</p></div><time className="text-ink-muted">{healthDate(event.created_at, t)}</time></li>)}</ul>}
             </Section>
-            <Section title={t('health.errors')} subtitle={t('health.errorsHelp')}><Empty text={snapshot.errors.reason} /></Section>
+            <Section title={t('health.errors')} subtitle={t('health.errorsHelp')}><Empty text={snapshot.errors?.reason ?? t('health.unavailable')} /></Section>
             <Section title={t('health.securityLimits')} subtitle={t('health.securityLimitsHelp')}><Empty text={t('health.securityLimitsText')} /></Section>
         </div>
     </ApplicationShell>;
 }
 
+/**
+ * Never throws: null/empty -> "Unavailable"; placeholders such as "Unverified" or any malformed
+ * value -> "Unverified" (we cannot vouch for it); valid dates -> localised date-time.
+ */
+function healthDate(value: unknown, t: (key: TranslationKey) => string): string {
+    if (value === null || value === undefined || value === '') return t('health.unavailable');
+    if (parseDateValue(value) === null) return t('health.unverified');
+
+    return formatDateTime(value as string | number);
+}
 function HealthCard({ title, check }: { title: string; check: Check }) {
-    const entries = healthEntries(check.data ?? {}).slice(0, 8);
-    return <article className="surface-card p-4"><div className="flex items-start justify-between gap-3"><h2 className="font-semibold text-ink">{title}</h2><StatusBadge status={check.status} /></div><p className="mt-2 min-h-10 text-sm text-ink-muted">{check.message}</p>{entries.length > 0 && <dl className="mt-3 space-y-1 border-t border-line pt-3">{entries.map(([key, value]) => <div key={key} className="flex justify-between gap-3 text-xs"><dt className="text-ink-faint">{key.replaceAll('_', ' ')}</dt><dd className="max-w-[55%] truncate text-end font-medium text-ink">{formatValue(key, value)}</dd></div>)}</dl>}</article>;
+    const { t } = useI18n();
+    const entries = healthEntries(check?.data ?? {}).slice(0, 12);
+    return <article className="surface-card p-4"><div className="flex items-start justify-between gap-3"><h2 className="font-semibold text-ink">{title}</h2><StatusBadge status={check.status} /></div><p className="mt-2 min-h-10 text-sm text-ink-muted">{check.message}</p>{entries.length > 0 && <dl className="mt-3 space-y-1 border-t border-line pt-3">{entries.map(([key, value]) => <div key={key} className="flex justify-between gap-3 text-xs"><dt className="text-ink-faint">{key.replaceAll('_', ' ')}</dt><dd className="max-w-[55%] truncate text-end font-medium text-ink">{formatValue(key, value, t)}</dd></div>)}</dl>}</article>;
 }
 function StatusBadge({ status, large = false }: { status: Status; large?: boolean }) {
     const { t } = useI18n();
@@ -78,7 +90,7 @@ function StatusBadge({ status, large = false }: { status: Status; large?: boolea
 }
 function Section({ title, subtitle, children }: { title: string; subtitle: string; children: ReactNode }) { return <section className="surface-card p-5"><h2 className="font-semibold text-ink">{title}</h2><p className="mt-1 text-sm text-ink-muted">{subtitle}</p><div className="mt-3">{children}</div></section>; }
 function Empty({ text }: { text: string }) { return <p className="rounded-field bg-raised px-4 py-3 text-sm text-ink-muted">{text}</p>; }
-function formatValue(key: string, value: unknown) { if (typeof value === 'boolean') return value ? '✓' : '—'; if (key.endsWith('_at') && typeof value === 'string') return formatDateTime(value); if (key.endsWith('_bytes') && typeof value === 'number') return `${(value / 1024 / 1024 / 1024).toFixed(1)} Go`; if (key.endsWith('_percent')) return `${value} %`; return String(value); }
+function formatValue(key: string, value: unknown, t: (key: TranslationKey) => string) { if (typeof value === 'boolean') return value ? '✓' : '—'; if (key.endsWith('_at')) return healthDate(value, t); if (key.endsWith('_bytes') && typeof value === 'number') return `${(value / 1024 / 1024 / 1024).toFixed(1)} Go`; if (key.endsWith('_percent')) return `${value} %`; return String(value); }
 function healthEntries(data: Record<string, unknown>): Array<[string, unknown]> {
     return Object.entries(data).flatMap(([key, value]) => {
         if (value === null) return [];

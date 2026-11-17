@@ -9,11 +9,12 @@ import { useI18n } from '@/i18n';
 import PosLayout from '@/layouts/PosLayout';
 import { Head, Link, router } from '@inertiajs/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { posJson } from './api';
+import { abandonEmptyCartKeepalive, isStaleDraftError, posJson } from './api';
 import HeldSalesDrawer from './HeldSalesDrawer';
 import PosCartPanel from './PosCartPanel';
 import PosCatalogue from './PosCatalogue';
 import PosCheckoutPanel from './PosCheckoutPanel';
+import { clearPaymentSnapshots } from './paymentStore';
 import PosCustomerDialog from './PosCustomerDialog';
 import PosFilters, { emptyFilters, filtersActive, type CatalogueFilters } from './PosFilters';
 import PosReceipt from './PosReceipt';
@@ -21,6 +22,7 @@ import PosReviewModal from './PosReviewModal';
 import PosSuccessToast from './PosSuccessToast';
 import PosSourcingModal from './PosSourcingModal';
 import type { SourcingTransport } from '@/pages/Quotations/Sourcing';
+import { newOperationId } from './pos-shared';
 import type { Account, CheckoutState, PosPending, ReviewData } from './pos-shared';
 import type { ActiveSale, CartLine, Customer, HeldSale, Option, ProductResult, StockConflict, Supplier, Warehouse } from './types';
 
@@ -155,6 +157,22 @@ export default function PosIndex({
     const operationIdRef = useRef<string>('');
     activeSaleRef.current = activeSale;
 
+    // An EMPTY cart that the cashier leaves (tab close / reload / navigating away from the POS) is
+    // abandoned server-side. Read through a ref so the listener always sees the current cart; the
+    // server revalidates (still empty, no history) so a stale or duplicate call can never delete a
+    // cart that has products.
+    useEffect(() => {
+        const abandon = () => {
+            const sale = activeSaleRef.current;
+            if (sale && sale.lines.length === 0) abandonEmptyCartKeepalive(sale.id);
+        };
+        window.addEventListener('pagehide', abandon);
+        return () => {
+            window.removeEventListener('pagehide', abandon);
+            abandon();
+        };
+    }, []);
+
     useEffect(() => {
         setActiveSale(initialActiveSale);
         setHeldSales(initialHeldSales);
@@ -257,13 +275,18 @@ export default function PosIndex({
 
     function addProduct(product: ProductResult) {
         void perform(`product:add:${product.id}`, async () => {
-            const draft = await ensureDraft();
-            sync(
-                await posJson<DraftStatePayload>(`/pos/drafts/${draft.id}/lines`, {
-                    method: 'POST',
-                    body: { line_type: 'catalog', product_variant_id: product.id, warehouse_id: warehouseId, quantity: '1', discount_type: 'none', discount_value: '0.0000' },
-                }),
-            );
+            const body = { line_type: 'catalog', product_variant_id: product.id, warehouse_id: warehouseId, quantity: '1', discount_type: 'none', discount_value: '0.0000' };
+            try {
+                const draft = await ensureDraft();
+                sync(await posJson<DraftStatePayload>(`/pos/drafts/${draft.id}/lines`, { method: 'POST', body }));
+            } catch (error) {
+                if (!isStaleDraftError(error)) throw error;
+                // The cart was expired/removed server-side: drop the stale id, open a fresh one, retry once.
+                activeSaleRef.current = null;
+                setActiveSale(null);
+                const draft = await ensureDraft();
+                sync(await posJson<DraftStatePayload>(`/pos/drafts/${draft.id}/lines`, { method: 'POST', body }));
+            }
             const stamp = Date.now();
             setAddedFlash((current) => ({ ...current, [product.id]: stamp }));
             window.setTimeout(() => {
@@ -455,7 +478,7 @@ export default function PosIndex({
     async function deleteHeldSale(sale: HeldSale) {
         if (!(await confirm({ title: t('pos.deleteHeldConfirm').replace('{order}', sale.order_number), danger: true }))) return;
         void perform(`sale:delete:${sale.id}`, async () => {
-            sync(await posJson<DraftStatePayload>(`/pos/drafts/${sale.id}`, { method: 'DELETE' }));
+            sync(await posJson<DraftStatePayload>(`/pos/drafts/${sale.id}`, { method: 'DELETE', body: { confirm: true } }));
         });
     }
 
@@ -481,7 +504,9 @@ export default function PosIndex({
     }
 
     async function saveCheckoutState(state: CheckoutState) {
-        await perform('checkout:save', () =>
+        // perform() reports failures with a toast and resolves false: surface that to the
+        // checkout panel so it never believes a rejected save succeeded.
+        const saved = await perform('checkout:save', () =>
             updateDraftFields({
                 fulfillment_mode: state.fulfillment_mode,
                 fulfillment_origin: state.fulfillment_origin,
@@ -491,10 +516,11 @@ export default function PosIndex({
                 delivery_notes: state.delivery_notes || null,
             }),
         );
+        if (!saved) throw new Error('checkout state not saved');
     }
 
     function openReview(data: ReviewData) {
-        operationIdRef.current = crypto.randomUUID();
+        operationIdRef.current = newOperationId();
         setReviewError(null);
         setReviewData(data);
     }
@@ -503,6 +529,7 @@ export default function PosIndex({
         if (completing || !activeSaleRef.current || !reviewData) return;
         setCompleting(true);
         setReviewError(null);
+        const previousCompletedId = completedOrder?.id ?? null;
         try {
             if (print) sessionStorage.setItem(PRINT_FLAG, '1');
         } catch {
@@ -525,6 +552,12 @@ export default function PosIndex({
             },
             {
                 preserveScroll: true,
+                // Only a confirmed completion (a NEW completed order came back) discards the remembered
+                // payment choice; a rejected finalization lands on the same cart and keeps it.
+                onSuccess: (page) => {
+                    const returned = (page.props as { completedOrder?: { id: number } | null }).completedOrder;
+                    if (returned && returned.id !== previousCompletedId) clearPaymentSnapshots();
+                },
                 onError: (pageErrors) => {
                     // Keep the review open with the specific error so the cashier can
                     // correct and retry — the cart and payment context are untouched.
@@ -659,6 +692,7 @@ export default function PosIndex({
                                 />
                             ) : (
                                 <PosCheckoutPanel
+                                    key={activeSale.id}
                                     sale={activeSale}
                                     currencyCode={currencyCode}
                                     financialAccounts={financialAccounts}
@@ -733,6 +767,7 @@ export default function PosIndex({
                         />
                     ) : (
                         <PosCheckoutPanel
+                            key={activeSale.id}
                             sale={activeSale}
                             currencyCode={currencyCode}
                             financialAccounts={financialAccounts}

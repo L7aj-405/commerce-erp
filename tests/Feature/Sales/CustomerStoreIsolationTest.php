@@ -15,7 +15,6 @@ use App\Services\Mcp\Sales\CustomerReadService;
 use App\Support\Decimal;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Testing\TestResponse;
-use Inertia\Testing\AssertableInertia as Assert;
 use Tests\Support\QuotationTestCase;
 
 /** W5.1: the customer profile only ever serializes, counts and sums documents the viewer may see. */
@@ -87,7 +86,7 @@ class CustomerStoreIsolationTest extends QuotationTestCase
 
         $orderA = Decimal::normalize((string) $docs['A']['order']->total_incl_tax);
         $this->assertSame([
-            'sales_total' => $orderA, 'invoiced_total' => Decimal::normalize((string) $docs['A']['invoice']->total_incl_tax),
+            'unbilled_outstanding' => '0.0000', 'sales_total' => $orderA, 'invoiced_total' => Decimal::normalize((string) $docs['A']['invoice']->total_incl_tax),
             'paid_total' => $orderA, 'outstanding' => '0.0000', 'last_activity' => $props['summary']['last_activity'],
         ], $props['summary']);
 
@@ -139,7 +138,7 @@ class CustomerStoreIsolationTest extends QuotationTestCase
         $customersOnly = $this->viewer($organization, [$storeA], ['customers.view']);
         $props = $this->props($this->page($customersOnly, $customer));
         $this->assertSame([0, 0, 0, 0, 0], [$props['ordersCount'], $props['invoicesCount'], $props['quotationsCount'], $props['paymentsCount'], $props['deliveryNotesCount']]);
-        $this->assertSame(['sales_total' => null, 'invoiced_total' => null, 'paid_total' => null, 'outstanding' => null, 'last_activity' => null], $props['summary']);
+        $this->assertSame(['unbilled_outstanding' => null, 'sales_total' => null, 'invoiced_total' => null, 'paid_total' => null, 'outstanding' => null, 'last_activity' => null], $props['summary']);
     }
 
     public function test_other_organizations_never_see_the_customer_and_mcp_balance_uses_the_same_scope(): void
