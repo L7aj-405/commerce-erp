@@ -13,6 +13,11 @@ abstract class TestCase extends BaseTestCase
     {
         parent::setUp();
 
+        // PHP tests must not depend on the frontend build (public/build manifest) or a running Vite dev
+        // server (public/hot): without this, every page render returns a 500 on a fresh checkout / CI
+        // runner and "passes" only on a machine that happens to have built assets or a hot file.
+        $this->withoutVite();
+
         $version = app(HandleInertiaRequests::class)->version(Request::create('/'));
 
         if ($version !== null) {
