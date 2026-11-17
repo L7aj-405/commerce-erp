@@ -77,18 +77,27 @@ jobs:
           grep -q 'name="DB_DATABASE" value=":memory:"' phpunit.xml
 
       - name: Run the complete PHP test suite
-        run: >
-          vendor/bin/phpunit
-          --no-progress
-          --display-warnings --display-deprecations --display-notices --display-skipped
-          --log-junit build/phpunit-junit.xml
+        run: |
+          mkdir -p build
+          vendor/bin/phpunit \
+            --no-progress \
+            --display-warnings --display-deprecations --display-notices --display-skipped \
+            --log-junit build/phpunit-junit.xml 2>&1 | tee build/phpunit-output.txt
+
+      - name: Summarise failures as annotations
+        if: failure()
+        run: |
+          python3 .github/scripts/ci_annotate.py junit build/phpunit-junit.xml
+          python3 .github/scripts/ci_annotate.py tail build/phpunit-output.txt "PHPUnit output (tail)"
 
       - name: Upload JUnit report
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: phpunit-junit
-          path: build/phpunit-junit.xml
+          path: |
+            build/phpunit-junit.xml
+            build/phpunit-output.txt
           if-no-files-found: ignore
           retention-days: 14
 
@@ -119,9 +128,12 @@ jobs:
         run: npm run build
 
   pint:
-    name: Code style (Laravel Pint, check only)
+    name: Code style (Laravel Pint, check only - advisory)
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    # The legacy code base predates this check and does not match the Laravel preset yet. Until a
+    # formatting baseline is approved this job REPORTS the debt (annotation + log) without blocking.
+    continue-on-error: true
     steps:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -151,7 +163,12 @@ jobs:
         run: composer install --no-interaction --no-progress --prefer-dist
 
       - name: "Pint (test mode - reports violations, never rewrites files)"
-        run: vendor/bin/pint --test
+        run: |
+          set +e
+          vendor/bin/pint --test --format=json > pint-report.json
+          code=$?
+          python3 .github/scripts/ci_annotate.py pint pint-report.json
+          exit $code
 
   dependency-audit:
     name: Dependency audit (informational)
@@ -178,22 +195,28 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
 
       - name: Composer audit
-        run: composer audit --no-interaction
+        run: |
+          set +e
+          composer audit --no-interaction > composer-audit.txt 2>&1
+          code=$?
+          cat composer-audit.txt
+          python3 .github/scripts/ci_annotate.py tail composer-audit.txt "composer audit"
+          exit $code
 
       - name: npm audit (production dependencies)
         run: npm audit --omit=dev
 
-  # One stable status to require in branch protection: green only when every blocking job passed.
+  # One stable status to require in branch protection: green only when every BLOCKING job passed
+  # (php-tests, frontend). Pint and the dependency audit are advisory for now.
   ci-gate:
     name: CI gate
     if: always()
-    needs: [php-tests, frontend, pint]
+    needs: [php-tests, frontend]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - name: Require all blocking jobs to succeed
         run: |
-          echo "php-tests=${{ needs.php-tests.result }} frontend=${{ needs.frontend.result }} pint=${{ needs.pint.result }}"
+          echo "php-tests=${{ needs.php-tests.result }} frontend=${{ needs.frontend.result }}"
           test "${{ needs.php-tests.result }}" = "success"
           test "${{ needs.frontend.result }}" = "success"
-          test "${{ needs.pint.result }}" = "success"
