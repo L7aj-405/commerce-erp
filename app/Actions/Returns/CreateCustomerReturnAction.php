@@ -15,6 +15,7 @@ use App\Models\SalesOrderLine;
 use App\Models\User;
 use App\Services\AuditLogger;
 use App\Services\CustomerReturnNumberGenerator;
+use App\Services\Finance\FinanceClosedPeriodGuard;
 use App\Services\ReturnPolicyService;
 use App\Services\Sandbox\SandboxContext;
 use App\Support\BusinessTime;
@@ -28,6 +29,7 @@ class CreateCustomerReturnAction
         private readonly ReturnPolicyService $policies,
         private readonly CustomerReturnNumberGenerator $numbers,
         private readonly AuditLogger $audit,
+        private readonly FinanceClosedPeriodGuard $periods,
     ) {}
 
     /** @param list<array{sales_order_line_id:int,quantity:string|int|float}> $requestedLines */
@@ -201,6 +203,8 @@ class CreateCustomerReturnAction
             ->whereHas('invoice', fn ($query) => $query->where('sales_order_id', $order->id)->where('status', InvoiceStatus::Issued->value))->with('invoice')->get()->groupBy('invoice_id');
         foreach ($invoiceLines as $group) {
             $invoice = $group->first()->invoice;
+            // F-03: a credit note is dated today (business date); refuse a draft that could never be issued.
+            $this->periods->assertOpen($order->organization, BusinessTime::today($order->organization), 'credit_note_date');
             $note = new CreditNote;
             $note->organization_id = $order->organization_id;
             $note->store_id = $order->store_id;
