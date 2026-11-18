@@ -71,3 +71,28 @@ Les dates sont des dates métier de l'organisation (`BusinessTime`, fuseau de l'
 
 ## 10. Rappel de promotion
 **Phase 1 ne peut pas être promue vers `main` sans traiter l'historique du revert de la PR #25** : `main` contient un revert de la fusion de la PR #24 (Step 1 + F-01). Une promotion `staging → main` ne rétablira pas automatiquement ces changements ; la release candidate doit d'abord annuler le revert (revert-of-revert) ou restaurer Step 1 + F-01 exactement une fois, puis vérifier l'arbre attendu.
+
+## 11. Validation finale (runtime PHP 8.4.12 + `timezonedb` 2026.6, bases jetables)
+Runtime jetable : DLL PECL `timezonedb-2026.6` chargée par un `php.ini` temporaire (le `php.ini` global n'est pas modifié) ; `check-timezone-runtime.php` : *OK, 11 sondes*. Exécuté **après** l'ajustement final de `FinanceMonthReviewExportTest`, sur `origin/staging` @ `3ff8a53` (inchangé), branche @ `6625d6b`.
+
+| Contrôle | Résultat |
+|---|---|
+| Suite complète SQLite | **2347 / 2347**, 18 036 assertions, 0 échec, 0 ignoré (JUnit) |
+| MySQL 8.4.3 (jeu CI + Returns, Exchanges, Mcp, Quotations, Unit) | **1207 / 1207**, 9 674 assertions, 0 échec, 0 ignoré |
+| `closed_period_race.php` (3 exécutions, 6 factures) | PASSED, 0 interblocage |
+| Gardes d'architecture | 10/10 |
+| Garde fuseau marocain | OK |
+| Pint (fichiers modifiés) | passed |
+
+Aucun test ignoré ou affaibli : le seul test existant modifié est `FinanceMonthReviewExportTest` (il affirmait l'ancien trou ; il affirme maintenant le refus et conserve le contrôle de péremption par écriture directe). (Les 6 tests « ignorés » de la première exécution locale n'apparaissent plus sur le runtime tzdb 2026.6.)
+
+## 12. Analyse : instantané pris avant le verrou, et détection de changement après clôture
+**Constat 1 — instantané avant verrou.** `ManageFinanceMonthReviewAction::close()` calcule `warnings` et `snapshot` **avant** `DB::transaction` / `locked()`. Les opérations en cours qui détiennent le verrou partagé du mois (paiements, émissions…) sont attendues par la clôture, valident **après** l'instantané et **avant** `closed_at` : elles sont dans le mois clos mais absentes de `close_snapshot`, et `changedAfterClose` (`updated_at > closed_at`) ne les signale pas.
+**Constat 2 — périmètre de la détection.** `close_snapshot` est une photo de trésorerie/obligations ; il ne contient pas la facturation ni les avoirs. `changedAfterClose` ne regarde ni `invoices` ni `credit_notes`.
+**Compromettent-ils la garantie F-03 ? Non.** La garantie F-03 est : *aucun effet comptable daté d'un mois clos ne peut être créé après la validation de la clôture* ; elle repose sur le verrou et est prouvée (test A déterministe, test B, 0 interblocage). Les deux constats concernent la **fidélité de la photo d'audit** et la détection de modifications **hors actions** (écriture SQL directe, restauration, import), pas la possibilité d'une écriture applicative : une facture émise ne peut plus changer d'état que par `IssueInvoiceAction` (émission/remplacement, gardée) et `CancelSalesOrderAction` refuse une commande facturée ; un avoir n'est émis que par la réception de retour (gardée). Après réouverture (audité), la re-clôture reprend un instantané.
+**Recommandation (non implémentée, suivi technique séparé, non bloquant)** : (a) calculer `warnings` + `snapshot` dans la transaction, **après** `locked()` ; (b) ajouter `invoices` (sur `invoice_date`) et `credit_notes` (sur `credit_note_date`) à `changedAfterClose` et, si souhaité, la facturation au snapshot. Changement petit mais qui modifie le contenu des clôtures futures ; à valider avec le propriétaire du produit.
+
+## 13. Décisions comptables/produit en attente (aucune réponse inventée)
+1. **Avoir et réception d'un retour quand le mois de l'avoir est clos** : refus de toute la réception (retenu par prudence) ou réception physique + avoir différé ? Et confirmation que l'avoir est bien daté du **jour** de la réception (règle existante) et non de la facture d'origine.
+2. **Correction de facture** : l'émission d'une correction retire l'originale des chiffres de son mois ; confirmer que ce mois doit être ouvert (hypothèse retenue) ou définir un traitement par avoir.
+3. **Brouillons de facture et dérogation** : refuser dès la création/modification de date d'un brouillon dans un mois clos (aujourd'hui : refus à l'émission), et définir si un rôle peut déroger sans réouverture (aujourd'hui : non, seule la réouverture auditée).
