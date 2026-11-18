@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Documents;
 use App\Http\Controllers\Controller;
 use App\Services\ActiveTenantContext;
 use App\Services\AuditLogger;
+use App\Services\Fulfillment\FulfillmentCustomerNotifier;
+use App\Services\Fulfillment\FulfillmentEngine;
 use App\Services\InvoiceNumberGenerator;
 use App\Support\BusinessTime;
 use Illuminate\Http\RedirectResponse;
@@ -23,7 +25,7 @@ class DocumentProfileController extends Controller
 
         $profile = data_get($organization->settings, 'document_profile', []);
         $logoPath = trim((string) ($profile['logo_path'] ?? ''));
-        $invoiceNumberingYear = now()->year;
+        $invoiceNumberingYear = BusinessTime::currentYear($organization);
 
         return Inertia::render('Documents/Profile', [
             'organization' => $organization->only(['id', 'name']),
@@ -38,8 +40,8 @@ class DocumentProfileController extends Controller
                 'configured' => $organization->hasConfiguredTimezone(),
                 'options' => BusinessTime::timezones(),
             ],
-            'fulfillmentMode' => \App\Services\Fulfillment\FulfillmentEngine::modeFor($organization),
-            'fulfillmentCustomerNotifications' => \App\Services\Fulfillment\FulfillmentCustomerNotifier::enabledFor($organization),
+            'fulfillmentMode' => FulfillmentEngine::modeFor($organization),
+            'fulfillmentCustomerNotifications' => FulfillmentCustomerNotifier::enabledFor($organization),
         ]);
     }
 

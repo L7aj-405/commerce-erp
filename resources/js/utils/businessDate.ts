@@ -17,3 +17,12 @@ export function useBusinessToday(): string {
     const { props } = usePage<SharedPageProps>();
     return props.tenant?.business_today ?? browserLocalDate();
 }
+
+/**
+ * Calendar arithmetic on `Y-m-d` strings, independent of the browser timezone (UTC maths on a date-only value,
+ * so adding days to the organization's business "today" never shifts across midnight).
+ */
+export function addDaysToDate(date: string, days: number): string {
+    const [y, m, d] = date.split('-').map(Number);
+    return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
+}

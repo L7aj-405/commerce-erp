@@ -12,11 +12,13 @@ use App\Enums\SalesOrderSource;
 use App\Enums\WarehouseStatus;
 use App\Models\InventoryBalance;
 use App\Models\Quotation;
+use App\Models\QuotationLine;
 use App\Models\SalesOrder;
 use App\Models\User;
 use App\Models\Warehouse;
 use App\Services\AuditLogger;
 use App\Services\Procurement\SalesOrderProcurementPlanner;
+use App\Support\BusinessTime;
 use App\Support\Decimal;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -100,7 +102,7 @@ class ConvertQuotationToSalesOrderAction
                 $quotation->store,
                 [
                     'customer_id' => $quotation->customer_id,
-                    'sale_date' => now()->toDateString(),
+                    'sale_date' => BusinessTime::today($quotation->organization),
                     'currency_code' => $quotation->currency_code,
                     'notes' => $quotation->notes,
                 ],
@@ -185,7 +187,7 @@ class ConvertQuotationToSalesOrderAction
     }
 
     /** @return array<string, string>|null */
-    private function stockWarning(Quotation $quotation, \App\Models\QuotationLine $line): ?array
+    private function stockWarning(Quotation $quotation, QuotationLine $line): ?array
     {
         $available = InventoryBalance::query()
             ->where('organization_id', $quotation->organization_id)

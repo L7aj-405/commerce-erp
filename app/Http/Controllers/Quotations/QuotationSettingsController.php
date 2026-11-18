@@ -8,6 +8,7 @@ use App\Services\AuditLogger;
 use App\Services\DocumentSellerProfile;
 use App\Services\QuotationDocumentSettings;
 use App\Services\QuotationNumberGenerator;
+use App\Support\BusinessTime;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -30,7 +31,7 @@ class QuotationSettingsController extends Controller
     {
         $organization = $context->organizationOrFail();
         $this->authorize('viewSettings', $organization);
-        $quotationNumberingYear = now()->year;
+        $quotationNumberingYear = BusinessTime::currentYear($organization);
 
         return Inertia::render('Settings/QuotationSettings', [
             'organization' => $organization->only(['id', 'name']),

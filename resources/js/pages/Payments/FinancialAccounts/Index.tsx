@@ -4,6 +4,7 @@ import { useFreshAuth } from "@/components/auth/FreshAuthProvider";
 import EmptyState from "@/components/ui/EmptyState";
 import PageHeader from "@/components/ui/PageHeader";
 import { useI18n } from "@/i18n";
+import { useBusinessToday } from "@/utils/businessDate";
 import PaymentsLayout from "@/layouts/PaymentsLayout";
 import { Head, useForm } from "@inertiajs/react";
 import type { FormEvent } from "react";
@@ -301,9 +302,10 @@ function OpeningPositionForm({
     const { t } = useI18n();
     const { submit: submitProtected } = useFreshAuth();
     const [saving, setSaving] = useState(false);
+    // The organization's business date (server-computed), never the browser's UTC date.
+    const businessToday = useBusinessToday();
     const form = useForm({
-        effective_date:
-            position?.effective_date ?? new Date().toISOString().slice(0, 10),
+        effective_date: position?.effective_date ?? businessToday,
         amount: position?.opening_amount ?? "",
         currency_code: account.currency_code,
         reference: "",

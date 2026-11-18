@@ -17,6 +17,7 @@ use App\Services\AuditLogger;
 use App\Services\DocumentSellerProfile;
 use App\Services\DocumentSnapshotVerifier;
 use App\Services\DocumentTemplateRegistry;
+use App\Support\BusinessTime;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -35,7 +36,8 @@ class CreateFullInvoiceFromSalesOrderAction
     public function execute(User $actor, SalesOrder $order, array $data = []): Invoice
     {
         $this->authorizeOrderDocument($actor, $order, 'invoices.create');
-        $invoiceDate = $data['invoice_date'] ?? now()->toDateString();
+        // Default document date = the organization's business date (Africa/Casablanca for a Moroccan organization), not UTC.
+        $invoiceDate = $data['invoice_date'] ?? BusinessTime::today($order->organization);
         $this->authorizeBusinessDate($actor, $order->organization, $invoiceDate, 'invoices.backdate');
 
         return DB::transaction(function () use ($actor, $order, $data, $invoiceDate) {

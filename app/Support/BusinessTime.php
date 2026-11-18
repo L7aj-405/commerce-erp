@@ -48,6 +48,15 @@ final class BusinessTime
         return self::now($organization)->toDateString();
     }
 
+    /**
+     * The organization's current calendar YEAR: the default fiscal sequence year of year-keyed documents
+     * (return, exchange, …) when no explicit document date drives it. Never `now()->year`, which is the UTC year.
+     */
+    public static function currentYear(Organization $organization): int
+    {
+        return (int) self::now($organization)->format('Y');
+    }
+
     /** Whether a calendar date lies strictly before the organization's today. */
     public static function isBeforeToday(Organization $organization, CarbonInterface|string $date): bool
     {
