@@ -11,6 +11,8 @@
 #   APP_OPTIMIZE=true|false   run `php artisan optimize` (config/route/view/event caches) at start. Default true.
 #   RUN_MIGRATIONS=true       web role only: run `php artisan migrate --force` before serving. Default OFF: take the
 #                             DB snapshot first (DEPLOYMENT_CHECKLIST.md section 9) and prefer a Coolify post-deploy command.
+#   RUN_SCHEDULER=true        web role only: also run ONE `schedule:work` (as www-data) next to Apache. Default OFF.
+#                             Never set it on a worker or on more than one web instance.
 set -eu
 
 cd /var/www/html
@@ -46,11 +48,33 @@ if [ "$ROLE_START" = "1" ]; then
         if [ "${RUN_MIGRATIONS:-false}" = "true" ]; then
             as_app php artisan migrate --force --no-interaction
         fi
+        # Scheduler inside the web container (no extra Coolify resource): ONE `schedule:work` supervised by a tiny
+        # loop, run as www-data so files it creates in storage/ stay writable by Apache. Apache stays PID 1 and
+        # receives the stop signal; the loop dies with the container. Enable on the SINGLE web instance only and
+        # remove any Coolify "Scheduled Task" / cron running `schedule:run`, otherwise two schedulers would run.
+        if [ "${RUN_SCHEDULER:-false}" = "true" ]; then
+            (
+                while true; do
+                    as_app php artisan schedule:work || true
+                    sleep 5
+                done
+            ) &
+        fi
     fi
 fi
 
 if [ "$1" = "apache2-foreground" ]; then
     exec "$@"   # Apache drops privileges to www-data itself.
 fi
-# exec (no intermediate process): the worker receives SIGTERM directly and finishes its current job.
-exec setpriv --reuid=www-data --regid=www-data --init-groups "$@"
+# Worker / scheduler / one-off commands. The official php:*-apache image sets STOPSIGNAL SIGWINCH (Apache's graceful
+# stop) and `docker stop` (Coolify) sends exactly that: PHP ignores it and would be SIGKILLed mid-job after the grace
+# period. This shell therefore stays as PID 1, forwards SIGTERM/SIGINT/SIGWINCH to PHP as SIGTERM (graceful: the worker
+# finishes its current job, then exits) and returns PHP's exit status.
+setpriv --reuid=www-data --regid=www-data --init-groups "$@" &
+child=$!
+trap 'kill -TERM "$child" 2>/dev/null' TERM INT WINCH
+status=0
+while kill -0 "$child" 2>/dev/null; do
+    wait "$child" && status=0 || status=$?
+done
+exit "$status"

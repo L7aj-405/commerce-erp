@@ -12,6 +12,8 @@
 
 ARG PHP_IMAGE=php:8.4-apache-bookworm
 ARG TIMEZONEDB_VERSION=2026.6
+# phpredis (REDIS_CLIENT defaults to phpredis in config/database.php; predis is not installed). Pinned like timezonedb.
+ARG PHPREDIS_VERSION=6.3.0
 
 # --------------------------------------------------------------------------------------- front-end assets
 FROM node:22-bookworm-slim AS assets
@@ -27,12 +29,14 @@ RUN npm run build
 # ------------------------------------------------------------------------- PHP runtime (shared by every role)
 FROM ${PHP_IMAGE} AS runtime
 ARG TIMEZONEDB_VERSION
+ARG PHPREDIS_VERSION
 RUN apt-get update \
  && apt-get install -y --no-install-recommends libzip-dev libpng-dev libjpeg-dev libfreetype6-dev libicu-dev unzip \
  && docker-php-ext-configure gd --with-freetype --with-jpeg \
  && docker-php-ext-install -j"$(nproc)" bcmath gd intl opcache pcntl pdo_mysql zip \
  && pecl install "timezonedb-${TIMEZONEDB_VERSION}" \
- && docker-php-ext-enable timezonedb \
+ && printf '\n\n\n\n\n\n' | pecl install "redis-${PHPREDIS_VERSION}" \
+ && docker-php-ext-enable timezonedb redis \
  && rm -rf /var/lib/apt/lists/* /tmp/pear \
  && cp "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini" \
  && a2enmod rewrite headers \
