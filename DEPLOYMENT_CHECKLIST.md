@@ -150,8 +150,12 @@ npm ci
 npm run build        # needs outbound network (Bunny Fonts) at build time
 ```
 
-`public/build` is generated on every build (git-ignored). Nixpacks is fine;
-no custom Dockerfile is required.
+`public/build` is generated on every build (git-ignored). Coolify's automatic
+Railpack build (FrankenPHP) cannot change the timezone database embedded in its
+PHP build (it was `2025.3` on staging), so the Morocco legal-time requirement (§1) is met by the repository
+`Dockerfile`: one image for web, worker and scheduler (`APP_ROLE=web|worker|scheduler`),
+`timezonedb-2026.6` pinned, build-time and start-time runtime gates. Rollout and
+rollback: `docs/phase-1-foundation/STAGING_PHP_RUNTIME_IMAGE.md`.
 
 ## 5. Deploy (in this order)
 
@@ -174,7 +178,7 @@ Processes (Coolify, supervised):
 
 | Process | Command | Count |
 |---|---|---|
-| Web | the Nixpacks PHP web server | 1 (pilot) |
+| Web | the web server of the build (Apache with the repository `Dockerfile`; FrankenPHP with Railpack) | 1 (pilot) |
 | Queue worker | `php artisan queue:work --tries=3 --timeout=3600` | 1, required |
 | Scheduler | `php artisan schedule:run` every minute (cron) | **exactly 1** |
 
