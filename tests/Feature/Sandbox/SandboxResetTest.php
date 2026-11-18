@@ -3,10 +3,12 @@
 namespace Tests\Feature\Sandbox;
 
 use App\Http\Controllers\PosController;
+use App\Models\FinancialAccount;
 use App\Models\Organization;
 use App\Models\ProductVariant;
-use App\Models\Sandbox;
 use App\Models\SalesOrder;
+use App\Models\Sandbox;
+use App\Models\Store;
 use App\Models\User;
 use App\Models\Warehouse;
 use App\Services\Sandbox\SandboxInventoryGuard;
@@ -168,7 +170,7 @@ class SandboxResetTest extends QuotationTestCase
         $this->assertSame(0, DB::table('audit_logs')->where('event', 'sandbox.reset')->count());
     }
 
-    /** @return array{User, Organization, \App\Models\Store, ProductVariant, Warehouse, \App\Models\FinancialAccount} */
+    /** @return array{User, Organization, Store, ProductVariant, Warehouse, FinancialAccount} */
     private function fixture(): array
     {
         [$owner, $org, $store, $variant] = $this->quotationCatalogFixture();
