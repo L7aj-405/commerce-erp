@@ -49,27 +49,27 @@ class ReceivablesConsistencyTest extends DocumentTestCase
     public function test_order_exposure_matches_the_canonical_per_order_rule_as_of_any_date(): void
     {
         $partial = $this->order('1000.0000');
-        $this->pay($partial, '300.0000', '2026-09-10');
+        $this->pay($partial, '300.0000', '2026-06-10');
 
         $refunded = $this->order('500.0000');
-        $refundedPayment = $this->pay($refunded, '500.0000', '2026-09-12');
-        $this->travelTo(Carbon::parse('2026-10-05 10:00:00', 'UTC'));
+        $refundedPayment = $this->pay($refunded, '500.0000', '2026-06-12');
+        $this->travelTo(Carbon::parse('2026-07-05 10:00:00', 'UTC'));
         app(RefundPaymentAction::class)->execute($this->owner, $refundedPayment, $refunded, 'Annulation');
         $this->travelTo(Carbon::parse('2026-11-15 10:00:00', 'UTC'));
 
         $unpaid = $this->order('200.0000');
         $settled = $this->order('100.0000');
-        $this->pay($settled, '100.0000', '2026-09-15');
+        $this->pay($settled, '100.0000', '2026-06-15');
         // 0.0040 MAD left: below one centime, settled at the currency precision.
         $residue = $this->order('50.0000');
-        $this->pay($residue, Decimal::subtract((string) $residue->total_incl_tax, '0.0040'), '2026-09-15');
+        $this->pay($residue, Decimal::subtract((string) $residue->total_incl_tax, '0.0040'), '2026-06-15');
 
-        // Received at 30 Sep 23:30 UTC = 1 Oct 00:30 in Casablanca.
+        // Received at 30 Jun 23:30 UTC = 1 Jul 00:30 in Casablanca.
         $returned = $this->order('400.0000');
-        $this->pay($returned, '100.0000', '2026-09-20');
-        $this->receivedReturn($returned, '150.0000', '2026-09-30 23:30:00');
+        $this->pay($returned, '100.0000', '2026-06-20');
+        $this->receivedReturn($returned, '150.0000', '2026-06-30 23:30:00');
 
-        foreach (['2026-09-30', '2026-10-01', '2026-10-31'] as $date) {
+        foreach (['2026-06-30', '2026-07-01', '2026-07-31'] as $date) {
             $asOf = Carbon::parse($date);
             $service = app(FinanceReceivablesService::class)->salesOrderReceivablesAsOf($this->organization->fresh(), $asOf, null, 50);
             $orders = SalesOrder::query()->where('organization_id', $this->organization->id)->get();
@@ -93,13 +93,13 @@ class ReceivablesConsistencyTest extends DocumentTestCase
             $this->assertSame($service['status_counts'], $summary['status_counts']);
         }
 
-        $sep = collect(app(FinanceReceivablesService::class)->salesOrderReceivablesAsOf($this->organization->fresh(), Carbon::parse('2026-09-30'), null)['orders']->items())->keyBy('id');
-        $oct1 = collect(app(FinanceReceivablesService::class)->salesOrderReceivablesAsOf($this->organization->fresh(), Carbon::parse('2026-10-01'), null)['orders']->items())->keyBy('id');
+        $sep = collect(app(FinanceReceivablesService::class)->salesOrderReceivablesAsOf($this->organization->fresh(), Carbon::parse('2026-06-30'), null)['orders']->items())->keyBy('id');
+        $oct1 = collect(app(FinanceReceivablesService::class)->salesOrderReceivablesAsOf($this->organization->fresh(), Carbon::parse('2026-07-01'), null)['orders']->items())->keyBy('id');
         $this->assertArrayNotHasKey($settled->id, $sep->all());
         $this->assertArrayNotHasKey($residue->id, $sep->all(), 'A sub-centime residue is not a receivable.');
         $this->assertArrayHasKey($unpaid->id, $sep->all());
-        $this->assertArrayNotHasKey($refunded->id, $sep->all(), 'Refund dated 5 Oct is not yet effective on 30 Sep.');
-        $this->assertSame('300.0000', $sep[$returned->id]['outstanding'], 'The return received on 1 Oct (local) is not effective on 30 Sep.');
+        $this->assertArrayNotHasKey($refunded->id, $sep->all(), 'Refund dated 5 Jul is not yet effective on 30 Jun.');
+        $this->assertSame('300.0000', $sep[$returned->id]['outstanding'], 'The return received on 1 Jul (local) is not effective on 30 Jun.');
         $this->assertSame('150.0000', $oct1[$returned->id]['outstanding']);
     }
 
@@ -155,7 +155,7 @@ class ReceivablesConsistencyTest extends DocumentTestCase
 
     private function order(string $amount): SalesOrder
     {
-        $order = $this->createDraftOrder($this->owner, $this->organization, $this->store, null, ['sale_date' => '2026-09-01']);
+        $order = $this->createDraftOrder($this->owner, $this->organization, $this->store, null, ['sale_date' => '2026-06-01']);
         $this->addCustomLine($this->owner, $order, ['unit_price_excl_tax' => $amount]);
 
         return app(ConfirmSalesOrderAction::class)->execute($this->owner, $order)->fresh();

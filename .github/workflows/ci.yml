@@ -31,7 +31,11 @@ env:
   PHP_VERSION: '8.4'
   NODE_VERSION: '22'
   # composer.json requires these (plus the framework / PDF / spreadsheet needs); pcntl is used by queue timeouts.
-  PHP_EXTENSIONS: bcmath, ctype, dom, fileinfo, filter, gd, hash, iconv, json, libxml, mbstring, openssl, pcntl, pdo_mysql, pdo_sqlite, phar, session, sqlite3, tokenizer, xml, xmlreader, xmlwriter, zip, timezonedb
+  # Morocco returned to GMT on 2026-09-20 (Decree 2.26.530; IANA tz 2026c+). `timezonedb` is PINNED: the unpinned extension
+  # resolved to 2025.2 on the runner and silently OVERRODE the newer system tzdata, shifting Moroccan business dates by an hour
+  # (observed: tzdb=2025.2, Casablanca 2026-11-05 00:30 +01:00). scripts/check-timezone-runtime.php blocks the build if the
+  # runtime is wrong; bump this pin (and that script's table) only after reading a new legal decree.
+  PHP_EXTENSIONS: bcmath, ctype, dom, fileinfo, filter, gd, hash, iconv, json, libxml, mbstring, openssl, pcntl, pdo_mysql, pdo_sqlite, phar, session, sqlite3, tokenizer, xml, xmlreader, xmlwriter, zip, timezonedb-2026.6
 
 jobs:
   php-tests:
@@ -51,6 +55,9 @@ jobs:
           extensions: ${{ env.PHP_EXTENSIONS }}
           coverage: none
           tools: composer:v2
+
+      - name: Verify Morocco's legal time in this PHP runtime (blocking)
+        run: php scripts/check-timezone-runtime.php
 
       - name: Locate the Composer cache
         id: composer-cache
@@ -167,6 +174,9 @@ jobs:
           extensions: ${{ env.PHP_EXTENSIONS }}
           coverage: none
           tools: composer:v2
+
+      - name: Verify Morocco's legal time in this PHP runtime (blocking)
+        run: php scripts/check-timezone-runtime.php
 
       - name: Locate the Composer cache
         id: composer-cache
@@ -327,6 +337,9 @@ jobs:
 
       - name: Race - selective data reset
         run: php tests/Concurrency/selective_reset_race.php --rounds=2 --database=commerce_erp_race_test
+
+      - name: Race - fiscal numbering around the calendar-year boundary (F-02)
+        run: php tests/Concurrency/fiscal_year_boundary_race.php --sessions=4 --database=commerce_erp_race_test
 
   frontend:
     name: Frontend (typecheck and production build)

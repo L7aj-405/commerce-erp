@@ -15,10 +15,11 @@ use App\Models\ProductVariant;
 use App\Models\SalesOrder;
 use App\Models\SalesOrderLine;
 use App\Services\Mcp\McpDryRun;
-use App\Services\Procurement\SalesOrderProcurementPlanner;
 use App\Services\Mcp\McpExecutionContext;
 use App\Services\Mcp\McpIdempotencyService;
 use App\Services\Mcp\Products\ProductStockReadService;
+use App\Services\Procurement\SalesOrderProcurementPlanner;
+use App\Support\BusinessTime;
 use App\Support\Decimal;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\Cache;
@@ -42,6 +43,7 @@ use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 final class McpSalesOrderService
 {
     public const HEADER_FIELDS = ['customer_id', 'order_date', 'notes'];
+
     public const ITEM_FIELDS = [
         'line_id', 'variant_id', 'description', 'reference', 'unit_label', 'tax_rate_id',
         'quantity', 'price_input_mode', 'unit_price', 'discount_type', 'discount_value',
@@ -80,11 +82,17 @@ final class McpSalesOrderService
     {
         $update = $mode === 'update';
         $allowed = $update ? [...self::HEADER_FIELDS, 'items'] : ['store_id', ...self::HEADER_FIELDS, 'items'];
-        if (array_diff(array_keys($data), $allowed) !== []) throw new InvalidArgumentException('forbidden_fields');
-        foreach ((array) ($data['items'] ?? []) as $item) {
-            if (! is_array($item) || array_diff(array_keys($item), self::ITEM_FIELDS) !== []) throw new InvalidArgumentException('forbidden_fields');
+        if (array_diff(array_keys($data), $allowed) !== []) {
+            throw new InvalidArgumentException('forbidden_fields');
         }
-        if ($update && ($orderId === null || $orderId < 1)) throw new InvalidArgumentException('invalid_id');
+        foreach ((array) ($data['items'] ?? []) as $item) {
+            if (! is_array($item) || array_diff(array_keys($item), self::ITEM_FIELDS) !== []) {
+                throw new InvalidArgumentException('forbidden_fields');
+            }
+        }
+        if ($update && ($orderId === null || $orderId < 1)) {
+            throw new InvalidArgumentException('invalid_id');
+        }
 
         $max = (int) config('mcp.sales_orders.max_items', 200);
         $validator = Validator::make($data, [
@@ -120,12 +128,17 @@ final class McpSalesOrderService
         $validator->validate();
 
         $header = array_intersect_key($data, array_flip(self::HEADER_FIELDS));
-        if ($update && $header === [] && ! array_key_exists('items', $data)) throw new InvalidArgumentException('no_changes');
+        if ($update && $header === [] && ! array_key_exists('items', $data)) {
+            throw new InvalidArgumentException('no_changes');
+        }
         ksort($header);
 
         $payload = ['mode' => $update ? 'update' : 'create', 'header' => $header];
-        if ($update) $payload['sales_order_id'] = $orderId;
-        else $payload['store_id'] = isset($data['store_id']) ? (int) $data['store_id'] : null;
+        if ($update) {
+            $payload['sales_order_id'] = $orderId;
+        } else {
+            $payload['store_id'] = isset($data['store_id']) ? (int) $data['store_id'] : null;
+        }
         if (array_key_exists('items', $data)) {
             $payload['items'] = array_map(function (array $item) {
                 ksort($item);
@@ -178,7 +191,7 @@ final class McpSalesOrderService
     /**
      * Must run inside the caller's transaction (idempotency wrapper).
      *
-     * @param array<string, mixed> $payload
+     * @param  array<string, mixed>  $payload
      * @return array{order: SalesOrder, evaluation: array<string, mixed>}
      */
     public function create(array $payload, string $fingerprint): array
@@ -194,14 +207,16 @@ final class McpSalesOrderService
     /**
      * Must run inside the caller's transaction.
      *
-     * @param array<string, mixed> $payload
+     * @param  array<string, mixed>  $payload
      * @return array{order: SalesOrder, evaluation: array<string, mixed>}
      */
     public function update(array $payload, string $fingerprint): array
     {
         $stored = $this->storedFingerprint($fingerprint, 'update', (int) $payload['sales_order_id']);
         $order = $this->orders->find($this->context->organization(), (int) $payload['sales_order_id'], lock: true);
-        if (! $order->isCommerciallyEditable()) throw new InvalidArgumentException('sales_order_not_editable');
+        if (! $order->isCommerciallyEditable()) {
+            throw new InvalidArgumentException('sales_order_not_editable');
+        }
         $evaluation = $this->run($payload, $order);
         $this->assertMatches($stored, $payload, $evaluation);
         Cache::forget($this->previewKey($fingerprint));
@@ -318,7 +333,7 @@ final class McpSalesOrderService
     /**
      * Apply the candidate through the real actions in the current transaction.
      *
-     * @param array<string, mixed> $payload
+     * @param  array<string, mixed>  $payload
      * @return array<string, mixed>
      */
     private function run(array $payload, ?SalesOrder $order): array
@@ -351,10 +366,12 @@ final class McpSalesOrderService
             $state[] = 's:'.$store->getKey();
         }
 
-        $proposedHeader = array_replace($currentHeader ?? ['customer_id' => null, 'order_date' => now()->toDateString(), 'notes' => null], $header);
+        $proposedHeader = array_replace($currentHeader ?? ['customer_id' => null, 'order_date' => BusinessTime::today($organization), 'notes' => null], $header);
         if (($proposedHeader['customer_id'] ?? null) !== null) {
             $customer = Customer::query()->where('organization_id', $organization->getKey())->whereKey($proposedHeader['customer_id'])->first();
-            if ($customer) $state[] = 'c:'.$customer->getKey().'@'.$customer->updated_at?->format('Y-m-d H:i:s.u');
+            if ($customer) {
+                $state[] = 'c:'.$customer->getKey().'@'.$customer->updated_at?->format('Y-m-d H:i:s.u');
+            }
         }
         $changedFields = $update
             ? array_values(array_filter(self::HEADER_FIELDS, fn ($field) => (string) ($currentHeader[$field] ?? '') !== (string) ($proposedHeader[$field] ?? '')))
@@ -401,10 +418,12 @@ final class McpSalesOrderService
                 $line = isset($item['line_id']) ? $existing->get((int) $item['line_id']) : null;
                 if (isset($item['line_id']) && ! $line) {
                     $issues[] = $this->issue("items.{$index}", 'line_not_found', 'This line does not belong to the sales order.');
+
                     continue;
                 }
                 if ($line && $this->untouched($item, $line)) {
                     $lineResults[] = ['action' => 'unchanged', 'line_id' => (int) $line->getKey()];
+
                     continue;
                 }
                 try {
@@ -421,17 +440,19 @@ final class McpSalesOrderService
                 }
             }
         } else {
-            foreach ($existing as $line) $lineResults[] = ['action' => 'unchanged', 'line_id' => (int) $line->getKey()];
+            foreach ($existing as $line) {
+                $lineResults[] = ['action' => 'unchanged', 'line_id' => (int) $line->getKey()];
+            }
         }
 
         return $this->result($order->fresh(['lines', 'store']), $issues, $state, $currentHeader, $proposedHeader, $changedFields, $lineResults, $removed, ! $update);
     }
 
     /**
-     * @param list<array<string, mixed>> $issues
-     * @param list<string> $state
-     * @param list<array{action: string, line_id: int}> $lineResults
-     * @param list<array<string, mixed>> $removed
+     * @param  list<array<string, mixed>>  $issues
+     * @param  list<string>  $state
+     * @param  list<array{action: string, line_id: int}>  $lineResults
+     * @param  list<array<string, mixed>>  $removed
      * @return array<string, mixed>
      */
     private function result(?SalesOrder $order, array $issues, array $state, ?array $currentHeader, array $proposedHeader, array $changedFields, array $lineResults, array $removed, bool $creating): array
@@ -446,7 +467,9 @@ final class McpSalesOrderService
             $stock = $this->context->allows('inventory.view') ? $this->stock->variantTotals($this->context->organization(), $variantIds) : [];
             foreach ($lineResults as $result) {
                 $line = $byId->get($result['line_id']);
-                if (! $line) continue;
+                if (! $line) {
+                    continue;
+                }
                 $presented = $this->orders->line($line);
                 $lines[] = [
                     'action' => $result['action'],
@@ -504,6 +527,7 @@ final class McpSalesOrderService
             if (isset($item['unit_price']) && ($item['price_input_mode'] ?? 'ht') !== 'ht') {
                 throw ValidationException::withMessages(['unit_price' => 'A catalog price override is entered HT (price_input_mode "ht").']);
             }
+
             // An omitted price on a changed line means the current catalog price.
             return [
                 'line_type' => SalesOrderLineType::Catalog->value,
@@ -531,12 +555,20 @@ final class McpSalesOrderService
     /** @param array<string, mixed> $item */
     private function untouched(array $item, SalesOrderLine $line): bool
     {
-        if (isset($item['tax_rate_id']) || isset($item['price_input_mode'])) return false;
-        if (isset($item['variant_id']) && (int) $item['variant_id'] !== (int) $line->product_variant_id) return false;
-        if (isset($item['description']) && ($line->line_type !== SalesOrderLineType::Custom || $item['description'] !== $line->product_name)) return false;
+        if (isset($item['tax_rate_id']) || isset($item['price_input_mode'])) {
+            return false;
+        }
+        if (isset($item['variant_id']) && (int) $item['variant_id'] !== (int) $line->product_variant_id) {
+            return false;
+        }
+        if (isset($item['description']) && ($line->line_type !== SalesOrderLineType::Custom || $item['description'] !== $line->product_name)) {
+            return false;
+        }
         $discountType = $item['discount_type'] ?? $line->discount_type?->value;
         foreach (['reference', 'unit_label'] as $field) {
-            if (array_key_exists($field, $item) && (string) $item[$field] !== (string) $line->{$field}) return false;
+            if (array_key_exists($field, $item) && (string) $item[$field] !== (string) $line->{$field}) {
+                return false;
+            }
         }
         $decimals = [
             'quantity' => $line->quantity,
@@ -544,9 +576,15 @@ final class McpSalesOrderService
             'discount_value' => $discountType === 'none' ? null : $line->discount_value,
         ];
         foreach ($decimals as $field => $current) {
-            if ($field === 'discount_value' && $discountType === 'none') continue;
-            if (! array_key_exists($field, $item)) continue;
-            if ($item[$field] === null || $current === null || Decimal::compare((string) $item[$field], (string) $current) !== 0) return false;
+            if ($field === 'discount_value' && $discountType === 'none') {
+                continue;
+            }
+            if (! array_key_exists($field, $item)) {
+                continue;
+            }
+            if ($item[$field] === null || $current === null || Decimal::compare((string) $item[$field], (string) $current) !== 0) {
+                return false;
+            }
         }
 
         return $discountType === $line->discount_type?->value;
@@ -554,7 +592,8 @@ final class McpSalesOrderService
 
     /**
      * @template T
-     * @param callable(): T $callback
+     *
+     * @param  callable(): T  $callback
      * @return T
      */
     private function dryRun(callable $callback): mixed

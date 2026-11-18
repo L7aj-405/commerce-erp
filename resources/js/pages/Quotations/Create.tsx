@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/Button';
 import PageHeader from '@/components/ui/PageHeader';
 import { useI18n } from '@/i18n';
 import SalesLayout from '@/layouts/SalesLayout';
+import { addDaysToDate, useBusinessToday } from '@/utils/businessDate';
 import { Head, Link, useForm } from '@inertiajs/react';
 import type { FormEvent, ReactNode } from 'react';
 import { useEffect, useRef, useState } from 'react';
@@ -22,20 +23,15 @@ type Props = {
     can: { createCustomer: boolean };
 };
 
-function addDays(days: number): string {
-    const d = new Date();
-    d.setDate(d.getDate() + days);
-    return d.toISOString().slice(0, 10);
-}
-
 export default function QuotationCreate({ defaults, currencyCode, can }: Props) {
     const { direction, t } = useI18n();
-    const today = new Date().toISOString().slice(0, 10);
+    // The organization's business date (as the server computes it), never the browser's UTC date.
+    const today = useBusinessToday();
     const form = useForm({
         customer_id: null as number | null,
         currency_code: currencyCode,
         quotation_date: today,
-        valid_until: addDays(defaults.default_validity_days),
+        valid_until: addDaysToDate(today, defaults.default_validity_days),
         customer_name: '',
         customer_company: '',
         customer_email: '',

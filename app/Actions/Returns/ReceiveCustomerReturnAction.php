@@ -13,6 +13,8 @@ use App\Services\AuditLogger;
 use App\Services\CreditNoteNumberGenerator;
 use App\Services\InventoryBalanceLocker;
 use App\Services\SalesOrderPaymentCalculator;
+use App\Services\Sandbox\SandboxContext;
+use App\Support\BusinessTime;
 use App\Support\Decimal;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -29,7 +31,7 @@ class ReceiveCustomerReturnAction
 
     public function execute(User $actor, CustomerReturn $customerReturn): CustomerReturn
     {
-        app(\App\Services\Sandbox\SandboxContext::class)->assertSameEnvironment($customerReturn->sandbox_id);
+        app(SandboxContext::class)->assertSameEnvironment($customerReturn->sandbox_id);
         abort_unless($actor->active_organization_id === $customerReturn->organization_id && $actor->active_store_id === $customerReturn->store_id, 404);
         abort_unless($customerReturn->store()->whereHas('memberships', fn ($query) => $query->where('user_id', $actor->id))->exists(), 404);
         abort_unless($actor->hasPermission($customerReturn->organization_id, 'sales_returns.receive'), 403);
@@ -37,9 +39,15 @@ class ReceiveCustomerReturnAction
         return DB::transaction(function () use ($actor, $customerReturn) {
             $customerReturn = CustomerReturn::query()->where('organization_id', $customerReturn->organization_id)->where('store_id', $customerReturn->store_id)
                 ->whereKey($customerReturn->id)->lockForUpdate()->with(['organization', 'store', 'warehouse', 'lines.productVariant', 'creditNotes.lines', 'creditNotes.invoice'])->firstOrFail();
-            if ($customerReturn->status === 'received') return $customerReturn;
-            if ($customerReturn->status !== 'draft') throw ValidationException::withMessages(['return' => 'Seul un retour brouillon peut être réceptionné.']);
-            if ($customerReturn->creditNotes->isNotEmpty()) abort_unless($actor->hasPermission($customerReturn->organization_id, 'credit_notes.issue'), 403);
+            if ($customerReturn->status === 'received') {
+                return $customerReturn;
+            }
+            if ($customerReturn->status !== 'draft') {
+                throw ValidationException::withMessages(['return' => 'Seul un retour brouillon peut être réceptionné.']);
+            }
+            if ($customerReturn->creditNotes->isNotEmpty()) {
+                abort_unless($actor->hasPermission($customerReturn->organization_id, 'credit_notes.issue'), 403);
+            }
             if ($customerReturn->creditNotes->contains(fn (CreditNote $note) => $note->invoice?->status !== InvoiceStatus::Issued)) {
                 throw ValidationException::withMessages([
                     'credit_note' => 'La facture ciblée par cet avoir n’est plus la version officielle courante. Annulez ce retour brouillon et recréez-le depuis la facture actuelle.',
@@ -79,7 +87,9 @@ class ReceiveCustomerReturnAction
             $this->payments->recalculate($customerReturn->salesOrder);
             $this->audit->record('sales_return.received', $actor, $customerReturn->organization, $customerReturn->store, $customerReturn, oldValues: ['status' => 'draft'], newValues: ['status' => 'received', 'disposition' => $customerReturn->disposition, 'stock_reintroduced' => $customerReturn->disposition === 'restock']);
 
-            foreach ($customerReturn->creditNotes as $note) $this->issueCreditNote($actor, $note, $customerReturn);
+            foreach ($customerReturn->creditNotes as $note) {
+                $this->issueCreditNote($actor, $note, $customerReturn);
+            }
 
             return $customerReturn->fresh(['lines', 'creditNotes.lines', 'refunds']);
         }, 3);
@@ -88,9 +98,14 @@ class ReceiveCustomerReturnAction
     private function issueCreditNote(User $actor, CreditNote $note, CustomerReturn $customerReturn): void
     {
         $note = CreditNote::query()->where('organization_id', $customerReturn->organization_id)->whereKey($note->id)->lockForUpdate()->with(['organization', 'invoice'])->firstOrFail();
-        if ($note->status === 'issued') return;
-        if ($note->status !== 'draft') throw ValidationException::withMessages(['credit_note' => 'Seul un avoir brouillon peut être émis.']);
-        $note->credit_note_date = now()->toDateString();
+        if ($note->status === 'issued') {
+            return;
+        }
+        if ($note->status !== 'draft') {
+            throw ValidationException::withMessages(['credit_note' => 'Seul un avoir brouillon peut être émis.']);
+        }
+        // Document date = business date of the organization; the sequence year below follows it (never the UTC year).
+        $note->credit_note_date = BusinessTime::today($note->organization);
         $note->credit_note_number = $this->numbers->next($note->organization, (int) $note->credit_note_date->format('Y'));
         $note->status = 'issued';
         $note->issued_at = now();

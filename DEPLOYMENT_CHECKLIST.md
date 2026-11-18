@@ -27,6 +27,27 @@ the known-gaps register live in `SCALABILITY_ARCHITECTURE.md`.
     (`config/database.php`), so a non-UTC server can no longer shift or
     reject timestamps — keep the server in UTC anyway.
 - Coolify's Traefik must be the only internet-facing hop (see §13).
+- **PHP timezone database must be 2026c or newer** (F-02). Morocco returned to
+  GMT (UTC+0) on 2026-09-20 (Decree 2.26.530); a PHP runtime with an older
+  tzdata still predicts UTC+1 after that date and a Ramadan change in 2027, which
+  silently shifts every Moroccan business date (invoice/credit-note dates and
+  their fiscal-year numbering) by one hour. Verify on the **web and worker**
+  containers:
+  `php scripts/check-timezone-runtime.php` (exit code 0 = OK; it prints the PHP
+  and tzdata versions and fails with the list of wrong offsets otherwise).
+  Run it in **every** PHP container: web, queue worker and scheduler.
+  - **Update (standard methods, in order of preference):** rebuild the image from
+    a PHP base image that ships tzdata >= 2026c (the official `php:8.4-cli` image
+    was verified at tzdata 2026.5, Debian/Ubuntu `tzdata` 2026e); or install the
+    version-pinned PECL extension in the image build
+    (`pecl install timezonedb-2026.6` + `extension=timezonedb.so`). Never
+    leave it unpinned: an unpinned/older `timezonedb` OVERRIDES the newer system
+    tzdata (observed on the CI runner: 2025.2).
+  - **Rollback:** redeploy the previous image tag. Do NOT roll back to a runtime
+    with a tzdata older than 2026c, and never hardcode a UTC offset in the app.
+  - The browser/Node ICU is independent of this (browsers ship their own).
+  - `MoroccoLegalTimeTest` (tests/Unit) and `scripts/check-timezone-runtime.php`
+    (blocking CI step) fail on an outdated runtime.
 
 ## 2. Pre-deploy gate (all must be true)
 
