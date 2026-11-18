@@ -260,10 +260,7 @@ class SandboxRaceWindowsTest extends QuotationTestCase
         $sandbox = Sandbox::query()->where('organization_id', $org->id)->sole();
         $this->assertSame(2, $sandbox->generation);
         $this->assertSame(0, array_sum(app(SandboxResetPlanner::class)->counts($sandbox)));
-        // Decode the JSON instead of LIKE-matching its text: MySQL stores JSON normalised (`"stage": "write"`, with a space).
-        $writeRejections = DB::table('audit_logs')->where('event', 'sandbox.stale_rejected')->pluck('new_values')
-            ->filter(fn ($json) => (json_decode((string) $json, true)['stage'] ?? null) === 'write')->count();
-        $this->assertSame($writeAudited ? 1 : 0, $writeRejections);
+        $this->assertSame($writeAudited ? 1 : 0, DB::table('audit_logs')->where('event', 'sandbox.stale_rejected')->where('new_values', 'like', '%"stage":"write"%')->count());
     }
 
     private function productionNotification(User $owner, Organization $org): UserNotification

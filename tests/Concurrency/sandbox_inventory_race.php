@@ -67,10 +67,6 @@ $useSandbox = function (?Sandbox $sandbox): void {
     Closure::bind(function () use ($sandbox) {
         $this->sandbox = $sandbox;
         $this->selected = $sandbox !== null;
-        // The generation fence (2412937) compares the request's generation with the sandbox row's: a CLI
-        // harness that bypasses the HTTP middleware must carry the generation too, or every Test write is
-        // rejected as stale.
-        $this->generation = $sandbox?->generation;
     }, $context, SandboxContext::class)();
 };
 
