@@ -180,7 +180,7 @@ Processes (Coolify, supervised):
 |---|---|---|
 | Web | the web server of the build (Apache with the repository `Dockerfile`; FrankenPHP with Railpack) | 1 (pilot) |
 | Queue worker | `php artisan queue:work --tries=3 --timeout=3600` | 1, required |
-| Scheduler | `php artisan schedule:run` every minute (cron) | **exactly 1** |
+| Scheduler | `php artisan schedule:run` every minute (cron), or with the repository `Dockerfile` `RUN_SCHEDULER=true` on the single web resource (`schedule:work` as `www-data`; delete any old cron/Scheduled Task) | **exactly 1** |
 
 Queue facts: `retry_after=3900` must stay strictly greater than the longest
 job timeout (3600 s, WooCommerce sync). The worker is required for scheduled
