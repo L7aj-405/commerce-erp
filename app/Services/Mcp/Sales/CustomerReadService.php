@@ -15,7 +15,7 @@ final class CustomerReadService
     public function __construct(private readonly CustomerFinancialSummary $summary) {}
 
     /**
-     * @param  array{query?: string|null, status?: string|null, page?: int, per_page?: int}  $filters
+     * @param array{query?: string|null, status?: string|null, page?: int, per_page?: int} $filters
      * @return array<string, mixed>
      */
     public function search(Organization $organization, array $filters): array
@@ -25,15 +25,9 @@ final class CustomerReadService
         $page = (int) ($filters['page'] ?? 1);
         $perPage = (int) ($filters['per_page'] ?? 25);
 
-        if (mb_strlen($queryText) > 255) {
-            throw new InvalidArgumentException('query_too_long');
-        }
-        if ($status !== null && CustomerStatus::tryFrom((string) $status) === null) {
-            throw new InvalidArgumentException('invalid_status');
-        }
-        if ($page < 1 || $page > 100000 || $perPage < 1 || $perPage > 100) {
-            throw new InvalidArgumentException('invalid_pagination');
-        }
+        if (mb_strlen($queryText) > 255) throw new InvalidArgumentException('query_too_long');
+        if ($status !== null && CustomerStatus::tryFrom((string) $status) === null) throw new InvalidArgumentException('invalid_status');
+        if ($page < 1 || $page > 100000 || $perPage < 1 || $perPage > 100) throw new InvalidArgumentException('invalid_pagination');
 
         $customers = Customer::query()
             ->where('organization_id', $organization->getKey())
@@ -108,9 +102,7 @@ final class CustomerReadService
                 'sales_total' => 'Sum of confirmed sales orders (TTC).',
                 'invoiced_total' => 'Sum of issued invoices (TTC).',
                 'paid_total' => 'Sum of posted payment allocations on this customer\'s sales orders.',
-                'outstanding' => 'Invoice receivable, computed order by order: for each issued invoice, invoice total minus the credit notes and the net payments (payments minus refunds) of ITS OWN order, floored at zero per invoice, then summed. A payment on another order never reduces it. Same rule as the Finance receivables screens. Test Mode documents are excluded.',
-                'refund_obligation' => 'Money paid above the net of the same invoice (e.g. after a credit note) and therefore owed back to the customer; reported separately, never netted against other invoices.',
-                'unbilled_outstanding' => 'Remaining balance of confirmed orders that have no issued invoice yet (commercial exposure, not a receivable). Disjoint from outstanding: an order is in exactly one of the two.',
+                'outstanding' => 'invoiced_total minus paid_total, floored at zero.',
                 'last_activity' => 'Most recent sales order date.',
             ],
         ];
@@ -118,9 +110,7 @@ final class CustomerReadService
 
     public function find(Organization $organization, int $customerId, bool $lock = false): Customer
     {
-        if ($customerId < 1) {
-            throw new InvalidArgumentException('invalid_id');
-        }
+        if ($customerId < 1) throw new InvalidArgumentException('invalid_id');
 
         return Customer::query()->where('organization_id', $organization->getKey())->whereKey($customerId)
             ->when($lock, fn ($query) => $query->lockForUpdate())->first()
