@@ -31,6 +31,9 @@ use Illuminate\Support\LazyCollection;
  */
 class FinanceReceivablesService
 {
+    /** "No date bound" for customerPositionAsOf(): far enough to include any dated document, safe for +1 day maths. */
+    private const OPEN_ENDED_AS_OF = '2999-12-31';
+
     public function __construct(private readonly SalesOrderPaymentCalculator $payments) {}
 
     /*
@@ -246,6 +249,80 @@ class FinanceReceivablesService
             ->value('outstanding');
 
         return Decimal::normalize((string) $result);
+    }
+
+    /**
+     * One customer's position, computed ORDER BY ORDER and summed in two bounded SQL aggregates.
+     *
+     *  - `receivable`    : Σ over the customer's ISSUED invoices of max(invoice − its order's credit notes − its
+     *                      order's net collections, 0). Same operands and same obligationsQuery() as
+     *                      totalAsOf()/breakdownAsOf(), merely restricted to one customer and a set of stores — with
+     *                      ONE deliberate difference: SETTLEMENT precision. A difference that rounds to zero at the
+     *                      currency precision (0.0001 MAD) is not a payable amount (Money::outstanding(), the rule
+     *                      that lets such an order be invoiced and that orderExposureQuery()/salesOrderReceivablesAsOf()
+     *                      already apply), so it is not a receivable here. totalAsOf() stays LEDGER-exact because the
+     *                      monthly situation proves "début + facturation − encaissements = fin" to the 0.0001.
+     *  - `overcollected` : Σ of what customers paid ABOVE the net invoice of the same order (a distinct refund
+     *                      obligation — see refundObligationAsOf(), same settlement threshold as `receivable`).
+     *                      It is reported, never clamped away.
+     *  - `unbilled`      : Σ of the remaining balance of the customer's confirmed orders that have NO issued or
+     *                      superseded invoice (orderExposureQuery). Disjoint from `receivable` by construction:
+     *                      an order is in exactly one of the two buckets, so a debt is never counted twice.
+     *
+     * Collections of one order can never reduce another order's balance: every payment/refund/credit-note
+     * aggregate is grouped by sales_order_id and joined only to that order's own row. Test Mode rows are excluded
+     * (sandbox_id IS NULL), every table is filtered by organization_id, and `$storeIds` is the caller's visible
+     * stores (an empty list yields zeros — never "everything").
+     *
+     * `$asOf = null` means "every document, whatever its date": a customer profile is a current position, not a
+     * period report, and a future-dated order/invoice (backdating permission allows any date) is still owed.
+     *
+     * @param  list<int>  $storeIds
+     * @return array{receivable: string, overcollected: string, unbilled: string}
+     */
+    public function customerPositionAsOf(Organization $organization, int $customerId, array $storeIds, ?Carbon $asOf = null): array
+    {
+        $asOf ??= Carbon::parse(self::OPEN_ENDED_AS_OF);
+        $zero = ['receivable' => '0.0000', 'overcollected' => '0.0000', 'unbilled' => '0.0000'];
+        $storeIds = array_values(array_unique(array_map('intval', $storeIds)));
+        if ($storeIds === []) {
+            return $zero;
+        }
+        $organizationId = (int) $organization->getKey();
+
+        // Same operands as totalAsOf() / refundObligationAsOf(); parenthesized so SQL evaluates a − (b − c).
+        // A difference that rounds to zero at the currency precision (0.0001 MAD) is not a payable amount: it is
+        // neither a receivable nor a refund obligation (the same rule as Money::outstanding(), via its SQL twin).
+        // ROUND(…, 4) keeps the internal 4-decimal scale exact — SQLite subtracts DECIMALs as binary floats
+        // (13306.0001 − 13306.0000 = 9.99999999e-05), MySQL is exact.
+        $netBilled = '(invoices.total_incl_tax - COALESCE(credits.credited_amount, 0))';
+        $netCollected = '(COALESCE(paid.paid_amount, 0))';
+        $threshold = Money::payableThresholdSql('invoices.currency_code');
+        $due = "ROUND({$netBilled} - {$netCollected}, 4)";
+        $over = "ROUND({$netCollected} - {$netBilled}, 4)";
+        $invoices = $this->obligationsQuery($organization, $asOf, null)
+            ->where('invoices.customer_id', $customerId)
+            ->whereIn('invoices.store_id', $storeIds)
+            ->selectRaw("ROUND(COALESCE(SUM(CASE WHEN {$due} >= ({$threshold}) THEN {$due} ELSE 0 END), 0), 4) as receivable")
+            ->selectRaw("ROUND(COALESCE(SUM(CASE WHEN {$over} >= ({$threshold}) THEN {$over} ELSE 0 END), 0), 4) as overcollected")
+            ->first();
+
+        $exposure = $this->orderExposureQuery($organization, $asOf, null)
+            ->where('sales_orders.customer_id', $customerId)
+            ->whereIn('sales_orders.store_id', $storeIds)
+            ->whereNotExists(fn ($bill) => $bill->selectRaw('1')->from('invoices as bill')
+                ->whereColumn('bill.sales_order_id', 'sales_orders.id')
+                ->where('bill.organization_id', $organizationId)
+                ->whereIn('bill.status', [InvoiceStatus::Issued->value, InvoiceStatus::Superseded->value]));
+        $unbilled = DB::query()->fromSub($exposure->toBase(), 'exposure')
+            ->selectRaw('ROUND(COALESCE(SUM(ROUND(outstanding_raw, 4)), 0), 4) as total')
+            ->value('total');
+
+        return [
+            'receivable' => Decimal::normalize((string) ($invoices->receivable ?? '0')),
+            'overcollected' => $this->nonNegative(Decimal::normalize((string) ($invoices->overcollected ?? '0'))),
+            'unbilled' => Decimal::normalize((string) ($unbilled ?? '0')),
+        ];
     }
 
     /**
