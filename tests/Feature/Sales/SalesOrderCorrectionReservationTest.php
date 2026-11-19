@@ -18,8 +18,11 @@ use App\Models\SalesOrderLine;
 use App\Models\Store;
 use App\Models\User;
 use App\Models\Warehouse;
+use App\Services\InventoryReservationManager;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Support\DocumentTestCase;
 
 /**
@@ -102,7 +105,7 @@ class SalesOrderCorrectionReservationTest extends DocumentTestCase
         return (string) $this->balance($organization, $warehouse, $variant)->reserved;
     }
 
-    private function activeReservations(SalesOrder $order): \Illuminate\Support\Collection
+    private function activeReservations(SalesOrder $order): Collection
     {
         return InventoryReservation::query()->where('organization_id', $order->organization_id)
             ->where('status', InventoryReservationStatus::Active->value)
@@ -110,7 +113,7 @@ class SalesOrderCorrectionReservationTest extends DocumentTestCase
     }
 
     /** 1 — no-op correction keeps one active reservation. */
-    #[\PHPUnit\Framework\Attributes\DataProvider('sources')]
+    #[DataProvider('sources')]
     public function test_noop_correction_restores_the_reservation(string $source): void
     {
         [$owner, $organization, $store, $warehouse, $variant] = $this->world();
@@ -135,7 +138,7 @@ class SalesOrderCorrectionReservationTest extends DocumentTestCase
     }
 
     /** 2 — the incident: paid order, issued invoice, unchanged correction (through the real HTTP routes). */
-    #[\PHPUnit\Framework\Attributes\DataProvider('sources')]
+    #[DataProvider('sources')]
     public function test_noop_correction_with_paid_order_and_issued_invoice_keeps_reservation_and_invoice(string $source): void
     {
         [$owner, $organization, $store, $warehouse, $variant] = $this->world();
@@ -160,7 +163,7 @@ class SalesOrderCorrectionReservationTest extends DocumentTestCase
     }
 
     /** 3 — quantity increase reserves the additional stock. */
-    #[\PHPUnit\Framework\Attributes\DataProvider('sources')]
+    #[DataProvider('sources')]
     public function test_quantity_increase_reserves_the_new_total_once(string $source): void
     {
         [$owner, $organization, $store, $warehouse, $variant] = $this->world();
@@ -175,7 +178,7 @@ class SalesOrderCorrectionReservationTest extends DocumentTestCase
     }
 
     /** 4 — quantity decrease keeps only the remaining quantity reserved. */
-    #[\PHPUnit\Framework\Attributes\DataProvider('sources')]
+    #[DataProvider('sources')]
     public function test_quantity_decrease_releases_only_the_excess(string $source): void
     {
         [$owner, $organization, $store, $warehouse, $variant] = $this->world();
@@ -190,7 +193,7 @@ class SalesOrderCorrectionReservationTest extends DocumentTestCase
     }
 
     /** 5 + 7 — competing order takes the stock while the correction is open: safe rejection, no partial state, retry works. */
-    #[\PHPUnit\Framework\Attributes\DataProvider('sources')]
+    #[DataProvider('sources')]
     public function test_insufficient_stock_rejects_safely_and_leaves_no_partial_state(string $source): void
     {
         [$owner, $organization, $store, $warehouse, $variant] = $this->world('2.0000');
@@ -217,7 +220,7 @@ class SalesOrderCorrectionReservationTest extends DocumentTestCase
 
         // The rival's stock is freed: the same correction can now be completed — repeatable.
         foreach ($this->activeReservations($rival->fresh()) as $held) {
-            app(\App\Services\InventoryReservationManager::class)->release($owner, $organization, $held);
+            app(InventoryReservationManager::class)->release($owner, $organization, $held);
         }
         app(ConfirmSalesOrderAction::class)->execute($owner, $order->fresh());
         $this->assertSame('2.0000', $this->reservedOf($organization, $warehouse, $variant));
@@ -276,7 +279,7 @@ class SalesOrderCorrectionReservationTest extends DocumentTestCase
     }
 
     /** 9 — repeated corrections never accumulate or lose reservations. */
-    #[\PHPUnit\Framework\Attributes\DataProvider('sources')]
+    #[DataProvider('sources')]
     public function test_repeated_corrections_are_stable(string $source): void
     {
         [$owner, $organization, $store, $warehouse, $variant] = $this->world();
@@ -296,7 +299,7 @@ class SalesOrderCorrectionReservationTest extends DocumentTestCase
     public function test_reserve_refuses_to_return_a_released_reservation_for_a_reused_reference(): void
     {
         [$owner, $organization, , $warehouse, $variant] = $this->world();
-        $manager = app(\App\Services\InventoryReservationManager::class);
+        $manager = app(InventoryReservationManager::class);
         $reservation = $manager->reserve($owner, $organization, $warehouse, $variant, '1.0000', 'Test\\Ref', 77, 'ref');
         $manager->release($owner, $organization, $reservation);
 

@@ -2,16 +2,16 @@
 
 namespace App\Actions\Sales;
 
-use App\Actions\Inventory\CreateOrderTransferRequestsAction;
 use App\Actions\Commissions\GenerateSalesOrderCommissionEntriesAction;
+use App\Actions\Inventory\CreateOrderTransferRequestsAction;
 use App\Actions\Sales\Concerns\AuthorizesSalesAction;
+use App\Enums\InventoryReservationStatus;
 use App\Enums\SalesOrderLineType;
 use App\Enums\SalesOrderSource;
 use App\Enums\SalesOrderStatus;
-use App\Enums\InventoryReservationStatus;
-use App\Models\SalesOrder;
 use App\Models\InventoryReservation;
 use App\Models\ProcurementReceipt;
+use App\Models\SalesOrder;
 use App\Models\SalesOrderInventoryAllocation;
 use App\Models\SalesOrderLine;
 use App\Models\SalesOrderProcurement;
@@ -25,6 +25,7 @@ use App\Services\SalesOrderRevisionSnapshot;
 use App\Services\SalesOrderTotalsCalculator;
 use App\Services\SalespersonEligibilityService;
 use App\Support\Decimal;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -56,9 +57,9 @@ class ConfirmSalesOrderAction
      * the oldest one (release + increase under the balance lock — the reserved
      * quantity never changes) so the line adopts exactly one per warehouse.
      *
-     * @return \Illuminate\Support\Collection<int, InventoryReservation>
+     * @return Collection<int, InventoryReservation>
      */
-    private function receiptHoldings(User $actor, SalesOrder $order, SalesOrderLine $line): \Illuminate\Support\Collection
+    private function receiptHoldings(User $actor, SalesOrder $order, SalesOrderLine $line): Collection
     {
         $procurements = $line->procurements->filter(fn (SalesOrderProcurement $p) => Decimal::compare((string) $p->received_quantity, '0') > 0);
         if ($procurements->isEmpty()) {
