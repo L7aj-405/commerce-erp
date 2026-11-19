@@ -41,7 +41,7 @@ class RefundPaymentAction
 
     public function execute(User $actor, Payment $payment, SalesOrder $order, string $reason): PaymentRefund
     {
-        $this->authorizePayment($actor, $order, 'payments.reverse');
+        $this->authorizePayment($actor, $order, 'payments.refund');
 
         if (trim($reason) === '') {
             throw ValidationException::withMessages(['reason' => 'Un motif de remboursement est obligatoire.']);

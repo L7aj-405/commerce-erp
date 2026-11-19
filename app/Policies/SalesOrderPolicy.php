@@ -72,7 +72,7 @@ class SalesOrderPolicy
         $hasDraftDeliveryNotes = $order->deliveryNotes()->where('status', 'draft')->exists();
         $hasCancellableTransfers = $order->transferRequests()->whereIn('status', ['requested', 'preparing'])->exists();
 
-        return (! $hasPostedPayments || $user->hasPermission($order->organization_id, 'payments.reverse'))
+        return (! $hasPostedPayments || $user->hasPermission($order->organization_id, 'payments.refund'))
             && (! $hasDraftInvoices || $user->hasPermission($order->organization_id, 'invoices.update_draft'))
             && (! $hasDraftDeliveryNotes || $user->hasPermission($order->organization_id, 'delivery_notes.update_draft'))
             && (! $hasCancellableTransfers || $user->hasPermission($order->organization_id, 'inventory.transfer_requests.manage'));
