@@ -95,14 +95,21 @@ export default function ShowExchange({
                         </div>
                         <div>
                             <p className="text-sm text-ink-muted">
-                                {difference > 0
+                                {exchange.status !== "cancelled" &&
+                                difference > 0
                                     ? t("exchanges.differenceDue")
-                                    : difference < 0
+                                    : exchange.status !== "cancelled" &&
+                                        difference < 0
                                       ? t("exchanges.toRefund")
                                       : t("exchanges.balance")}
                             </p>
                             <p className="text-xl font-bold text-primary">
-                                {formatMoney(Math.abs(difference), currency)}
+                                {formatMoney(
+                                    exchange.status === "cancelled"
+                                        ? Number(settlementSummary.target)
+                                        : Math.abs(difference),
+                                    currency,
+                                )}
                             </p>
                         </div>
                         <div>
