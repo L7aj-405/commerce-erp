@@ -1,0 +1,40 @@
+name: Install pinned timezonedb
+description: >
+  Installs the PECL timezonedb extension from a PINNED release whose SHA-256 is verified, then runs the blocking
+  Morocco legal-time guard. Replaces `timezonedb-<version>` in setup-php's `extensions:` list, because setup-php
+  treats a failed extension install as a warning and continues with whatever tzdb PHP already had (run 44557115571:
+  the install failed, the runner kept 2025.2.2 and the guard stopped the build). Here every failure is fatal: there is
+  no fallback to another version, and no unverified download is ever built.
+
+runs:
+  using: composite
+  steps:
+    - name: Download, verify, build and enable timezonedb
+      shell: bash
+      env:
+        # Bump BOTH values together, only after reading a new legal decree (see scripts/check-timezone-runtime.php).
+        # SHA-256 of https://pecl.php.net/get/timezonedb-2026.6.tgz (the PECL release tarball).
+        TZDB_VERSION: '2026.6'
+        TZDB_SHA256: '17241d407602c04083b27d469b9c3362558bdac5e62b5940ac3dfdc430686d00'
+      run: |
+        set -euo pipefail
+        command -v phpize >/dev/null || { echo "::error::phpize not found: cannot build timezonedb"; exit 1; }
+        work="$(mktemp -d)"
+        tarball="$work/timezonedb-${TZDB_VERSION}.tgz"
+        ok=0
+        for attempt in 1 2 3 4 5; do
+          if curl --fail --silent --show-error --location --connect-timeout 15 --max-time 120 \
+               "https://pecl.php.net/get/timezonedb-${TZDB_VERSION}.tgz" --output "$tarball" \
+             && echo "${TZDB_SHA256}  ${tarball}" | sha256sum --check --status; then
+            ok=1; break
+          fi
+          echo "::warning::timezonedb ${TZDB_VERSION} download or checksum failed (attempt ${attempt}/5)"
+          rm -f "$tarball"; sleep $((attempt * 5))
+        done
+        [ "$ok" = 1 ] || { echo "::error::could not obtain a checksum-verified timezonedb-${TZDB_VERSION}; refusing to continue with the bundled tzdb"; exit 1; }
+        tar -xzf "$tarball" -C "$work"
+        ( cd "$work/timezonedb-${TZDB_VERSION}" && phpize >/dev/null && ./configure >/dev/null && make -j"$(nproc)" >/dev/null && sudo make install )
+        ini_dir="$(php -r 'echo PHP_CONFIG_FILE_SCAN_DIR;')"
+        echo "extension=timezonedb.so" | sudo tee "${ini_dir}/99-timezonedb.ini" >/dev/null
+        php -r 'if (!extension_loaded("timezonedb")) { fwrite(STDERR, "timezonedb did not load\n"); exit(1); }'
+        php scripts/check-timezone-runtime.php
