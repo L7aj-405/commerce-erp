@@ -341,6 +341,9 @@ jobs:
       - name: Race - fiscal numbering around the calendar-year boundary (F-02)
         run: php tests/Concurrency/fiscal_year_boundary_race.php --sessions=4 --database=commerce_erp_race_test
 
+      - name: Race - invoice issuance against month closing (F-03)
+        run: php tests/Concurrency/closed_period_race.php --invoices=6 --database=commerce_erp_race_test
+
   frontend:
     name: Frontend (typecheck and production build)
     runs-on: ubuntu-24.04

@@ -88,10 +88,20 @@ class FinanceMonthReviewExportTest extends PaymentTestCase
         $before = app(FinanceMonthReviewService::class)->state($organization, $period);
         $this->assertFalse($before['stale']);
         $this->assertContains('opening_positions', collect($before['warnings'])->pluck('key')->all());
-        // …while stale detection still reports changes the posting guard does not
-        // cover (an opening position effective inside the closed month).
-        app(SetFinancialAccountOpeningPositionAction::class)->execute($owner, $unconfigured, [
-            'effective_date' => '2026-09-01', 'amount' => '100.0000', 'currency_code' => 'MAD',
+        // F-03: an opening position effective inside the closed month is now refused by the action too…
+        try {
+            app(SetFinancialAccountOpeningPositionAction::class)->execute($owner, $unconfigured, [
+                'effective_date' => '2026-09-01', 'amount' => '100.0000', 'currency_code' => 'MAD',
+            ]);
+            $this->fail('Expected the closed month to refuse the opening position.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('effective_date', $exception->errors());
+        }
+        $this->assertFalse(app(FinanceMonthReviewService::class)->state($organization, $period)['stale']);
+        // …while stale detection still reports a change made OUTSIDE the guarded actions (direct write, legacy path).
+        DB::table('financial_account_opening_positions')->insert([
+            'organization_id' => $organization->id, 'financial_account_id' => $unconfigured->id, 'effective_date' => '2026-09-01',
+            'amount' => '100.0000', 'currency_code' => 'MAD', 'created_by_user_id' => $owner->id, 'created_at' => now(), 'updated_at' => now(),
         ]);
         $state = app(FinanceMonthReviewService::class)->state($organization, $period);
         $this->assertTrue($state['stale']);

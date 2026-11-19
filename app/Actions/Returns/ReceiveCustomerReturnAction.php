@@ -11,6 +11,7 @@ use App\Models\InventoryMovement;
 use App\Models\User;
 use App\Services\AuditLogger;
 use App\Services\CreditNoteNumberGenerator;
+use App\Services\Finance\FinanceClosedPeriodGuard;
 use App\Services\InventoryBalanceLocker;
 use App\Services\SalesOrderPaymentCalculator;
 use App\Services\Sandbox\SandboxContext;
@@ -27,6 +28,7 @@ class ReceiveCustomerReturnAction
         private readonly SalesOrderPaymentCalculator $payments,
         private readonly CreateReturnCommissionReversalsAction $commissionReversals,
         private readonly AuditLogger $audit,
+        private readonly FinanceClosedPeriodGuard $periods,
     ) {}
 
     public function execute(User $actor, CustomerReturn $customerReturn): CustomerReturn
@@ -52,6 +54,12 @@ class ReceiveCustomerReturnAction
                 throw ValidationException::withMessages([
                     'credit_note' => 'La facture ciblée par cet avoir n’est plus la version officielle courante. Annulez ce retour brouillon et recréez-le depuis la facture actuelle.',
                 ]);
+            }
+
+            // F-03: the credit notes issued below are dated today (business date). Refuse BEFORE stock moves so a
+            // closed month rejects the whole reception with no partial write (the transaction also rolls back).
+            if ($customerReturn->creditNotes->isNotEmpty()) {
+                $this->periods->assertOpen($customerReturn->organization, BusinessTime::today($customerReturn->organization), 'credit_note_date');
             }
 
             if ($customerReturn->disposition === 'restock') {
@@ -106,6 +114,7 @@ class ReceiveCustomerReturnAction
         }
         // Document date = business date of the organization; the sequence year below follows it (never the UTC year).
         $note->credit_note_date = BusinessTime::today($note->organization);
+        $this->periods->assertOpen($note->organization, $note->credit_note_date, 'credit_note_date');
         $note->credit_note_number = $this->numbers->next($note->organization, (int) $note->credit_note_date->format('Y'));
         $note->status = 'issued';
         $note->issued_at = now();

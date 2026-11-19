@@ -16,6 +16,7 @@ use App\Services\AuditLogger;
 use App\Services\DocumentSellerProfile;
 use App\Services\DocumentSnapshotVerifier;
 use App\Services\DocumentTemplateRegistry;
+use App\Services\Finance\FinanceClosedPeriodGuard;
 use App\Services\InvoiceNumberGenerator;
 use App\Services\SalesOrderPaymentCalculator;
 use App\Services\Sandbox\SandboxDocumentNumberGenerator;
@@ -35,6 +36,7 @@ class IssueInvoiceAction
         private readonly AuditLogger $audit,
         private readonly SalesOrderPaymentCalculator $payments,
         private readonly SandboxDocumentNumberGenerator $testNumbers,
+        private readonly FinanceClosedPeriodGuard $periods,
     ) {}
 
     public function execute(User $actor, Invoice $invoice): Invoice
@@ -78,6 +80,20 @@ class IssueInvoiceAction
                 throw ValidationException::withMessages([
                     'invoice' => "La facture ne peut être émise qu'après le règlement intégral de la commande.",
                 ]);
+            }
+            // F-03: an issued invoice is an accounting posting dated invoice_date (it keys the fiscal sequence
+            // year and every monthly report). Refused when that month is closed. Issuing a correction also
+            // supersedes the original, which removes it from ITS month's figures, so that month must be open
+            // too. Taken after the invoice/order/payment locks and before the number-family lock: the guard
+            // only takes a SHARED lock on the month row, which closing needs exclusively, so issuing and
+            // closing the same month serialize. Test Mode invoices belong to no Production month.
+            if (! $test) {
+                $this->periods->assertOpen($invoice->organization_id, [
+                    $invoice->invoice_date,
+                    $invoice->corrected_invoice_id
+                        ? Invoice::query()->where('organization_id', $invoice->organization_id)->whereKey($invoice->corrected_invoice_id)->value('invoice_date')
+                        : null,
+                ], 'invoice_date');
             }
             $this->verifier->verifyInvoice($invoice);
             $invoice->seller_snapshot = $this->sellerProfile->freezeCurrentPresentationSettings(
