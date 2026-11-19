@@ -85,13 +85,20 @@ class CustomerExchangeController extends Controller
             ? $exchange->payments->where('status', PaymentStatus::Posted)->reduce(fn (string $sum, $payment) => Decimal::add($sum, $payment->amount), '0.0000')
             : $exchange->customerReturn->refunds->where('status', 'posted')->reduce(fn (string $sum, $refund) => Decimal::add($sum, $refund->amount), '0.0000');
         $target = $direction < 0 ? Decimal::subtract('0.0000', $exchange->difference_amount) : $exchange->difference_amount;
+        // A cancelled exchange owes nothing in either direction; `settled` keeps any real history.
+        if ($exchange->status === 'cancelled') {
+            $target = '0.0000';
+        }
         $remaining = Decimal::subtract($target, $settledAmount);
-        if (Decimal::compare($remaining, '0.0000') < 0) $remaining = '0.0000';
+        if (Decimal::compare($remaining, '0.0000') < 0) {
+            $remaining = '0.0000';
+        }
 
         return Inertia::render('Sales/Exchanges/Show', [
             'exchange' => $exchange,
             'replacementItems' => collect($exchange->replacement_items)->map(function (array $item) use ($plannedVariants) {
                 $variant = $plannedVariants->get((int) $item['product_variant_id']);
+
                 return [...$item, 'product_name' => $variant?->product?->name ?? 'Article', 'variant_name' => $variant?->label,
                     'reference' => $variant?->reference ?? $variant?->sku];
             })->values(),
@@ -107,7 +114,9 @@ class CustomerExchangeController extends Controller
     {
         $this->authorize('create', [CustomerExchange::class, $order]);
         $search = trim((string) ($request->validate(['search' => ['nullable', 'string', 'max:255']])['search'] ?? ''));
-        if ($search === '') return response()->json(['data' => []]);
+        if ($search === '') {
+            return response()->json(['data' => []]);
+        }
         $variants = ProductVariant::query()->where('organization_id', $order->organization_id)->where('status', CatalogStatus::Active->value)
             ->whereHas('product', fn ($query) => $query->where('status', CatalogStatus::Active->value))
             ->where(fn ($query) => $query->where('sku', 'like', "%{$search}%")->orWhere('reference', 'like', "%{$search}%")
@@ -119,6 +128,7 @@ class CustomerExchangeController extends Controller
 
         return response()->json(['data' => $variants->map(function ($variant) use ($prices, $defaultTax, $balances) {
             $price = $prices->resolveWith($variant, $defaultTax);
+
             return ['id' => $variant->id, 'product_name' => $variant->product->name, 'variant_name' => $variant->label,
                 'sku' => $variant->sku, 'reference' => $variant->reference, 'unit_price_incl_tax' => $price['unit_price_ttc'],
                 'config_missing' => $price['config_missing'], 'local_stock_available' => $balances->get($variant->id)?->available ?? '0.0000'];
@@ -127,13 +137,17 @@ class CustomerExchangeController extends Controller
 
     public function receive(Request $request, CustomerExchange $exchange, ReceiveCustomerExchangeReturnAction $action): RedirectResponse
     {
-        $this->authorize('process', $exchange); $action->execute($request->user(), $exchange);
+        $this->authorize('process', $exchange);
+        $action->execute($request->user(), $exchange);
+
         return back()->with('success', 'Retour physique réceptionné.');
     }
 
     public function fulfill(Request $request, CustomerExchange $exchange, FulfillCustomerExchangeReplacementAction $action): RedirectResponse
     {
-        $this->authorize('process', $exchange); $action->execute($request->user(), $exchange);
+        $this->authorize('process', $exchange);
+        $action->execute($request->user(), $exchange);
+
         return back()->with('success', 'Nouveaux articles remis depuis le stock local.');
     }
 
@@ -145,6 +159,7 @@ class CustomerExchangeController extends Controller
             'payments.*.amount' => ['required', 'decimal:0,4', 'gt:0'], 'payments.*.payment_date' => ['required', 'date'],
             'payments.*.reference' => ['nullable', 'string', 'max:255']]);
         $action->execute($request->user(), $exchange, $data['payments'], $data['client_operation_id']);
+
         return back()->with('success', 'Paiement complémentaire enregistré.');
     }
 
@@ -154,13 +169,16 @@ class CustomerExchangeController extends Controller
         $data = $request->validate(['client_operation_id' => ['required', 'uuid'], 'payment_id' => ['required', 'integer'], 'amount' => ['required', 'decimal:0,4', 'gt:0'], 'reason' => ['required', 'string', 'max:2000']]);
         $payment = Payment::query()->where('organization_id', $exchange->organization_id)->where('store_id', $exchange->store_id)->whereKey($data['payment_id'])->firstOrFail();
         $action->execute($request->user(), $exchange, $payment, $data['amount'], $data['reason'], $data['client_operation_id']);
+
         return back()->with('success', 'Remboursement enregistré.');
     }
 
     public function cancel(Request $request, CustomerExchange $exchange, CancelCustomerExchangeAction $action): RedirectResponse
     {
-        $this->authorize('process', $exchange); $data = $request->validate(['reason' => ['required', 'string', 'max:2000']]);
+        $this->authorize('process', $exchange);
+        $data = $request->validate(['reason' => ['required', 'string', 'max:2000']]);
         $action->execute($request->user(), $exchange, $data['reason']);
+
         return back()->with('success', 'Échange annulé sans effacer son historique.');
     }
 }
