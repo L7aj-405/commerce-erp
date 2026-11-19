@@ -2,16 +2,16 @@
 
 namespace App\Actions\Sales;
 
-use App\Actions\Inventory\CreateOrderTransferRequestsAction;
 use App\Actions\Commissions\GenerateSalesOrderCommissionEntriesAction;
+use App\Actions\Inventory\CreateOrderTransferRequestsAction;
 use App\Actions\Sales\Concerns\AuthorizesSalesAction;
+use App\Enums\InventoryReservationStatus;
 use App\Enums\SalesOrderLineType;
 use App\Enums\SalesOrderSource;
 use App\Enums\SalesOrderStatus;
-use App\Enums\InventoryReservationStatus;
-use App\Models\SalesOrder;
 use App\Models\InventoryReservation;
 use App\Models\ProcurementReceipt;
+use App\Models\SalesOrder;
 use App\Models\SalesOrderInventoryAllocation;
 use App\Models\SalesOrderLine;
 use App\Models\SalesOrderProcurement;
@@ -25,6 +25,7 @@ use App\Services\SalesOrderRevisionSnapshot;
 use App\Services\SalesOrderTotalsCalculator;
 use App\Services\SalespersonEligibilityService;
 use App\Support\Decimal;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -56,9 +57,9 @@ class ConfirmSalesOrderAction
      * the oldest one (release + increase under the balance lock — the reserved
      * quantity never changes) so the line adopts exactly one per warehouse.
      *
-     * @return \Illuminate\Support\Collection<int, InventoryReservation>
+     * @return Collection<int, InventoryReservation>
      */
-    private function receiptHoldings(User $actor, SalesOrder $order, SalesOrderLine $line): \Illuminate\Support\Collection
+    private function receiptHoldings(User $actor, SalesOrder $order, SalesOrderLine $line): Collection
     {
         $procurements = $line->procurements->filter(fn (SalesOrderProcurement $p) => Decimal::compare((string) $p->received_quantity, '0') > 0);
         if ($procurements->isEmpty()) {
@@ -130,6 +131,7 @@ class ConfirmSalesOrderAction
             // A POS cart converted to a Sales Order Draft left the instant-sale
             // path: its company portion is re-derived like any manual order.
             $isManual = $order->source !== SalesOrderSource::Pos || $order->pos_converted_at !== null;
+            $correcting = $revision && $revision->status === 'in_progress';
             $allocations = collect();
             $increases = [];
             foreach ($lines as $line) {
@@ -197,7 +199,11 @@ class ConfirmSalesOrderAction
                 // partly supplier-sourced the company portion must be re-derived
                 // authoritatively — company stock may have moved since the cart
                 // was opened.
-                if ($isManual || Decimal::compare($supplierCovered, '0') > 0 || $held->isNotEmpty()) {
+                // A line re-confirmed at the end of a commercial correction is always
+                // re-derived: StartSalesOrderCorrectionAction released its reservations,
+                // and a surviving allocation row would collide with that released
+                // reservation (reference unique key) instead of reserving stock again.
+                if ($isManual || $correcting || Decimal::compare($supplierCovered, '0') > 0 || $held->isNotEmpty()) {
                     // A draft allocation never carries a reservation: one that does
                     // belongs to something else and is never silently discarded.
                     if ($line->allocations->contains(fn (SalesOrderInventoryAllocation $allocation) => $allocation->inventory_reservation_id !== null)) {
