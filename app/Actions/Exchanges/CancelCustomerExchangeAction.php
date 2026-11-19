@@ -6,6 +6,7 @@ use App\Actions\Returns\CancelCustomerReturnAction;
 use App\Models\CustomerExchange;
 use App\Models\User;
 use App\Services\AuditLogger;
+use App\Services\Sandbox\SandboxContext;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -15,20 +16,24 @@ class CancelCustomerExchangeAction
 
     public function execute(User $actor, CustomerExchange $exchange, string $reason): CustomerExchange
     {
-        app(\App\Services\Sandbox\SandboxContext::class)->assertSameEnvironment($exchange->sandbox_id);
+        app(SandboxContext::class)->assertSameEnvironment($exchange->sandbox_id);
         abort_unless($actor->active_organization_id === $exchange->organization_id && $actor->active_store_id === $exchange->store_id, 404);
         abort_unless($actor->hasPermission($exchange->organization_id, 'sales_exchanges.process'), 403);
-        if (trim($reason) === '') throw ValidationException::withMessages(['reason' => 'Le motif d’annulation est obligatoire.']);
-        if ($exchange->sales_order_addendum_id !== null || in_array($exchange->status, ['completed', 'cancelled'], true)) {
-            throw ValidationException::withMessages(['exchange' => 'Un échange dont les nouveaux articles ont été remis ne peut pas être annulé.']);
+        if (trim($reason) === '') {
+            throw ValidationException::withMessages(['reason' => 'Le motif d’annulation est obligatoire.']);
         }
 
-        if ($exchange->customerReturn->status === 'draft') {
-            $this->returns->execute($actor, $exchange->customerReturn, $reason);
-        }
-
+        // Step 5: one transaction (exchange -> customer return). Eligibility is judged under the lock so a
+        // concurrent fulfilment/settlement can never be overwritten by a stale cancellation.
         return DB::transaction(function () use ($actor, $exchange, $reason) {
-            $exchange = CustomerExchange::query()->where('organization_id', $exchange->organization_id)->whereKey($exchange->id)->lockForUpdate()->firstOrFail();
+            $exchange = CustomerExchange::query()->where('organization_id', $exchange->organization_id)->where('store_id', $exchange->store_id)
+                ->whereKey($exchange->id)->lockForUpdate()->firstOrFail();
+            if ($exchange->sales_order_addendum_id !== null || in_array($exchange->status, ['completed', 'cancelled'], true)) {
+                throw ValidationException::withMessages(['exchange' => 'Un échange dont les nouveaux articles ont été remis ne peut pas être annulé.']);
+            }
+            if ($exchange->customerReturn->status === 'draft') {
+                $this->returns->execute($actor, $exchange->customerReturn, $reason);
+            }
             $exchange->status = 'cancelled';
             $exchange->settlement_status = 'cancelled';
             $exchange->cancelled_at = now();
@@ -36,8 +41,9 @@ class CancelCustomerExchangeAction
             $exchange->cancellation_reason = trim($reason);
             $exchange->save();
             $this->audit->record('sales_exchange.cancelled', $actor, $exchange->organization, $exchange->store, $exchange, newValues: [
-                'reason' => trim($reason), 'return_preserved' => $exchange->customerReturn->status === 'received',
+                'reason' => trim($reason), 'return_preserved' => $exchange->customerReturn->fresh()->status === 'received',
             ]);
+
             return $exchange;
         }, 3);
     }
