@@ -7,6 +7,7 @@ use App\Models\CustomerExchange;
 use App\Models\Payment;
 use App\Models\User;
 use App\Services\AuditLogger;
+use App\Services\Sandbox\SandboxContext;
 use App\Support\Decimal;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -18,7 +19,7 @@ class SettleCustomerExchangePaymentAction
     /** @param list<array<string,mixed>> $entries */
     public function execute(User $actor, CustomerExchange $exchange, array $entries, string $operationId): CustomerExchange
     {
-        app(\App\Services\Sandbox\SandboxContext::class)->assertSameEnvironment($exchange->sandbox_id);
+        app(SandboxContext::class)->assertSameEnvironment($exchange->sandbox_id);
         abort_unless($actor->active_organization_id === $exchange->organization_id && $actor->active_store_id === $exchange->store_id, 404);
         abort_unless($actor->hasPermission($exchange->organization_id, 'sales_exchanges.process'), 403);
 
@@ -54,7 +55,9 @@ class SettleCustomerExchangePaymentAction
             $this->audit->record('sales_exchange.settlement_recorded', $actor, $exchange->organization, $exchange->store, $exchange, newValues: [
                 'direction' => 'customer_payment', 'payment_ids' => $created->pluck('id')->all(), 'paid' => $paid,
             ]);
-            if (Decimal::compare($paid, $exchange->difference_amount) >= 0) $this->complete($actor, $exchange);
+            if (Decimal::compare($paid, $exchange->difference_amount) >= 0) {
+                $this->complete($actor, $exchange);
+            }
 
             return $exchange->fresh(['payments', 'customerReturn.refunds']);
         }, 3);

@@ -6,6 +6,7 @@ use App\Actions\Pos\AddItemsToCompletedPosOrderAction;
 use App\Models\CustomerExchange;
 use App\Models\User;
 use App\Services\AuditLogger;
+use App\Services\Sandbox\SandboxContext;
 use App\Support\Decimal;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -16,7 +17,7 @@ class FulfillCustomerExchangeReplacementAction
 
     public function execute(User $actor, CustomerExchange $exchange): CustomerExchange
     {
-        app(\App\Services\Sandbox\SandboxContext::class)->assertSameEnvironment($exchange->sandbox_id);
+        app(SandboxContext::class)->assertSameEnvironment($exchange->sandbox_id);
         abort_unless($actor->active_organization_id === $exchange->organization_id && $actor->active_store_id === $exchange->store_id, 404);
         abort_unless($actor->hasPermission($exchange->organization_id, 'sales_exchanges.process'), 403);
 
@@ -46,7 +47,9 @@ class FulfillCustomerExchangeReplacementAction
                 'exchange_number' => $exchange->exchange_number, 'sales_order_addendum_id' => $addendum->id,
                 'new_items_total' => $exchange->new_items_total, 'difference_amount' => $exchange->difference_amount,
             ]);
-            if ($zero) $this->audit->record('sales_exchange.completed', $actor, $exchange->organization, $exchange->store, $exchange, newValues: ['settlement' => 'zero']);
+            if ($zero) {
+                $this->audit->record('sales_exchange.completed', $actor, $exchange->organization, $exchange->store, $exchange, newValues: ['settlement' => 'zero']);
+            }
 
             return $exchange->fresh(['salesOrderAddendum.lines', 'customerReturn.creditNotes']);
         }, 3);

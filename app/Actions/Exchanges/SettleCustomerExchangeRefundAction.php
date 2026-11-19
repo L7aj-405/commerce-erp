@@ -7,6 +7,7 @@ use App\Models\CustomerExchange;
 use App\Models\Payment;
 use App\Models\User;
 use App\Services\AuditLogger;
+use App\Services\Sandbox\SandboxContext;
 use App\Support\Decimal;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -17,7 +18,7 @@ class SettleCustomerExchangeRefundAction
 
     public function execute(User $actor, CustomerExchange $exchange, Payment $payment, string $amount, string $reason, string $operationId): CustomerExchange
     {
-        app(\App\Services\Sandbox\SandboxContext::class)->assertSameEnvironment($exchange->sandbox_id);
+        app(SandboxContext::class)->assertSameEnvironment($exchange->sandbox_id);
         abort_unless($actor->active_organization_id === $exchange->organization_id && $actor->active_store_id === $exchange->store_id, 404);
         abort_unless($actor->hasPermission($exchange->organization_id, 'sales_exchanges.process'), 403);
 
