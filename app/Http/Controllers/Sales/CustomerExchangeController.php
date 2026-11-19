@@ -106,7 +106,7 @@ class CustomerExchangeController extends Controller
                 'direction' => $direction > 0 ? 'payment' : ($direction < 0 ? 'refund' : 'zero')],
             'payments' => $payments,
             'financialAccounts' => FinancialAccount::query()->where('organization_id', $exchange->organization_id)->where('status', 'active')->orderBy('name')->get(['id', 'name', 'code', 'type', 'accepted_methods']),
-            'can' => ['process' => request()->user()->can('process', $exchange), 'refund' => request()->user()->hasPermission($exchange->organization_id, 'payments.reverse')],
+            'can' => ['process' => request()->user()->can('process', $exchange), 'refund' => request()->user()->hasPermission($exchange->organization_id, 'payments.refund')],
         ]);
     }
 
