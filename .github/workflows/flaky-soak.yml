@@ -42,7 +42,7 @@ concurrency:
 
 env:
   PHP_VERSION: '8.4'
-  PHP_EXTENSIONS: bcmath, ctype, dom, fileinfo, filter, gd, hash, iconv, json, libxml, mbstring, openssl, pcntl, pdo_mysql, pdo_sqlite, phar, session, sqlite3, tokenizer, xml, xmlreader, xmlwriter, zip, timezonedb
+  PHP_EXTENSIONS: bcmath, ctype, dom, fileinfo, filter, gd, hash, iconv, json, libxml, mbstring, openssl, pcntl, pdo_mysql, pdo_sqlite, phar, session, sqlite3, tokenizer, xml, xmlreader, xmlwriter, zip
 
 jobs:
   plan:
@@ -81,6 +81,9 @@ jobs:
           extensions: ${{ env.PHP_EXTENSIONS }}
           coverage: none
           tools: composer:v2
+
+      - name: Install pinned timezonedb (verified, no fallback)
+        uses: ./.github/actions/install-timezonedb
 
       - name: Install dependencies
         run: composer install --no-interaction --no-progress --prefer-dist

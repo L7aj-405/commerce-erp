@@ -31,11 +31,11 @@ env:
   PHP_VERSION: '8.4'
   NODE_VERSION: '22'
   # composer.json requires these (plus the framework / PDF / spreadsheet needs); pcntl is used by queue timeouts.
-  # Morocco returned to GMT on 2026-09-20 (Decree 2.26.530; IANA tz 2026c+). `timezonedb` is PINNED: the unpinned extension
+  # Morocco returned to GMT on 2026-09-20 (Decree 2.26.530; IANA tz 2026c+). `timezonedb` is installed by .github/actions/install-timezonedb (pinned version + SHA-256, fatal on any failure; setup-php would only warn). The unpinned extension
   # resolved to 2025.2 on the runner and silently OVERRODE the newer system tzdata, shifting Moroccan business dates by an hour
   # (observed: tzdb=2025.2, Casablanca 2026-11-05 00:30 +01:00). scripts/check-timezone-runtime.php blocks the build if the
   # runtime is wrong; bump this pin (and that script's table) only after reading a new legal decree.
-  PHP_EXTENSIONS: bcmath, ctype, dom, fileinfo, filter, gd, hash, iconv, json, libxml, mbstring, openssl, pcntl, pdo_mysql, pdo_sqlite, phar, session, sqlite3, tokenizer, xml, xmlreader, xmlwriter, zip, timezonedb-2026.6
+  PHP_EXTENSIONS: bcmath, ctype, dom, fileinfo, filter, gd, hash, iconv, json, libxml, mbstring, openssl, pcntl, pdo_mysql, pdo_sqlite, phar, session, sqlite3, tokenizer, xml, xmlreader, xmlwriter, zip
 
 jobs:
   php-tests:
@@ -55,6 +55,9 @@ jobs:
           extensions: ${{ env.PHP_EXTENSIONS }}
           coverage: none
           tools: composer:v2
+
+      - name: Install pinned timezonedb (verified, no fallback)
+        uses: ./.github/actions/install-timezonedb
 
       - name: Verify Morocco's legal time in this PHP runtime (blocking)
         run: php scripts/check-timezone-runtime.php
@@ -175,6 +178,9 @@ jobs:
           coverage: none
           tools: composer:v2
 
+      - name: Install pinned timezonedb (verified, no fallback)
+        uses: ./.github/actions/install-timezonedb
+
       - name: Verify Morocco's legal time in this PHP runtime (blocking)
         run: php scripts/check-timezone-runtime.php
 
@@ -277,6 +283,9 @@ jobs:
           extensions: ${{ env.PHP_EXTENSIONS }}
           coverage: none
           tools: composer:v2
+
+      - name: Install pinned timezonedb (verified, no fallback)
+        uses: ./.github/actions/install-timezonedb
 
       - name: Locate the Composer cache
         id: composer-cache
@@ -395,6 +404,9 @@ jobs:
           coverage: none
           tools: composer:v2
 
+      - name: Install pinned timezonedb (verified, no fallback)
+        uses: ./.github/actions/install-timezonedb
+
       - name: Locate the Composer cache
         id: composer-cache
         run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
@@ -452,6 +464,9 @@ jobs:
           extensions: ${{ env.PHP_EXTENSIONS }}
           coverage: none
           tools: composer:v2
+
+      - name: Install pinned timezonedb (verified, no fallback)
+        uses: ./.github/actions/install-timezonedb
 
       - name: Locate the Composer cache
         id: composer-cache
