@@ -132,7 +132,7 @@ class QaAccessCommand extends Command
 
         try {
             return match ($action) {
-                'links' => $this->links($emails, $execute),
+                'links' => $this->links($emails, $organization, $execute),
                 'cleanup' => $this->cleanup($emails, $organization, $store, $actor, $memberships, $audit, $execute),
                 default => $this->setup($emails, $organization, $store, $actor, $memberships, $permissionService, $audit, $execute),
             };
@@ -149,7 +149,7 @@ class QaAccessCommand extends Command
         // Existing accounts are never modified: an email that exists but was not created by this command is a stop.
         foreach ($emails as $email) {
             $existing = User::query()->where('email', $email)->first();
-            if ($existing && ! $this->isProvisioned($existing)) {
+            if ($existing && ! $this->isProvisioned($organization, $existing)) {
                 $this->error("An account for {$email} already exists and was not created by this command; it is never modified. Use another email.");
 
                 return self::FAILURE;
@@ -196,7 +196,7 @@ class QaAccessCommand extends Command
             } elseif ((int) $membership->role_id !== (int) $role->getKey()) {
                 $memberships->changeRole($actor, $membership, $role);
             }
-            if (! StoreMembership::query()->where('store_id', $store->getKey())->where('user_id', $user->getKey())->exists()) {
+            if (! StoreMembership::query()->where('organization_id', $organization->getKey())->where('store_id', $store->getKey())->where('user_id', $user->getKey())->exists()) {
                 $memberships->addStoreMember($actor, $store, $user);
             }
             $links[$key] = $this->resetLink($user);
@@ -208,12 +208,12 @@ class QaAccessCommand extends Command
     }
 
     /** @param array<string, string> $emails */
-    private function links(array $emails, bool $execute): int
+    private function links(array $emails, Organization $organization, bool $execute): int
     {
         $links = [];
         foreach ($emails as $key => $email) {
             $user = User::query()->where('email', $email)->first();
-            if (! $user || ! $this->isProvisioned($user)) {
+            if (! $user || ! $this->isProvisioned($organization, $user)) {
                 $this->error("{$email} is not a QA account created by this command.");
 
                 return self::FAILURE;
@@ -243,12 +243,12 @@ class QaAccessCommand extends Command
             if (! $user) {
                 continue;
             }
-            if (! $this->isProvisioned($user)) {
+            if (! $this->isProvisioned($organization, $user)) {
                 $this->warn("Skipped {$email}: not created by this command.");
 
                 continue;
             }
-            StoreMembership::query()->where('store_id', $store->getKey())->where('user_id', $user->getKey())->each(fn (StoreMembership $m) => $memberships->removeStoreMember($actor, $m));
+            StoreMembership::query()->where('organization_id', $organization->getKey())->where('store_id', $store->getKey())->where('user_id', $user->getKey())->each(fn (StoreMembership $m) => $memberships->removeStoreMember($actor, $m));
             OrganizationMembership::query()->where('organization_id', $organization->getKey())->where('user_id', $user->getKey())->each(fn (OrganizationMembership $m) => $memberships->removeOrganizationMember($actor, $m));
 
             $user->password = Str::random(64);
@@ -264,7 +264,7 @@ class QaAccessCommand extends Command
         }
 
         foreach ($roles as $role) {
-            if (OrganizationMembership::query()->where('role_id', $role->getKey())->exists()) {
+            if (OrganizationMembership::query()->where('organization_id', $organization->getKey())->where('role_id', $role->getKey())->exists()) {
                 $this->warn("Role {$role->slug} still has members and was kept.");
 
                 continue;
@@ -298,9 +298,9 @@ class QaAccessCommand extends Command
         return $role;
     }
 
-    private function isProvisioned(User $user): bool
+    private function isProvisioned(Organization $organization, User $user): bool
     {
-        return AuditLog::query()->where('event', self::MARKER_EVENT)->where('auditable_type', $user->getMorphClass())->where('auditable_id', $user->getKey())->exists();
+        return AuditLog::query()->where('organization_id', $organization->getKey())->where('event', self::MARKER_EVENT)->where('auditable_type', $user->getMorphClass())->where('auditable_id', $user->getKey())->exists();
     }
 
     private function resetLink(User $user): string

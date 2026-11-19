@@ -11,6 +11,7 @@ use App\Models\Organization;
 use App\Models\OrganizationMembership;
 use App\Models\Role;
 use App\Models\Store;
+use App\Models\StoreMembership;
 use App\Models\User;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
@@ -39,9 +40,13 @@ class QaAccessCommandTest extends PaymentTestCase
     }
 
     /** @return array{int, string} */
-    private function qa(string $action, User $actor, bool $execute = true, array $emails = self::EMAILS): array
+    private function qa(string $action, User $actor, bool $execute = true, array $emails = self::EMAILS, ?string $organization = null, ?string $store = null): array
     {
         $arguments = ['action' => $action, '--actor' => $actor->email];
+        if ($organization !== null) {
+            $arguments['--organization'] = $organization;
+            $arguments['--store'] = $store;
+        }
         foreach ($emails as $key => $email) {
             $arguments["--email-{$key}"] = $email;
         }
@@ -230,6 +235,37 @@ class QaAccessCommandTest extends PaymentTestCase
         $this->assertNotSame($oldHash, $qa->fresh()->password);
         $this->assertSame($untouched, Role::query()->where('organization_id', $organization->id)->where('slug', 'not like', 'qa-step6-%')->pluck('name', 'id')->all());
         $this->assertTrue(OrganizationMembership::query()->where('organization_id', $organization->id)->where('user_id', $admin->id)->exists());
+    }
+
+    public function test_cleanup_links_and_setup_never_read_or_mutate_another_organization(): void
+    {
+        [$adminA, $organizationA] = $this->qaWorld();
+
+        // Organization B provisions the SAME four emails (own QA roles, memberships, store access and audit marker).
+        $adminB = User::factory()->create();
+        $organizationB = $this->createOrganization($adminB, 'Other QA Org');
+        $storeB = $this->createStore($organizationB, $adminB, 'Other Showroom');
+        $this->activate($adminB, $organizationB, $storeB);
+        [$code, $output] = $this->qa('setup', $adminB, organization: 'Other QA Org', store: 'Other Showroom');
+        $this->assertSame(0, $code, $output);
+
+        $snapshot = fn () => [
+            OrganizationMembership::query()->where('organization_id', $organizationB->id)->count(),
+            StoreMembership::query()->where('organization_id', $organizationB->id)->count(),
+            Role::query()->where('organization_id', $organizationB->id)->where('slug', 'like', 'qa-step6-%')->count(),
+            User::query()->whereIn('email', self::EMAILS)->pluck('password', 'email')->all(),
+        ];
+        $before = $snapshot();
+
+        // Organization A never provisioned these accounts: they are another tenant's, so nothing may be read as
+        // provisioned (the marker is organization-scoped) or touched.
+        foreach (['setup', 'links', 'cleanup'] as $action) {
+            [$code] = $this->qa($action, $adminA);
+            $this->assertSame($action === 'cleanup' ? 0 : 1, $code === 0 ? 0 : 1, $action);
+            $this->assertSame($before, $snapshot(), "{$action} in organization A changed organization B or its accounts.");
+        }
+        $this->assertSame(0, Role::query()->where('organization_id', $organizationA->id)->where('slug', 'like', 'qa-step6-%')->count());
+        $this->assertSame(0, OrganizationMembership::query()->where('organization_id', $organizationA->id)->whereIn('user_id', User::query()->whereIn('email', self::EMAILS)->pluck('id'))->count());
     }
 
     private function confirmedOrder(User $owner, $organization, $store)
