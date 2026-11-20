@@ -18,6 +18,7 @@ use App\Services\DocumentSnapshotVerifier;
 use App\Services\DocumentTemplateRegistry;
 use App\Services\Finance\FinanceClosedPeriodGuard;
 use App\Services\InvoiceNumberGenerator;
+use App\Services\Policies\PolicyResolver;
 use App\Services\SalesOrderPaymentCalculator;
 use App\Services\Sandbox\SandboxDocumentNumberGenerator;
 use App\Support\Decimal;
@@ -37,6 +38,7 @@ class IssueInvoiceAction
         private readonly SalesOrderPaymentCalculator $payments,
         private readonly SandboxDocumentNumberGenerator $testNumbers,
         private readonly FinanceClosedPeriodGuard $periods,
+        private readonly PolicyResolver $policies,
     ) {}
 
     public function execute(User $actor, Invoice $invoice): Invoice
@@ -123,7 +125,7 @@ class IssueInvoiceAction
             // W4.4 payment term, stamped once: a correction keeps the due date of the invoice it replaces.
             $invoice->due_date ??= ($invoice->corrected_invoice_id
                 ? Invoice::query()->where('organization_id', $invoice->organization_id)->whereKey($invoice->corrected_invoice_id)->value('due_date')
-                : null) ?? $invoice->invoice_date->copy()->addDays(max(0, (int) config('documents.invoice.payment_term_days', 30)));
+                : null) ?? $invoice->invoice_date->copy()->addDays($this->policies->invoicePaymentTermDays($invoice->organization));
             $invoice->issued_by_user_id = $actor->getKey();
             $invoice->save();
             $this->audit->record('invoice.issued', $actor, $invoice->organization, $invoice->store, $invoice, oldValues: ['status' => InvoiceStatus::Draft->value], newValues: [

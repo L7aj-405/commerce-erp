@@ -18,6 +18,7 @@ use App\Models\SalesOrderProcurement;
 use App\Models\User;
 use App\Services\AuditLogger;
 use App\Services\InventoryReservationManager;
+use App\Services\Policies\PolicyResolver;
 use App\Services\PosStockAllocator;
 use App\Services\Procurement\SalesOrderProcurementPlanner;
 use App\Services\SalesOrderPaymentCalculator;
@@ -45,6 +46,7 @@ class ConfirmSalesOrderAction
         private readonly GenerateSalesOrderCommissionEntriesAction $commissions,
         private readonly SalesOrderProcurementPlanner $procurementPlanner,
         private readonly AuditLogger $audit,
+        private readonly PolicyResolver $policies,
     ) {}
 
     /**
@@ -302,7 +304,7 @@ class ConfirmSalesOrderAction
             $order->status = SalesOrderStatus::Confirmed;
             $order->confirmed_at = now();
             // W4.5 payment term, stamped once (a revision re-confirming the order keeps it).
-            $order->due_date ??= $order->sale_date->copy()->addDays(max(0, (int) config('payments.sales_order_payment_term_days', 7)));
+            $order->due_date ??= $order->sale_date->copy()->addDays($this->policies->salesOrderPaymentTermDays($order->organization));
             $order->confirmed_by_user_id = $actor->getKey();
             $order->save();
 
