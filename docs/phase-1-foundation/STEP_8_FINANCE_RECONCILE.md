@@ -20,9 +20,9 @@ Code de sortie : `0` aucun écart · `1` au moins un écart · `2` entrée inval
 | R-7 | Stock : `solde = Σ (quantity_after − quantity_before)` des mouvements, par entrepôt/variante | SQL agrégé (soldes sans mouvement et mouvements sans solde inclus) |
 
 ## Limites connues (volontaires)
-- R-1 est une égalité exacte (4 décimales). `totalAsOf` est exact au 0,0001 alors que l'exposition applique le seuil de règlement (0,005 MAD) : un résidu inférieur au seuil peut produire un écart de 0,0001 signalé, non masqué (voir `STEP_2_CUSTOMER_BALANCE_FIX.md` §5).
+- R-1 est une égalité exacte (4 décimales). `totalAsOf` est exact au 0,0001 alors que l'exposition applique le seuil de règlement (0,005 MAD) : un résidu inférieur au seuil peut produire un écart de 0,0001 signalé, non masqué : chaque variance est restituée à la décimale exacte avec une `classification` (`sub_centime_residue` si |variance| < 0,0050, sinon `material`) ; la classification n'altère jamais le verdict (toute variance non nulle = échec) (voir `STEP_2_CUSTOMER_BALANCE_FIX.md` §5).
 - R-1 est agrégé (écart global, pas de liste de commandes). R-6 charge les lignes de chaque document : sur une grande organisation, lancer hors heures de pointe.
 - La commande n'est pas planifiée ; aucune alerte automatique (hors périmètre).
 
 ## Tests
-`tests/Feature/Finance/FinanceReconcileCommandTest.php` (8) : jeu seedé sans écart ; R-1 avec exposition ouverte non nulle ; lecture seule (aucune requête d'écriture, tables identiques) ; détection d'un écart de stock, d'un paiement ≠ allocations, d'un sur-remboursement (R-3/R-5/R-7) ; instantané de facture altéré (R-6) ; isolement entre organisations ; R-2 avec position d'ouverture ; codes de sortie 2.
+`tests/Feature/Finance/FinanceReconcileCommandTest.php` (11) : jeu seedé sans écart ; R-1 avec exposition ouverte non nulle ; lecture seule (aucune requête d'écriture, tables identiques) ; détection d'un écart de stock, d'un paiement ≠ allocations, d'un sur-remboursement (R-3/R-5/R-7) ; instantané de facture altéré (R-6) ; isolement entre organisations ; R-2 avec position d'ouverture ; options `--sample`/`--months`/`--month` validées (exit 2) ; variances exactes classées ; lecture seule aussi sur jeu en échec ; forme JSON stable.
