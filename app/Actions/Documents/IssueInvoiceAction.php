@@ -28,6 +28,13 @@ class IssueInvoiceAction
 {
     use AuthorizesDocumentAction;
 
+    /**
+     * U-2: refusal shown when the order is not fully settled. Same validation key
+     * ('invoice') and same blocking rule as before; the text now explains the
+     * business reason and the next step.
+     */
+    public const FULL_PAYMENT_REQUIRED_MESSAGE = "La facture ne peut être émise qu'après le règlement intégral de la commande : une facture émise est un document comptable définitif qui constate une vente entièrement encaissée. Enregistrez d'abord le paiement du solde restant sur la commande (bouton « Enregistrer un paiement »), puis émettez la facture.";
+
     public function __construct(
         private readonly InvoiceNumberGenerator $numbers,
         private readonly DocumentSnapshotVerifier $verifier,
@@ -78,7 +85,7 @@ class IssueInvoiceAction
             }
             if (! $test && Decimal::compare($this->payments->remainingAmount($order), '0.0000') > 0) {
                 throw ValidationException::withMessages([
-                    'invoice' => "La facture ne peut être émise qu'après le règlement intégral de la commande.",
+                    'invoice' => self::FULL_PAYMENT_REQUIRED_MESSAGE,
                 ]);
             }
             // F-03: an issued invoice is an accounting posting dated invoice_date (it keys the fiscal sequence

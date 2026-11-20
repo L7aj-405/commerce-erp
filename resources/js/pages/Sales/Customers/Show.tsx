@@ -2,6 +2,8 @@ import FollowUpPanel from "@/components/followups/FollowUpPanel";
 import ActivityTimeline from "@/components/timeline/ActivityTimeline";
 import type { FollowUpPanelData } from "@/components/followups/types";
 import DocBadge from "@/components/ui/DocBadge";
+import InfoTip from "@/components/ui/InfoTip";
+import ReliabilityBadge, { type Reliability } from "@/components/ui/ReliabilityBadge";
 import SalesLayout from "@/layouts/SalesLayout";
 import { useI18n } from "@/i18n";
 import { formatDate, formatMoney } from "@/utils/format";
@@ -43,6 +45,7 @@ type Summary = {
     paid_total: string | null;
     outstanding: string | null;
     unbilled_outstanding?: string | null;
+    refund_obligation?: string | null;
     last_activity: string | null;
 };
 const money = (value: string | null) => (value === null ? "—" : formatMoney(value));
@@ -105,21 +108,33 @@ function SummaryTile({
     label: title,
     value,
     tone = "neutral",
+    definition,
+    reliability,
 }: {
     label: string;
     value: ReactNode;
     tone?: "neutral" | "warning";
+    /** Hover/focus definition of the figure (U-1). */
+    definition?: string;
+    /** Only set from a real condition: hidden figure or non-final estimate. */
+    reliability?: { state: Reliability; explanation: string };
 }) {
     return (
         <div className="surface-card px-4 py-3.5">
-            <p className="text-[13px] font-medium text-ink-muted">
+            <p className="flex flex-wrap items-center gap-x-1 text-[13px] font-medium text-ink-muted">
                 {title}
+                {definition && <InfoTip label={`${title} : ${definition}`}>{definition}</InfoTip>}
             </p>
             <p
                 className={`mt-1.5 text-lg font-semibold ${tone === "warning" ? "text-warning" : "text-ink"}`}
             >
                 {value}
             </p>
+            {reliability && (
+                <div className="mt-1">
+                    <ReliabilityBadge state={reliability.state} explanation={reliability.explanation} />
+                </div>
+            )}
         </div>
     );
 }
@@ -174,6 +189,9 @@ export default function CustomerShow({
     followUps,
 }: Props) {
     const { t } = useI18n();
+    // U-1: a figure is "incomplet" only when the viewer's rights hide it (the service returns null).
+    const hidden = (value: string | null | undefined): { state: Reliability; explanation: string } | undefined =>
+        value === null ? { state: "incomplete", explanation: t("customers.reliability.hiddenFigure") } : undefined;
     const title =
         customer.type === "company"
             ? customer.company_name || customer.display_name
@@ -261,20 +279,34 @@ export default function CustomerShow({
                 <SummaryTile
                     label={t("customers.show.confirmedSales")}
                     value={money(summary.sales_total)}
+                    definition={t("customers.def.confirmedSales")}
+                    reliability={hidden(summary.sales_total)}
                 />
                 <SummaryTile
                     label={t("customers.show.invoiced")}
                     value={money(summary.invoiced_total)}
+                    definition={t("customers.def.invoiced")}
+                    reliability={hidden(summary.invoiced_total)}
                 />
                 <SummaryTile
                     label={t("customers.show.collected")}
                     value={money(summary.paid_total)}
+                    definition={t("customers.def.collected")}
+                    reliability={hidden(summary.paid_total)}
                 />
                 <SummaryTile
                     label={t("customers.show.invoicedBalance")}
                     value={money(summary.outstanding)}
                     tone={
                         Number(summary.outstanding) > 0 ? "warning" : "neutral"
+                    }
+                    definition={t("customers.def.invoicedBalance")}
+                    reliability={
+                        summary.outstanding === null
+                            ? hidden(summary.outstanding)
+                            : summary.unbilled_outstanding == null
+                              ? { state: "incomplete", explanation: t("customers.reliability.invoicedBalanceNoUnbilled") }
+                              : undefined
                     }
                 />
                 {summary.unbilled_outstanding != null && (
@@ -284,10 +316,25 @@ export default function CustomerShow({
                         tone={
                             Number(summary.unbilled_outstanding) > 0 ? "warning" : "neutral"
                         }
+                        definition={t("customers.def.unbilledBalance")}
+                        reliability={
+                            Number(summary.unbilled_outstanding) > 0
+                                ? { state: "estimated", explanation: t("customers.reliability.unbilledEstimate") }
+                                : undefined
+                        }
+                    />
+                )}
+                {summary.refund_obligation != null && Number(summary.refund_obligation) > 0 && (
+                    <SummaryTile
+                        label={t("customers.show.refundDue")}
+                        value={money(summary.refund_obligation)}
+                        tone="warning"
+                        definition={t("customers.def.refundDue")}
                     />
                 )}
                 <SummaryTile
                     label={t("customers.show.lastActivity")}
+                    definition={t("customers.def.lastActivity")}
                     value={
                         summary.last_activity
                             ? formatDate(summary.last_activity)

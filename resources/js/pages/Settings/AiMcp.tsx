@@ -1,4 +1,5 @@
 import { useFreshAuth } from '@/components/auth/FreshAuthProvider';
+import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
 import PageHeader from '@/components/ui/PageHeader';
@@ -78,6 +79,7 @@ export default function AiMcp({ organization, enabled, canAdminister, connection
         <Head title={t('mcp.title')} />
         <div className="mx-auto max-w-6xl space-y-6 px-4 py-6 sm:px-6">
             <PageHeader title={t('mcp.title')} description={t('mcp.description')} />
+            <Alert tone="warning" title={t('mcp.productionWarningTitle')}>{t('mcp.productionWarning')}</Alert>
             {error && <div className="rounded-field border border-danger/30 bg-danger-soft p-3 text-sm text-danger">{error}</div>}
 
             <section className="rounded-panel border border-line bg-surface p-5 shadow-soft">
@@ -103,7 +105,7 @@ export default function AiMcp({ organization, enabled, canAdminister, connection
         </div>
 
         <Dialog open={open} onClose={() => !busy && setOpen(false)} title={editing ? t('mcp.edit') : t('mcp.create')} description={editing ? t('mcp.editHint') : t('mcp.secretHint')} dismissible={!busy} footer={<div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => setOpen(false)} disabled={busy}>{t('common.cancel')}</Button><Button onClick={save} loading={busy} disabled={!name || scopes.length === 0}>{editing ? t('common.save') : t('mcp.create')}</Button></div>}>
-            <div className="space-y-5 p-5"><label className="block text-sm font-medium text-ink">{t('mcp.name')}<input className="control-input mt-1 w-full" value={name} onChange={(event) => setName(event.target.value)} maxLength={100} /></label>
+            <div className="space-y-5 p-5"><Alert tone="warning" title={t('mcp.productionWarningTitle')}>{t('mcp.productionWarning')}</Alert><label className="block text-sm font-medium text-ink">{t('mcp.name')}<input className="control-input mt-1 w-full" value={name} onChange={(event) => setName(event.target.value)} maxLength={100} /></label>
                 <div><p className="text-sm font-medium text-ink">{t('mcp.preset')}</p><div className="mt-2 flex flex-wrap gap-2"><Button type="button" size="sm" variant="secondary" onClick={() => setScopes((presets.read_only ?? []).filter((key) => selectableScopes.some((scope) => scope.key === key)))}>{t('mcp.readOnly')}</Button><Button type="button" size="sm" variant="secondary" onClick={() => setScopes((presets.product_manager ?? []).filter((key) => selectableScopes.some((scope) => scope.key === key)))}>{t('mcp.productManager')}</Button></div></div>
                 <fieldset><legend className="text-sm font-medium text-ink">{t('mcp.scopes')}</legend><div className="mt-2 grid gap-2 sm:grid-cols-2">{selectableScopes.map((scope) => <label key={scope.key} className="flex gap-2 rounded-field border border-line p-3 text-sm"><input type="checkbox" checked={scopes.includes(scope.key)} onChange={(event) => setScopes((current) => event.target.checked ? [...current, scope.key] : current.filter((key) => key !== scope.key))} /><span>{scopeTranslationKeys[scope.key] ? t(scopeTranslationKeys[scope.key]) : scope.label}<small className="block text-ink-faint"><bdi>{scope.key}</bdi></small></span></label>)}</div></fieldset>
                 <label className="block text-sm font-medium text-ink">{t('mcp.expiration')}<input type="datetime-local" className="control-input mt-1 w-full" value={expiresAt} onChange={(event) => setExpiresAt(event.target.value)} /></label></div>

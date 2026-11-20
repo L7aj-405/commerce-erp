@@ -4,6 +4,7 @@ namespace App\Services\Mcp\Products;
 
 use App\Services\AuditLogger;
 use App\Services\Mcp\McpExecutionContext;
+use App\Services\Mcp\McpProductionNotice;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\Log;
@@ -147,12 +148,12 @@ final class ProductReadTools
     }
 
     /**
-     * @param callable(): array<string, mixed> $callback
+     * @param  callable(): array<string, mixed>  $callback
      */
     private function execute(string $tool, callable $callback, string $notFoundCode = 'MCP_ENTITY_NOT_FOUND'): CallToolResult
     {
         try {
-            return $this->success($callback());
+            return $this->success(McpProductionNotice::annotate($tool, $callback()));
         } catch (AuthorizationException) {
             return $this->error('MCP_FORBIDDEN', 'The connection is not authorized to use this capability.');
         } catch (ModelNotFoundException) {
