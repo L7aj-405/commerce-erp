@@ -10,6 +10,7 @@ use App\Models\SalesOrder;
 use App\Models\Store;
 use App\Models\User;
 use App\Services\ActiveTenantContext;
+use App\Services\Pos\PosDraftLifecycle;
 use App\Services\Sandbox\SandboxContext;
 use App\Services\Sandbox\SandboxFulfillmentRules;
 
@@ -42,12 +43,16 @@ class SalesOrderPolicy
         return $this->allowed($user, $order, 'sales_orders.confirm');
     }
 
-    /** Hard delete of a cancelled POS draft: same permission as cancelling, scoped to the user's org/store access. */
+    /**
+     * Hard delete of a cancelled POS draft: same permission as cancelling, scoped to the user's org/store access,
+     * and only when PosDraftLifecycle (the same rule discard() enforces) finds no confirmation or history.
+     */
     public function deleteCancelledPosDraft(User $user, SalesOrder $order): bool
     {
         return $this->allowed($user, $order, 'sales_orders.cancel')
             && $order->status === SalesOrderStatus::Cancelled
-            && $order->source === SalesOrderSource::Pos;
+            && $order->source === SalesOrderSource::Pos
+            && app(PosDraftLifecycle::class)->cancelledDeleteBlockers($order) === [];
     }
 
     public function cancel(User $user, SalesOrder $order): bool
