@@ -68,7 +68,7 @@ class InvoiceLifecycleTest extends DocumentTestCase
             $this->fail('Expected unpaid invoice issuance to be rejected.');
         } catch (ValidationException $exception) {
             $this->assertSame(
-                ["La facture ne peut être émise qu'après le règlement intégral de la commande."],
+                [IssueInvoiceAction::FULL_PAYMENT_REQUIRED_MESSAGE],
                 $exception->errors()['invoice'] ?? [],
             );
         }
@@ -81,6 +81,16 @@ class InvoiceLifecycleTest extends DocumentTestCase
         $this->assertDatabaseMissing('audit_logs', ['event' => 'invoice.issued', 'auditable_id' => $draft->id]);
     }
 
+    public function test_full_payment_refusal_message_is_actionable(): void
+    {
+        $message = IssueInvoiceAction::FULL_PAYMENT_REQUIRED_MESSAGE;
+
+        // Same leading sentence as before (business rule unchanged) + reason + next step.
+        $this->assertStringStartsWith("La facture ne peut être émise qu'après le règlement intégral de la commande", $message);
+        $this->assertStringContainsString('document comptable définitif', $message);
+        $this->assertStringContainsString('Enregistrer un paiement', $message);
+    }
+
     public function test_partially_paid_order_cannot_issue_invoice_via_direct_http_request(): void
     {
         [$owner, $organization, , $order] = $this->documentFixture(total: '10000.0000');
@@ -91,7 +101,7 @@ class InvoiceLifecycleTest extends DocumentTestCase
         $this->actingAs($owner)
             ->post(route('invoices.issue', $draft))
             ->assertSessionHasErrors([
-                'invoice' => "La facture ne peut être émise qu'après le règlement intégral de la commande.",
+                'invoice' => IssueInvoiceAction::FULL_PAYMENT_REQUIRED_MESSAGE,
             ]);
 
         $this->assertSame('draft', $draft->fresh()->status->value);

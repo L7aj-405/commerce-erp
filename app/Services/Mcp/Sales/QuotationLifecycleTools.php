@@ -7,6 +7,7 @@ use App\Models\SalesOrder;
 use App\Services\AuditLogger;
 use App\Services\Mcp\McpExecutionContext;
 use App\Services\Mcp\McpIdempotencyService;
+use App\Services\Mcp\McpProductionNotice;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Cache\LockTimeoutException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -63,7 +64,9 @@ final class QuotationLifecycleTools
     {
         return $this->execute('convert_quotation_to_sales_order', function () use ($quotation_id, $preview_fingerprint, $idempotency_key) {
             $this->context->authorize('quotations.convert');
-            if ($quotation_id < 1) throw new InvalidArgumentException('invalid_id');
+            if ($quotation_id < 1) {
+                throw new InvalidArgumentException('invalid_id');
+            }
 
             // The quotation is the only input: same key + same quotation replays.
             return $this->idempotency->execute('convert_quotation_to_sales_order', $idempotency_key, ['quotation_id' => $quotation_id], function () use ($quotation_id, $preview_fingerprint) {
@@ -89,7 +92,9 @@ final class QuotationLifecycleTools
     {
         return $this->execute('preview_quotation_revision', function () use ($quotation_id, $reason) {
             $this->context->authorize(McpQuotationLifecycleService::REVISION_SCOPE);
-            if ($quotation_id < 1 || trim($reason) === '' || mb_strlen($reason) > 2000) throw new InvalidArgumentException('invalid_arguments');
+            if ($quotation_id < 1 || trim($reason) === '' || mb_strlen($reason) > 2000) {
+                throw new InvalidArgumentException('invalid_arguments');
+            }
             $preview = $this->lifecycle->previewRevision($quotation_id, $reason);
             $this->audit->record(event: 'mcp.quotation_revision.previewed', actor: $this->context->user(), organization: $this->context->organization(), newValues: [
                 'quotation_id' => $quotation_id, 'valid' => $preview['valid'],
@@ -105,7 +110,9 @@ final class QuotationLifecycleTools
     {
         return $this->execute('create_quotation_revision', function () use ($quotation_id, $preview_fingerprint, $idempotency_key) {
             $this->context->authorize(McpQuotationLifecycleService::REVISION_SCOPE);
-            if ($quotation_id < 1) throw new InvalidArgumentException('invalid_id');
+            if ($quotation_id < 1) {
+                throw new InvalidArgumentException('invalid_id');
+            }
 
             // Same key + same source quotation replays: never two revisions.
             return $this->idempotency->execute('create_quotation_revision', $idempotency_key, ['quotation_id' => $quotation_id], function () use ($quotation_id, $preview_fingerprint) {
@@ -152,11 +159,15 @@ final class QuotationLifecycleTools
 
         return $this->execute($tool, function () use ($transition, $quotationId, $fingerprint, $tool) {
             $this->context->authorize(McpQuotationLifecycleService::scope($transition));
-            if ($quotationId < 1) throw new InvalidArgumentException('invalid_id');
+            if ($quotationId < 1) {
+                throw new InvalidArgumentException('invalid_id');
+            }
 
             return DB::transaction(function () use ($transition, $quotationId, $fingerprint, $tool) {
                 $result = $this->lifecycle->execute($transition, $quotationId, $fingerprint);
-                if (! $result['replay']) $this->auditMutation($tool, $result['quotation'], null);
+                if (! $result['replay']) {
+                    $this->auditMutation($tool, $result['quotation'], null);
+                }
 
                 return [
                     'target' => ['type' => 'quotation', 'id' => $result['quotation']->getKey()],
@@ -171,7 +182,7 @@ final class QuotationLifecycleTools
     private function execute(string $tool, callable $callback): CallToolResult
     {
         try {
-            return $this->success($callback());
+            return $this->success(McpProductionNotice::annotate($tool, $callback()));
         } catch (AuthorizationException) {
             return $this->forbidden();
         } catch (HttpExceptionInterface $exception) {
@@ -224,7 +235,9 @@ final class QuotationLifecycleTools
     private function error(string $code, string $message, array $details = []): CallToolResult
     {
         $error = ['code' => $code, 'message' => $message];
-        if ($details !== []) $error['details'] = $details;
+        if ($details !== []) {
+            $error['details'] = $details;
+        }
         $payload = ['ok' => false, 'error' => $error];
 
         return new CallToolResult([new TextContent($payload)], isError: true, structuredContent: $payload);
