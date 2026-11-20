@@ -2,8 +2,10 @@
 
 namespace App\Services\Mcp\Work;
 
+use App\Services\Mcp\McpProductionNotice;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Cache\LockTimeoutException;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
@@ -25,7 +27,7 @@ trait RespondsToMcpTools
     private function execute(string $tool, callable $callback, string $notFoundCode = 'MCP_ENTITY_NOT_FOUND'): CallToolResult
     {
         try {
-            return $this->success($callback());
+            return $this->success(McpProductionNotice::annotate($tool, $callback()));
         } catch (AuthorizationException) {
             return $this->error('MCP_FORBIDDEN', 'The connection is not authorized to use this capability.');
         } catch (ModelNotFoundException) {
@@ -92,7 +94,7 @@ trait RespondsToMcpTools
         $this->audit->record(event: $event, actor: $this->context->user(), organization: $this->context->organization(), newValues: $metadata);
     }
 
-    /** @param \Illuminate\Contracts\Pagination\LengthAwarePaginator $page @return array<string, mixed> */
+    /** @param LengthAwarePaginator $page @return array<string, mixed> */
     private function pagination($page): array
     {
         return [

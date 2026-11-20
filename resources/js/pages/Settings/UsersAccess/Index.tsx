@@ -11,7 +11,7 @@ import { Head, router, usePage } from '@inertiajs/react';
 import { useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
 import RoleEditor from './RoleEditor';
-import type { PermissionGroups, Preset, RoleSummary } from './RoleEditor';
+import { summarizeRole, type PermissionGroups, type Preset, type RoleCapabilityDefinition, type RoleSummary } from './RoleEditor';
 
 type Member = {
     id: number;
@@ -41,6 +41,7 @@ type Props = {
     invitations: Invitation[];
     permissionGroups: PermissionGroups;
     presets: Preset[];
+    roleCapabilities: RoleCapabilityDefinition;
     stores: StoreOption[];
     warehouses: WarehouseOption[];
     can: {
@@ -54,7 +55,7 @@ type Props = {
     };
 };
 
-export default function UsersAccessIndex({ organization, memberships, roles, invitations, permissionGroups, presets, stores, warehouses, can }: Props) {
+export default function UsersAccessIndex({ organization, memberships, roles, invitations, permissionGroups, presets, roleCapabilities, stores, warehouses, can }: Props) {
     const { t } = useI18n();
     const confirm = useConfirm();
     const { auth, flash } = usePage<SharedPageProps>().props;
@@ -160,7 +161,7 @@ export default function UsersAccessIndex({ organization, memberships, roles, inv
             )}
 
             {can.viewRoles && (
-                <RolesSection roles={roles} permissionGroups={permissionGroups} presets={presets} can={can} />
+                <RolesSection roles={roles} permissionGroups={permissionGroups} presets={presets} capabilityDefinition={roleCapabilities} can={can} />
             )}
         </ApplicationShell>
     );
@@ -631,11 +632,13 @@ function RolesSection({
     roles,
     permissionGroups,
     presets,
+    capabilityDefinition,
     can,
 }: {
     roles: RoleSummary[];
     permissionGroups: PermissionGroups;
     presets: Preset[];
+    capabilityDefinition: RoleCapabilityDefinition;
     can: Props['can'];
 }) {
     const { tenant } = usePage<SharedPageProps>().props;
@@ -658,6 +661,7 @@ function RolesSection({
                     <RoleEditor
                         permissionGroups={permissionGroups}
                         presets={presets}
+                        capabilityDefinition={capabilityDefinition}
                         actorPermissions={tenant.permissions}
                         role={editing === 'new' ? null : editing}
                         canAssignPermissions={can.assignPermissions}
@@ -681,6 +685,9 @@ function RolesSection({
                         <p className="text-[13px] text-ink-muted">
                             {role.permissions.length} {t('usersAccess.permissionsCount')} · {role.members_count} {t('usersAccess.membersCount')}
                         </p>
+                        {summarizeRole(capabilityDefinition, role.permissions).conflicts.length > 0 && (
+                            <p className="mt-1.5 text-[12px] font-medium text-warning">{t('roles.conflict.payments_cash_control.title')}</p>
+                        )}
                     </button>
                 ))}
             </div>

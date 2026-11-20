@@ -10,6 +10,7 @@ use App\Models\Role;
 use App\Models\StoreMembership;
 use App\Models\UserInvitation;
 use App\Models\Warehouse;
+use App\Support\Roles\RoleCapabilitySummary;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
@@ -137,6 +138,7 @@ class UsersAccessController extends Controller
                 'name' => $preset['name'],
                 'permissions' => $preset['permissions'],
             ])->values(),
+            'roleCapabilities' => RoleCapabilitySummary::definition(),
             'stores' => $stores,
             'warehouses' => $warehouses,
             'can' => [

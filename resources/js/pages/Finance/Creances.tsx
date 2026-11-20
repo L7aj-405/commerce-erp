@@ -1,6 +1,7 @@
 import FinanceFilters, { type FinanceStore } from '@/components/finance/FinanceFilters';
 import PageHeader from '@/components/ui/PageHeader';
 import EmptyState from '@/components/ui/EmptyState';
+import InfoTip from '@/components/ui/InfoTip';
 import { TablePager, TableShell } from '@/components/ui/TableShell';
 import StatusBadge from '@/components/ui/StatusBadge';
 import { useI18n } from '@/i18n';
@@ -41,6 +42,10 @@ export default function FinanceCreances({ organization, period, periodLabel, asO
                 title={t('finance.receivables.title')}
                 description={`${organization.name} · ${t('finance.receivables.balanceAt')} ${asOf} (${periodLabel}) · ${t('common.total')} : ${formatMoney(total)}`}
             />
+            <p className="mb-3 flex flex-wrap items-center gap-1 text-sm text-ink-muted">
+                {t('finance.receivables.title')} : <strong className="text-ink" dir="ltr">{formatMoney(total)}</strong>
+                <InfoTip label={t('finance.receivables.totalDefinitionLabel')}>{t('finance.receivables.totalDefinition')}</InfoTip>
+            </p>
             <FinanceFilters path="/finance/creances" period={period} storeId={storeId} stores={stores} />
 
             {/* Desktop/tablet: table */}

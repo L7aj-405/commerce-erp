@@ -11,8 +11,9 @@ use App\Enums\InvoiceStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Documents\CreateInvoiceRequest;
 use App\Http\Requests\Documents\UpdateInvoiceDraftRequest;
-use App\Models\Invoice;
 use App\Models\CreditNote;
+use App\Models\Invoice;
+use App\Models\Payment;
 use App\Models\SalesOrder;
 use App\Services\ActiveTenantContext;
 use App\Services\DocumentSellerProfile;
@@ -91,8 +92,7 @@ class InvoiceController extends Controller
         OrganizationOutboundMailService $mail,
         DocumentStampRenderer $stampRenderer,
         WhatsAppContactLinkResolver $whatsapp,
-    ): Response
-    {
+    ): Response {
         $this->authorize('view', $invoice);
         $invoice->load([
             'store:id,name,code',
@@ -180,12 +180,18 @@ class InvoiceController extends Controller
             ->get(['id', 'invoice_id', 'credit_note_number', 'credit_note_date', 'status', 'total_incl_tax']);
         $credited = $creditNotes->reduce(fn (string $sum, $note) => Decimal::add($sum, $note->total_incl_tax), '0.0000');
         $netAfterCredits = Decimal::subtract($invoice->total_incl_tax, $credited);
-        if (Decimal::compare($netAfterCredits, '0.0000') < 0) $netAfterCredits = '0.0000';
+        if (Decimal::compare($netAfterCredits, '0.0000') < 0) {
+            $netAfterCredits = '0.0000';
+        }
         $paymentSummary = $payments->summary($invoice->salesOrder);
         $receivable = Decimal::subtract($netAfterCredits, $paymentSummary['net']);
         $refundObligation = Decimal::subtract($paymentSummary['net'], $netAfterCredits);
-        if (Decimal::compare($receivable, '0.0000') < 0) $receivable = '0.0000';
-        if (Decimal::compare($refundObligation, '0.0000') < 0) $refundObligation = '0.0000';
+        if (Decimal::compare($receivable, '0.0000') < 0) {
+            $receivable = '0.0000';
+        }
+        if (Decimal::compare($refundObligation, '0.0000') < 0) {
+            $refundObligation = '0.0000';
+        }
         $stampRenderable = $stampRenderer->isRenderable($invoice->stampApposition);
         $whatsappMessage = $this->whatsappMessage($invoice, $formatter, $sharePdfUrl);
         $whatsappDestination = $whatsapp->resolve(
@@ -235,6 +241,7 @@ class InvoiceController extends Controller
                 'configureMail' => $request->user()->hasPermission($invoice->organization_id, 'settings.update'),
                 'stamp' => $request->user()->can('stamp', $invoice) && ! $invoice->stampApposition,
                 'viewOrder' => $request->user()->can('view', $invoice->salesOrder),
+                'recordPayment' => $request->user()->can('create', [Payment::class, $invoice->salesOrder]),
             ],
         ]);
     }

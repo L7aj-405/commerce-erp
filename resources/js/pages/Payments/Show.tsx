@@ -164,6 +164,9 @@ export default function PaymentShow({ payment, can }: Props) {
                     <h3 className="mb-3 font-semibold text-danger">
                         {t("payments.refunds")}
                     </h3>
+                    <p className="mb-3 text-sm text-ink-muted">
+                        {t("payments.refundHelp")}
+                    </p>
                     {payment.refunds.map((refund) => (
                         <div
                             key={refund.id}
