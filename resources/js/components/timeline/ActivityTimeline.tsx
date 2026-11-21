@@ -1,5 +1,6 @@
 import DocBadge from '@/components/ui/DocBadge';
 import { useI18n } from '@/i18n';
+import { formatMoney } from '@/utils/format';
 import { fr, type TranslationKey } from '@/i18n/translations';
 import { Link, router } from '@inertiajs/react';
 import { useCallback, useEffect, useState } from 'react';
@@ -93,13 +94,8 @@ export default function ActivityTimeline({ subject, id }: { subject: 'customer' 
         return when(iso);
     };
     const day = (date: string) => new Intl.DateTimeFormat(intl, { timeZone: 'UTC', dateStyle: 'medium' }).format(new Date(`${date}T00:00:00Z`));
-    const money = (amount: string, currency: string) => {
-        try {
-            return new Intl.NumberFormat(intl, { style: 'currency', currency }).format(Number(amount));
-        } catch {
-            return `${amount} ${currency}`;
-        }
-    };
+    // Shared formatter keeps the unit identical to the page's summary cards (MAD -> "DH" in both locales).
+    const money = (amount: string, currency: string) => formatMoney(amount, currency);
     const text = (key: string, params: Record<string, string> = {}) => (isKey(key) ? t(key) : key).replace(/\{(\w+)\}/g, (_, name: string) => params[name] ?? '');
 
     const describe = (entry: TimelineEntry): { label: string; context: string[]; chip: string | null } => {
