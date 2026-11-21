@@ -4,10 +4,10 @@ namespace Tests\Feature\Returns;
 
 use App\Actions\Documents\CreateFullInvoiceFromSalesOrderAction;
 use App\Actions\Documents\IssueInvoiceAction;
+use App\Actions\Pos\AddItemsToCompletedPosOrderAction;
 use App\Actions\Returns\CreateCustomerReturnAction;
 use App\Actions\Returns\ReceiveCustomerReturnAction;
 use App\Actions\Returns\RefundCustomerReturnAction;
-use App\Actions\Pos\AddItemsToCompletedPosOrderAction;
 use App\Contracts\PdfGenerator;
 use App\Enums\InvoiceStatus;
 use App\Models\AuditLog;
@@ -20,14 +20,14 @@ use App\Models\Payment;
 use App\Models\PaymentRefund;
 use App\Models\SalesOrder;
 use App\Models\User;
-use App\Services\ReturnPolicyService;
 use App\Services\CreditNoteDocumentRenderer;
+use App\Services\Finance\Export\FinanceCaEncaisseFullPackageExport;
+use App\Services\Finance\Export\FinanceCaEncaisseInvoiceZipExport;
+use App\Services\Finance\FinanceJournalService;
 use App\Services\Finance\FinanceMonthlyReportService;
 use App\Services\Finance\FinancePeriod;
 use App\Services\Finance\FinanceReceivablesService;
-use App\Services\Finance\FinanceJournalService;
-use App\Services\Finance\Export\FinanceCaEncaisseFullPackageExport;
-use App\Services\Finance\Export\FinanceCaEncaisseInvoiceZipExport;
+use App\Services\ReturnPolicyService;
 use App\Support\Decimal;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Carbon;
@@ -51,18 +51,81 @@ class CustomerReturnWorkflowTest extends PosTestCase
     public function test_deadline_boundary_is_inclusive_and_expired_cashier_is_blocked(): void
     {
         [$owner, $order] = $this->fulfilledOrder(['window_value' => 24, 'window_unit' => 'hours', 'window_minutes' => 1440]);
-        $order->fulfilled_at = CarbonImmutable::parse('2026-09-19 15:00:00'); $order->save();
+        $order->fulfilled_at = CarbonImmutable::parse('2026-09-19 15:00:00');
+        $order->save();
         $atDeadline = app(ReturnPolicyService::class)->evaluate($order->fresh(), CarbonImmutable::parse('2026-09-20 15:00:00'));
         $this->assertTrue($atDeadline['within_policy']);
-        $order->fulfilled_at = now()->subHours(25); $order->save();
+        $order->fulfilled_at = now()->subHours(25);
+        $order->save();
         $this->expectException(ValidationException::class);
         app(CreateCustomerReturnAction::class)->execute($owner, $order->fresh(), [['sales_order_line_id' => $order->lines()->first()->id, 'quantity' => '1']], 'Retour', 'restock', (string) Str::uuid());
+    }
+
+    public function test_status_distinguishes_before_at_and_after_deadline_in_the_business_timezone(): void
+    {
+        [$owner, $order] = $this->fulfilledOrder(['window_value' => 24, 'window_unit' => 'hours', 'window_minutes' => 1440]);
+        $organization = $order->organization;
+        $organization->settings = array_replace($organization->settings ?? [], ['timezone' => 'Asia/Dubai']);
+        $organization->save();
+        // Asia/Dubai is UTC+4 with no DST: fulfilled 2026-11-19 15:06 local == 11:06 UTC; deadline == 2026-11-20 15:06 local.
+        $order->fulfilled_at = CarbonImmutable::parse('2026-11-19 11:06:00', 'UTC');
+        $order->save();
+        $service = app(ReturnPolicyService::class);
+
+        $before = $service->evaluate($order->fresh(), CarbonImmutable::parse('2026-11-20 11:05:59', 'UTC'));
+        $at = $service->evaluate($order->fresh(), CarbonImmutable::parse('2026-11-20 11:06:00', 'UTC'));
+        $after = $service->evaluate($order->fresh(), CarbonImmutable::parse('2026-11-20 11:06:01', 'UTC'));
+
+        $this->assertSame(['within_window', true, true], [$before['status'], $before['within_policy'], $before['window_open']]);
+        $this->assertSame(['within_window', true, true], [$at['status'], $at['within_policy'], $at['window_open']]);
+        $this->assertSame(['window_expired', false, false], [$after['status'], $after['within_policy'], $after['window_open']]);
+        $this->assertSame('2026-11-20T15:06:00+04:00', $at['deadline'], 'deadline is reported in the organization business timezone');
+    }
+
+    public function test_disabled_returns_are_reported_as_disabled_not_as_an_expired_deadline(): void
+    {
+        // Reproduces SO-000012: deadline still in the future, returns disabled -> UI used to say "Délai de retour dépassé".
+        [$owner, $order] = $this->fulfilledOrder(['enabled' => false]);
+        $order->fulfilled_at = now()->subDays(2);
+        $order->save();
+
+        $policy = app(ReturnPolicyService::class)->evaluate($order->fresh());
+
+        $this->assertSame('disabled', $policy['status']);
+        $this->assertFalse($policy['within_policy']);
+        $this->assertTrue($policy['window_open'], 'the deadline has not passed; only the policy is switched off');
+        $this->actingAs($owner)->get(route('sales.orders.show', $order))->assertInertia(fn (Assert $page) => $page->where('returnPolicy.status', 'disabled'));
+        $this->actingAs($owner)->get(route('sales.returns.search', ['search' => $order->order_number]))->assertOk()->assertJsonPath('data.0.status', 'disabled');
+    }
+
+    public function test_backend_refusal_reasons_match_the_reported_status(): void
+    {
+        [$owner, $disabled] = $this->fulfilledOrder(['enabled' => false]);
+        $lineId = $disabled->lines()->first()->id;
+        try {
+            app(CreateCustomerReturnAction::class)->execute($owner, $disabled, [['sales_order_line_id' => $lineId, 'quantity' => '1']], 'Retour', 'restock', (string) Str::uuid());
+            $this->fail('disabled returns must be refused');
+        } catch (ValidationException $e) {
+            $this->assertSame('Les retours sont désactivés.', $e->errors()['order'][0]);
+        }
+
+        [$owner, $expired] = $this->fulfilledOrder();
+        $expired->fulfilled_at = now()->subDays(8);
+        $expired->save();
+        $this->assertSame('window_expired', app(ReturnPolicyService::class)->evaluate($expired->fresh())['status']);
+        try {
+            app(CreateCustomerReturnAction::class)->execute($owner, $expired->fresh(), [['sales_order_line_id' => $expired->lines()->first()->id, 'quantity' => '1']], 'Retour', 'restock', (string) Str::uuid());
+            $this->fail('expired window must be refused');
+        } catch (ValidationException $e) {
+            $this->assertSame('Délai de retour dépassé.', $e->errors()['order'][0]);
+        }
     }
 
     public function test_manager_override_requires_configuration_permission_reason_and_is_audited(): void
     {
         [$owner, $order] = $this->fulfilledOrder(['window_minutes' => 60, 'manager_override_allowed' => true]);
-        $order->fulfilled_at = now()->subHours(2); $order->save();
+        $order->fulfilled_at = now()->subHours(2);
+        $order->save();
         $return = app(CreateCustomerReturnAction::class)->execute($owner, $order->fresh(), [['sales_order_line_id' => $order->lines()->first()->id, 'quantity' => '1']], 'Client insatisfait', 'restock', (string) Str::uuid(), true, 'Autorisation responsable');
         $this->assertTrue($return->policy_snapshot['override_used']);
         $this->assertSame('Autorisation responsable', $return->policy_snapshot['override_reason']);
@@ -140,7 +203,10 @@ class CustomerReturnWorkflowTest extends PosTestCase
         } catch (ValidationException) {
             $this->assertDatabaseCount('customer_returns', 1);
         }
-        $attacker = User::factory()->create(); $other = $this->createOrganization($attacker); $otherStore = $this->createStore($other, $attacker); $this->activate($attacker, $other, $otherStore);
+        $attacker = User::factory()->create();
+        $other = $this->createOrganization($attacker);
+        $otherStore = $this->createStore($other, $attacker);
+        $this->activate($attacker, $other, $otherStore);
         $return = CustomerReturn::query()->firstOrFail();
         $this->actingAs($attacker)->get("/sales/returns/{$return->id}")->assertNotFound();
     }
@@ -160,7 +226,8 @@ class CustomerReturnWorkflowTest extends PosTestCase
     {
         [$owner, $order] = $this->fulfilledOrder();
         app(IssueInvoiceAction::class)->execute($owner, app(CreateFullInvoiceFromSalesOrderAction::class)->execute($owner, $order));
-        $return = $this->createReturn($owner, $order, '1.0000'); app(ReceiveCustomerReturnAction::class)->execute($owner, $return);
+        $return = $this->createReturn($owner, $order, '1.0000');
+        app(ReceiveCustomerReturnAction::class)->execute($owner, $return);
         $payment = Payment::query()->whereHas('allocations', fn ($query) => $query->where('sales_order_id', $order->id))->firstOrFail();
         $operationId = (string) Str::uuid();
         $refund = app(RefundCustomerReturnAction::class)->execute($owner, $return->fresh(), $payment, '50.0000', 'Remboursement partiel', $operationId);
@@ -687,10 +754,17 @@ class CustomerReturnWorkflowTest extends PosTestCase
     /** @return array{User,SalesOrder,InventoryBalance} */
     private function fulfilledOrder(array $policy = [], array $lineOverrides = [], ?string $paymentAmount = null): array
     {
-        $owner = User::factory()->create(); $organization = $this->createOrganization($owner); $store = $this->createStore($organization, $owner); $warehouse = $this->createWarehouse($organization);
-        $settings = $organization->settings ?? []; $settings['return_policy'] = array_replace(['enabled' => true, 'window_value' => 7, 'window_unit' => 'days', 'window_minutes' => 10080, 'allow_partial' => true, 'allow_full' => true, 'manager_override_allowed' => false, 'require_reason' => true, 'default_disposition' => 'restock'], $policy); $organization->settings = $settings; $organization->save();
+        $owner = User::factory()->create();
+        $organization = $this->createOrganization($owner);
+        $store = $this->createStore($organization, $owner);
+        $warehouse = $this->createWarehouse($organization);
+        $settings = $organization->settings ?? [];
+        $settings['return_policy'] = array_replace(['enabled' => true, 'window_value' => 7, 'window_unit' => 'days', 'window_minutes' => 10080, 'allow_partial' => true, 'allow_full' => true, 'manager_override_allowed' => false, 'require_reason' => true, 'default_disposition' => 'restock'], $policy);
+        $organization->settings = $settings;
+        $organization->save();
         $variant = $this->createProduct($organization, 'Returned Product', 'RET-1', ['default_sale_price' => '100.0000'])->variants->first();
-        $this->activate($owner, $organization, $store); $this->openStock($owner, $organization, $warehouse, $variant, (string) ($lineOverrides['quantity'] ?? '2.0000'));
+        $this->activate($owner, $organization, $store);
+        $this->openStock($owner, $organization, $warehouse, $variant, (string) ($lineOverrides['quantity'] ?? '2.0000'));
         $payload = $this->posPayload($warehouse, [$this->posCatalogLine($variant, array_replace(['quantity' => '2.0000'], $lineOverrides))]);
         if ($paymentAmount !== null) {
             $payload['payments'][0]['amount'] = $paymentAmount;
@@ -699,6 +773,7 @@ class CustomerReturnWorkflowTest extends PosTestCase
         $this->actingAs($owner)->post(route('pos.sales.store'), $payload)->assertRedirect();
         $order = SalesOrder::query()->where('organization_id', $organization->id)->where('store_id', $store->id)->sole();
         $balance = InventoryBalance::query()->where('warehouse_id', $warehouse->id)->where('product_variant_id', $variant->id)->firstOrFail();
+
         return [$owner, $order, $balance];
     }
 
