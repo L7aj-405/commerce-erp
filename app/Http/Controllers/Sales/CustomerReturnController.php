@@ -55,7 +55,7 @@ class CustomerReturnController extends Controller
         return response()->json(['data' => $orders->map(function (SalesOrder $order) use ($policies) {
             $policy = $policies->evaluate($order);
 
-            return ['id' => $order->id, 'order_number' => $order->order_number, 'customer_name' => $order->customer_name, 'fulfilled_at' => $order->fulfilled_at?->toIso8601String(), 'deadline' => $policy['deadline'], 'eligible' => $policy['within_policy'], 'returns_enabled' => $policy['enabled'], 'invoice_numbers' => $order->invoices->pluck('invoice_number')->filter()->values()];
+            return ['id' => $order->id, 'order_number' => $order->order_number, 'customer_name' => $order->customer_name, 'fulfilled_at' => $order->fulfilled_at?->toIso8601String(), 'deadline' => $policy['deadline'], 'eligible' => $policy['within_policy'], 'returns_enabled' => $policy['enabled'], 'status' => $policy['status'], 'invoice_numbers' => $order->invoices->pluck('invoice_number')->filter()->values()];
         })->values()]);
     }
 
