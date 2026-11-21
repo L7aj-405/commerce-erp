@@ -326,6 +326,43 @@ class OrganizationBackupTest extends DocumentTestCase
         $this->assertGreaterThan(0, InventoryMovement::query()->where('organization_id', $organization->id)->count());
     }
 
+    public function test_pre_restore_snapshot_is_valid_and_holds_the_state_replaced_by_the_restore(): void
+    {
+        [$owner, $organization, , , , $order] = $this->backupFixture();
+        $archive = app(OrganizationBackupExporter::class)->create($organization, $owner);
+        Product::query()->where('organization_id', $organization->id)->update(['name' => 'Changed Product']);
+
+        $result = app(RestoreOrganizationBackupAction::class)->execute($owner, $organization, $archive->path);
+        $snapshot = $result['pre_restore_path'];
+
+        try {
+            // Independently valid: signature, encryption and checksum pass and it belongs to this organization.
+            $this->assertFileExists($snapshot);
+            $validator = app(OrganizationBackupValidator::class);
+            $summary = $validator->validatePath($snapshot, $organization);
+            $this->assertSame($organization->id, (int) $summary['manifest']['source_organization_id']);
+
+            // Correct contents: it captured the pre-restore (changed) data, not the backup's data.
+            $zip = $validator->open($snapshot);
+            try {
+                $products = (string) $zip->getFromName('data/products.jsonl');
+                $orders = (string) $zip->getFromName('data/sales_orders.jsonl');
+            } finally {
+                $zip->close();
+            }
+            $this->assertStringContainsString('Changed Product', $products);
+            $this->assertStringNotContainsString('Backup Product', $products);
+            $this->assertStringContainsString((string) $order->order_number, $orders);
+
+            // The live data was restored, and the audit event names the snapshot.
+            $this->assertDatabaseHas('products', ['organization_id' => $organization->id, 'name' => 'Backup Product']);
+            $audit = AuditLog::query()->where('event', 'organization_backup.restored')->where('organization_id', $organization->id)->latest('id')->firstOrFail();
+            $this->assertSame(basename($snapshot), $audit->new_values['pre_restore_snapshot']);
+        } finally {
+            @unlink($snapshot);
+        }
+    }
+
     public function test_restore_fails_before_mutation_when_preserved_membership_references_store_absent_from_backup(): void
     {
         [$owner, $organization] = $this->backupFixture();
