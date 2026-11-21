@@ -7,14 +7,21 @@ use App\Actions\Sales\ConfirmSalesOrderAction;
 use App\Models\AuditLog;
 use App\Models\Customer;
 use App\Models\InventoryMovement;
+use App\Models\Invoice;
+use App\Models\Organization;
+use App\Models\OrganizationMailSetting;
 use App\Models\Payment;
 use App\Models\Product;
+use App\Models\ProductVariant;
+use App\Models\SalesOrder;
+use App\Models\Store;
 use App\Models\User;
+use App\Models\Warehouse;
 use App\Models\WooCommerceIntegration;
 use App\Services\FollowUps\FollowUpAssignmentReleaser;
+use App\Services\OrganizationBackups\OrganizationBackupCryptography;
 use App\Services\OrganizationBackups\OrganizationBackupException;
 use App\Services\OrganizationBackups\OrganizationBackupExporter;
-use App\Services\OrganizationBackups\OrganizationBackupCryptography;
 use App\Services\OrganizationBackups\OrganizationBackupRestorer;
 use App\Services\OrganizationBackups\OrganizationBackupSchema;
 use App\Services\OrganizationBackups\OrganizationBackupValidator;
@@ -580,7 +587,7 @@ class OrganizationBackupTest extends DocumentTestCase
     public function test_tenant_credentials_and_audit_history_are_not_packaged(): void
     {
         [$owner, $organization] = $this->backupFixture();
-        $mail = new \App\Models\OrganizationMailSetting;
+        $mail = new OrganizationMailSetting;
         $mail->organization_id = $organization->id;
         $mail->sender_name = 'Secret';
         $mail->sender_email = 'secret@example.test';
@@ -636,7 +643,7 @@ class OrganizationBackupTest extends DocumentTestCase
             ->assertRedirect(route('security.confirm'));
     }
 
-    /** @return array{User, \App\Models\Organization, \App\Models\Store, \App\Models\Warehouse, \App\Models\ProductVariant, \App\Models\SalesOrder, \App\Models\Invoice, Payment} */
+    /** @return array{User, Organization, Store, Warehouse, ProductVariant, SalesOrder, Invoice, Payment} */
     private function backupFixture(): array
     {
         $owner = User::factory()->create();
