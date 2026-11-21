@@ -86,7 +86,7 @@ class FinanceReconciliationService
         $position = $this->accounts->organizationPosition($organization, $today);
         $rows = array_filter($position['accounts'], fn (array $a) => $a['configured']);
         if ($rows === []) {
-            return $this->skipped('R-2', 'Financial account balances = opening + movements', 'No financial account has an opening position.');
+            return $this->skipped('R-2', 'Financial account balances = opening + movements', $this->r2CoverageNote($id, $today->toDateString(), []));
         }
 
         $violations = [];
@@ -104,9 +104,73 @@ class FinanceReconciliationService
             }
         }
 
-        $note = $position['unconfigured_count'] > 0 ? "{$position['unconfigured_count']} account(s) without opening position were not checked." : null;
+        $note = $this->r2CoverageNote($id, $today->toDateString(), array_column($rows, 'id'));
 
         return $this->violationResult('R-2', 'Financial account balances = opening + movements', $violations, $sample, $note);
+    }
+
+    /**
+     * Coverage disclosure for R-2 (read-only; aggregate counts and account ids only, never names/codes/amounts).
+     * R-2 itself only examines ACTIVE accounts whose opening position is effective on or before today; this states
+     * how many accounts that was, which accounts were left out and why, and whether the excluded ones carry posted
+     * movements. A PASS therefore only covers the examined accounts.
+     *
+     * @param  list<int|string>  $checkedIds
+     */
+    private function r2CoverageNote(int $organizationId, string $today, array $checkedIds): string
+    {
+        $accounts = DB::table('financial_accounts as fa')
+            ->leftJoin('financial_account_opening_positions as op', function ($join) {
+                $join->on('op.organization_id', '=', 'fa.organization_id')->on('op.financial_account_id', '=', 'fa.id');
+            })
+            ->where('fa.organization_id', $organizationId)
+            ->orderBy('fa.id')
+            ->get(['fa.id', 'fa.status', 'op.effective_date']);
+
+        $total = $accounts->count();
+        if ($total === 0) {
+            return 'Coverage: 0 of 0 account(s) checked; the organization has no financial account.';
+        }
+
+        $checked = array_map('intval', $checkedIds);
+        $reasons = ['inactive' => [], 'no_opening_position' => [], 'opening_in_future' => []];
+        foreach ($accounts as $account) {
+            if (in_array((int) $account->id, $checked, true)) {
+                continue;
+            }
+            $effective = $account->effective_date === null ? null : substr((string) $account->effective_date, 0, 10);
+            $key = $account->status !== 'active' ? 'inactive' : ($effective === null ? 'no_opening_position' : 'opening_in_future');
+            $reasons[$key][] = (int) $account->id;
+        }
+
+        $excludedIds = array_merge(...array_values($reasons));
+        $note = count($checked).' of '.$total.' account(s) checked.';
+        if ($excludedIds === []) {
+            return "Coverage: {$note} All financial accounts were examined.";
+        }
+
+        $labels = ['inactive' => 'inactive status', 'no_opening_position' => 'no opening position', 'opening_in_future' => 'opening position effective after '.$today];
+        $parts = [];
+        foreach ($reasons as $key => $ids) {
+            if ($ids !== []) {
+                $parts[] = count($ids)." {$labels[$key]}";
+            }
+        }
+
+        $withMovements = [];
+        foreach ([['payments'], ['payment_refunds'], ['finance_outgoing_payments']] as [$table]) {
+            foreach (DB::table($table)->where('organization_id', $organizationId)->where('status', 'posted')
+                ->whereIn('financial_account_id', $excludedIds)->distinct()->pluck('financial_account_id') as $id) {
+                $withMovements[(int) $id] = true;
+            }
+        }
+        ksort($withMovements);
+        $movementText = $withMovements === []
+            ? 'None of them has posted movements.'
+            : count($withMovements).' of them have posted movements that were NOT reconciled (account id '.implode(', ', array_slice(array_keys($withMovements), 0, 20)).').';
+
+        return "Coverage: {$note} ".count($excludedIds).' account(s) not checked ('.implode('; ', $parts).'). '.$movementText
+            .' A PASS covers only the checked accounts.';
     }
 
     /** R-3: monthly collected (report) = Σ posted allocations of the month - refunds of the month. */
