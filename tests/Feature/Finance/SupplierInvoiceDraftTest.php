@@ -408,7 +408,7 @@ class SupplierInvoiceDraftTest extends SupplierInvoiceTestCase
             ->where('invoice.approval', null)->where('invoice.void', null)
             ->where('matching.status', 'no_po')->has('matching.lines', 1)
             ->where('warnings', [])
-            ->where('can.edit', true)->where('can.approve', true)->where('can.void', true)->where('can.attach', false));
+            ->where('can.edit', true)->where('can.approve', true)->where('can.void', true)->where('can.attach', true));
 
         $this->actingAs($this->owner)->get(route('finance.supplier-invoices.create'))->assertOk()->assertInertia(fn (Assert $page) => $page
             ->component('Finance/SupplierInvoices/Form')->where('invoice', null)
