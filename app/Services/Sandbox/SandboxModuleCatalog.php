@@ -36,6 +36,7 @@ final class SandboxModuleCatalog
         'Demandes de transfert entre entrepôts (aucun transfert interne généré par une réception test)',
         'Rapports finance, créances et commissions',
         'Catalogue, clients et paramètres (données partagées, lecture seule)',
+        'Factures fournisseurs et échéanciers générés (Production uniquement)',
         'Intégrations (WooCommerce…)',
         'Réinitialisation du mode test',
     ];
