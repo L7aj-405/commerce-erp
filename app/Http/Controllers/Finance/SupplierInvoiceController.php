@@ -4,12 +4,14 @@ namespace App\Http\Controllers\Finance;
 
 use App\Actions\SupplierInvoices\ApproveSupplierInvoiceAction;
 use App\Actions\SupplierInvoices\SaveSupplierInvoiceDraftAction;
+use App\Actions\SupplierInvoices\VoidSupplierInvoiceAction;
 use App\Enums\PurchaseOrderStatus;
 use App\Enums\SupplierInvoiceStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Finance\ApproveSupplierInvoiceRequest;
 use App\Http\Requests\Finance\StoreSupplierInvoiceRequest;
 use App\Http\Requests\Finance\UpdateSupplierInvoiceRequest;
+use App\Http\Requests\Finance\VoidSupplierInvoiceRequest;
 use App\Models\FinancialAccount;
 use App\Models\Organization;
 use App\Models\PurchaseOrder;
@@ -150,6 +152,14 @@ class SupplierInvoiceController extends Controller implements HasMiddleware
 
         return redirect()->route('finance.supplier-invoices.show', $result['invoice'])
             ->with('success', $result['approved_now'] ? 'Facture approuvée : les échéances sont créées dans la situation de fin de mois.' : 'Facture déjà approuvée.');
+    }
+
+    public function void(VoidSupplierInvoiceRequest $request, SupplierInvoice $supplierInvoice, VoidSupplierInvoiceAction $action): RedirectResponse
+    {
+        $result = $action->execute($request->user(), $supplierInvoice, $request->validated());
+
+        return redirect()->route('finance.supplier-invoices.show', $result['invoice'])
+            ->with('success', $result['voided_now'] ? 'Facture fournisseur annulée.' : 'Facture déjà annulée.');
     }
 
     private function loadDetail(SupplierInvoice $invoice): SupplierInvoice
