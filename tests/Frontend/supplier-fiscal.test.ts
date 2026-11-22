@@ -1,7 +1,7 @@
 // Run: node --test tests/Frontend/supplier-fiscal.test.ts
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { blankFiscalForm, fiscalPayload, fiscalToForm, mapFiscalWarnings } from '../../resources/js/components/procurement/supplierFiscal.ts';
+import { blankFiscalForm, fiscalPayload, fiscalToForm, mapFiscalWarnings, mapSupplierFiscal } from '../../resources/js/components/procurement/supplierFiscal.ts';
 
 test('payload: blanks clear to null, IBAN omitted unless typed', () => {
     const p = fiscalPayload({ ...blankFiscalForm, ice: ' 001234567000089 ', default_currency_code: 'mad', default_payment_term_days: '30' });
@@ -14,11 +14,16 @@ test('payload: blanks clear to null, IBAN omitted unless typed', () => {
 });
 
 test('form prefill never contains an IBAN', () => {
-    assert.equal(fiscalToForm({ ice: 'X', bank_iban_masked: 'MA64 **** 1234' }).bank_iban, '');
+    assert.equal(fiscalToForm({ ice: 'X', bank_iban: 'MA64FULL', bank_iban_masked: '****1234' }).bank_iban, '');
 });
 
-test('warnings: page-level prop wins, blanks dropped', () => {
-    assert.deepEqual(mapFiscalWarnings({ fiscal_warnings: ['a'] }, ['b', ' ']), ['b']);
-    assert.deepEqual(mapFiscalWarnings({ fiscal_warnings: ['a'] }), ['a']);
+test('warnings: maps backend {field,code,message} items to messages, drops blanks', () => {
+    assert.deepEqual(mapFiscalWarnings([{ field: 'ice', code: 'ice_format', message: 'ICE invalide' }, { message: ' ' }]), ['ICE invalide']);
     assert.deepEqual(mapFiscalWarnings(undefined), []);
+});
+
+test('has_bank_iban comes from the list flag; masked implies presence', () => {
+    assert.equal(mapSupplierFiscal({ has_bank_iban: true }).has_bank_iban, true);
+    assert.equal(mapSupplierFiscal({ bank_iban_masked: '****1234' }).has_bank_iban, true);
+    assert.equal(mapSupplierFiscal({}).has_bank_iban, false);
 });

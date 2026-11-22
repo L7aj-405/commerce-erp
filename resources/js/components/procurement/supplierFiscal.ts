@@ -2,8 +2,8 @@
  * Supplier fiscal information: the ONE place that maps backend props to UI shape.
  * Contract (Inertia):
  *  - supplier.ice / tax_identifier / rc_number / default_payment_term_days / default_currency_code
- *  - supplier.bank_iban_masked: string|null  (detail page only; the full IBAN is never sent to the browser)
- *  - fiscal_warnings: string[]  (advisory, French, never blocking) — page-level prop on Show, or supplier.fiscal_warnings
+ *  - list rows: has_bank_iban (bool) only; show: has_bank_iban + bank_iban_masked ('****1234') (+ full bank_iban for managers, ignored here)
+ *  - warnings: [{field, code, message}] top-level prop on Show (advisory, French, never blocking)
  *  - on save: bank_iban is sent ONLY when the user typed a new value (omitted = keep current).
  */
 export type SupplierFiscal = {
@@ -13,9 +13,14 @@ export type SupplierFiscal = {
     default_payment_term_days: number | null;
     default_currency_code: string | null;
     bank_iban_masked: string | null;
+    has_bank_iban: boolean;
 };
 
-export type SupplierFiscalRaw = Partial<SupplierFiscal> & { fiscal_warnings?: string[] | null };
+/** Backend warning item (top-level `warnings` on Show). Codes: ice_format, tax_identifier_format, ice_duplicate. */
+export type FiscalWarningItem = { field?: string; code?: string; message: string };
+
+/** `bank_iban` (full value) may be present on Show for suppliers.manage users; the UI never displays or prefills it. */
+export type SupplierFiscalRaw = Partial<Omit<SupplierFiscal, 'has_bank_iban'>> & { has_bank_iban?: boolean; bank_iban?: string | null };
 
 export type SupplierFiscalFormData = {
     ice: string;
@@ -43,11 +48,12 @@ export function mapSupplierFiscal(raw: SupplierFiscalRaw): SupplierFiscal {
         default_payment_term_days: raw.default_payment_term_days ?? null,
         default_currency_code: raw.default_currency_code ?? null,
         bank_iban_masked: raw.bank_iban_masked ?? null,
+        has_bank_iban: raw.has_bank_iban ?? raw.bank_iban_masked != null,
     };
 }
 
-export function mapFiscalWarnings(raw: { fiscal_warnings?: string[] | null } | undefined, pageLevel?: string[] | null): string[] {
-    return [...(pageLevel ?? raw?.fiscal_warnings ?? [])].filter((message) => typeof message === 'string' && message.trim() !== '');
+export function mapFiscalWarnings(items: (FiscalWarningItem | string)[] | null | undefined): string[] {
+    return (items ?? []).map((item) => (typeof item === 'string' ? item : item.message)).filter((message) => typeof message === 'string' && message.trim() !== '');
 }
 
 export function fiscalToForm(raw: SupplierFiscalRaw): SupplierFiscalFormData {

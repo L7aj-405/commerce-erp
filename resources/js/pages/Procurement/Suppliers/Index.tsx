@@ -5,7 +5,7 @@ import EmptyState from '@/components/ui/EmptyState';
 import { Checkbox, FieldError } from '@/components/ui/form';
 import PageHeader from '@/components/ui/PageHeader';
 import { SupplierFiscalFields } from '@/components/procurement/SupplierFiscalFields';
-import { blankFiscalForm, fiscalPayload, fiscalToForm, mapFiscalWarnings } from '@/components/procurement/supplierFiscal';
+import { blankFiscalForm, fiscalPayload, fiscalToForm } from '@/components/procurement/supplierFiscal';
 import type { SupplierFiscalRaw } from '@/components/procurement/supplierFiscal';
 import { Sheet } from '@/components/ui/Sheet';
 import StatusBadge from '@/components/ui/StatusBadge';
@@ -300,8 +300,9 @@ export default function SuppliersIndex({ suppliers, filters, can }: Props) {
                         data={form.data}
                         setData={form.setData}
                         errors={form.errors}
-                        warnings={mapFiscalWarnings(editing ?? undefined)}
+                        warnings={[]}
                         ibanMasked={editing?.bank_iban_masked}
+                        hasIban={editing?.has_bank_iban}
                     />
                     <Checkbox label={t('suppliers.active')} checked={form.data.active} onChange={(e) => form.setData('active', e.target.checked)} />
                 </form>

@@ -5287,6 +5287,7 @@ export const fr = {
     "suppliers.fiscal.ibanSensitive": "Donnée sensible : masquée à l'affichage.",
     "suppliers.fiscal.ibanReplace": "Saisir un nouvel IBAN remplace l'actuel. Laisser vide pour le conserver.",
     "suppliers.fiscal.notProvided": "Non renseigné",
+    "suppliers.fiscal.ibanOnFile": "Un IBAN est enregistré.",
     "suppliers.fiscal.warningsTitle": "Vérifications indicatives",
     "suppliers.fiscal.warningsHint": "Ces remarques ne bloquent pas l'enregistrement.",
 } as const;
@@ -10429,6 +10430,7 @@ export const ar: Record<TranslationKey, string> = {
     "suppliers.fiscal.ibanSensitive": "بيانات حساسة: تُخفى عند العرض.",
     "suppliers.fiscal.ibanReplace": "إدخال IBAN جديد يستبدل الحالي. اتركه فارغًا للإبقاء عليه.",
     "suppliers.fiscal.notProvided": "غير مُدخل",
+    "suppliers.fiscal.ibanOnFile": "يوجد IBAN مسجّل.",
     "suppliers.fiscal.warningsTitle": "تحققات إرشادية",
     "suppliers.fiscal.warningsHint": "هذه الملاحظات لا تمنع الحفظ.",
 };
