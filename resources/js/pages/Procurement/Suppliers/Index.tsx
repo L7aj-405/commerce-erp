@@ -4,6 +4,9 @@ import { Button, ButtonLink } from '@/components/ui/Button';
 import EmptyState from '@/components/ui/EmptyState';
 import { Checkbox, FieldError } from '@/components/ui/form';
 import PageHeader from '@/components/ui/PageHeader';
+import { SupplierFiscalFields } from '@/components/procurement/SupplierFiscalFields';
+import { blankFiscalForm, fiscalPayload, fiscalToForm } from '@/components/procurement/supplierFiscal';
+import type { SupplierFiscalRaw } from '@/components/procurement/supplierFiscal';
 import { Sheet } from '@/components/ui/Sheet';
 import StatusBadge from '@/components/ui/StatusBadge';
 import { TablePager, TableShell } from '@/components/ui/TableShell';
@@ -23,7 +26,7 @@ type Supplier = {
     address: string | null;
     notes: string | null;
     active: boolean;
-};
+} & SupplierFiscalRaw;
 type LinkData = { url: string | null; label: string; active: boolean };
 type Props = {
     suppliers: { data: Supplier[]; links: LinkData[]; from?: number | null; to?: number | null; total?: number };
@@ -31,7 +34,7 @@ type Props = {
     can: { manage: boolean };
 };
 
-const blank = { name: '', contact_person: '', phone: '', email: '', address: '', notes: '', active: true };
+const blank = { name: '', contact_person: '', phone: '', email: '', address: '', notes: '', active: true, ...blankFiscalForm };
 
 export default function SuppliersIndex({ suppliers, filters, can }: Props) {
     const { t } = useI18n();
@@ -41,6 +44,12 @@ export default function SuppliersIndex({ suppliers, filters, can }: Props) {
     const [creating, setCreating] = useState(false);
     const form = useForm<typeof blank>({ ...blank });
     const formId = useId();
+    // Fiscal blanks -> null; bank_iban is sent only when a new one was typed (omitted = keep current).
+    form.transform((data) => {
+        const { ice, tax_identifier, rc_number, default_payment_term_days, default_currency_code, bank_iban, ...rest } = data;
+        void ice, void tax_identifier, void rc_number, void default_payment_term_days, void default_currency_code, void bank_iban;
+        return { ...rest, ...fiscalPayload(data) };
+    });
 
     const startCreate = () => {
         form.setData({ ...blank });
@@ -57,6 +66,7 @@ export default function SuppliersIndex({ suppliers, filters, can }: Props) {
             address: supplier.address ?? '',
             notes: supplier.notes ?? '',
             active: supplier.active,
+            ...fiscalToForm(supplier),
         });
         form.clearErrors();
         setCreating(false);
@@ -286,6 +296,14 @@ export default function SuppliersIndex({ suppliers, filters, can }: Props) {
                     <Field label={t('suppliers.notes')} error={form.errors.notes}>
                         <textarea value={form.data.notes} onChange={(e) => form.setData('notes', e.target.value)} rows={2} className="control-input w-full py-2" />
                     </Field>
+                    <SupplierFiscalFields
+                        data={form.data}
+                        setData={form.setData}
+                        errors={form.errors}
+                        warnings={[]}
+                        ibanMasked={editing?.bank_iban_masked}
+                        hasIban={editing?.has_bank_iban}
+                    />
                     <Checkbox label={t('suppliers.active')} checked={form.data.active} onChange={(e) => form.setData('active', e.target.checked)} />
                 </form>
             </Sheet>

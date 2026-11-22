@@ -10,7 +10,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Validation\ValidationException;
 
 /**
- * READ-ONLY financial / stock reconciliation report (Phase 1 Step 8, checks R-1 … R-7).
+ * READ-ONLY financial / stock reconciliation report (Phase 1 Step 8, checks R-1 … R-10).
  * Writes nothing: no data, no audit rows, no queued work. Exit code: 0 = no variance, 1 = variance found,
  * 2 = invalid input. Run it per organization; the organization is an operator argument, never request input.
  */
@@ -23,7 +23,7 @@ class FinanceReconcileCommand extends Command
         {--sample=20 : Maximum offending rows listed per check}
         {--json : Machine-readable output}';
 
-    protected $description = 'Read-only reconciliation report R-1…R-7 (receivables, accounts, monthly totals, payments, snapshots, stock)';
+    protected $description = 'Read-only reconciliation report R-1…R-10 (receivables, accounts, monthly totals, payments, snapshots, stock, supplier invoices vs obligations and allocations)';
 
     public function handle(FinanceReconciliationService $reconciliation): int
     {

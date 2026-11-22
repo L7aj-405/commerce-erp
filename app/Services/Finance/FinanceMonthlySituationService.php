@@ -51,7 +51,7 @@ class FinanceMonthlySituationService
         $paginator = $query
             ->select('finance_obligations.*')
             ->selectRaw(self::PAID_SQL.' as paid_amount')
-            ->with(['store:id,name,code', 'supplier:id,name', 'preferredFinancialAccount:id,name,code', 'createdBy:id,name', 'cancelledBy:id,name', 'paymentInstruments.financialAccount:id,name,code'])
+            ->with(['store:id,name,code', 'supplier:id,name', 'preferredFinancialAccount:id,name,code', 'createdBy:id,name', 'cancelledBy:id,name', 'paymentInstruments.financialAccount:id,name,code', 'supplierInvoiceInstallment:id,supplier_invoice_id', 'supplierInvoiceInstallment.supplierInvoice:id,internal_number,invoice_number'])
             ->orderByRaw('CASE WHEN due_date < ? AND cancelled_at IS NULL AND '.self::PAID_SQL.' < planned_amount THEN 0 ELSE 1 END', [$period->start->toDateString()])
             ->orderBy('due_date')->orderBy('id')
             ->paginate($perPage)->withQueryString();
@@ -100,7 +100,7 @@ class FinanceMonthlySituationService
         $query = FinanceObligation::query()->where('organization_id', $organization->id)
             ->whereNull('cancelled_at')->whereDate('due_date', '>', $period->end->toDateString())
             ->when($store, fn (Builder $query) => $query->where('store_id', $store->id))
-            ->whereRaw(self::PAID_SQL.' < planned_amount')->with(['supplier:id,name', 'procurement:id,procurement_number'])
+            ->whereRaw(self::PAID_SQL.' < planned_amount')->with(['supplier:id,name', 'procurement:id,procurement_number', 'supplierInvoiceInstallment:id,supplier_invoice_id', 'supplierInvoiceInstallment.supplierInvoice:id,internal_number,invoice_number'])
             ->select('finance_obligations.*')->selectRaw(self::PAID_SQL.' as paid_amount')->orderBy('due_date');
         if ($limit !== null) {
             $query->limit($limit);
@@ -111,7 +111,7 @@ class FinanceMonthlySituationService
                 'due_date' => $row->due_date->toDateString(), 'supplier' => $row->supplier?->name ?: $row->beneficiary_name ?: '—',
                 'reference' => $row->reference, 'amount' => (string) $row->planned_amount, 'currency_code' => $row->currency_code,
                 'category' => $row->category->label(), 'status' => 'À venir',
-                'source' => $row->procurement?->procurement_number ?: ($row->supplier_installment_plan_id ? 'Échéancier fournisseur' : ($row->recurring_template_id ? 'Charge récurrente' : 'Obligation manuelle'))])->all();
+                'source' => $row->procurement?->procurement_number ?: ($row->supplierInvoiceInstallment?->supplierInvoice ? 'Facture fournisseur '.$row->supplierInvoiceInstallment->supplierInvoice->internal_number : null) ?: ($row->supplier_installment_plan_id ? 'Échéancier fournisseur' : ($row->recurring_template_id ? 'Charge récurrente' : 'Obligation manuelle'))])->all();
     }
 
     /** @return array<string, string|int> */
@@ -255,6 +255,8 @@ class FinanceMonthlySituationService
             'beneficiary' => $obligation->supplier?->name ?: $obligation->beneficiary_name ?: '—',
             'reference' => $obligation->reference,
             'recurring_template_id' => $obligation->recurring_template_id,
+            'supplier_invoice' => ($invoice = $obligation->supplierInvoiceInstallment?->supplierInvoice) ? ['id' => $invoice->id, 'internal_number' => $invoice->internal_number, 'invoice_number' => $invoice->invoice_number] : null,
+            'locked_by_invoice' => $obligation->supplier_invoice_installment_id !== null,
             'recurring_period' => $obligation->recurring_period?->format('Y-m'),
             'due_date' => $obligation->due_date->toDateString(),
             'planned_amount' => $planned,

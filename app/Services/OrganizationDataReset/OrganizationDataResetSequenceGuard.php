@@ -16,7 +16,7 @@ class OrganizationDataResetSequenceGuard
         'customer_return_sequences', 'credit_note_sequences', 'customer_exchange_sequences',
         'finance_obligation_sequences', 'finance_outgoing_payment_sequences',
         'finance_recurring_template_sequences', 'finance_supplier_plan_sequences',
-        'finance_instrument_sequences',
+        'finance_instrument_sequences', 'supplier_invoice_sequences',
     ];
 
     /** @var list<string> */

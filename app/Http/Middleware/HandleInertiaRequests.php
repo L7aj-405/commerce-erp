@@ -5,6 +5,7 @@ namespace App\Http\Middleware;
 use App\Models\Organization;
 use App\Services\ActiveTenantContext;
 use App\Services\Notifications\NotificationFeed;
+use App\Services\SupplierInvoices\SupplierInvoiceSettings;
 use App\Support\BusinessTime;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
@@ -53,6 +54,8 @@ class HandleInertiaRequests extends Middleware
             // PILOT-1.1: lets guest pages hide "create account" when public registration is off.
             'features' => [
                 'public_registration' => (bool) config('auth.public_registration'),
+                // Kill switch for Supplier Invoices (off by default): lets the UI hide the menu entry while the routes are 404.
+                'supplier_invoices' => app(SupplierInvoiceSettings::class)->enabled(),
             ],
             'tenant' => [
                 'organization' => $organization?->only(['id', 'name', 'status']),

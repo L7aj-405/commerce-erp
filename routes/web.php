@@ -45,6 +45,9 @@ use App\Http\Controllers\Finance\FinanceMonthReviewController;
 use App\Http\Controllers\Finance\FinancePaymentInstrumentController;
 use App\Http\Controllers\Finance\FinanceRecurringObligationController;
 use App\Http\Controllers\Finance\FinanceSupplierInstallmentController;
+use App\Http\Controllers\Finance\SupplierInvoiceAttachmentController;
+use App\Http\Controllers\Finance\SupplierInvoiceController;
+use App\Http\Controllers\Finance\SupplierInvoiceVariantSearchController;
 use App\Http\Controllers\FollowUps\AttentionController;
 use App\Http\Controllers\FollowUps\FollowUpController;
 use App\Http\Controllers\FollowUps\FollowUpRecurringController;
@@ -811,6 +814,20 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
             ->middleware('throttle:20,1')->name('monthly-situation.payments.store');
         Route::post('/situation-fin-de-mois/outgoing-payments/{outgoingPayment}/reverse', [FinanceMonthlySituationController::class, 'reverse'])
             ->middleware('throttle:10,1')->name('monthly-situation.payments.reverse');
+        // Supplier invoices (Phase 2 Sprint 1). Kill switch + Test Mode answer 404 in the controller middleware; Test Mode
+        // also denies these routes through the sandbox route allowlist (not listed there).
+        Route::get('/factures-fournisseurs', [SupplierInvoiceController::class, 'index'])->name('supplier-invoices.index');
+        Route::get('/factures-fournisseurs/nouvelle', [SupplierInvoiceController::class, 'create'])->name('supplier-invoices.create');
+        Route::post('/factures-fournisseurs', [SupplierInvoiceController::class, 'store'])->middleware('throttle:30,1')->name('supplier-invoices.store');
+        Route::get('/factures-fournisseurs/variant-search', SupplierInvoiceVariantSearchController::class)->middleware('throttle:60,1')->name('supplier-invoices.variant-search');
+        Route::get('/factures-fournisseurs/{supplierInvoice}', [SupplierInvoiceController::class, 'show'])->whereNumber('supplierInvoice')->name('supplier-invoices.show');
+        Route::get('/factures-fournisseurs/{supplierInvoice}/modifier', [SupplierInvoiceController::class, 'edit'])->whereNumber('supplierInvoice')->name('supplier-invoices.edit');
+        Route::put('/factures-fournisseurs/{supplierInvoice}', [SupplierInvoiceController::class, 'update'])->whereNumber('supplierInvoice')->middleware('throttle:30,1')->name('supplier-invoices.update');
+        Route::post('/factures-fournisseurs/{supplierInvoice}/attachments', [SupplierInvoiceAttachmentController::class, 'store'])->whereNumber('supplierInvoice')->middleware('throttle:20,1')->name('supplier-invoices.attachments.store');
+        Route::get('/factures-fournisseurs/{supplierInvoice}/attachments/{attachment}', [SupplierInvoiceAttachmentController::class, 'show'])->whereNumber(['supplierInvoice', 'attachment'])->name('supplier-invoices.attachments.show');
+        Route::delete('/factures-fournisseurs/{supplierInvoice}/attachments/{attachment}', [SupplierInvoiceAttachmentController::class, 'destroy'])->whereNumber(['supplierInvoice', 'attachment'])->name('supplier-invoices.attachments.destroy');
+        Route::post('/factures-fournisseurs/{supplierInvoice}/approve', [SupplierInvoiceController::class, 'approve'])->whereNumber('supplierInvoice')->middleware('throttle:20,1')->name('supplier-invoices.approve');
+        Route::post('/factures-fournisseurs/{supplierInvoice}/void', [SupplierInvoiceController::class, 'void'])->whereNumber('supplierInvoice')->middleware('throttle:10,1')->name('supplier-invoices.void');
         Route::get('/commissions', [CommissionDashboardController::class, 'index'])->name('commissions.dashboard');
         Route::get('/commissions/salespeople/{salesperson}', [CommissionDashboardController::class, 'salesperson'])
             ->where('salesperson', '[0-9]+|unattributed')->name('commissions.salesperson');

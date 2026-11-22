@@ -111,7 +111,9 @@ export default function ApplicationShell({
     }, [flash?.success, toast]);
 
     const can = (permission?: string | string[]) => tenantHasPermission(tenant, permission);
-    const groups = useMemo(() => visibleNavGroups(buildNavGroups(t, tenant), tenant), [t, tenant]);
+    const sandboxActive = Boolean(page.props.sandbox?.active);
+    const supplierInvoicesEnabled = Boolean(page.props.features?.supplier_invoices);
+    const groups = useMemo(() => visibleNavGroups(buildNavGroups(t, tenant, sandboxActive, supplierInvoicesEnabled), tenant), [t, tenant, sandboxActive, supplierInvoicesEnabled]);
     const activeMatch = matchActiveNav(groups, currentPath);
     const activeGroup = groups.find((group) => group.key === activeMatch?.groupKey);
 

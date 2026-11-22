@@ -170,6 +170,9 @@ type Obligation = {
     recurring_template_id: number | null;
     recurring_period: string | null;
     committed_amount: string;
+    /** From the supplier-invoice integration (absent for legacy/manual obligations). */
+    supplier_invoice?: { id: number; internal_number: string; invoice_number: string } | null;
+    locked_by_invoice?: boolean;
     instruments: Instrument[];
 };
 type Paginator = {
@@ -1593,14 +1596,44 @@ export default function MonthlySituation(props: Props) {
                             )}
                         </section>
                         <div className="flex flex-wrap gap-2">
+                            {detail.locked_by_invoice && (
+                                <div
+                                    role="status"
+                                    className="w-full rounded-card border border-line bg-raised px-4 py-3 text-sm"
+                                >
+                                    <p className="font-semibold text-ink">
+                                        <span aria-hidden="true">🔒 </span>
+                                        {t("supplierInvoice.lock.title")}
+                                    </p>
+                                    <p className="mt-1 text-ink-muted">
+                                        {t("supplierInvoice.lock.body")}
+                                    </p>
+                                    {detail.supplier_invoice && (
+                                        <ButtonLink
+                                            href={`/finance/factures-fournisseurs/${detail.supplier_invoice.id}`}
+                                            variant="secondary"
+                                            size="sm"
+                                            className="mt-2"
+                                        >
+                                            {t("supplierInvoice.lock.open").replace(
+                                                "{number}",
+                                                detail.supplier_invoice.internal_number,
+                                            )}
+                                        </ButtonLink>
+                                    )}
+                                </div>
+                            )}
                             {can.manage && !detail.cancelled_at && (
                                 <Button
                                     variant="secondary"
+                                    disabled={detail.locked_by_invoice}
+                                    title={detail.locked_by_invoice ? t("supplierInvoice.lock.body") : undefined}
                                     onClick={() => {
                                         setDetail(null);
                                         openEdit(detail);
                                     }}
                                 >
+                                    {detail.locked_by_invoice && <span aria-hidden="true">🔒</span>}
                                     {t("common.edit")}
                                 </Button>
                             )}
@@ -1648,11 +1681,14 @@ export default function MonthlySituation(props: Props) {
                                 Number(detail.paid_amount) === 0 && (
                                     <Button
                                         variant="danger"
+                                        disabled={detail.locked_by_invoice}
+                                        title={detail.locked_by_invoice ? t("supplierInvoice.lock.body") : undefined}
                                         onClick={() => {
                                             setCancelling(detail);
                                             cancelForm.setData("reason", "");
                                         }}
                                     >
+                                        {detail.locked_by_invoice && <span aria-hidden="true">🔒</span>}
                                         {t("finance.monthEnd.cancelObligation")}
                                     </Button>
                                 )}

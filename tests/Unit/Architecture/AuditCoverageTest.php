@@ -36,6 +36,7 @@ final class AuditCoverageTest extends TestCase
             'Inventory/Concerns/AuthorizesInventoryAction', 'Inventory/Concerns/SnapshotsTransferDriver', 'Inventory/Concerns/ValidatesTransferRequestLines',
             'Payments/Concerns/AuthorizesPaymentAction', 'Pos/Concerns/MutatesPosCart', 'Procurement/Concerns/AuthorizesProcurementAction',
             'Quotations/Concerns/AuthorizesQuotationAction', 'Quotations/Concerns/MutatesQuotation', 'Sales/Concerns/AuthorizesSalesAction',
+            'SupplierInvoices/Concerns/AuthorizesSupplierInvoiceAction',
         ];
         $entries = [];
         foreach ($traits as $trait) {

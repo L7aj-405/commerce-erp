@@ -15,7 +15,7 @@ use Illuminate\Validation\ValidationException;
 use Throwable;
 
 /**
- * Phase 1 Step 8 — READ-ONLY financial / stock consistency checks R-1 … R-7
+ * Phase 1 Step 8 — READ-ONLY financial / stock consistency checks R-1 … R-10
  * (docs/phase-1-foundation/FINANCIAL_RECONCILIATION_AUDIT.md §4).
  *
  * Never writes: every check is a SELECT (or a read-only snapshot verification).
@@ -53,6 +53,9 @@ class FinanceReconciliationService
             $this->r5CollectionsAndAllocations($organization, $sample),
             $this->r6DocumentSnapshots($organization, $sample),
             $this->r7StockEqualsMovements($organization, $sample),
+            $this->r8SupplierInvoiceTotalsEqualObligations($organization, $sample),
+            $this->r9InstallmentsMatchObligations($organization, $sample),
+            $this->r10SupplierInvoiceAllocations($organization, $sample),
         ];
     }
 
@@ -341,6 +344,102 @@ class FinanceReconciliationService
             'code' => 'R-7', 'title' => 'Stock balance = Σ movements per warehouse/variant',
             'status' => $count === 0 ? 'pass' : 'fail', 'expected' => null, 'actual' => null, 'variance' => null,
             'violations' => $count, 'samples' => array_slice($samples, 0, $sample), 'note' => null, 'classification' => null,
+        ];
+    }
+
+    /**
+     * R-8: for every APPROVED supplier invoice, total_ttc = Σ planned amount of its linked non-cancelled
+     * obligations (reached through the invoice installments). Legacy manual obligations are never involved.
+     */
+    public function r8SupplierInvoiceTotalsEqualObligations(Organization $organization, int $sample): array
+    {
+        $id = $organization->getKey();
+        $query = DB::table('supplier_invoices as i')
+            ->leftJoin('supplier_invoice_installments as n', fn ($j) => $j->on('n.supplier_invoice_id', '=', 'i.id')->on('n.organization_id', '=', 'i.organization_id'))
+            ->leftJoin('finance_obligations as o', fn ($j) => $j->on('o.supplier_invoice_installment_id', '=', 'n.id')->on('o.organization_id', '=', 'n.organization_id')->whereNull('o.cancelled_at'))
+            ->where('i.organization_id', $id)->where('i.status', 'approved')
+            ->groupBy('i.id', 'i.internal_number', 'i.total_ttc')
+            ->havingRaw('ROUND(i.total_ttc - COALESCE(SUM(o.planned_amount), 0), 4) <> 0')
+            ->select(['i.id as supplier_invoice_id', 'i.internal_number'])
+            ->selectRaw('ROUND(i.total_ttc, 4) as invoice_total')
+            ->selectRaw('ROUND(COALESCE(SUM(o.planned_amount), 0), 4) as obligations_total');
+        $approved = (int) DB::table('supplier_invoices')->where('organization_id', $id)->where('status', 'approved')->count();
+
+        return $this->queriesResult('R-8', 'Approved supplier invoice total = Σ linked obligations', [$query], $sample, "Approved supplier invoices checked: {$approved}");
+    }
+
+    /**
+     * R-9: installments <-> obligations are 1:1 for approved supplier invoices (every installment has its
+     * obligation, same due date / amount / store / supplier / currency); no live obligation hangs on a draft or
+     * void invoice.
+     */
+    public function r9InstallmentsMatchObligations(Organization $organization, int $sample): array
+    {
+        $id = $organization->getKey();
+        $missing = DB::table('supplier_invoice_installments as n')
+            ->join('supplier_invoices as i', fn ($j) => $j->on('i.id', '=', 'n.supplier_invoice_id')->on('i.organization_id', '=', 'n.organization_id'))
+            ->where('i.organization_id', $id)->where('i.status', 'approved')
+            ->whereNotExists(fn ($s) => $s->select(DB::raw(1))->from('finance_obligations as o')
+                ->whereColumn('o.supplier_invoice_installment_id', 'n.id')->whereColumn('o.organization_id', 'n.organization_id')->whereNull('o.cancelled_at'))
+            ->select(['i.id as supplier_invoice_id', 'n.id as installment_id'])->selectRaw("'installment_without_obligation' as issue");
+        $mismatch = DB::table('supplier_invoice_installments as n')
+            ->join('supplier_invoices as i', fn ($j) => $j->on('i.id', '=', 'n.supplier_invoice_id')->on('i.organization_id', '=', 'n.organization_id'))
+            ->join('finance_obligations as o', fn ($j) => $j->on('o.supplier_invoice_installment_id', '=', 'n.id')->on('o.organization_id', '=', 'n.organization_id'))
+            ->where('i.organization_id', $id)->where('i.status', 'approved')->whereNull('o.cancelled_at')
+            ->where(fn ($q) => $q->whereRaw('DATE(o.due_date) <> DATE(n.due_date)')
+                ->orWhereRaw('ROUND(o.planned_amount - n.amount, 4) <> 0')
+                ->orWhereRaw('COALESCE(o.store_id, 0) <> i.store_id')
+                ->orWhereRaw('COALESCE(o.supplier_id, 0) <> i.supplier_id')
+                ->orWhereRaw('o.currency_code <> i.currency_code'))
+            ->select(['i.id as supplier_invoice_id', 'n.id as installment_id'])->selectRaw("'obligation_differs_from_installment' as issue");
+        $live = DB::table('supplier_invoice_installments as n')
+            ->join('supplier_invoices as i', fn ($j) => $j->on('i.id', '=', 'n.supplier_invoice_id')->on('i.organization_id', '=', 'n.organization_id'))
+            ->join('finance_obligations as o', fn ($j) => $j->on('o.supplier_invoice_installment_id', '=', 'n.id')->on('o.organization_id', '=', 'n.organization_id'))
+            ->where('i.organization_id', $id)->where('i.status', '<>', 'approved')->whereNull('o.cancelled_at')
+            ->select(['i.id as supplier_invoice_id', 'n.id as installment_id'])->selectRaw("'live_obligation_on_non_approved_invoice' as issue");
+
+        return $this->queriesResult('R-9', 'Supplier invoice installments = obligations (1:1)', [$missing, $mismatch, $live], $sample, null);
+    }
+
+    /**
+     * R-10: for obligations generated from supplier invoices, Σ POSTED outgoing-payment allocations <= planned
+     * amount (reversed payments excluded), and a cancelled obligation carries no posted allocation.
+     */
+    public function r10SupplierInvoiceAllocations(Organization $organization, int $sample): array
+    {
+        $id = $organization->getKey();
+        $posted = fn () => DB::table('finance_obligations as o')
+            ->join('finance_outgoing_payment_allocations as a', fn ($j) => $j->on('a.obligation_id', '=', 'o.id')->on('a.organization_id', '=', 'o.organization_id'))
+            ->join('finance_outgoing_payments as p', fn ($j) => $j->on('p.id', '=', 'a.outgoing_payment_id')->on('p.organization_id', '=', 'a.organization_id'))
+            ->where('o.organization_id', $id)->whereNotNull('o.supplier_invoice_installment_id')->where('p.status', 'posted');
+        $over = $posted()->whereNull('o.cancelled_at')->groupBy('o.id', 'o.obligation_number', 'o.planned_amount')
+            ->havingRaw('ROUND(SUM(a.amount) - o.planned_amount, 4) > 0')
+            ->select(['o.id as obligation_id', 'o.obligation_number'])->selectRaw('ROUND(o.planned_amount, 4) as planned_amount')
+            ->selectRaw('ROUND(SUM(a.amount), 4) as allocated')->selectRaw("'over_allocated' as issue");
+        $cancelled = $posted()->whereNotNull('o.cancelled_at')->groupBy('o.id', 'o.obligation_number', 'o.planned_amount')
+            ->select(['o.id as obligation_id', 'o.obligation_number'])->selectRaw('ROUND(o.planned_amount, 4) as planned_amount')
+            ->selectRaw('ROUND(SUM(a.amount), 4) as allocated')->selectRaw("'posted_allocation_on_cancelled_obligation' as issue");
+
+        $linked = (int) DB::table('finance_obligations')->where('organization_id', $id)->whereNotNull('supplier_invoice_installment_id')->count();
+
+        return $this->queriesResult('R-10', 'Supplier invoice obligations: Σ posted allocations <= planned', [$over, $cancelled], $sample, "Supplier invoice obligations checked: {$linked}");
+    }
+
+    /** @param list<Builder> $queries Violation queries; the result counts every row and samples at most $sample. */
+    private function queriesResult(string $code, string $title, array $queries, int $sample, ?string $note): array
+    {
+        $count = 0;
+        $samples = [];
+        foreach ($queries as $query) {
+            $count += $this->count($query);
+            foreach ((clone $query)->limit($sample)->get() as $row) {
+                $samples[] = (array) $row;
+            }
+        }
+
+        return [
+            'code' => $code, 'title' => $title, 'status' => $count === 0 ? 'pass' : 'fail', 'expected' => null, 'actual' => null, 'variance' => null,
+            'violations' => $count, 'samples' => array_slice($samples, 0, $sample), 'note' => $note, 'classification' => null,
         ];
     }
 
