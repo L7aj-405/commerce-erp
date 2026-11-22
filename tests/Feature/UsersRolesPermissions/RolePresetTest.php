@@ -120,6 +120,10 @@ class RolePresetTest extends PlatformTestCase
             'product_cost.manage',
             'product_cost.view',
             'quotations.view',
+            'supplier_invoices.approve',
+            'supplier_invoices.manage',
+            'supplier_invoices.view',
+            'supplier_invoices.void',
         ], $permissions);
 
         $this->assertNotContains('pos.access', $permissions);
