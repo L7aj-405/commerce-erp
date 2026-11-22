@@ -151,7 +151,8 @@ class OrganizationDataResetPlanner
             $count = $this->countWhereNotNull($organizationId, 'finance_supplier_installment_plans', 'supplier_id')
                 + $this->countWhereNotNull($organizationId, 'finance_obligations', 'supplier_id')
                 + $this->countWhereNotNull($organizationId, 'finance_outgoing_payments', 'supplier_id')
-                + $this->countWhereNotNull($organizationId, 'finance_payment_instruments', 'supplier_id');
+                + $this->countWhereNotNull($organizationId, 'finance_payment_instruments', 'supplier_id')
+                + $this->countWhereNotNull($organizationId, 'supplier_invoices', 'supplier_id');
             if ($count > 0) {
                 $blockers[] = new OrganizationDataResetBlocker('suppliers.finance_dependencies', 'Suppliers are referenced by retained Finance records.', $count, [OrganizationDataResetScope::TransactionalFinance->value]);
             }

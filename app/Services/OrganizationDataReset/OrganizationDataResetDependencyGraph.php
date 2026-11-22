@@ -31,6 +31,7 @@ class OrganizationDataResetDependencyGraph
         'inventory_movements', 'inventory_reservations', 'inventory_balances',
         'finance_expected_collections', 'payments',
         'finance_outgoing_payments', 'finance_obligations', 'finance_supplier_installment_plans',
+        'supplier_invoice_attachments', 'supplier_invoice_installments', 'supplier_invoice_lines', 'supplier_invoices',
         'financial_account_opening_positions', 'finance_month_reviews', 'commission_entries',
         'customer_returns', 'delivery_notes', 'invoices', 'invoice_families', 'quotations',
         'out_of_stock_articles', 'procurement_receipts', 'purchase_order_lines', 'purchase_orders', 'sales_order_procurements', 'transfer_requests', 'stock_transfers',
@@ -49,7 +50,7 @@ class OrganizationDataResetDependencyGraph
      * parent), from the database's own foreign keys. Ties keep the preferred
      * order above, so the result is deterministic.
      *
-     * @param list<OrganizationDataResetOperation> $operations
+     * @param  list<OrganizationDataResetOperation>  $operations
      * @return list<OrganizationDataResetOperation>
      */
     public function order(array $operations): array
@@ -122,9 +123,9 @@ class OrganizationDataResetDependencyGraph
      * that would refuse (RESTRICT / NO ACTION) or cascade if the parent went
      * first? ON DELETE SET NULL edges and links cleared beforehand do not.
      *
-     * @param list<string> $children
-     * @param list<string> $parents
-     * @param array<string,bool> $cleared
+     * @param  list<string>  $children
+     * @param  list<string>  $parents
+     * @param  array<string,bool>  $cleared
      */
     private function references(array $children, array $parents, array $cleared = []): bool
     {
