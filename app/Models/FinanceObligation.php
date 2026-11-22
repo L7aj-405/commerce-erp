@@ -5,15 +5,44 @@ namespace App\Models;
 use App\Enums\FinanceObligationCategory;
 use App\Enums\PaymentMethod;
 use App\Models\Concerns\ScopesToActiveOrganization;
+use App\Services\SupplierInvoices\SupplierInvoiceObligationScope;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOneThrough;
+use LogicException;
 
 class FinanceObligation extends Model
 {
     use ScopesToActiveOrganization;
 
     protected $guarded = ['*'];
+
+    /** Fields frozen while the obligation is generated from a supplier invoice (changed only via the invoice lifecycle). */
+    private const INVOICE_LOCKED_FIELDS = [
+        'planned_amount', 'due_date', 'supplier_id', 'store_id', 'currency_code', 'category',
+        'cancelled_at', 'cancelled_by_user_id', 'cancellation_reason', 'supplier_invoice_installment_id',
+    ];
+
+    protected static function booted(): void
+    {
+        // Covers Eloquent saves/deletes only; mass updates and DB::table writes are controlled by the
+        // architecture writer allow-list (tests/Unit/Architecture/FinanceObligationWritersTest).
+        static::updating(function (self $obligation): void {
+            if ($obligation->getOriginal('supplier_invoice_installment_id') === null || SupplierInvoiceObligationScope::active()) {
+                return;
+            }
+            $changed = array_intersect(self::INVOICE_LOCKED_FIELDS, array_keys($obligation->getDirty()));
+            if ($changed !== []) {
+                throw new LogicException('Obligation generated from a supplier invoice: '.implode(', ', $changed).' can only change through the invoice.');
+            }
+        });
+        static::deleting(function (self $obligation): void {
+            if ($obligation->getOriginal('supplier_invoice_installment_id') !== null && ! SupplierInvoiceObligationScope::active()) {
+                throw new LogicException('An obligation generated from a supplier invoice cannot be deleted.');
+            }
+        });
+    }
 
     protected function casts(): array
     {
@@ -38,4 +67,6 @@ class FinanceObligation extends Model
     public function supplierInstallmentPlan(): BelongsTo { return $this->belongsTo(FinanceSupplierInstallmentPlan::class, 'supplier_installment_plan_id'); }
     public function procurement(): BelongsTo { return $this->belongsTo(SalesOrderProcurement::class, 'sales_order_procurement_id'); }
     public function paymentInstruments(): HasMany { return $this->hasMany(FinancePaymentInstrument::class, 'obligation_id'); }
+    public function supplierInvoiceInstallment(): BelongsTo { return $this->belongsTo(SupplierInvoiceInstallment::class, 'supplier_invoice_installment_id'); }
+    public function supplierInvoice(): HasOneThrough { return $this->hasOneThrough(SupplierInvoice::class, SupplierInvoiceInstallment::class, 'id', 'id', 'supplier_invoice_installment_id', 'supplier_invoice_id'); }
 }

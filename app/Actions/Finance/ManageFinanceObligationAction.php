@@ -55,6 +55,7 @@ class ManageFinanceObligationAction
 
         return DB::transaction(function () use ($actor, $obligation, $data) {
             $obligation = FinanceObligation::query()->where('organization_id', $obligation->organization_id)->whereKey($obligation->getKey())->lockForUpdate()->firstOrFail();
+            $this->assertNotInvoiceLinked($obligation);
             if ($obligation->cancelled_at) {
                 throw ValidationException::withMessages(['obligation' => 'Une obligation annulée ne peut plus être modifiée.']);
             }
@@ -89,6 +90,7 @@ class ManageFinanceObligationAction
 
         return DB::transaction(function () use ($actor, $obligation, $reason) {
             $obligation = FinanceObligation::query()->where('organization_id', $obligation->organization_id)->whereKey($obligation->getKey())->lockForUpdate()->firstOrFail();
+            $this->assertNotInvoiceLinked($obligation);
             if ($obligation->cancelled_at) {
                 throw ValidationException::withMessages(['obligation' => 'Cette obligation est déjà annulée.']);
             }
@@ -108,6 +110,13 @@ class ManageFinanceObligationAction
 
             return $obligation;
         }, 3);
+    }
+
+    private function assertNotInvoiceLinked(FinanceObligation $obligation): void
+    {
+        if ($obligation->supplier_invoice_installment_id !== null) {
+            throw ValidationException::withMessages(['obligation' => 'Cette obligation provient d’une facture fournisseur : modifiez ou annulez la facture.']);
+        }
     }
 
     private function authorize(User $actor, Organization $organization): void
