@@ -15,6 +15,15 @@
  *   - void succeeded  <=> obligation cancelled and invoice void AND no posted allocation exists;
  *     void refused    <=> invoice still approved, obligation open, and at least one posted payment exists;
  *   - paid never exceeds planned.
+ *
+ * Regression note (snapshot trap): the first version of the void used FinanceObligationCalculator::paid(), whose
+ * whereHas() is an EXISTS subquery. Under InnoDB REPEATABLE READ the outer SELECT ... FOR UPDATE reads the latest
+ * committed rows but the subquery table is read from the transaction snapshot, so a payment committed right after
+ * the void's first plain read showed its allocation without its "posted" status: paid() = 0 and a paid obligation
+ * was cancelled (about 6 of 20 rounds failed). The void now checks posted allocations with a locking JOIN read.
+ * Do not "simplify" it back to a subquery. The void session is staggered 0/20/60/120 ms across rounds so that
+ * payments committing before and after the void's snapshot are both exercised.
+ *
  * Pass also requires that InnoDB's deadlock counter did not move. Safety: local *_test / *_dev MySQL databases only;
  * every round creates its own organization. Requires a migrated database.
  */
@@ -155,7 +164,7 @@ $failures = 0;
 for ($round = 1; $round <= $rounds; $round++) {
     [$owner, $org, $invoice, $obligationId, $account] = $world("R{$round}");
     $start = microtime(true) + 4.0;
-    $jobs = [['void', ['invoice' => $invoice->id, 'lag' => ($round - 1) * 60000]]];
+    $jobs = [['void', ['invoice' => $invoice->id, 'lag' => [0, 20000, 60000, 120000][($round - 1) % 4]]]];
     for ($i = 0; $i < $payers; $i++) {
         $jobs[] = ['pay', ['obligation' => $obligationId, 'account' => $account->id]];
     }
