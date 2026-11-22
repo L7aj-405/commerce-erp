@@ -24,4 +24,18 @@ return [
 
     // Refuse voiding an approved invoice older than N days (null = no limit).
     'void_max_age_days' => null,
+
+    // Scans / photos of the supplier's invoice (PR6). Private disk only; streamed back through an authorized route.
+    'attachments' => [
+        'disk' => env('SUPPLIER_INVOICE_ATTACHMENTS_DISK', 'local'),
+        'max_kb' => (int) env('SUPPLIER_INVOICE_ATTACHMENT_MAX_KB', 10240),
+        'max_files' => 10,
+        // Allowed MIME types (detected from content) => stored extension.
+        'mime_types' => [
+            'image/jpeg' => 'jpg',
+            'image/png' => 'png',
+            'image/webp' => 'webp',
+            'application/pdf' => 'pdf',
+        ],
+    ],
 ];
