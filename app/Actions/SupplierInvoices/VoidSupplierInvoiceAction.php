@@ -3,6 +3,7 @@
 namespace App\Actions\SupplierInvoices;
 
 use App\Actions\SupplierInvoices\Concerns\AuthorizesSupplierInvoiceAction;
+use App\Enums\FinanceOutgoingPaymentStatus;
 use App\Enums\SupplierInvoiceStatus;
 use App\Enums\SupplierInvoiceVoidReason;
 use App\Models\FinanceObligation;
@@ -11,7 +12,6 @@ use App\Models\User;
 use App\Services\AuditLogger;
 use App\Services\Finance\FinanceClosedPeriodGuard;
 use App\Services\Finance\FinanceInstrumentCommitmentService;
-use App\Services\Finance\FinanceObligationCalculator;
 use App\Services\SupplierInvoices\SupplierInvoiceObligationScope;
 use App\Services\SupplierInvoices\SupplierInvoiceSettings;
 use App\Support\Decimal;
@@ -35,7 +35,6 @@ class VoidSupplierInvoiceAction
     use AuthorizesSupplierInvoiceAction;
 
     public function __construct(
-        private readonly FinanceObligationCalculator $calculator,
         private readonly FinanceInstrumentCommitmentService $commitments,
         private readonly FinanceClosedPeriodGuard $periods,
         private readonly SupplierInvoiceSettings $settings,
@@ -127,10 +126,24 @@ class VoidSupplierInvoiceAction
         $obligations = FinanceObligation::query()->where('organization_id', $invoice->organization_id)
             ->whereIn('supplier_invoice_installment_id', $installmentIds)->orderBy('id')->lockForUpdate()->get();
 
+        // Snapshot trap (InnoDB REPEATABLE READ): a locking read of the outer table sees the latest committed rows, but
+        // a table read through a subquery (what FinanceObligationCalculator::paid() does with whereHas) is a NON-locking
+        // consistent read from this transaction's snapshot. A payment that committed after the snapshot would show its
+        // allocation but not its posted status, so paid() could report 0 and the void would cancel a paid obligation.
+        // The posted-allocation check below is therefore a locking JOIN read: both tables are read at latest-committed.
+        $paid = DB::table('finance_outgoing_payment_allocations as a')
+            ->join('finance_outgoing_payments as p', fn ($join) => $join->on('p.id', '=', 'a.outgoing_payment_id')->on('p.organization_id', '=', 'a.organization_id'))
+            ->where('a.organization_id', $invoice->organization_id)
+            ->whereIn('a.obligation_id', $obligations->pluck('id'))
+            ->where('p.status', FinanceOutgoingPaymentStatus::Posted->value)
+            ->orderBy('a.id')
+            ->lockForUpdate()
+            ->first(['a.obligation_id']);
+        if ($paid !== null) {
+            $number = $obligations->firstWhere('id', $paid->obligation_id)?->obligation_number;
+            throw ValidationException::withMessages(['invoice' => "Un paiement est enregistré sur l’échéance {$number} : inversez d’abord les paiements, puis annulez la facture. En cas d’avoir, de retour ou de remise du fournisseur, n’annulez pas la facture (la gestion des avoirs fournisseurs viendra plus tard)."]);
+        }
         foreach ($obligations as $obligation) {
-            if (Decimal::compare($this->calculator->paid($obligation, true), '0.0000') > 0) {
-                throw ValidationException::withMessages(['invoice' => "Un paiement est enregistré sur l’échéance {$obligation->obligation_number} : inversez d’abord les paiements, puis annulez la facture. En cas d’avoir, de retour ou de remise du fournisseur, n’annulez pas la facture (la gestion des avoirs fournisseurs viendra plus tard)."]);
-            }
             if (Decimal::compare($this->commitments->committed($obligation, null, true), '0.0000') > 0) {
                 throw ValidationException::withMessages(['invoice' => "Un chèque ou une traite est en cours sur l’échéance {$obligation->obligation_number} : annulez-le d’abord."]);
             }
