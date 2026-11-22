@@ -353,6 +353,10 @@ jobs:
       - name: Race - invoice issuance against month closing (F-03)
         run: php tests/Concurrency/closed_period_race.php --invoices=6 --database=commerce_erp_race_test
 
+
+      - name: Race - concurrent outgoing payments must not over-allocate an obligation
+        run: php tests/Concurrency/finance_outgoing_overpayment_race.php --payers=4 --rounds=4 --database=commerce_erp_race_test
+
       - name: Race - supplier invoice approval (same draft, and against month closing)
         run: php tests/Concurrency/supplier_invoice_approval_race.php --sessions=6 --database=commerce_erp_race_test
 
