@@ -1,5 +1,5 @@
-import { InvoiceTotalsPanel, MatchingStatusBadge, MatchingWarnings, SoftWarningList, SupplierInvoiceStatusBadge, TestModeRestrictionNotice } from '@/components/finance/supplier-invoices';
-import type { SupplierInvoiceShowProps } from '@/components/finance/supplier-invoices';
+import { ApproveDialog, InvoiceTotalsPanel, MatchingStatusBadge, VoidDialog, MatchingWarnings, SoftWarningList, SupplierInvoiceStatusBadge, TestModeRestrictionNotice } from '@/components/finance/supplier-invoices';
+import type { ApprovePayload, SupplierInvoiceShowProps, VoidPayload } from '@/components/finance/supplier-invoices';
 import { interpolate } from '@/components/finance/supplier-invoices/math';
 import { Button, ButtonLink } from '@/components/ui/Button';
 import EmptyState from '@/components/ui/EmptyState';
@@ -9,6 +9,7 @@ import { useI18n } from '@/i18n';
 import ApplicationShell from '@/layouts/ApplicationShell';
 import { formatDate, formatDateTime, formatMoney, formatQuantity } from '@/utils/format';
 import { Head, router, usePage } from '@inertiajs/react';
+import { useRef, useState } from 'react';
 
 const BASE = '/finance/factures-fournisseurs';
 const formatSize = (bytes: number) => (bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`);
@@ -17,7 +18,33 @@ const formatSize = (bytes: number) => (bytes >= 1048576 ? `${(bytes / 1048576).t
 export default function SupplierInvoiceShow(props: Partial<SupplierInvoiceShowProps>) {
     const { t } = useI18n();
     const page = usePage<{ sandbox?: { active: boolean } }>();
-    const { invoice, matching, warnings = [] } = props;
+    const { invoice, matching, warnings = [], can } = props;
+    const [dialog, setDialog] = useState<'approve' | 'void' | null>(null);
+    const [processing, setProcessing] = useState(false);
+    const [dialogErrors, setDialogErrors] = useState<Record<string, string>>({});
+    const fileInput = useRef<HTMLInputElement>(null);
+
+    // Wired against the A2 contract: POST {id}/approve and {id}/void; errors come back keyed by payload field.
+    const send = (action: 'approve' | 'void', payload: ApprovePayload | VoidPayload) => {
+        if (!invoice) return;
+        setProcessing(true);
+        setDialogErrors({});
+        router.post(`${BASE}/${invoice.id}/${action}`, payload as unknown as Record<string, string | boolean | string[]>, {
+            preserveScroll: true,
+            onSuccess: () => setDialog(null),
+            onError: (errors) => setDialogErrors(errors as Record<string, string>),
+            onFinish: () => setProcessing(false),
+        });
+    };
+    // Attachment endpoints are owned by the attachment backend (PR6); paths follow the same prefix.
+    const upload = (file: File | undefined) => {
+        if (!file || !invoice) return;
+        setProcessing(true);
+        router.post(`${BASE}/${invoice.id}/pieces-jointes`, { file }, { forceFormData: true, preserveScroll: true, onFinish: () => { setProcessing(false); if (fileInput.current) fileInput.current.value = ''; } });
+    };
+    const removeAttachment = (id: number) => {
+        if (invoice) router.delete(`${BASE}/${invoice.id}/pieces-jointes/${id}`, { preserveScroll: true });
+    };
 
     const back = (
         <ButtonLink href={BASE} variant="secondary">
@@ -64,6 +91,17 @@ export default function SupplierInvoiceShow(props: Partial<SupplierInvoiceShowPr
                 actions={
                     <>
                         <SupplierInvoiceStatusBadge status={invoice.status} />
+                        {can?.edit && invoice.status === 'draft' && (
+                            <ButtonLink href={`${BASE}/${invoice.id}/modifier`} variant="secondary">
+                                {t('supplierInvoice.show.edit')}
+                            </ButtonLink>
+                        )}
+                        {can?.approve && invoice.status === 'draft' && <Button onClick={() => setDialog('approve')}>{t('supplierInvoice.show.approve')}</Button>}
+                        {can?.void && invoice.status !== 'void' && (
+                            <Button variant="danger" onClick={() => setDialog('void')}>
+                                {t('supplierInvoice.show.void')}
+                            </Button>
+                        )}
                         {back}
                     </>
                 }
@@ -109,7 +147,7 @@ export default function SupplierInvoiceShow(props: Partial<SupplierInvoiceShowPr
                                         <td className={th}>{line.position}</td>
                                         <td className={th}>
                                             {line.description}
-                                            {line.product_variant && <span className="block text-[12.5px] text-ink-muted">{line.product_variant.name}{line.product_variant.sku ? ` · ${line.product_variant.sku}` : ''}</span>}
+                                            {line.product_variant && <span className="block text-[12.5px] text-ink-muted">{line.product_variant.product_name ?? line.product_variant.label}{line.product_variant.sku ? ` · ${line.product_variant.sku}` : ''}</span>}
                                         </td>
                                         <td className={`${th} text-end tabular-nums`}>{formatQuantity(line.quantity)}</td>
                                         <td className={`${th} text-end tabular-nums`}>{formatMoney(line.unit_price_ht, c)}</td>
@@ -177,11 +215,25 @@ export default function SupplierInvoiceShow(props: Partial<SupplierInvoiceShowPr
                     <ul className="space-y-1.5 text-sm">
                         {invoice.attachments.map((file) => (
                             <li key={file.id}>
-                                <a href={file.url} className="font-medium text-ink underline hover:text-accent" target="_blank" rel="noopener noreferrer">{file.original_name}</a>
+                                {file.url ? <a href={file.url} className="font-medium text-ink underline hover:text-accent" target="_blank" rel="noopener noreferrer">{file.original_name}</a> : <span className="font-medium text-ink">{file.original_name}</span>}
                                 <span className="ms-2 text-[12.5px] text-ink-muted">{formatSize(file.size_bytes)}</span>
+                                {can?.attach && invoice.status === 'draft' && (
+                                    <Button type="button" variant="ghost" size="sm" className="ms-2" onClick={() => removeAttachment(file.id)} aria-label={interpolate(t('supplierInvoice.attach.removeLabel'), { name: file.original_name })}>
+                                        {t('supplierInvoice.attach.remove')}
+                                    </Button>
+                                )}
                             </li>
                         ))}
                     </ul>
+                )}
+                {can?.attach && (
+                    <div className="mt-4">
+                        <input ref={fileInput} id="si-attach-input" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" className="sr-only" onChange={(e) => upload(e.target.files?.[0])} />
+                        <Button type="button" variant="secondary" size="sm" loading={processing} loadingText={t('supplierInvoice.attach.uploading')} onClick={() => fileInput.current?.click()}>
+                            {t('supplierInvoice.attach.upload')}
+                        </Button>
+                        <p className="mt-1 text-[12.5px] text-ink-muted">{t('supplierInvoice.attach.hint')}</p>
+                    </div>
                 )}
             </section>
 
@@ -211,6 +263,21 @@ export default function SupplierInvoiceShow(props: Partial<SupplierInvoiceShowPr
                     </dl>
                 </section>
             )}
+            {dialog === 'approve' && (
+                <ApproveDialog
+                    open
+                    onClose={() => setDialog(null)}
+                    onConfirm={(payload) => send('approve', payload)}
+                    totalTtc={invoice.total_ttc}
+                    currencyCode={c}
+                    initialControlTotal={invoice.control_total_ttc}
+                    matchStatus={matching?.status ?? 'no_po'}
+                    warnings={warnings}
+                    processing={processing}
+                    errors={dialogErrors}
+                />
+            )}
+            {dialog === 'void' && <VoidDialog open onClose={() => setDialog(null)} onConfirm={(payload) => send('void', payload)} processing={processing} errors={dialogErrors} />}
         </ApplicationShell>
     );
 }
