@@ -56,17 +56,68 @@ class FinanceObligation extends Model
         ];
     }
 
-    public function organization(): BelongsTo { return $this->belongsTo(Organization::class); }
-    public function store(): BelongsTo { return $this->belongsTo(Store::class); }
-    public function supplier(): BelongsTo { return $this->belongsTo(Supplier::class); }
-    public function preferredFinancialAccount(): BelongsTo { return $this->belongsTo(FinancialAccount::class, 'preferred_financial_account_id'); }
-    public function createdBy(): BelongsTo { return $this->belongsTo(User::class, 'created_by_user_id'); }
-    public function cancelledBy(): BelongsTo { return $this->belongsTo(User::class, 'cancelled_by_user_id'); }
-    public function allocations(): HasMany { return $this->hasMany(FinanceOutgoingPaymentAllocation::class, 'obligation_id'); }
-    public function recurringTemplate(): BelongsTo { return $this->belongsTo(FinanceRecurringObligationTemplate::class, 'recurring_template_id'); }
-    public function supplierInstallmentPlan(): BelongsTo { return $this->belongsTo(FinanceSupplierInstallmentPlan::class, 'supplier_installment_plan_id'); }
-    public function procurement(): BelongsTo { return $this->belongsTo(SalesOrderProcurement::class, 'sales_order_procurement_id'); }
-    public function paymentInstruments(): HasMany { return $this->hasMany(FinancePaymentInstrument::class, 'obligation_id'); }
-    public function supplierInvoiceInstallment(): BelongsTo { return $this->belongsTo(SupplierInvoiceInstallment::class, 'supplier_invoice_installment_id'); }
-    public function supplierInvoice(): HasOneThrough { return $this->hasOneThrough(SupplierInvoice::class, SupplierInvoiceInstallment::class, 'id', 'id', 'supplier_invoice_installment_id', 'supplier_invoice_id'); }
+    public function organization(): BelongsTo
+    {
+        return $this->belongsTo(Organization::class);
+    }
+
+    public function store(): BelongsTo
+    {
+        return $this->belongsTo(Store::class);
+    }
+
+    public function supplier(): BelongsTo
+    {
+        return $this->belongsTo(Supplier::class);
+    }
+
+    public function preferredFinancialAccount(): BelongsTo
+    {
+        return $this->belongsTo(FinancialAccount::class, 'preferred_financial_account_id');
+    }
+
+    public function createdBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'created_by_user_id');
+    }
+
+    public function cancelledBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'cancelled_by_user_id');
+    }
+
+    public function allocations(): HasMany
+    {
+        return $this->hasMany(FinanceOutgoingPaymentAllocation::class, 'obligation_id');
+    }
+
+    public function recurringTemplate(): BelongsTo
+    {
+        return $this->belongsTo(FinanceRecurringObligationTemplate::class, 'recurring_template_id');
+    }
+
+    public function supplierInstallmentPlan(): BelongsTo
+    {
+        return $this->belongsTo(FinanceSupplierInstallmentPlan::class, 'supplier_installment_plan_id');
+    }
+
+    public function procurement(): BelongsTo
+    {
+        return $this->belongsTo(SalesOrderProcurement::class, 'sales_order_procurement_id');
+    }
+
+    public function paymentInstruments(): HasMany
+    {
+        return $this->hasMany(FinancePaymentInstrument::class, 'obligation_id');
+    }
+
+    public function supplierInvoiceInstallment(): BelongsTo
+    {
+        return $this->belongsTo(SupplierInvoiceInstallment::class, 'supplier_invoice_installment_id');
+    }
+
+    public function supplierInvoice(): HasOneThrough
+    {
+        return $this->hasOneThrough(SupplierInvoice::class, SupplierInvoiceInstallment::class, 'id', 'id', 'supplier_invoice_installment_id', 'supplier_invoice_id');
+    }
 }
