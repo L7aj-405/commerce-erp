@@ -29,6 +29,8 @@ final class SandboxInventoryGuard
         'quotation_supplier_availability_requests', 'procurement_sequences', 'purchase_order_sequences',
         // Phase 7 - fulfillment / shipment ledger.
         'fulfillments', 'fulfillment_items', 'fulfillment_attachments', 'fulfillment_customer_notifications',
+        // Phase 2 Sprint 1 - supplier invoices (Production only, never available in Test Mode).
+        'supplier_invoices', 'supplier_invoice_lines', 'supplier_invoice_installments', 'supplier_invoice_attachments', 'supplier_invoice_sequences',
     ];
 
     /**

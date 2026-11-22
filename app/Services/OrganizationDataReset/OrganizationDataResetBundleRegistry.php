@@ -89,6 +89,9 @@ class OrganizationDataResetBundleRegistry
                 'finance_outgoing_payment_allocations',
                 'payments', 'finance_outgoing_payments',
                 'finance_obligations', 'finance_supplier_installment_plans',
+                // Supplier invoices: obligations (which will reference installments) are removed first;
+                // approved invoices are fiscal documents and block the plan (FiscalDocumentProtection).
+                'supplier_invoice_attachments', 'supplier_invoice_installments', 'supplier_invoice_lines', 'supplier_invoices',
                 'financial_account_opening_positions',
                 'finance_month_reviews', 'commission_entries',
             ]),
@@ -148,8 +151,8 @@ class OrganizationDataResetBundleRegistry
     }
 
     /**
-     * @param list<string> $tables
-     * @param list<array{0:string,1:string,2:string}> $preUpdates
+     * @param  list<string>  $tables
+     * @param  list<array{0:string,1:string,2:string}>  $preUpdates
      * @return list<OrganizationDataResetOperation>
      */
     private function tables(OrganizationDataResetScope $scope, array $tables, array $preUpdates = []): array

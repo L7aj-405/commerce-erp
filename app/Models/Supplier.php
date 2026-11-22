@@ -48,6 +48,18 @@ class Supplier extends Model
         return $this->hasMany(FinanceRecurringObligationTemplate::class);
     }
 
-    public function financeSupplierInstallmentPlans(): HasMany { return $this->hasMany(FinanceSupplierInstallmentPlan::class); }
-    public function financePaymentInstruments(): HasMany { return $this->hasMany(FinancePaymentInstrument::class); }
+    public function financeSupplierInstallmentPlans(): HasMany
+    {
+        return $this->hasMany(FinanceSupplierInstallmentPlan::class);
+    }
+
+    public function financePaymentInstruments(): HasMany
+    {
+        return $this->hasMany(FinancePaymentInstrument::class);
+    }
+
+    public function supplierInvoices(): HasMany
+    {
+        return $this->hasMany(SupplierInvoice::class);
+    }
 }
