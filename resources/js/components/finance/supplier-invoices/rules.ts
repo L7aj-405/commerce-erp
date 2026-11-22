@@ -8,8 +8,8 @@ export type ApprovalInput = {
     matchStatus: SupplierInvoiceMatchStatus;
     acknowledgeUnmatched: boolean;
     matchNote: string;
-    warningCount: number;
-    acknowledgeWarnings: boolean;
+    warningCodes: string[];
+    acknowledgedWarnings: string[];
 };
 
 export function approvalProblems(input: ApprovalInput): { controlTotal: boolean; matchAck: boolean; matchNote: boolean; warnings: boolean } {
@@ -18,7 +18,7 @@ export function approvalProblems(input: ApprovalInput): { controlTotal: boolean;
         controlTotal: !decimalEquals(input.controlTotal, input.totalTtc),
         matchAck: needsMatchAck && !input.acknowledgeUnmatched,
         matchNote: needsMatchAck && input.matchNote.trim() === '',
-        warnings: input.warningCount > 0 && !input.acknowledgeWarnings,
+        warnings: input.warningCodes.some((code) => !input.acknowledgedWarnings.includes(code)),
     };
 }
 
