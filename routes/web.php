@@ -827,6 +827,7 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
         Route::get('/factures-fournisseurs/{supplierInvoice}/attachments/{attachment}', [SupplierInvoiceAttachmentController::class, 'show'])->whereNumber(['supplierInvoice', 'attachment'])->name('supplier-invoices.attachments.show');
         Route::delete('/factures-fournisseurs/{supplierInvoice}/attachments/{attachment}', [SupplierInvoiceAttachmentController::class, 'destroy'])->whereNumber(['supplierInvoice', 'attachment'])->name('supplier-invoices.attachments.destroy');
         Route::post('/factures-fournisseurs/{supplierInvoice}/approve', [SupplierInvoiceController::class, 'approve'])->whereNumber('supplierInvoice')->middleware('throttle:20,1')->name('supplier-invoices.approve');
+        Route::post('/factures-fournisseurs/{supplierInvoice}/void', [SupplierInvoiceController::class, 'void'])->whereNumber('supplierInvoice')->middleware('throttle:10,1')->name('supplier-invoices.void');
         Route::get('/commissions', [CommissionDashboardController::class, 'index'])->name('commissions.dashboard');
         Route::get('/commissions/salespeople/{salesperson}', [CommissionDashboardController::class, 'salesperson'])
             ->where('salesperson', '[0-9]+|unattributed')->name('commissions.salesperson');
