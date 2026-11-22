@@ -46,6 +46,7 @@ use App\Http\Controllers\Finance\FinancePaymentInstrumentController;
 use App\Http\Controllers\Finance\FinanceRecurringObligationController;
 use App\Http\Controllers\Finance\FinanceSupplierInstallmentController;
 use App\Http\Controllers\Finance\SupplierInvoiceController;
+use App\Http\Controllers\Finance\SupplierInvoiceVariantSearchController;
 use App\Http\Controllers\FollowUps\AttentionController;
 use App\Http\Controllers\FollowUps\FollowUpController;
 use App\Http\Controllers\FollowUps\FollowUpRecurringController;
@@ -817,6 +818,7 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
         Route::get('/factures-fournisseurs', [SupplierInvoiceController::class, 'index'])->name('supplier-invoices.index');
         Route::get('/factures-fournisseurs/nouvelle', [SupplierInvoiceController::class, 'create'])->name('supplier-invoices.create');
         Route::post('/factures-fournisseurs', [SupplierInvoiceController::class, 'store'])->middleware('throttle:30,1')->name('supplier-invoices.store');
+        Route::get('/factures-fournisseurs/variant-search', SupplierInvoiceVariantSearchController::class)->middleware('throttle:60,1')->name('supplier-invoices.variant-search');
         Route::get('/factures-fournisseurs/{supplierInvoice}', [SupplierInvoiceController::class, 'show'])->whereNumber('supplierInvoice')->name('supplier-invoices.show');
         Route::get('/factures-fournisseurs/{supplierInvoice}/modifier', [SupplierInvoiceController::class, 'edit'])->whereNumber('supplierInvoice')->name('supplier-invoices.edit');
         Route::put('/factures-fournisseurs/{supplierInvoice}', [SupplierInvoiceController::class, 'update'])->whereNumber('supplierInvoice')->middleware('throttle:30,1')->name('supplier-invoices.update');
