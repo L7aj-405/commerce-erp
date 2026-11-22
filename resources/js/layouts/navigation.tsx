@@ -20,7 +20,7 @@ export const isNavSection = (entry: NavEntry): entry is NavSection => 'items' in
 export const hasPermission = (tenant: Tenant, permission?: string | string[]) =>
     !permission || (Array.isArray(permission) ? permission.some((p) => tenant.permissions.includes(p)) : tenant.permissions.includes(permission));
 
-export function buildNavGroups(t: (key: TranslationKey) => string, tenant: Tenant, sandboxActive = false): NavGroup[] {
+export function buildNavGroups(t: (key: TranslationKey) => string, tenant: Tenant, sandboxActive = false, supplierInvoicesEnabled = false): NavGroup[] {
     const groups: NavGroup[] = [
         {
             key: 'dashboard',
@@ -208,8 +208,9 @@ export function buildNavGroups(t: (key: TranslationKey) => string, tenant: Tenan
         },
     ];
 
-    // Supplier invoices are Production-only: hide the entry in Test Mode (routes are also denied server-side).
-    if (!sandboxActive) return groups;
+    // Supplier invoices are behind a kill switch (off by default: the routes are 404) and are Production-only:
+    // hide the entry unless the feature is enabled, and in Test Mode (routes are also denied server-side).
+    if (supplierInvoicesEnabled && !sandboxActive) return groups;
     const keep = (item: NavItem) => !item.href.startsWith('/finance/factures-fournisseurs');
     const hide = (entry: NavEntry): NavEntry[] => (isNavSection(entry) ? [{ ...entry, items: entry.items.filter(keep) }] : keep(entry) ? [entry] : []);
     return groups.map((group) => ({ ...group, items: group.items.flatMap(hide) }));

@@ -5,7 +5,7 @@ export type SharedPageProps = {
     tenant: { organization: TenantOrganization | null; store: TenantStore | null; business_today?: string | null; organizations: TenantOrganization[]; stores: TenantStore[]; permissions: string[] };
     notifications: NotificationSummary;
     /** PILOT-1.1: false during the closed pilot (registration routes answer 404). */
-    features: { public_registration: boolean };
+    features: { public_registration: boolean; supplier_invoices?: boolean };
     flash?: { success?: string; invitationUrl?: string; fulfillmentFollowUpProposal?: unknown };
     [key: string]: unknown;
 };

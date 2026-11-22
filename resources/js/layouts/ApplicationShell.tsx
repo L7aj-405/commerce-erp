@@ -112,7 +112,8 @@ export default function ApplicationShell({
 
     const can = (permission?: string | string[]) => tenantHasPermission(tenant, permission);
     const sandboxActive = Boolean(page.props.sandbox?.active);
-    const groups = useMemo(() => visibleNavGroups(buildNavGroups(t, tenant, sandboxActive), tenant), [t, tenant, sandboxActive]);
+    const supplierInvoicesEnabled = Boolean(page.props.features?.supplier_invoices);
+    const groups = useMemo(() => visibleNavGroups(buildNavGroups(t, tenant, sandboxActive, supplierInvoicesEnabled), tenant), [t, tenant, sandboxActive, supplierInvoicesEnabled]);
     const activeMatch = matchActiveNav(groups, currentPath);
     const activeGroup = groups.find((group) => group.key === activeMatch?.groupKey);
 
