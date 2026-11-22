@@ -1,6 +1,7 @@
 import { InstallmentEditor, InvoiceTotalsPanel, TestModeRestrictionNotice } from '@/components/finance/supplier-invoices';
 import type { FormPurchaseOrder, InstallmentDraft, SupplierInvoiceFormProps } from '@/components/finance/supplier-invoices';
 import { calculateLine, calculateTotals, formatScaled, interpolate, parseScaled } from '@/components/finance/supplier-invoices/math';
+import { VariantPicker } from '@/components/finance/supplier-invoices/VariantPicker';
 import { Alert } from '@/components/ui/Alert';
 import { Button, ButtonLink } from '@/components/ui/Button';
 import EmptyState from '@/components/ui/EmptyState';
@@ -283,9 +284,9 @@ export default function SupplierInvoiceForm(props: Partial<SupplierInvoiceFormPr
                                         </Button>
                                     </div>
                                     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                                        <SelectField label={t('supplierInvoice.form.nature')} value={line.cost_nature} onChange={(e) => onNature(index, e.target.value as 'inventory' | 'expense')} error={f('cost_nature')} hint={line.cost_nature === 'expense' && !selectedPo ? t('supplierInvoice.form.natureNeedsPo') : undefined}>
+                                        <SelectField label={t('supplierInvoice.form.nature')} value={line.cost_nature} onChange={(e) => onNature(index, e.target.value as 'inventory' | 'expense')} error={f('cost_nature')} hint={line.cost_nature === 'expense' ? t('supplierInvoice.form.natureNeedsPo') : undefined}>
                                             <option value="expense">{t('supplierInvoice.form.nature.expense')}</option>
-                                            <option value="inventory" disabled={!selectedPo && line.product_variant_id === null}>{t('supplierInvoice.form.nature.inventory')}</option>
+                                            <option value="inventory">{t('supplierInvoice.form.nature.inventory')}</option>
                                         </SelectField>
                                         {selectedPo && line.cost_nature === 'inventory' ? (
                                             <SelectField label={t('supplierInvoice.form.poLine')} value={line.purchase_order_line_id === null ? '' : String(line.purchase_order_line_id)} onChange={(e) => onPoLine(index, e.target.value)} error={f('purchase_order_line_id') ?? f('product_variant_id')}>
@@ -294,14 +295,17 @@ export default function SupplierInvoiceForm(props: Partial<SupplierInvoiceFormPr
                                                     <option key={l.id} value={l.id}>{interpolate(t('supplierInvoice.form.poLineLabel'), { id: l.id, qty: trimDecimal(l.quantity) })}</option>
                                                 ))}
                                             </SelectField>
-                                        ) : line.variant_label ? (
-                                            <div>
-                                                <p className="mb-1.5 text-sm font-medium text-ink">{t('supplierInvoice.form.article')}</p>
-                                                <p className="flex min-h-11 items-center text-sm text-ink-muted">{line.variant_label}</p>
-                                                {f('product_variant_id') && <p className="text-[13px] font-medium text-danger">{f('product_variant_id')}</p>}
-                                            </div>
                                         ) : (
                                             <div />
+                                        )}
+                                        {line.cost_nature === 'inventory' && line.purchase_order_line_id === null && (
+                                            <VariantPicker
+                                                searchUrl={`${BASE}/variant-search`}
+                                                value={line.product_variant_id}
+                                                selectedLabel={line.variant_label}
+                                                onSelect={(variant) => setLine(index, { product_variant_id: variant?.id ?? null, variant_label: variant?.label ?? null })}
+                                                error={f('product_variant_id')}
+                                            />
                                         )}
                                         <TextField className="sm:col-span-2" label={t('supplierInvoice.form.description2')} required maxLength={255} value={line.description} onChange={(e) => setLine(index, { description: e.target.value })} error={f('description')} />
                                         <TextField label={t('supplierInvoice.form.quantity')} required inputMode="decimal" dir="ltr" value={line.quantity} onChange={(e) => setLine(index, { quantity: e.target.value })} error={f('quantity') ?? (line.quantity.trim() !== '' && parseScaled(line.quantity) === null ? '!' : undefined)} />

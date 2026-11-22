@@ -40,10 +40,10 @@ export default function SupplierInvoiceShow(props: Partial<SupplierInvoiceShowPr
     const upload = (file: File | undefined) => {
         if (!file || !invoice) return;
         setProcessing(true);
-        router.post(`${BASE}/${invoice.id}/pieces-jointes`, { file }, { forceFormData: true, preserveScroll: true, onFinish: () => { setProcessing(false); if (fileInput.current) fileInput.current.value = ''; } });
+        router.post(`${BASE}/${invoice.id}/attachments`, { file }, { forceFormData: true, preserveScroll: true, onFinish: () => { setProcessing(false); if (fileInput.current) fileInput.current.value = ''; } });
     };
     const removeAttachment = (id: number) => {
-        if (invoice) router.delete(`${BASE}/${invoice.id}/pieces-jointes/${id}`, { preserveScroll: true });
+        if (invoice) router.delete(`${BASE}/${invoice.id}/attachments/${id}`, { preserveScroll: true });
     };
 
     const back = (

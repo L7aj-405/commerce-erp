@@ -5365,7 +5365,7 @@ export const fr = {
     "supplierInvoice.form.nature": "Nature du coût",
     "supplierInvoice.form.nature.inventory": "Stock (article)",
     "supplierInvoice.form.nature.expense": "Charge (hors stock)",
-    "supplierInvoice.form.natureNeedsPo": "Une ligne de stock doit être rattachée à une ligne du bon de commande : choisissez d’abord un bon de commande.",
+    "supplierInvoice.form.natureNeedsPo": "Une ligne de charge ne référence aucun article de stock.",
     "supplierInvoice.form.poLine": "Ligne du bon de commande",
     "supplierInvoice.form.noPoLine": "Non rattachée",
     "supplierInvoice.form.poLineLabel": "Ligne BC n°{id} · qté {qty}",
@@ -5395,6 +5395,10 @@ export const fr = {
     "supplierInvoice.attach.hint": "JPEG, PNG, WebP ou PDF.",
     "supplierInvoice.attach.remove": "Retirer",
     "supplierInvoice.attach.removeLabel": "Retirer la pièce jointe {name}",
+    "supplierInvoice.variant.placeholder": "Rechercher un article (nom ou SKU)",
+    "supplierInvoice.variant.minChars": "Saisissez au moins 2 caractères.",
+    "supplierInvoice.variant.empty": "Aucun article trouvé.",
+    "supplierInvoice.variant.error": "Recherche indisponible. Réessayez.",
 } as const;
 
 export type TranslationKey = keyof typeof fr;
@@ -10613,7 +10617,7 @@ export const ar: Record<TranslationKey, string> = {
     "supplierInvoice.form.nature": "طبيعة التكلفة",
     "supplierInvoice.form.nature.inventory": "مخزون (صنف)",
     "supplierInvoice.form.nature.expense": "مصروف (خارج المخزون)",
-    "supplierInvoice.form.natureNeedsPo": "سطر المخزون يجب ربطه بسطر من أمر الشراء: اختر أمر شراء أولًا.",
+    "supplierInvoice.form.natureNeedsPo": "سطر المصروف لا يشير إلى أي صنف مخزون.",
     "supplierInvoice.form.poLine": "سطر أمر الشراء",
     "supplierInvoice.form.noPoLine": "غير مرتبط",
     "supplierInvoice.form.poLineLabel": "سطر أمر الشراء {id} · الكمية {qty}",
@@ -10643,4 +10647,8 @@ export const ar: Record<TranslationKey, string> = {
     "supplierInvoice.attach.hint": "JPEG أو PNG أو WebP أو PDF.",
     "supplierInvoice.attach.remove": "إزالة",
     "supplierInvoice.attach.removeLabel": "إزالة المرفق {name}",
+    "supplierInvoice.variant.placeholder": "ابحث عن صنف (الاسم أو SKU)",
+    "supplierInvoice.variant.minChars": "أدخل حرفين على الأقل.",
+    "supplierInvoice.variant.empty": "لم يتم العثور على صنف.",
+    "supplierInvoice.variant.error": "البحث غير متاح. أعد المحاولة.",
 };
