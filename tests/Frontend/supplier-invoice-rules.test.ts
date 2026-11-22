@@ -59,3 +59,18 @@ test('void: reason required, text required only for other', () => {
     assert.ok(!canVoid('other', '  '));
     assert.ok(canVoid('other', 'Facture reçue par erreur'));
 });
+
+import { calculateLine, calculateTotals } from '../../resources/js/components/finance/supplier-invoices/math.ts';
+
+test('line calculation mirrors the server: one half-up rounding from the exact product', () => {
+    assert.deepEqual(calculateLine('3', '33.335', '20'), { line_ht: '100.0100', line_tva: '20.0000', line_ttc: '120.0100' }); // 100.005 -> 100.01 ; 20.002 -> 20.00
+    assert.deepEqual(calculateLine('1', '0.005', '0'), { line_ht: '0.0100', line_tva: '0.0000', line_ttc: '0.0100' });
+    assert.equal(calculateLine('0', '10', '20'), null);
+    assert.equal(calculateLine('1', '', '20'), null);
+});
+
+test('totals sum rounded lines and add the bounded adjustment', () => {
+    const lines = [calculateLine('2', '10', '20'), calculateLine('1', '0.99', '10')];
+    assert.deepEqual(calculateTotals(lines, '-0.01'), { subtotal_ht: '20.9900', total_tva: '4.1000', rounding_adjustment: '-0.0100', total_ttc: '25.0800', incomplete: false });
+    assert.equal(calculateTotals([null], '').incomplete, true);
+});

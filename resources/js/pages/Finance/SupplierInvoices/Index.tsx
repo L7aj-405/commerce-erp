@@ -4,7 +4,7 @@ import { TestModeRestrictionNotice } from '@/components/finance/supplier-invoice
 import { interpolate } from '@/components/finance/supplier-invoices/math';
 import { AdvancedFilterBar, ChoiceFilter, FilterSearch } from '@/components/ui/AdvancedFilterBar';
 import type { FilterChip } from '@/components/ui/AdvancedFilterBar';
-import { Button } from '@/components/ui/Button';
+import { Button, ButtonLink } from '@/components/ui/Button';
 import EmptyState from '@/components/ui/EmptyState';
 import PageHeader from '@/components/ui/PageHeader';
 import { TablePager, TableShell } from '@/components/ui/TableShell';
@@ -37,7 +37,13 @@ export default function SupplierInvoicesIndex(props: Partial<SupplierInvoiceInde
     chip('supplier_id', t('supplierInvoice.col.supplier'), supplierOptions);
     chip('store_id', t('supplierInvoice.col.store'), storeOptions);
 
-    const header = <PageHeader title={t('supplierInvoice.title')} description={t('supplierInvoice.description')} />;
+    const header = (
+        <PageHeader
+            title={t('supplierInvoice.title')}
+            description={t('supplierInvoice.description')}
+            actions={props.can?.create ? <ButtonLink href={`${BASE}/nouvelle`}>{t('supplierInvoice.new')}</ButtonLink> : undefined}
+        />
+    );
 
     if (sandbox) {
         return (
@@ -64,7 +70,7 @@ export default function SupplierInvoicesIndex(props: Partial<SupplierInvoiceInde
     const filtered = f.activeCount > 0;
     const emptyTitle = filtered ? t('filters.noMatch') : t('supplierInvoice.empty');
     const emptyDescription = filtered ? t('filters.noMatchHelp') : t('supplierInvoice.emptyHelp');
-    const emptyAction = filtered ? <Button variant="secondary" onClick={f.reset}>{t('filters.reset')}</Button> : undefined;
+    const emptyAction = filtered ? <Button variant="secondary" onClick={f.reset}>{t('filters.reset')}</Button> : props.can?.create ? <ButtonLink href={`${BASE}/nouvelle`}>{t('supplierInvoice.new')}</ButtonLink> : undefined;
     const pager = <TablePager links={invoices.links} from={undefined} to={undefined} total={invoices.total} />;
 
     return (

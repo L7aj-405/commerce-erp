@@ -52,7 +52,8 @@ export type SupplierInvoiceLine = {
     line_ht: string;
     line_tva: string;
     line_ttc: string;
-    product_variant: { id: number; name: string; sku: string | null } | null;
+    tax_rate_id: number | null;
+    product_variant: { id: number; sku: string | null; label: string | null; product_name: string | null } | null;
     purchase_order_line_id: number | null;
 };
 
@@ -62,7 +63,7 @@ export type SupplierInvoiceInstallment = {
     due_date: string;
     amount: string;
     planned_payment_method: string | null;
-    preferred_financial_account: { id: number; name: string } | null;
+    preferred_financial_account: { id: number; name: string; code: string | null } | null;
     obligation: { id: number; number: string; planned: string; paid: string; remaining: string; status: string } | null;
 };
 
@@ -71,7 +72,8 @@ export type SupplierInvoiceAttachment = {
     original_name: string;
     mime: string;
     size_bytes: number;
-    url: string;
+    /** Authorized streaming route; null until the attachment backend lands. */
+    url: string | null;
 };
 
 export type SupplierInvoiceHeader = {
@@ -87,8 +89,13 @@ export type SupplierInvoiceHeader = {
     total_ttc: string;
     control_total_ttc: string | null;
     notes: string | null;
-    supplier: { id: number; name: string; ice: string | null };
+    supplier: { id: number; name: string; ice: string | null; tax_identifier?: string | null; rc_number?: string | null };
+    /** Identity frozen at approval; null while draft. */
+    supplier_snapshot?: { name: string | null; ice: string | null; tax_identifier: string | null; rc_number: string | null } | null;
     store: { id: number; name: string; code: string };
+    purchase_order: { id: number; number: string } | null;
+    created_by?: string | null;
+    created_at?: string | null;
     row_version: number;
     lines: SupplierInvoiceLine[];
     installments: SupplierInvoiceInstallment[];
@@ -117,11 +124,22 @@ export type SupplierInvoiceFormProps = {
     suppliers: { id: number; name: string; ice?: string | null; default_payment_term_days?: number | null; default_currency_code?: string | null }[];
     stores: { id: number; name: string; code?: string }[];
     taxRates: { id: number; name: string; rate: string }[];
-    purchaseOrders: { id: number; po_number: string; supplier_id: number; store_id: number }[];
-    accounts: { id: number; name: string }[];
+    purchaseOrders: FormPurchaseOrder[];
+    accounts: { id: number; name: string; code: string | null; currency_code: string | null }[];
     settings: { rounding_tolerance: string; require_distinct_approver: boolean; money_scale: number };
-    row_version: number;
+    /** null on create. Must be echoed back on update (optimistic lock). */
+    row_version: number | null;
+};
+
+export type FormPurchaseOrder = {
+    id: number;
+    number: string;
+    supplier_id: number;
+    store_id: number;
+    currency_code: string;
+    status: string;
+    lines: { id: number; product_variant_id: number | null; quantity: string; unit_price: string | null }[];
 };
 
 /** Editable installment row (client-side state). `key` is a stable React key. */
-export type InstallmentDraft = { key: string; due_date: string; amount: string };
+export type InstallmentDraft = { key: string; due_date: string; amount: string; planned_payment_method?: string | null; preferred_financial_account_id?: number | null };
