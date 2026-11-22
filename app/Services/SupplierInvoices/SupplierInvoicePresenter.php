@@ -2,7 +2,9 @@
 
 namespace App\Services\SupplierInvoices;
 
+use App\Enums\SupplierInvoiceStatus;
 use App\Models\SupplierInvoice;
+use App\Models\User;
 
 /**
  * Inertia-ready arrays for supplier invoices (the A2 <-> A4 data contract). Money is always a decimal string;
@@ -95,7 +97,7 @@ final class SupplierInvoicePresenter
                 'original_name' => $attachment->original_name,
                 'mime' => $attachment->mime,
                 'size_bytes' => $attachment->size_bytes,
-                'url' => null, // the authorized streaming route arrives with the attachment work
+                'url' => route('finance.supplier-invoices.attachments.show', [$invoice, $attachment]),
             ])->values()->all(),
             'approval' => $invoice->approved_at === null ? null : [
                 'approved_at' => $invoice->approved_at->toIso8601String(),
@@ -126,6 +128,14 @@ final class SupplierInvoicePresenter
                 'flags' => $invoice->purchase_order_id !== null && $line->purchase_order_line_id === null ? ['not_linked'] : [],
             ])->values()->all(),
         ];
+    }
+
+    /** `can.attach`: manage permission + membership of an active store, invoice not void. */
+    public function canAttach(User $user, SupplierInvoice $invoice): bool
+    {
+        return $invoice->status !== SupplierInvoiceStatus::Void
+            && $user->hasPermission($invoice->organization_id, 'supplier_invoices.manage')
+            && app(SupplierInvoiceStoreAccess::class)->canEdit($user, $invoice->store);
     }
 
     private function provisionalMatchStatus(SupplierInvoice $invoice): string

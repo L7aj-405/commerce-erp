@@ -45,6 +45,7 @@ use App\Http\Controllers\Finance\FinanceMonthReviewController;
 use App\Http\Controllers\Finance\FinancePaymentInstrumentController;
 use App\Http\Controllers\Finance\FinanceRecurringObligationController;
 use App\Http\Controllers\Finance\FinanceSupplierInstallmentController;
+use App\Http\Controllers\Finance\SupplierInvoiceAttachmentController;
 use App\Http\Controllers\Finance\SupplierInvoiceController;
 use App\Http\Controllers\FollowUps\AttentionController;
 use App\Http\Controllers\FollowUps\FollowUpController;
@@ -820,6 +821,9 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
         Route::get('/factures-fournisseurs/{supplierInvoice}', [SupplierInvoiceController::class, 'show'])->whereNumber('supplierInvoice')->name('supplier-invoices.show');
         Route::get('/factures-fournisseurs/{supplierInvoice}/modifier', [SupplierInvoiceController::class, 'edit'])->whereNumber('supplierInvoice')->name('supplier-invoices.edit');
         Route::put('/factures-fournisseurs/{supplierInvoice}', [SupplierInvoiceController::class, 'update'])->whereNumber('supplierInvoice')->middleware('throttle:30,1')->name('supplier-invoices.update');
+        Route::post('/factures-fournisseurs/{supplierInvoice}/attachments', [SupplierInvoiceAttachmentController::class, 'store'])->whereNumber('supplierInvoice')->middleware('throttle:20,1')->name('supplier-invoices.attachments.store');
+        Route::get('/factures-fournisseurs/{supplierInvoice}/attachments/{attachment}', [SupplierInvoiceAttachmentController::class, 'show'])->whereNumber(['supplierInvoice', 'attachment'])->name('supplier-invoices.attachments.show');
+        Route::delete('/factures-fournisseurs/{supplierInvoice}/attachments/{attachment}', [SupplierInvoiceAttachmentController::class, 'destroy'])->whereNumber(['supplierInvoice', 'attachment'])->name('supplier-invoices.attachments.destroy');
         Route::get('/commissions', [CommissionDashboardController::class, 'index'])->name('commissions.dashboard');
         Route::get('/commissions/salespeople/{salesperson}', [CommissionDashboardController::class, 'salesperson'])
             ->where('salesperson', '[0-9]+|unattributed')->name('commissions.salesperson');
