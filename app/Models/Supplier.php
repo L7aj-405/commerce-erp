@@ -18,6 +18,9 @@ class Supplier extends Model
 
     protected $guarded = ['*'];
 
+    /** Sensitive: never serialized by accident (lists, JSON, Inertia). Read explicitly where authorized. */
+    protected $hidden = ['bank_iban'];
+
     protected function casts(): array
     {
         return ['active' => 'boolean'];
