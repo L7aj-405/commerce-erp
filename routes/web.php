@@ -820,6 +820,7 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
         Route::get('/factures-fournisseurs/{supplierInvoice}', [SupplierInvoiceController::class, 'show'])->whereNumber('supplierInvoice')->name('supplier-invoices.show');
         Route::get('/factures-fournisseurs/{supplierInvoice}/modifier', [SupplierInvoiceController::class, 'edit'])->whereNumber('supplierInvoice')->name('supplier-invoices.edit');
         Route::put('/factures-fournisseurs/{supplierInvoice}', [SupplierInvoiceController::class, 'update'])->whereNumber('supplierInvoice')->middleware('throttle:30,1')->name('supplier-invoices.update');
+        Route::post('/factures-fournisseurs/{supplierInvoice}/approve', [SupplierInvoiceController::class, 'approve'])->whereNumber('supplierInvoice')->middleware('throttle:20,1')->name('supplier-invoices.approve');
         Route::get('/commissions', [CommissionDashboardController::class, 'index'])->name('commissions.dashboard');
         Route::get('/commissions/salespeople/{salesperson}', [CommissionDashboardController::class, 'salesperson'])
             ->where('salesperson', '[0-9]+|unattributed')->name('commissions.salesperson');

@@ -2,7 +2,10 @@
 
 namespace App\Services\SupplierInvoices;
 
+use App\Models\FinanceObligation;
 use App\Models\SupplierInvoice;
+use App\Services\Finance\FinanceObligationCalculator;
+use Illuminate\Support\Carbon;
 
 /**
  * Inertia-ready arrays for supplier invoices (the A2 <-> A4 data contract). Money is always a decimal string;
@@ -10,6 +13,11 @@ use App\Models\SupplierInvoice;
  */
 final class SupplierInvoicePresenter
 {
+    public function __construct(
+        private readonly SupplierInvoiceMatchingService $matching,
+        private readonly FinanceObligationCalculator $obligations,
+    ) {}
+
     /** @return array<string, mixed> */
     public function row(SupplierInvoice $invoice, int $warningsCount): array
     {
@@ -23,7 +31,7 @@ final class SupplierInvoicePresenter
             'store' => ['id' => $invoice->store->id, 'name' => $invoice->store->name, 'code' => $invoice->store->code],
             'currency_code' => $invoice->currency_code,
             'total_ttc' => (string) $invoice->total_ttc,
-            'match_status' => $invoice->match_status_at_approval?->value ?? $this->provisionalMatchStatus($invoice),
+            'match_status' => $invoice->match_status_at_approval?->value ?? $this->matching->status($invoice),
             'has_attachments' => ($invoice->attachments_count ?? 0) > 0,
             'warnings_count' => $warningsCount,
         ];
@@ -32,6 +40,8 @@ final class SupplierInvoicePresenter
     /** Requires lines, installments, attachments, supplier, store, purchaseOrder, users and variants loaded. @return array<string, mixed> */
     public function detail(SupplierInvoice $invoice): array
     {
+        $obligations = $this->obligationsByInstallment($invoice);
+
         return [
             'id' => $invoice->id,
             'internal_number' => $invoice->internal_number,
@@ -87,8 +97,7 @@ final class SupplierInvoicePresenter
                 'planned_payment_method' => $installment->planned_payment_method?->value,
                 'preferred_financial_account' => $installment->preferredFinancialAccount
                     ? $installment->preferredFinancialAccount->only(['id', 'name', 'code']) : null,
-                // Filled by the approval work (obligations only exist once approved).
-                'obligation' => null,
+                'obligation' => $this->obligation($obligations->get($installment->id)),
             ])->values()->all(),
             'attachments' => $invoice->attachments->map(fn ($attachment) => [
                 'id' => $attachment->id,
@@ -112,24 +121,35 @@ final class SupplierInvoicePresenter
         ];
     }
 
-    /**
-     * Provisional matching (PR5): from the PO link only. The live quantity/price matching service replaces it with the approval work.
-     *
-     * @return array{status: string, lines: list<array{line_id: int, flags: list<string>}>}
-     */
+    /** @return array{status: string, lines: list<array{line_id: int, flags: list<string>}>} */
     public function matching(SupplierInvoice $invoice): array
     {
-        return [
-            'status' => $this->provisionalMatchStatus($invoice),
-            'lines' => $invoice->lines->map(fn ($line) => [
-                'line_id' => $line->id,
-                'flags' => $invoice->purchase_order_id !== null && $line->purchase_order_line_id === null ? ['not_linked'] : [],
-            ])->values()->all(),
-        ];
+        return $this->matching->match($invoice);
     }
 
-    private function provisionalMatchStatus(SupplierInvoice $invoice): string
+    /** One query for all the invoice's obligations (generated at approval; none while a draft). @return \Illuminate\Support\Collection<int, FinanceObligation> */
+    private function obligationsByInstallment(SupplierInvoice $invoice)
     {
-        return $invoice->purchase_order_id === null ? 'no_po' : 'po_partial';
+        $ids = $invoice->installments->pluck('id');
+        if ($invoice->approved_at === null || $ids->isEmpty()) {
+            return collect();
+        }
+
+        return FinanceObligation::query()->where('organization_id', $invoice->organization_id)
+            ->whereIn('supplier_invoice_installment_id', $ids)->get()->keyBy('supplier_invoice_installment_id');
+    }
+
+    /** @return array{id: int, number: string, planned: string, paid: string, remaining: string, status: string}|null */
+    private function obligation(?FinanceObligation $obligation): ?array
+    {
+        if ($obligation === null) {
+            return null;
+        }
+        $values = $this->obligations->values($obligation, Carbon::today());
+
+        return [
+            'id' => $obligation->id, 'number' => $obligation->obligation_number,
+            'planned' => $values['planned'], 'paid' => $values['paid'], 'remaining' => $values['remaining'], 'status' => $values['status'],
+        ];
     }
 }

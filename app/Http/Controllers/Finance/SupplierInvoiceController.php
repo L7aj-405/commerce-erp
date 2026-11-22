@@ -2,10 +2,12 @@
 
 namespace App\Http\Controllers\Finance;
 
+use App\Actions\SupplierInvoices\ApproveSupplierInvoiceAction;
 use App\Actions\SupplierInvoices\SaveSupplierInvoiceDraftAction;
 use App\Enums\PurchaseOrderStatus;
 use App\Enums\SupplierInvoiceStatus;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Finance\ApproveSupplierInvoiceRequest;
 use App\Http\Requests\Finance\StoreSupplierInvoiceRequest;
 use App\Http\Requests\Finance\UpdateSupplierInvoiceRequest;
 use App\Models\FinancialAccount;
@@ -140,6 +142,14 @@ class SupplierInvoiceController extends Controller implements HasMiddleware
         $result = $action->execute($request->user(), $this->context->organizationOrFail(), $request->validated(), $supplierInvoice);
 
         return redirect()->route('finance.supplier-invoices.show', $result['invoice'])->with('success', 'Brouillon mis à jour.');
+    }
+
+    public function approve(ApproveSupplierInvoiceRequest $request, SupplierInvoice $supplierInvoice, ApproveSupplierInvoiceAction $action): RedirectResponse
+    {
+        $result = $action->execute($request->user(), $supplierInvoice, $request->validated());
+
+        return redirect()->route('finance.supplier-invoices.show', $result['invoice'])
+            ->with('success', $result['approved_now'] ? 'Facture approuvée : les échéances sont créées dans la situation de fin de mois.' : 'Facture déjà approuvée.');
     }
 
     private function loadDetail(SupplierInvoice $invoice): SupplierInvoice
