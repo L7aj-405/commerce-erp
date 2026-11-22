@@ -13,12 +13,12 @@ export type ApprovePayload = {
     control_total_ttc: string;
     acknowledge_unmatched: boolean;
     match_note: string;
-    acknowledge_warnings: boolean;
+    acknowledged_warnings: string[];
 };
 
 /**
  * Approval confirmation. Requires an exact control total, an acknowledgement + note
- * when the PO match is not `po_matched`, and an acknowledgement of soft warnings.
+ * when the PO match is not `po_matched`, and every soft warning ticked (sent as `acknowledged_warnings` codes).
  * `errors` are server validation messages keyed by payload field. Mount it only
  * while open (or pass a changing `key`) so internal state resets between uses.
  */
@@ -49,17 +49,17 @@ export function ApproveDialog({
     const [controlTotal, setControlTotal] = useState(initialControlTotal ?? '');
     const [ackUnmatched, setAckUnmatched] = useState(false);
     const [note, setNote] = useState('');
-    const [ackWarnings, setAckWarnings] = useState(false);
+    const [ackWarnings, setAckWarnings] = useState<string[]>([]);
     const [touched, setTouched] = useState(false);
 
-    const input = { controlTotal, totalTtc, matchStatus, acknowledgeUnmatched: ackUnmatched, matchNote: note, warningCount: warnings.length, acknowledgeWarnings: ackWarnings };
+    const input = { controlTotal, totalTtc, matchStatus, acknowledgeUnmatched: ackUnmatched, matchNote: note, warningCodes: warnings.map((warning) => warning.code), acknowledgedWarnings: ackWarnings };
     const problems = approvalProblems(input);
     const needsMatchAck = matchStatus !== 'po_matched';
 
     const submit = () => {
         setTouched(true);
         if (!canApprove(input)) return;
-        onConfirm({ control_total_ttc: controlTotal.trim(), acknowledge_unmatched: ackUnmatched, match_note: note.trim(), acknowledge_warnings: ackWarnings });
+        onConfirm({ control_total_ttc: controlTotal.trim(), acknowledge_unmatched: ackUnmatched, match_note: note.trim(), acknowledged_warnings: ackWarnings });
     };
 
     return (
@@ -111,7 +111,7 @@ export function ApproveDialog({
                         />
                     </div>
                 )}
-                <SoftWarningList warnings={warnings} acknowledged={ackWarnings} onAcknowledgeChange={setAckWarnings} error={errors.acknowledge_warnings} />
+                <SoftWarningList warnings={warnings} acknowledged={ackWarnings} onAcknowledgedChange={setAckWarnings} error={errors.acknowledged_warnings} />
             </div>
         </Dialog>
     );

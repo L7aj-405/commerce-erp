@@ -27,12 +27,14 @@ export function SupplierFiscalFields({
     errors,
     warnings = [],
     ibanMasked,
+    hasIban = false,
 }: {
     data: SupplierFiscalFormData;
     setData: <K extends keyof SupplierFiscalFormData>(key: K, value: SupplierFiscalFormData[K]) => void;
     errors: Partial<Record<keyof SupplierFiscalFormData, string>>;
     warnings?: string[];
     ibanMasked?: string | null;
+    hasIban?: boolean;
 }) {
     const { t } = useI18n();
     return (
@@ -75,7 +77,7 @@ export function SupplierFiscalFields({
                 value={data.bank_iban}
                 onChange={(e) => setData('bank_iban', e.target.value)}
                 error={errors.bank_iban}
-                hint={`${t('suppliers.fiscal.ibanSensitive')}${ibanMasked ? ` ${ibanMasked}.` : ''} ${t('suppliers.fiscal.ibanReplace')}`}
+                hint={`${t('suppliers.fiscal.ibanSensitive')}${ibanMasked ? ` ${ibanMasked}.` : hasIban ? ` ${t('suppliers.fiscal.ibanOnFile')}` : ''} ${t('suppliers.fiscal.ibanReplace')}`}
             />
         </fieldset>
     );

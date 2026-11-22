@@ -20,8 +20,8 @@ export const isNavSection = (entry: NavEntry): entry is NavSection => 'items' in
 export const hasPermission = (tenant: Tenant, permission?: string | string[]) =>
     !permission || (Array.isArray(permission) ? permission.some((p) => tenant.permissions.includes(p)) : tenant.permissions.includes(permission));
 
-export function buildNavGroups(t: (key: TranslationKey) => string, tenant: Tenant): NavGroup[] {
-    return [
+export function buildNavGroups(t: (key: TranslationKey) => string, tenant: Tenant, sandboxActive = false): NavGroup[] {
+    const groups: NavGroup[] = [
         {
             key: 'dashboard',
             label: t('nav.dashboard'),
@@ -117,6 +117,7 @@ export function buildNavGroups(t: (key: TranslationKey) => string, tenant: Tenan
                     ],
                 },
                 { href: '/finance/facturation', label: t('nav.invoices'), permission: 'finance.view', icon: <IconInvoice /> },
+                { href: '/finance/factures-fournisseurs', label: t('nav.supplierInvoices'), permission: 'supplier_invoices.view', icon: <IconInvoice /> },
                 {
                     key: 'finance-treasury',
                     label: t('nav.treasury'),
@@ -206,6 +207,12 @@ export function buildNavGroups(t: (key: TranslationKey) => string, tenant: Tenan
             ],
         },
     ];
+
+    // Supplier invoices are Production-only: hide the entry in Test Mode (routes are also denied server-side).
+    if (!sandboxActive) return groups;
+    const keep = (item: NavItem) => !item.href.startsWith('/finance/factures-fournisseurs');
+    const hide = (entry: NavEntry): NavEntry[] => (isNavSection(entry) ? [{ ...entry, items: entry.items.filter(keep) }] : keep(entry) ? [entry] : []);
+    return groups.map((group) => ({ ...group, items: group.items.flatMap(hide) }));
 }
 
 /** Filters by permission + store context and drops empty sections/groups. */

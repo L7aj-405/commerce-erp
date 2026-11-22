@@ -28,7 +28,7 @@ test('interpolate replaces placeholders', () => {
     assert.equal(interpolate('Ligne {n} / {n}', { n: 3 }), 'Ligne 3 / 3');
 });
 
-const base = { controlTotal: '120.00', totalTtc: '120.0000', matchStatus: 'po_matched' as const, acknowledgeUnmatched: false, matchNote: '', warningCount: 0, acknowledgeWarnings: false };
+const base = { controlTotal: '120.00', totalTtc: '120.0000', matchStatus: 'po_matched' as const, acknowledgeUnmatched: false, matchNote: '', warningCodes: [] as string[], acknowledgedWarnings: [] as string[] };
 
 test('approval: matched PO, exact control total is ready', () => {
     assert.ok(canApprove(base));
@@ -47,8 +47,10 @@ test('approval: unmatched needs acknowledgement and a note', () => {
 });
 
 test('approval: warnings must be acknowledged', () => {
-    assert.ok(!canApprove({ ...base, warningCount: 2 }));
-    assert.ok(canApprove({ ...base, warningCount: 2, acknowledgeWarnings: true }));
+    const w = { ...base, warningCodes: ['duplicate_number', 'same_total'] };
+    assert.ok(!canApprove(w));
+    assert.ok(!canApprove({ ...w, acknowledgedWarnings: ['duplicate_number'] }));
+    assert.ok(canApprove({ ...w, acknowledgedWarnings: ['same_total', 'duplicate_number'] }));
 });
 
 test('void: reason required, text required only for other', () => {
