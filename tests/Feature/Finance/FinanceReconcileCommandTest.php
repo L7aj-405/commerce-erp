@@ -25,7 +25,7 @@ class FinanceReconcileCommandTest extends PosTestCase
         $report = $this->reconcile($organization);
 
         $this->assertTrue($report['ok'], json_encode($report['checks']));
-        $this->assertSame(['R-1', 'R-2', 'R-3', 'R-4', 'R-5', 'R-6', 'R-7'], array_column($report['checks'], 'code'));
+        $this->assertSame(['R-1', 'R-2', 'R-3', 'R-4', 'R-5', 'R-6', 'R-7', 'R-8', 'R-9', 'R-10'], array_column($report['checks'], 'code'));
         foreach ($report['checks'] as $check) {
             $this->assertContains($check['status'], ['pass', 'skipped'], $check['code']);
         }
