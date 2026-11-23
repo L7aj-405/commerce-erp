@@ -3,6 +3,7 @@ import FinanceFilters, {
     type FinanceStore,
 } from "@/components/finance/FinanceFilters";
 import { summarizePaymentAmount } from "@/components/finance/paymentAmount";
+import { isReasonBlank } from "@/components/finance/reasonValidation";
 import { useFreshAuth } from "@/components/auth/FreshAuthProvider";
 import { Button, ButtonLink, DownloadLink } from "@/components/ui/Button";
 import EmptyState from "@/components/ui/EmptyState";
@@ -2735,6 +2736,15 @@ function Detail({ row }: { row: Obligation }) {
 }
 function ReasonSheet({ title, open, onClose, form, onSubmit }: any) {
     const { t } = useI18n();
+    const reasonMissing = isReasonBlank(form.data.reason);
+    // Guards every submit path (button click and Enter key); the server still validates.
+    const guardedSubmit = (e: FormEvent) => {
+        if (reasonMissing) {
+            e.preventDefault();
+            return;
+        }
+        onSubmit(e);
+    };
     return (
         <Sheet
             open={open}
@@ -2751,13 +2761,14 @@ function ReasonSheet({ title, open, onClose, form, onSubmit }: any) {
                         type="submit"
                         variant="danger"
                         loading={form.processing}
+                        disabled={reasonMissing || form.processing}
                     >
                         {t("common.confirm")}
                     </Button>
                 </div>
             }
         >
-            <form id="reason-form" onSubmit={onSubmit} className="p-5">
+            <form id="reason-form" onSubmit={guardedSubmit} className="p-5">
                 <TextArea
                     label={t("finance.monthEnd.reasonRequired")}
                     value={form.data.reason}
