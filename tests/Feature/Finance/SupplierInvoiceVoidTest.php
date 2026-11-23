@@ -202,7 +202,7 @@ class SupplierInvoiceVoidTest extends SupplierInvoiceTestCase
             'obligation' => $obligation->fresh()->only(['cancelled_at', 'amount']),
             'payments' => DB::table('finance_outgoing_payments')->get(['id', 'status', 'amount'])->toArray(),
             'allocations' => DB::table('finance_outgoing_payment_allocations')->get(['id', 'amount'])->toArray(),
-            'audit' => AuditLog::query()->where('action', 'supplier_invoice.voided')->count(),
+            'audit' => AuditLog::query()->count(),
         ];
 
         $headers = ['X-Inertia' => 'true', 'X-Requested-With' => 'XMLHttpRequest', 'Referer' => route('finance.supplier-invoices.show', $invoice)];
@@ -224,7 +224,8 @@ class SupplierInvoiceVoidTest extends SupplierInvoiceTestCase
         $this->assertEquals($before['obligation'], $obligation->fresh()->only(['cancelled_at', 'amount']));
         $this->assertEquals($before['payments'], DB::table('finance_outgoing_payments')->get(['id', 'status', 'amount'])->toArray());
         $this->assertEquals($before['allocations'], DB::table('finance_outgoing_payment_allocations')->get(['id', 'amount'])->toArray());
-        $this->assertSame($before['audit'], AuditLog::query()->where('action', 'supplier_invoice.voided')->count());
+        $this->assertSame($before['audit'], AuditLog::query()->count(), 'a refused void must not write any audit row');
+        $this->assertSame(0, AuditLog::query()->whereIn('event', ['supplier_invoice.voided', 'finance_obligation.cancelled'])->count());
     }
 
     /** A reversed payment is history, not a blocker (existing rule); a closed period still refuses with a visible `invoice` error. */
