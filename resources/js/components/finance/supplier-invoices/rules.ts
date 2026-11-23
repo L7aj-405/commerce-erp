@@ -1,5 +1,5 @@
-import { decimalEquals } from './math.ts';
-import type { SupplierInvoiceMatchStatus, SupplierInvoiceVoidReasonCode } from './types';
+import { decimalDiff, decimalEquals } from './math.ts';
+import type { SupplierInvoiceMatchStatus, SupplierInvoiceStatus, SupplierInvoiceVoidReasonCode } from './types';
 
 /** Client-side readiness checks for the dialogs. The server re-validates everything. */
 export type ApprovalInput = {
@@ -44,4 +44,17 @@ export function unmappedErrors(errors: Record<string, string | undefined> | unde
         .filter(([key, message]) => !fieldKeys.includes(key) && typeof message === 'string' && message.trim() !== '')
         .map(([, message]) => (message as string).trim());
     return [...new Set(messages)];
+}
+
+export type ControlTotalState = { kind: 'missing_required' | 'missing_not_recorded' | 'match' | 'mismatch'; diff: string | null };
+
+/**
+ * What the totals panel says about the paper control total. Only a draft invoice still has the
+ * "required at approval" step ahead of it; a missing value on an approved/void invoice is a historical
+ * fact (the value was checked at approval but never stored), not an action to take.
+ */
+export function controlTotalState(controlTotal: string | null | undefined, totalTtc: string, status: SupplierInvoiceStatus | undefined): ControlTotalState {
+    const hasControl = controlTotal !== null && controlTotal !== undefined && controlTotal.trim() !== '';
+    if (!hasControl) return { kind: status && status !== 'draft' ? 'missing_not_recorded' : 'missing_required', diff: null };
+    return decimalEquals(controlTotal, totalTtc) ? { kind: 'match', diff: null } : { kind: 'mismatch', diff: decimalDiff(controlTotal, totalTtc) };
 }

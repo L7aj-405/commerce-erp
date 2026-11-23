@@ -53,6 +53,10 @@ type PaymentHistory = {
     reference: string | null;
     account: Entity | null;
     reversal_reason: string | null;
+    recorded_by: string | null;
+    recorded_at: string | null;
+    reversed_at: string | null;
+    reversed_by: string | null;
 };
 type Instrument = {
     id: number;
@@ -1419,6 +1423,26 @@ export default function MonthlySituation(props: Props) {
                                                                 p.method,
                                                         )?.label ?? p.method}
                                                     </p>
+                                                    <p className="text-xs text-ink-muted">
+                                                        {t("common.reference")}
+                                                        {" : "}
+                                                        {p.reference ?? "—"}
+                                                    </p>
+                                                    <p className="text-xs text-ink-muted">
+                                                        {t("finance.monthEnd.recordedBy")}
+                                                        {" : "}
+                                                        {p.recorded_by ?? "—"}
+                                                        {p.recorded_at ? ` · ${formatDateTime(p.recorded_at)}` : ""}
+                                                    </p>
+                                                    {p.status !== "posted" && (
+                                                        <p className="text-xs text-ink-muted">
+                                                            {t("finance.monthEnd.reversedBy")}
+                                                            {" : "}
+                                                            {p.reversed_by ?? "—"}
+                                                            {p.reversed_at ? ` · ${formatDateTime(p.reversed_at)}` : ""}
+                                                            {p.reversal_reason ? ` · ${p.reversal_reason}` : ""}
+                                                        </p>
+                                                    )}
                                                 </div>
                                                 <div className="text-end">
                                                     <p className="font-semibold">

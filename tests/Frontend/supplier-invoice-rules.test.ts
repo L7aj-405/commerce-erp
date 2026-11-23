@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { decimalDiff, decimalEquals, formatScaled, interpolate, parseScaled, sumDecimals } from '../../resources/js/components/finance/supplier-invoices/math.ts';
-import { approvalProblems, canApprove, canVoid, unmappedErrors } from '../../resources/js/components/finance/supplier-invoices/rules.ts';
+import { approvalProblems, canApprove, canVoid, controlTotalState, unmappedErrors } from '../../resources/js/components/finance/supplier-invoices/rules.ts';
 
 test('sums decimal strings exactly (no float drift)', () => {
     assert.equal(sumDecimals(['0.1', '0.2']).sum, '0.3000');
@@ -86,4 +86,19 @@ test('server refusals not tied to a field are surfaced, never dropped (void refu
     assert.deepEqual(unmappedErrors({ invoice: '  ' }, voidFields), []);
     assert.deepEqual(unmappedErrors(undefined, voidFields), []);
     assert.deepEqual(unmappedErrors({ a: 'x', b: 'x' }, voidFields), ['x']);
+});
+
+test('control total state: draft without a value still requires it', () => {
+    assert.equal(controlTotalState(null, '120.0000', 'draft').kind, 'missing_required');
+    assert.equal(controlTotalState('  ', '120.0000', undefined).kind, 'missing_required');
+});
+
+test('control total state: approved/void without a stored value is not an actionable requirement', () => {
+    assert.equal(controlTotalState(null, '120.0000', 'approved').kind, 'missing_not_recorded');
+    assert.equal(controlTotalState(undefined, '120.0000', 'void').kind, 'missing_not_recorded');
+});
+
+test('control total state: stored values still compare exactly regardless of status', () => {
+    assert.equal(controlTotalState('120.00', '120.0000', 'approved').kind, 'match');
+    assert.deepEqual(controlTotalState('120.01', '120.0000', 'draft'), { kind: 'mismatch', diff: '0.0100' });
 });

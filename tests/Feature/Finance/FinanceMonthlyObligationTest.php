@@ -123,6 +123,46 @@ class FinanceMonthlyObligationTest extends PaymentTestCase
         $this->assertDatabaseCount('finance_outgoing_payments', 1);
     }
 
+    public function test_payment_history_exposes_the_payment_author_reference_and_reversal_not_the_obligation_creator(): void
+    {
+        [$owner, $organization, , $account] = $this->fixture();
+        $obligation = $this->obligation($owner, $organization);
+        $payer = User::factory()->create(['active_organization_id' => $organization->id]);
+        $this->addOrganizationMember($organization, $payer, ['finance.outgoing_payments.manage']);
+        $payment = app(RecordFinanceOutgoingPaymentAction::class)->execute($payer, $organization, [
+            'store_id' => null, 'financial_account_id' => $account->id, 'supplier_id' => null, 'beneficiary_name' => 'Bénéficiaire',
+            'payment_method' => 'bank_transfer', 'amount' => '4000.0000', 'currency_code' => 'MAD', 'payment_date' => '2026-10-10',
+            'reference' => 'VIR-2026-0042', 'notes' => null, 'idempotency_key' => (string) Str::uuid(),
+            'allocations' => [['obligation_id' => $obligation->id, 'amount' => '4000.0000']],
+        ]);
+        $legacy = $this->payment($owner, $organization, $account->id, [[$obligation->id, '1000.0000']], '1000.0000');
+        \DB::table('finance_outgoing_payments')->where('id', $legacy->id)->update(['recorded_by_user_id' => null, 'reference' => null]);
+        app(ReverseFinanceOutgoingPaymentAction::class)->execute($owner, $payment->fresh(), 'Virement rejeté');
+
+        $service = app(\App\Services\Finance\FinanceMonthlySituationService::class);
+        $row = $service->rows($organization, \App\Services\Finance\FinancePeriod::fromMonth('2026-10'), null, [])->getCollection()->firstWhere('id', $obligation->id);
+        $payments = collect($row['payments'])->keyBy('payment_id');
+
+        $this->assertSame($owner->name, $row['created_by']);
+        $author = $payments[$payment->id];
+        $this->assertSame($payer->name, $author['recorded_by']);
+        $this->assertNotSame($row['created_by'], $author['recorded_by']);
+        $this->assertSame('VIR-2026-0042', $author['reference']);
+        $this->assertNotNull($author['recorded_at']);
+        $this->assertSame('reversed', $author['status']);
+        $this->assertSame($owner->name, $author['reversed_by']);
+        $this->assertNotNull($author['reversed_at']);
+        $this->assertSame('Virement rejeté', $author['reversal_reason']);
+        $this->assertSame('4000.0000', $author['amount']);
+
+        $old = $payments[$legacy->id];
+        $this->assertNull($old['recorded_by']);
+        $this->assertNull($old['reference']);
+        $this->assertNull($old['reversed_by']);
+        $this->assertSame('posted', $old['status']);
+        $this->assertArrayNotHasKey('idempotency_key', $old);
+    }
+
     public function test_foreign_tenant_references_are_rejected_before_any_mutation(): void
     {
         [$ownerA, $organizationA] = $this->fixture();

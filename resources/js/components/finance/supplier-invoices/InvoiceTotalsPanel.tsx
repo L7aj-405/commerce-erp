@@ -1,6 +1,8 @@
 import { useI18n } from '@/i18n';
 import { formatMoney } from '@/utils/format';
-import { decimalDiff, decimalEquals, interpolate } from './math';
+import { interpolate } from './math';
+import { controlTotalState } from './rules';
+import type { SupplierInvoiceStatus } from './types';
 
 /**
  * HT / TVA / rounding adjustment / TTC (payable) plus the control-total check
@@ -14,6 +16,7 @@ export function InvoiceTotalsPanel({
     controlTotalTtc,
     currencyCode,
     roundingTolerance,
+    status,
 }: {
     subtotalHt: string;
     totalTva: string;
@@ -22,11 +25,14 @@ export function InvoiceTotalsPanel({
     controlTotalTtc: string | null | undefined;
     currencyCode: string;
     roundingTolerance?: string;
+    /** Omit while composing a new invoice (treated as draft). */
+    status?: SupplierInvoiceStatus;
 }) {
     const { t } = useI18n();
-    const hasControl = controlTotalTtc !== null && controlTotalTtc !== undefined && controlTotalTtc.trim() !== '';
-    const matches = hasControl && decimalEquals(controlTotalTtc, totalTtc);
-    const diff = hasControl ? decimalDiff(controlTotalTtc, totalTtc) : null;
+    const control = controlTotalState(controlTotalTtc, totalTtc, status);
+    const hasControl = control.kind === 'match' || control.kind === 'mismatch';
+    const matches = control.kind === 'match';
+    const neutral = control.kind === 'missing_not_recorded';
 
     const row = (label: string, value: string, strong = false) => (
         <div className={`flex items-baseline justify-between gap-4 py-1.5 ${strong ? 'border-t border-line pt-3 text-base' : 'text-sm'}`}>
@@ -54,14 +60,16 @@ export function InvoiceTotalsPanel({
                         <span className="font-medium tabular-nums text-ink">{formatMoney(controlTotalTtc, currencyCode)}</span>
                     </div>
                 )}
-                <p role="status" className={`mt-1 flex items-start gap-1.5 text-[13px] font-medium ${matches ? 'text-success' : 'text-warning'}`}>
-                    <span aria-hidden="true">{matches ? '✓' : '!'}</span>
+                <p role="status" className={`mt-1 flex items-start gap-1.5 text-[13px] font-medium ${matches ? 'text-success' : neutral ? 'text-ink-muted' : 'text-warning'}`}>
+                    <span aria-hidden="true">{matches ? '✓' : neutral ? 'ⓘ' : '!'}</span>
                     <span>
-                        {!hasControl
+                        {control.kind === 'missing_required'
                             ? t('supplierInvoice.totals.controlMissing')
-                            : matches
-                              ? t('supplierInvoice.totals.controlMatch')
-                              : interpolate(t('supplierInvoice.totals.controlMismatch'), { diff: formatMoney(diff ?? '0', currencyCode) })}
+                            : control.kind === 'missing_not_recorded'
+                              ? t('supplierInvoice.totals.controlNotRecorded')
+                              : matches
+                                ? t('supplierInvoice.totals.controlMatch')
+                                : interpolate(t('supplierInvoice.totals.controlMismatch'), { diff: formatMoney(control.diff ?? '0', currencyCode) })}
                     </span>
                 </p>
             </div>
