@@ -73,9 +73,12 @@ const checklist = ['organization', 'store', 'products', 'stock', 'first_sale'] a
 
 export default function RoleDashboard({ firstName, dashboard, onboarding, executiveDashboard }: DashboardProps & { firstName: string }) {
     const { t } = useI18n();
-    const { tenant } = usePage<SharedPageProps>().props;
+    const page = usePage<SharedPageProps & { sandbox?: { active: boolean } }>();
+    const { tenant } = page.props;
     const can = (permission: string) => tenant.permissions.includes(permission);
     const hasStore = !!tenant.store;
+    // Supplier invoices: kill switch + Production only (same rule as the navigation registry).
+    const canCreateSupplierInvoice = can('supplier_invoices.manage') && Boolean(page.props.features?.supplier_invoices) && !page.props.sandbox?.active;
 
     // Focus order from real permissions (executive view → finance first).
     const focusOrder: Focus[] = [];
@@ -180,7 +183,7 @@ export default function RoleDashboard({ firstName, dashboard, onboarding, execut
         { href: '/catalog/products/create', label: t('platform.addProduct'), icon: <IconPackage />, tint: 'blue' as Tint, show: can('products.create') },
         { href: '/sales/customers/create', label: t('dash.newCustomer'), icon: <IconContact />, tint: 'mint' as Tint, show: can('customers.create') },
         { href: '/quotations/create', label: t('dash.newQuote'), icon: <IconFileText />, tint: 'amber' as Tint, show: can('quotations.create') && hasStore },
-        { href: '/procurement', label: t('shell.newPurchase'), icon: <IconCart />, tint: 'rose' as Tint, show: can('procurement.manage') },
+        { href: '/finance/factures-fournisseurs/nouvelle', label: t('shell.newSupplierInvoice'), icon: <IconCart />, tint: 'rose' as Tint, show: canCreateSupplierInvoice },
     ].filter((action) => action.show);
 
     const shortcuts = byRole(

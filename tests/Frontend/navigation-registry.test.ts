@@ -188,3 +188,42 @@ test('every label resolves in French and Arabic (no raw key, Arabic differs from
         assert.notEqual(i18n.ar[key], i18n.fr[key], `${key} is not translated to Arabic`);
     }
 });
+
+test('breadcrumbs follow the registry, add a terminal crumb on deeper URLs and stay empty off-registry', () => {
+    const groups = full();
+    const t = tFor('fr');
+    const crumbs = (p: string) => nav.buildBreadcrumbs(groups, p, t) as { label: string; href?: string }[];
+    assert.deepEqual(crumbs('/platform'), []);
+    assert.deepEqual(crumbs('/unknown/page'), []);
+    assert.deepEqual(crumbs('/procurement/purchase-orders'), [
+        { label: 'Achats & Fournisseurs', href: '/procurement/purchase-orders' },
+        { label: 'Commandes fournisseur' },
+    ]);
+    const detail = crumbs('/procurement/purchase-orders/5');
+    assert.deepEqual(detail.map((c) => c.label), ['Achats & Fournisseurs', 'Commandes fournisseur', 'Détail']);
+    assert.equal(detail[1]!.href, '/procurement/purchase-orders');
+    assert.equal(detail[2]!.href, undefined);
+    assert.deepEqual(crumbs('/finance/factures-fournisseurs/nouvelle').map((c) => c.label), ['Achats & Fournisseurs', 'Factures fournisseurs', 'Création']);
+    assert.deepEqual(crumbs('/sales/customers/7/edit').map((c) => c.label), ['Ventes & Clients', 'Clients & contacts', 'Clients', 'Modification']);
+    assert.deepEqual(crumbs('/finance/encaissements').map((c) => c.label), ['Finance & Trésorerie', 'Encaissements clients', 'Encaissements du mois']);
+});
+
+test('breadcrumbs never reveal a page the user may not open', () => {
+    const t = tenant(['products.view']);
+    const groups = nav.visibleNavGroups(build('fr', t), t) as Group[];
+    assert.deepEqual(nav.buildBreadcrumbs(groups, '/finance/encaissements', tFor('fr')), []);
+});
+
+test('quick actions point at genuine creation workflows and respect permission, flag and Test Mode', () => {
+    const t = (permissions: string[]) => tenant(permissions);
+    const all = ['pos.access', 'supplier_invoices.manage', 'products.create', 'contacts.create', 'procurement.manage'];
+    const hrefs = (permissions: string[], options?: object) => (nav.buildQuickActions(tFor('fr'), t(permissions), options) as Item[]).map((a) => a.href);
+    const on = { supplierInvoicesEnabled: true, sandboxActive: false };
+    assert.deepEqual(hrefs(all, on), ['/pos', '/finance/factures-fournisseurs/nouvelle', '/catalog/products/create', '/contacts/create']);
+    // "New purchase" must not point at the procurement list any more, and no standalone PO creation is invented.
+    assert.ok(!hrefs(all, on).includes('/procurement'));
+    assert.ok(!hrefs(all, { ...on, supplierInvoicesEnabled: false }).includes('/finance/factures-fournisseurs/nouvelle'), 'flag off');
+    assert.ok(!hrefs(all, { ...on, sandboxActive: true }).includes('/finance/factures-fournisseurs/nouvelle'), 'Test Mode');
+    assert.ok(!hrefs(['pos.access'], on).includes('/finance/factures-fournisseurs/nouvelle'), 'permission');
+    assert.deepEqual(hrefs([], on), []);
+});
