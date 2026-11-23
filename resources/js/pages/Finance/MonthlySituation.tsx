@@ -2,6 +2,7 @@ import DatePicker from "@/components/ui/DatePicker";
 import FinanceFilters, {
     type FinanceStore,
 } from "@/components/finance/FinanceFilters";
+import { summarizePaymentAmount } from "@/components/finance/paymentAmount";
 import { useFreshAuth } from "@/components/auth/FreshAuthProvider";
 import { Button, ButtonLink, DownloadLink } from "@/components/ui/Button";
 import EmptyState from "@/components/ui/EmptyState";
@@ -479,8 +480,12 @@ export default function MonthlySituation(props: Props) {
                 onSuccess: () => setCreating(false),
             });
     };
+    const paymentSummary = paying
+        ? summarizePaymentAmount(paying, paymentForm.data.amount)
+        : null;
     const submitPayment = (event: FormEvent) => {
         event.preventDefault();
+        if (paymentSummary?.problem) return;
         paymentForm.clearErrors();
         void submitProtected({
             method: "post", url: "/finance/situation-fin-de-mois/outgoing-payments", data: paymentForm.data,
@@ -1719,6 +1724,7 @@ export default function MonthlySituation(props: Props) {
                             form="payment-form"
                             type="submit"
                             loading={protectedProcessing === "payment"}
+                            disabled={!!paymentSummary?.problem}
                         >
                             Comptabiliser
                         </Button>
@@ -1783,10 +1789,44 @@ export default function MonthlySituation(props: Props) {
                         value={paymentForm.data.amount}
                         onChange={syncPaymentAmount}
                         error={
+                            (paymentSummary?.problem
+                                ? t(`payment.amount.error.${paymentSummary.problem}`)
+                                : undefined) ||
                             paymentForm.errors.amount ||
                             paymentForm.errors.allocations
                         }
                     />
+                    {paymentSummary && paying && (
+                        <dl
+                            className="grid gap-1 rounded-lg border border-line p-3 text-sm"
+                            data-testid="payment-summary"
+                            aria-live="polite"
+                        >
+                            {(
+                                [
+                                    ["payment.amount.initial", paymentSummary.planned],
+                                    ["payment.amount.paid", paymentSummary.paid],
+                                    ["payment.amount.remaining", paymentSummary.available],
+                                    ["payment.amount.toPost", paymentSummary.amount ?? "0.0000"],
+                                ] as const
+                            ).map(([key, value]) => (
+                                <div key={key} className="flex justify-between gap-3">
+                                    <dt className="text-ink-muted">{t(key)}</dt>
+                                    <dd className="tabular-nums">{formatMoney(value, paying.currency_code)}</dd>
+                                </div>
+                            ))}
+                            <div className="flex justify-between gap-3 border-t border-line pt-1 font-semibold">
+                                <dt>{t("payment.amount.after")}</dt>
+                                <dd
+                                    className={`tabular-nums ${paymentSummary.problem === "exceeds" ? "text-danger" : ""}`}
+                                >
+                                    {paymentSummary.after === null
+                                        ? "—"
+                                        : formatMoney(paymentSummary.after, paying.currency_code)}
+                                </dd>
+                            </div>
+                        </dl>
+                    )}
                     <Field
                         label={t("common.reference")}
                         value={paymentForm.data.reference}
