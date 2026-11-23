@@ -62,6 +62,7 @@ export function buildNavGroups(t: (key: TranslationKey) => string, tenant: Tenan
                 { href: '/procurement/purchase-orders', label: t('nav.purchaseOrders'), permission: 'procurement.view', icon: <IconClipboard /> },
                 { href: '/procurement', label: t('nav.procurement'), permission: 'procurement.view', icon: <IconCart /> },
                 { href: '/procurement/suppliers', label: t('nav.suppliers'), permission: 'suppliers.view', icon: <IconBuilding /> },
+                { href: '/finance/factures-fournisseurs', label: t('nav.supplierInvoices'), permission: 'supplier_invoices.view', icon: <IconInvoice /> },
                 {
                     key: 'purchasing-followup',
                     label: t('nav.section.sourcingFollowUp'),
@@ -79,23 +80,48 @@ export function buildNavGroups(t: (key: TranslationKey) => string, tenant: Tenan
             icon: <IconChart />,
             // Deliberately no `needsStore`: Finance reporting works across the
             // whole organization without the viewer's active store switcher.
+            // Incoming (customer) money and outgoing (supplier) money are kept apart:
+            // customer payments never appear under supplier payments and vice versa.
             items: [
-                { href: '/finance', label: t('nav.overview'), permission: 'finance.view', icon: <IconChart /> },
+                { href: '/finance', label: t('nav.financialView'), permission: 'finance.view', icon: <IconChart /> },
                 {
-                    key: 'finance-sales-cash',
-                    label: t('nav.salesCollections'),
-                    icon: <IconTrending />,
+                    key: 'finance-incoming',
+                    label: t('nav.section.customerCollections'),
+                    icon: <IconCoinsIn />,
                     items: [
-                        { href: '/finance/ventes', label: t('nav.sales'), permission: 'finance.view', icon: <IconShoppingBag /> },
-                        { href: '/finance/ca-encaisse', label: t('nav.cashRevenue'), permission: 'finance.view', icon: <IconBanknote /> },
+                        { href: '/finance/encaissements', label: t('nav.collectionsMonthly'), permission: 'finance.view', icon: <IconCoinsIn /> },
+                        { href: '/payments', label: t('nav.customerPayments'), permission: 'payments.view', needsStore: true, icon: <IconWallet /> },
                         { href: '/finance/creances', label: t('nav.receivables'), permission: 'finance.view', icon: <IconClockCoins /> },
                     ],
                 },
+                // The only existing entry point for outgoing supplier payments (and month closing): there is
+                // no dedicated list of supplier payments, so the label names the page honestly.
                 {
                     href: '/finance/situation-fin-de-mois',
-                    label: t('nav.monthEnd'),
+                    label: t('nav.supplierPaymentsMonthEnd'),
                     permission: 'finance.monthly_situation.view',
                     icon: <IconCalendarChart />,
+                },
+                {
+                    key: 'finance-obligations',
+                    label: t('nav.section.obligations'),
+                    icon: <IconClockCoins />,
+                    items: [
+                        { href: '/finance/situation-fin-de-mois/charges-recurrentes', label: t('nav.recurringCharges'), permission: 'finance.monthly_situation.view', icon: <IconSync /> },
+                        { href: '/finance/situation-fin-de-mois/echeanciers-fournisseurs', label: t('nav.supplierInstallments'), permission: 'finance.monthly_situation.view', icon: <IconList /> },
+                    ],
+                },
+                { href: '/financial-accounts', label: t('nav.financialAccounts'), permission: 'financial_accounts.view', icon: <IconBank /> },
+                {
+                    key: 'finance-reports',
+                    label: t('nav.section.reportsClosing'),
+                    icon: <IconTrending />,
+                    items: [
+                        { href: '/finance/ventes', label: t('nav.salesReport'), permission: 'finance.view', icon: <IconShoppingBag /> },
+                        { href: '/finance/facturation', label: t('nav.invoicingReport'), permission: 'finance.view', icon: <IconInvoice /> },
+                        { href: '/finance/ca-encaisse', label: t('nav.cashRevenue'), permission: 'finance.view', icon: <IconBanknote /> },
+                        { href: '/finance/journal', label: t('nav.salesJournal'), permission: 'finance.view', icon: <IconList /> },
+                    ],
                 },
                 {
                     key: 'finance-commissions',
@@ -105,19 +131,6 @@ export function buildNavGroups(t: (key: TranslationKey) => string, tenant: Tenan
                         { href: '/finance/commissions', label: t('nav.commissionDashboard'), permission: 'commissions.ledger.view', icon: <IconChart /> },
                         { href: '/finance/commissions/ledger', label: t('nav.ledger'), permission: 'commissions.ledger.view', icon: <IconList /> },
                         { href: '/finance/commissions/rules', label: t('nav.rules'), permission: 'commissions.rules.view', icon: <IconSettings /> },
-                    ],
-                },
-                { href: '/finance/facturation', label: t('nav.invoices'), permission: 'finance.view', icon: <IconInvoice /> },
-                { href: '/finance/factures-fournisseurs', label: t('nav.supplierInvoices'), permission: 'supplier_invoices.view', icon: <IconInvoice /> },
-                {
-                    key: 'finance-treasury',
-                    label: t('nav.treasury'),
-                    icon: <IconWallet />,
-                    items: [
-                        { href: '/finance/encaissements', label: t('nav.collections'), permission: 'finance.view', icon: <IconCoinsIn /> },
-                        { href: '/payments', label: t('nav.payments'), permission: 'payments.view', needsStore: true, icon: <IconWallet /> },
-                        { href: '/financial-accounts', label: t('nav.financialAccounts'), permission: 'financial_accounts.view', icon: <IconBank /> },
-                        { href: '/finance/journal', label: t('nav.journal'), permission: 'finance.view', icon: <IconList /> },
                     ],
                 },
             ],
@@ -276,17 +289,52 @@ export function matchActiveNav(groups: NavGroup[], currentPath: string): NavMatc
         .sort((a, b) => b.item.href.length - a.item.href.length)[0];
 }
 
-export type QuickAction = { href: string; label: string; icon: ReactNode };
+export type Crumb = { label: string; href?: string };
+
+/**
+ * Contextual breadcrumb derived from the registry (never a second route list):
+ * Group › [Section] › Page, plus a terminal "Détail / Création / Modification" crumb on deeper URLs.
+ * Empty on the dashboard root and on routes that are not in the (permission-filtered) navigation.
+ */
+export function buildBreadcrumbs(groups: NavGroup[], currentPath: string, t: (key: TranslationKey) => string): Crumb[] {
+    const match = matchActiveNav(groups, currentPath);
+    if (!match || currentPath === '/platform') return [];
+    const group = groups.find((candidate) => candidate.key === match.groupKey);
+    if (!group) return [];
+
+    const deeper = currentPath !== match.item.href;
+    const crumbs: Crumb[] = [{ label: group.label, href: firstNavItem(group).href }];
+    if (match.sectionKey) {
+        const section = group.items.find((entry): entry is NavSection => isNavSection(entry) && entry.key === match.sectionKey);
+        if (section) crumbs.push({ label: section.label });
+    }
+    crumbs.push(deeper ? { label: match.item.label, href: match.item.href } : { label: match.item.label });
+    if (deeper) {
+        const last = currentPath.split('/').filter(Boolean).pop() ?? '';
+        crumbs.push({ label: ['create', 'nouvelle'].includes(last) ? t('breadcrumb.create') : ['edit', 'modifier'].includes(last) ? t('breadcrumb.edit') : t('breadcrumb.detail') });
+    }
+    return crumbs;
+}
+
+export type QuickAction ={ href: string; label: string; icon: ReactNode };
 
 /**
  * Create shortcuts shared by the header "Créer" menu and the command palette.
  * Each one routes to an existing workflow and is shown only when permitted.
  */
-export function buildQuickActions(t: (key: TranslationKey) => string, tenant: Tenant): QuickAction[] {
+export function buildQuickActions(
+    t: (key: TranslationKey) => string,
+    tenant: Tenant,
+    options: { supplierInvoicesEnabled?: boolean; sandboxActive?: boolean } = {},
+): QuickAction[] {
     const can = (permission: string) => tenant.permissions.includes(permission);
+    // Supplier invoices are Production-only and behind a kill switch (the route answers 404 otherwise).
+    const canCreateSupplierInvoice = can('supplier_invoices.manage') && !!options.supplierInvoicesEnabled && !options.sandboxActive;
     return [
         { href: '/pos', label: t('platform.newSale'), icon: <IconRegister />, show: can('pos.access') && !!tenant.store },
-        { href: '/procurement', label: t('shell.newPurchase'), icon: <IconCart />, show: can('procurement.manage') },
+        // Standalone purchase-order creation does not exist yet (POs are created from a sales order), so the
+        // purchasing shortcut is the supplier-invoice entry form, a genuine creation workflow.
+        { href: '/finance/factures-fournisseurs/nouvelle', label: t('shell.newSupplierInvoice'), icon: <IconInvoice />, show: canCreateSupplierInvoice },
         { href: '/catalog/products/create', label: t('platform.addProduct'), icon: <IconPackage />, show: can('products.create') },
         { href: '/contacts/create', label: t('shell.addContact'), icon: <IconContact />, show: can('contacts.create') },
     ]

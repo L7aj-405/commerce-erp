@@ -122,6 +122,38 @@ test('supplier invoices stay behind the kill switch and Test Mode', () => {
     assert.equal(has(full('fr', true, true)), false, 'Test Mode');
 });
 
+test('supplier invoices live under Achats & Fournisseurs, not Finance, with the same route and permission', () => {
+    const groups = full();
+    const where = (href: string) => groups.find((g) => g.items.some((e) => e.href === href || e.items?.some((i) => i.href === href)))?.key;
+    assert.equal(where('/finance/factures-fournisseurs'), 'purchasing');
+    const all = build('fr', tenant([])).flatMap((g) => g.items.flatMap((e: any) => e.items ?? [e])) as any[];
+    assert.equal(all.find((i) => i.href === '/finance/factures-fournisseurs').permission, 'supplier_invoices.view');
+    // Purchase orders, requirements and suppliers stay clearly reachable.
+    for (const href of ['/procurement/purchase-orders', '/procurement', '/procurement/suppliers']) assert.equal(where(href), 'purchasing');
+});
+
+test('Finance keeps incoming customer money and outgoing supplier money apart', () => {
+    const finance = full().find((g) => g.key === 'finance')!;
+    const section = (key: string) => finance.items.find((e: any) => e.key === key) as any;
+    assert.deepEqual(section('finance-incoming').items.map((i: Item) => i.href), ['/finance/encaissements', '/payments', '/finance/creances']);
+    // /payments is the customer payments list and must never be filed with supplier payments / obligations.
+    for (const key of ['finance-obligations', 'finance-reports']) {
+        assert.ok(!section(key).items.some((i: Item) => i.href === '/payments' || i.href === '/finance/encaissements'), key);
+    }
+    // The single existing outgoing-payment entry point is named for what it is (no dedicated list exists).
+    const monthEnd = finance.items.find((e) => e.href === '/finance/situation-fin-de-mois')!;
+    assert.match(monthEnd.label, /fournisseurs/i);
+    assert.match(monthEnd.label, /fin de mois/i);
+    const customerPayments = section('finance-incoming').items.find((i: Item) => i.href === '/payments');
+    assert.match(customerPayments.label, /clients/i);
+    // /finance/journal is customer-side (invoices, credit notes, customer payments, refunds): named accordingly.
+    const journal = section('finance-reports').items.find((i: Item) => i.href === '/finance/journal');
+    assert.equal(journal.label, 'Journal des ventes');
+    assert.deepEqual(finance.items.map((e) => e.href ?? e.key), [
+        '/finance', 'finance-incoming', '/finance/situation-fin-de-mois', 'finance-obligations', '/financial-accounts', 'finance-reports', 'finance-commissions',
+    ]);
+});
+
 test('moved entries keep their permission', () => {
     const items = flat(full());
     const permissionOf = (href: string) => (build('fr', tenant([])).flatMap((g) => g.items.flatMap((e: any) => e.items ?? [e])) as any[]).find((i) => i.href === href)?.permission;
@@ -155,4 +187,43 @@ test('every label resolves in French and Arabic (no raw key, Arabic differs from
         assert.ok(i18n.ar[key], `Arabic translation missing for ${key}`);
         assert.notEqual(i18n.ar[key], i18n.fr[key], `${key} is not translated to Arabic`);
     }
+});
+
+test('breadcrumbs follow the registry, add a terminal crumb on deeper URLs and stay empty off-registry', () => {
+    const groups = full();
+    const t = tFor('fr');
+    const crumbs = (p: string) => nav.buildBreadcrumbs(groups, p, t) as { label: string; href?: string }[];
+    assert.deepEqual(crumbs('/platform'), []);
+    assert.deepEqual(crumbs('/unknown/page'), []);
+    assert.deepEqual(crumbs('/procurement/purchase-orders'), [
+        { label: 'Achats & Fournisseurs', href: '/procurement/purchase-orders' },
+        { label: 'Commandes fournisseur' },
+    ]);
+    const detail = crumbs('/procurement/purchase-orders/5');
+    assert.deepEqual(detail.map((c) => c.label), ['Achats & Fournisseurs', 'Commandes fournisseur', 'Détail']);
+    assert.equal(detail[1]!.href, '/procurement/purchase-orders');
+    assert.equal(detail[2]!.href, undefined);
+    assert.deepEqual(crumbs('/finance/factures-fournisseurs/nouvelle').map((c) => c.label), ['Achats & Fournisseurs', 'Factures fournisseurs', 'Création']);
+    assert.deepEqual(crumbs('/sales/customers/7/edit').map((c) => c.label), ['Ventes & Clients', 'Clients & contacts', 'Clients', 'Modification']);
+    assert.deepEqual(crumbs('/finance/encaissements').map((c) => c.label), ['Finance & Trésorerie', 'Encaissements clients', 'Encaissements du mois']);
+});
+
+test('breadcrumbs never reveal a page the user may not open', () => {
+    const t = tenant(['products.view']);
+    const groups = nav.visibleNavGroups(build('fr', t), t) as Group[];
+    assert.deepEqual(nav.buildBreadcrumbs(groups, '/finance/encaissements', tFor('fr')), []);
+});
+
+test('quick actions point at genuine creation workflows and respect permission, flag and Test Mode', () => {
+    const t = (permissions: string[]) => tenant(permissions);
+    const all = ['pos.access', 'supplier_invoices.manage', 'products.create', 'contacts.create', 'procurement.manage'];
+    const hrefs = (permissions: string[], options?: object) => (nav.buildQuickActions(tFor('fr'), t(permissions), options) as Item[]).map((a) => a.href);
+    const on = { supplierInvoicesEnabled: true, sandboxActive: false };
+    assert.deepEqual(hrefs(all, on), ['/pos', '/finance/factures-fournisseurs/nouvelle', '/catalog/products/create', '/contacts/create']);
+    // "New purchase" must not point at the procurement list any more, and no standalone PO creation is invented.
+    assert.ok(!hrefs(all, on).includes('/procurement'));
+    assert.ok(!hrefs(all, { ...on, supplierInvoicesEnabled: false }).includes('/finance/factures-fournisseurs/nouvelle'), 'flag off');
+    assert.ok(!hrefs(all, { ...on, sandboxActive: true }).includes('/finance/factures-fournisseurs/nouvelle'), 'Test Mode');
+    assert.ok(!hrefs(['pos.access'], on).includes('/finance/factures-fournisseurs/nouvelle'), 'permission');
+    assert.deepEqual(hrefs([], on), []);
 });
