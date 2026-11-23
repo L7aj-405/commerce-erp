@@ -395,6 +395,11 @@ jobs:
       - name: Typecheck
         run: npx tsc --noEmit
 
+      - name: Frontend unit and SSR render tests (not browser E2E)
+        # node:test over tests/Frontend/*.test.ts: pure-logic tests plus server-side renders via Vite's SSR loader.
+        # Offline and deterministic; no DOM or real browser, so interaction and server round-trips are not covered.
+        run: npm run test:frontend
+
       - name: Production build
         run: npm run build
 

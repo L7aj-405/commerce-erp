@@ -1,21 +1,18 @@
-// Run: node --test tests/Frontend/supplier-invoice-error-feedback.test.ts
+// Run all frontend tests: npm run test:frontend  (this file alone: node --experimental-strip-types --test tests/Frontend/supplier-invoice-error-feedback.test.ts)
 //
 // Server-renders VoidDialog / ApproveDialog with the exact error bag Inertia hands to `onError`
 // when the backend refuses (`errors.invoice`, see tests/Feature/Finance/SupplierInvoiceVoidTest.php).
 // This is a render test, NOT a browser test and NOT proof of a real server rejection:
 // no request is made and no invoice is touched.
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { after, before, test } from 'node:test';
-import { pathToFileURL } from 'node:url';
-import { rolldown } from 'rolldown';
+import { createServer, type ViteDevServer } from 'vite';
 
 type Renderer = { renderVoid: (e: Record<string, string>) => string; renderApprove: (e: Record<string, string>, m?: string) => string };
 
 const root = path.resolve(import.meta.dirname, '../..');
-const outDir = mkdtempSync(path.join(tmpdir(), 'si-error-feedback-'));
+let server: ViteDevServer;
 let ui: Renderer;
 
 const setLocale = (locale: 'fr' | 'ar') => {
@@ -27,21 +24,23 @@ const VOID_REASON = 'Cette facture a des paiements actifs : annulez-les avant de
 const APPROVE_REASON = 'La période comptable est clôturée : approbation impossible.';
 
 before(async () => {
-    const bundle = await rolldown({
-        input: path.join(root, 'tests/Frontend/support/render-dialogs.tsx'),
-        platform: 'node',
-        resolve: { alias: { '@': path.join(root, 'resources/js') } },
-        transform: { jsx: { runtime: 'automatic' } },
+    // Vite is a declared devDependency; its SSR module loader resolves the `@/` alias and compiles TSX in memory.
+    // No dev server port is opened (middlewareMode) and nothing is written to disk.
+    server = await createServer({
+        root,
+        configFile: false,
+        appType: 'custom',
         logLevel: 'silent',
+        server: { middlewareMode: true, hmr: false, watch: null },
+        optimizeDeps: { noDiscovery: true },
+        resolve: { alias: { '@': path.join(root, 'resources/js') } },
     });
-    const file = path.join(outDir, 'render-dialogs.mjs');
-    await bundle.write({ file, format: 'esm' });
-    ui = (await import(pathToFileURL(file).href)) as Renderer;
+    ui = (await server.ssrLoadModule('/tests/Frontend/support/render-dialogs.tsx')) as Renderer;
 });
 
-after(() => {
+after(async () => {
     delete (globalThis as { window?: unknown }).window;
-    rmSync(outDir, { recursive: true, force: true });
+    await server?.close();
 });
 
 // True when a <button> with this exact label exists and carries no `disabled` attribute (Tailwind `disabled:` classes are not the attribute).
