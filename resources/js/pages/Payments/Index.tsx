@@ -75,9 +75,9 @@ export default function PaymentIndex({ payments, accounts, filters }: Props) {
 
     return (
         <PaymentsLayout>
-            <Head title={t('payments.title')} />
+            <Head title={t('payments.customerTitle')} />
             <PageHeader
-                title={t('payments.title')}
+                title={t('payments.customerTitle')}
                 description={t('payments.description')}
             />
             <SandboxPaymentBadge />

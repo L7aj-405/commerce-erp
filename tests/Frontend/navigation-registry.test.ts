@@ -122,6 +122,38 @@ test('supplier invoices stay behind the kill switch and Test Mode', () => {
     assert.equal(has(full('fr', true, true)), false, 'Test Mode');
 });
 
+test('supplier invoices live under Achats & Fournisseurs, not Finance, with the same route and permission', () => {
+    const groups = full();
+    const where = (href: string) => groups.find((g) => g.items.some((e) => e.href === href || e.items?.some((i) => i.href === href)))?.key;
+    assert.equal(where('/finance/factures-fournisseurs'), 'purchasing');
+    const all = build('fr', tenant([])).flatMap((g) => g.items.flatMap((e: any) => e.items ?? [e])) as any[];
+    assert.equal(all.find((i) => i.href === '/finance/factures-fournisseurs').permission, 'supplier_invoices.view');
+    // Purchase orders, requirements and suppliers stay clearly reachable.
+    for (const href of ['/procurement/purchase-orders', '/procurement', '/procurement/suppliers']) assert.equal(where(href), 'purchasing');
+});
+
+test('Finance keeps incoming customer money and outgoing supplier money apart', () => {
+    const finance = full().find((g) => g.key === 'finance')!;
+    const section = (key: string) => finance.items.find((e: any) => e.key === key) as any;
+    assert.deepEqual(section('finance-incoming').items.map((i: Item) => i.href), ['/finance/encaissements', '/payments', '/finance/creances']);
+    // /payments is the customer payments list and must never be filed with supplier payments / obligations.
+    for (const key of ['finance-obligations', 'finance-reports']) {
+        assert.ok(!section(key).items.some((i: Item) => i.href === '/payments' || i.href === '/finance/encaissements'), key);
+    }
+    // The single existing outgoing-payment entry point is named for what it is (no dedicated list exists).
+    const monthEnd = finance.items.find((e) => e.href === '/finance/situation-fin-de-mois')!;
+    assert.match(monthEnd.label, /fournisseurs/i);
+    assert.match(monthEnd.label, /fin de mois/i);
+    const customerPayments = section('finance-incoming').items.find((i: Item) => i.href === '/payments');
+    assert.match(customerPayments.label, /clients/i);
+    // /finance/journal is customer-side (invoices, credit notes, customer payments, refunds): named accordingly.
+    const journal = section('finance-reports').items.find((i: Item) => i.href === '/finance/journal');
+    assert.equal(journal.label, 'Journal des ventes');
+    assert.deepEqual(finance.items.map((e) => e.href ?? e.key), [
+        '/finance', 'finance-incoming', '/finance/situation-fin-de-mois', 'finance-obligations', '/financial-accounts', 'finance-reports', 'finance-commissions',
+    ]);
+});
+
 test('moved entries keep their permission', () => {
     const items = flat(full());
     const permissionOf = (href: string) => (build('fr', tenant([])).flatMap((g) => g.items.flatMap((e: any) => e.items ?? [e])) as any[]).find((i) => i.href === href)?.permission;
