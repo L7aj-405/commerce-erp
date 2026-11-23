@@ -163,7 +163,7 @@ export default function SupplierInvoiceShow(props: Partial<SupplierInvoiceShowPr
             </section>
 
             <div className="mb-6 grid gap-4 lg:grid-cols-2">
-                <InvoiceTotalsPanel subtotalHt={invoice.subtotal_ht} totalTva={invoice.total_tva} roundingAdjustment={invoice.rounding_adjustment} totalTtc={invoice.total_ttc} controlTotalTtc={invoice.control_total_ttc} currencyCode={c} />
+                <InvoiceTotalsPanel subtotalHt={invoice.subtotal_ht} totalTva={invoice.total_tva} roundingAdjustment={invoice.rounding_adjustment} totalTtc={invoice.total_ttc} controlTotalTtc={invoice.control_total_ttc} currencyCode={c} status={invoice.status} />
                 {matching && <MatchingWarnings matching={matching} positions={positions} />}
             </div>
 

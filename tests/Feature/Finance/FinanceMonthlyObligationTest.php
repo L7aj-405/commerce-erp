@@ -6,9 +6,14 @@ use App\Actions\Finance\ManageFinanceObligationAction;
 use App\Actions\Finance\RecordFinanceOutgoingPaymentAction;
 use App\Actions\Finance\ReverseFinanceOutgoingPaymentAction;
 use App\Models\FinanceObligation;
+use App\Models\FinancialAccount;
+use App\Models\Organization;
+use App\Models\Store;
 use App\Models\Supplier;
 use App\Models\User;
+use App\Services\Finance\FinanceMonthlySituationService;
 use App\Services\Finance\FinanceObligationCalculator;
+use App\Services\Finance\FinancePeriod;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -81,7 +86,11 @@ class FinanceMonthlyObligationTest extends PaymentTestCase
             fn () => app(ManageFinanceObligationAction::class)->update($owner, $obligation, $this->obligationData(['planned_amount' => '6999.9999'])),
             fn () => app(ManageFinanceObligationAction::class)->update($owner, $obligation, $this->obligationData(['category' => 'tax'])),
         ] as $operation) {
-            try { $operation(); $this->fail('Expected paid-history protection.'); } catch (ValidationException) {}
+            try {
+                $operation();
+                $this->fail('Expected paid-history protection.');
+            } catch (ValidationException) {
+            }
         }
     }
 
@@ -119,8 +128,49 @@ class FinanceMonthlyObligationTest extends PaymentTestCase
                 'allocations' => [['obligation_id' => $obligation->id, 'amount' => '1000.0001']],
             ]));
             $this->fail('Expected changed idempotency payload rejection.');
-        } catch (ValidationException) {}
+        } catch (ValidationException) {
+        }
         $this->assertDatabaseCount('finance_outgoing_payments', 1);
+    }
+
+    public function test_payment_history_exposes_the_payment_author_reference_and_reversal_not_the_obligation_creator(): void
+    {
+        [$owner, $organization, , $account] = $this->fixture();
+        $obligation = $this->obligation($owner, $organization);
+        $payer = User::factory()->create(['active_organization_id' => $organization->id]);
+        $this->addOrganizationMember($organization, $payer, ['finance.outgoing_payments.manage']);
+        $payment = app(RecordFinanceOutgoingPaymentAction::class)->execute($payer, $organization, [
+            'store_id' => null, 'financial_account_id' => $account->id, 'supplier_id' => null, 'beneficiary_name' => 'Bénéficiaire',
+            'payment_method' => 'bank_transfer', 'amount' => '4000.0000', 'currency_code' => 'MAD', 'payment_date' => '2026-10-10',
+            'reference' => 'VIR-2026-0042', 'notes' => null, 'idempotency_key' => (string) Str::uuid(),
+            'allocations' => [['obligation_id' => $obligation->id, 'amount' => '4000.0000']],
+        ]);
+        $legacy = $this->payment($owner, $organization, $account->id, [[$obligation->id, '1000.0000']], '1000.0000');
+        \DB::table('finance_outgoing_payments')->where('id', $legacy->id)->update(['recorded_by_user_id' => null, 'reference' => null]);
+        app(ReverseFinanceOutgoingPaymentAction::class)->execute($owner, $payment->fresh(), 'Virement rejeté');
+
+        $service = app(FinanceMonthlySituationService::class);
+        $row = $service->rows($organization, FinancePeriod::fromMonth('2026-10'), null, [])->getCollection()->firstWhere('id', $obligation->id);
+        $payments = collect($row['payments'])->keyBy('payment_id');
+
+        $this->assertSame($owner->name, $row['created_by']);
+        $author = $payments[$payment->id];
+        $this->assertSame($payer->name, $author['recorded_by']);
+        $this->assertNotSame($row['created_by'], $author['recorded_by']);
+        $this->assertSame('VIR-2026-0042', $author['reference']);
+        $this->assertNotNull($author['recorded_at']);
+        $this->assertSame('reversed', $author['status']);
+        $this->assertSame($owner->name, $author['reversed_by']);
+        $this->assertNotNull($author['reversed_at']);
+        $this->assertSame('Virement rejeté', $author['reversal_reason']);
+        $this->assertSame('4000.0000', $author['amount']);
+
+        $old = $payments[$legacy->id];
+        $this->assertNull($old['recorded_by']);
+        $this->assertNull($old['reference']);
+        $this->assertNull($old['reversed_by']);
+        $this->assertSame('posted', $old['status']);
+        $this->assertArrayNotHasKey('idempotency_key', $old);
     }
 
     public function test_foreign_tenant_references_are_rejected_before_any_mutation(): void
@@ -132,14 +182,15 @@ class FinanceMonthlyObligationTest extends PaymentTestCase
             try {
                 $this->obligation($ownerA, $organizationA, $foreign);
                 $this->fail('Expected tenant validation.');
-            } catch (ValidationException) {}
+            } catch (ValidationException) {
+            }
         }
         $this->assertDatabaseCount('finance_obligations', 0);
         $this->assertNotSame($ownerA->id, $ownerB->id);
         $this->assertNotSame($organizationA->id, $organizationB->id);
     }
 
-    /** @return array{User,\App\Models\Organization,\App\Models\Store,\App\Models\FinancialAccount,Supplier} */
+    /** @return array{User,Organization,Store,FinancialAccount,Supplier} */
     private function fixture(): array
     {
         $owner = User::factory()->create();
@@ -152,6 +203,7 @@ class FinanceMonthlyObligationTest extends PaymentTestCase
         $supplier->name = 'Supplier '.Str::random(4);
         $supplier->active = true;
         $supplier->save();
+
         return [$owner, $organization, $store, $account, $supplier];
     }
 

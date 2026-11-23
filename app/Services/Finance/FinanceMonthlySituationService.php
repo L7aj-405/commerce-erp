@@ -62,7 +62,7 @@ class FinanceMonthlySituationService
         $payments = FinanceOutgoingPaymentAllocation::query()
             ->where('organization_id', $organization->getKey())
             ->whereIn('obligation_id', $ids)
-            ->with(['outgoingPayment:id,organization_id,store_id,payment_number,financial_account_id,payment_method,amount,currency_code,payment_date,reference,status,reversed_at,reversal_reason', 'outgoingPayment.financialAccount:id,name,code'])
+            ->with(['outgoingPayment:id,organization_id,store_id,payment_number,financial_account_id,payment_method,amount,currency_code,payment_date,reference,status,recorded_by_user_id,reversed_at,reversed_by_user_id,reversal_reason,created_at', 'outgoingPayment.financialAccount:id,name,code', 'outgoingPayment.recordedBy:id,name', 'outgoingPayment.reversedBy:id,name'])
             ->orderBy('id')->get()->groupBy('obligation_id');
 
         return $paginator->through(fn (FinanceObligation $obligation) => $this->present($obligation, $cutoff, $period, $payments->get($obligation->id, collect())));
@@ -288,6 +288,11 @@ class FinanceMonthlySituationService
                 'account' => $allocation->outgoingPayment->financialAccount?->only(['id', 'name', 'code']),
                 'payment_id' => $allocation->outgoingPayment->id,
                 'reversal_reason' => $allocation->outgoingPayment->reversal_reason,
+                // The user who posted the payment (never the obligation creator); null for legacy rows without an author.
+                'recorded_by' => $allocation->outgoingPayment->recordedBy?->name,
+                'recorded_at' => $allocation->outgoingPayment->created_at?->toIso8601String(),
+                'reversed_at' => $allocation->outgoingPayment->reversed_at?->toIso8601String(),
+                'reversed_by' => $allocation->outgoingPayment->reversedBy?->name,
             ])->values()->all(),
             'committed_amount' => $obligation->paymentInstruments->whereIn('state', [FinancePaymentInstrumentState::Issued, FinancePaymentInstrumentState::Presented])->reduce(fn (string $sum, $row) => Decimal::add($sum, (string) $row->amount), '0.0000'),
             'instruments' => $obligation->paymentInstruments->map(function ($instrument) use ($cutoff) {
