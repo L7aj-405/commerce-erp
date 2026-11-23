@@ -289,17 +289,52 @@ export function matchActiveNav(groups: NavGroup[], currentPath: string): NavMatc
         .sort((a, b) => b.item.href.length - a.item.href.length)[0];
 }
 
-export type QuickAction = { href: string; label: string; icon: ReactNode };
+export type Crumb = { label: string; href?: string };
+
+/**
+ * Contextual breadcrumb derived from the registry (never a second route list):
+ * Group › [Section] › Page, plus a terminal "Détail / Création / Modification" crumb on deeper URLs.
+ * Empty on the dashboard root and on routes that are not in the (permission-filtered) navigation.
+ */
+export function buildBreadcrumbs(groups: NavGroup[], currentPath: string, t: (key: TranslationKey) => string): Crumb[] {
+    const match = matchActiveNav(groups, currentPath);
+    if (!match || currentPath === '/platform') return [];
+    const group = groups.find((candidate) => candidate.key === match.groupKey);
+    if (!group) return [];
+
+    const deeper = currentPath !== match.item.href;
+    const crumbs: Crumb[] = [{ label: group.label, href: firstNavItem(group).href }];
+    if (match.sectionKey) {
+        const section = group.items.find((entry): entry is NavSection => isNavSection(entry) && entry.key === match.sectionKey);
+        if (section) crumbs.push({ label: section.label });
+    }
+    crumbs.push(deeper ? { label: match.item.label, href: match.item.href } : { label: match.item.label });
+    if (deeper) {
+        const last = currentPath.split('/').filter(Boolean).pop() ?? '';
+        crumbs.push({ label: ['create', 'nouvelle'].includes(last) ? t('breadcrumb.create') : ['edit', 'modifier'].includes(last) ? t('breadcrumb.edit') : t('breadcrumb.detail') });
+    }
+    return crumbs;
+}
+
+export type QuickAction ={ href: string; label: string; icon: ReactNode };
 
 /**
  * Create shortcuts shared by the header "Créer" menu and the command palette.
  * Each one routes to an existing workflow and is shown only when permitted.
  */
-export function buildQuickActions(t: (key: TranslationKey) => string, tenant: Tenant): QuickAction[] {
+export function buildQuickActions(
+    t: (key: TranslationKey) => string,
+    tenant: Tenant,
+    options: { supplierInvoicesEnabled?: boolean; sandboxActive?: boolean } = {},
+): QuickAction[] {
     const can = (permission: string) => tenant.permissions.includes(permission);
+    // Supplier invoices are Production-only and behind a kill switch (the route answers 404 otherwise).
+    const canCreateSupplierInvoice = can('supplier_invoices.manage') && !!options.supplierInvoicesEnabled && !options.sandboxActive;
     return [
         { href: '/pos', label: t('platform.newSale'), icon: <IconRegister />, show: can('pos.access') && !!tenant.store },
-        { href: '/procurement', label: t('shell.newPurchase'), icon: <IconCart />, show: can('procurement.manage') },
+        // Standalone purchase-order creation does not exist yet (POs are created from a sales order), so the
+        // purchasing shortcut is the supplier-invoice entry form, a genuine creation workflow.
+        { href: '/finance/factures-fournisseurs/nouvelle', label: t('shell.newSupplierInvoice'), icon: <IconInvoice />, show: canCreateSupplierInvoice },
         { href: '/catalog/products/create', label: t('platform.addProduct'), icon: <IconPackage />, show: can('products.create') },
         { href: '/contacts/create', label: t('shell.addContact'), icon: <IconContact />, show: can('contacts.create') },
     ]

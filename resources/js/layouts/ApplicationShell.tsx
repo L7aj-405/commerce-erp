@@ -1,6 +1,7 @@
 import { BrandLockup, PRODUCT_NAME } from '@/components/ui/brand';
 import NotificationBell from '@/components/notifications/NotificationBell';
 import SandboxBanner from '@/components/SandboxBanner';
+import Breadcrumbs from '@/components/shell/Breadcrumbs';
 import CommandPalette from '@/components/shell/CommandPalette';
 import { useToast } from '@/components/ui/toast';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
@@ -11,6 +12,7 @@ import { Dropdown, MenuLink } from '@/components/ui/Menu';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { MutableRefObject, PropsWithChildren, ReactNode } from 'react';
 import {
+    buildBreadcrumbs,
     buildNavGroups,
     buildQuickActions,
     DisclosureChevron,
@@ -116,6 +118,7 @@ export default function ApplicationShell({
     const groups = useMemo(() => visibleNavGroups(buildNavGroups(t, tenant, sandboxActive, supplierInvoicesEnabled), tenant), [t, tenant, sandboxActive, supplierInvoicesEnabled]);
     const activeMatch = matchActiveNav(groups, currentPath);
     const activeGroup = groups.find((group) => group.key === activeMatch?.groupKey);
+    const breadcrumbs = useMemo(() => buildBreadcrumbs(groups, currentPath, t), [groups, currentPath, t]);
 
     /* ---------------- Navigation drawer ---------------- */
     // `hover` = opened from the edge strip (closes when the pointer leaves);
@@ -369,7 +372,10 @@ export default function ApplicationShell({
                 {flush ? (
                     <main id="erp-main" tabIndex={-1} className="min-h-0 flex-1 overflow-hidden focus:outline-none">{children}</main>
                 ) : (
-                    <main id="erp-main" tabIndex={-1} className={`mx-auto min-w-0 px-4 py-5 focus:outline-none sm:px-6 lg:px-7 lg:pt-[18px] lg:pb-12 min-[2000px]:pe-9 ${widthClass}`}>{children}</main>
+                    <main id="erp-main" tabIndex={-1} className={`mx-auto min-w-0 px-4 py-5 focus:outline-none sm:px-6 lg:px-7 lg:pt-[18px] lg:pb-12 min-[2000px]:pe-9 ${widthClass}`}>
+                        <Breadcrumbs crumbs={breadcrumbs} />
+                        {children}
+                    </main>
                 )}
             </div>
         </div>
@@ -914,8 +920,9 @@ function ContextMenu() {
 /** Quick create — only real, permitted workflows. */
 function QuickCreateMenu() {
     const { t } = useI18n();
-    const { tenant } = usePage<SharedPageProps>().props;
-    const actions = buildQuickActions(t, tenant);
+    const page = usePage<SharedPageProps & { sandbox?: { active: boolean } }>();
+    const { tenant } = page.props;
+    const actions = buildQuickActions(t, tenant, { supplierInvoicesEnabled: Boolean(page.props.features?.supplier_invoices), sandboxActive: Boolean(page.props.sandbox?.active) });
 
     if (actions.length === 0) return null;
 
