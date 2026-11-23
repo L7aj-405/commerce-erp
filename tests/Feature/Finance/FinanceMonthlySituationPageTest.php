@@ -4,7 +4,11 @@ namespace Tests\Feature\Finance;
 
 use App\Actions\Finance\ManageFinanceObligationAction;
 use App\Models\User;
+use App\Services\Finance\FinanceMonthlySituationService;
+use App\Services\Finance\FinancePeriod;
+use App\Services\Finance\FinanceTreasuryForecastService;
 use App\Services\PermissionProvisioner;
+use App\Support\Decimal;
 use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\Support\PaymentTestCase;
@@ -51,12 +55,51 @@ class FinanceMonthlySituationPageTest extends PaymentTestCase
             ->assertOk()->assertInertia(fn (Assert $page) => $page
                 ->has('obligations.data', 3)
                 ->where('obligations.data.0.label', 'Overdue')
+                ->where('obligations.data.0.carry_forward', true)
+                ->where('obligations.data.0.status', 'overdue')
+                ->where('obligations.data.0.remaining_amount', '120.0000')
                 ->where('obligations.data.1.label', 'Not yet due, before month')
                 ->where('obligations.data.1.carry_forward', true)
                 ->where('obligations.data.1.status', 'upcoming')
+                ->where('obligations.data.1.remaining_amount', '120.0000')
+                ->where('obligations.data.2.label', 'In month')
+                ->where('obligations.data.2.carry_forward', false)
+                ->where('obligations.data.2.status', 'upcoming')
+                ->where('obligations.data.2.remaining_amount', '120.0000')
                 ->where('treasury.remaining_outflows', '360.0000')
                 ->where('kpis.overdue', '120.0000')
                 ->where('kpis.remaining', '120.0000'));
+    }
+
+    /** FIN-001: the export and the supplier summary share the list scope, so all three obligations reconcile to the forecast. */
+    public function test_export_and_supplier_summary_include_all_three_obligations_and_reconcile_with_the_forecast(): void
+    {
+        $owner = User::factory()->create();
+        $organization = $this->createOrganization($owner);
+        $store = $this->createStore($organization, $owner);
+        $this->activate($owner, $organization, $store);
+        $action = app(ManageFinanceObligationAction::class);
+        foreach ([['2026-11-22', 'Overdue'], ['2026-11-30', 'Not yet due, before month'], ['2026-12-23', 'In month']] as [$due, $label]) {
+            $action->create($owner, $organization, $this->data(['label' => $label, 'due_date' => $due, 'planned_amount' => '120.0000']));
+        }
+        // A cancelled obligation due before the month must stay out of every view.
+        $cancelled = $action->create($owner, $organization, $this->data(['label' => 'Cancelled', 'due_date' => '2026-11-28', 'planned_amount' => '500.0000']));
+        $action->cancel($owner, $cancelled, 'FIN-001 regression');
+
+        $this->travelTo('2026-11-23');
+        $service = app(FinanceMonthlySituationService::class);
+        $period = FinancePeriod::fromMonth('2026-12');
+
+        $export = $service->exportRows($organization, $period, null, [])->all();
+        $this->assertSame(['Overdue', 'Not yet due, before month', 'In month'], array_column($export, 'label'));
+        $this->assertSame(['120.0000', '120.0000', '120.0000'], array_column($export, 'remaining'));
+
+        $summary = $service->supplierSummary($organization, $period, null);
+        $this->assertSame('360.0000', array_reduce($summary, fn (string $sum, array $row) => Decimal::add($sum, $row['remaining']), '0.0000'));
+        $this->assertSame('120.0000', array_reduce($summary, fn (string $sum, array $row) => Decimal::add($sum, $row['overdue']), '0.0000'));
+
+        $forecast = app(FinanceTreasuryForecastService::class)->forecast($organization, $period, null);
+        $this->assertSame('360.0000', $forecast['remaining_outflows']);
     }
 
     public function test_store_category_status_and_search_filters_are_applied_server_side(): void
