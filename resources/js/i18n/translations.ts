@@ -1400,6 +1400,11 @@ export const fr = {
     "finance.monthEnd.currentBalanceShort": "Solde actuel",
     "finance.monthEnd.remainingUntilPeriodEnd":
         "Obligations restantes jusqu’à fin de période",
+    "finance.monthEnd.breakdown.title": "Répartition des obligations fournisseurs",
+    "finance.monthEnd.breakdown.currentMonth": "Échéances du mois",
+    "finance.monthEnd.breakdown.carriedForward": "Reports des périodes précédentes",
+    "finance.monthEnd.breakdown.inclusive": "Total restant jusqu’à fin de période",
+    "finance.monthEnd.breakdown.hint": "Reports : échéances antérieures au mois avec un solde restant. Le total jusqu’à fin de période (mois + reports) exclut les échéances futures et les obligations annulées ; le payé exclut les paiements contrepassés.",
     "finance.monthEnd.searchPlaceholder":
         "N°, libellé, référence, bénéficiaire…",
     "finance.monthEnd.allTypes": "Tous les types",
@@ -6805,6 +6810,11 @@ export const ar: Record<TranslationKey, string> = {
     "finance.monthEnd.currentBalanceShort": "الرصيد الحالي",
     "finance.monthEnd.remainingUntilPeriodEnd":
         "الالتزامات المتبقية حتى نهاية الفترة",
+    "finance.monthEnd.breakdown.title": "توزيع التزامات الموردين",
+    "finance.monthEnd.breakdown.currentMonth": "استحقاقات الشهر",
+    "finance.monthEnd.breakdown.carriedForward": "المرحَّل من الفترات السابقة",
+    "finance.monthEnd.breakdown.inclusive": "إجمالي المتبقي حتى نهاية الفترة",
+    "finance.monthEnd.breakdown.hint": "المرحَّل: استحقاقات سابقة للشهر ما زال عليها رصيد متبقٍ. إجمالي المتبقي حتى نهاية الفترة (الشهر + المرحَّل) لا يشمل الاستحقاقات المستقبلية ولا الملغاة، والمدفوع لا يشمل الدفعات المعكوسة.",
     "finance.monthEnd.searchPlaceholder": "الرقم، التسمية، المرجع، المستفيد…",
     "finance.monthEnd.allTypes": "جميع الأنواع",
     "finance.monthEnd.allSuppliers": "جميع الموردين",

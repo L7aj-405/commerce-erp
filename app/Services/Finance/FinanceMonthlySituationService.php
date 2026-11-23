@@ -116,6 +116,55 @@ class FinanceMonthlySituationService
                 'source' => $row->procurement?->procurement_number ?: ($row->supplierInvoiceInstallment?->supplierInvoice ? 'Facture fournisseur '.$row->supplierInvoiceInstallment->supplierInvoice->internal_number : null) ?: ($row->supplier_installment_plan_id ? 'Échéancier fournisseur' : ($row->recurring_template_id ? 'Charge récurrente' : 'Obligation manuelle'))])->all();
     }
 
+    /**
+     * Single source of the three reporting buckets shown by the month-end page AND its Excel export (FIN-EXPORT-003).
+     *
+     * Definitions for a selected month M (cancelled obligations are always excluded):
+     *  - current_month   : due_date inside M (fully paid ones included, so planned = paid + remaining reconciles).
+     *  - carried_forward : due_date before M AND still unsettled (posted paid < planned). Fully paid past obligations
+     *                      are not carried forward, exactly like the obligation list and the treasury forecast.
+     *  - inclusive       : current_month + carried_forward. Future-dated obligations (after M) are never included;
+     *                      remaining equals the forecast's remaining_outflows (due_date <= end of M).
+     * "paid" is the sum of POSTED payment allocations as of now (PAID_SQL): reversed payments never count and the
+     * payment date is intentionally not used as a cutoff, the same semantics as every other obligation figure.
+     *
+     * @return array{current_month: array<string,string|int>, carried_forward: array<string,string|int>, inclusive: array<string,string|int>}
+     */
+    public function breakdown(Organization $organization, FinancePeriod $period, ?Store $store): array
+    {
+        $start = $period->start->toDateString();
+        $end = $period->end->toDateString();
+        $bucket = fn (string $condition, array $bindings): object => FinanceObligation::query()->withoutGlobalScopes()
+            ->where('organization_id', $organization->getKey())
+            ->whereNull('cancelled_at')
+            ->when($store, fn (Builder $query) => $query->where('store_id', $store->getKey()))
+            ->whereRaw($condition, $bindings)
+            ->selectRaw('COALESCE(SUM(planned_amount), 0) as planned')
+            ->selectRaw('COALESCE(SUM('.self::PAID_SQL.'), 0) as paid')
+            ->selectRaw('COUNT(*) as aggregate_count')
+            ->first();
+        $current = $this->bucketTotals($bucket('due_date BETWEEN ? AND ?', [$start, $end]));
+        $carried = $this->bucketTotals($bucket('due_date < ? AND '.self::PAID_SQL.' < planned_amount', [$start]));
+
+        $planned = Decimal::add($current['planned'], $carried['planned']);
+        $paid = Decimal::add($current['paid'], $carried['paid']);
+
+        return [
+            'current_month' => $current,
+            'carried_forward' => $carried,
+            'inclusive' => ['planned' => $planned, 'paid' => $paid, 'remaining' => Decimal::subtract($planned, $paid), 'count' => $current['count'] + $carried['count']],
+        ];
+    }
+
+    /** @return array<string,string|int> */
+    private function bucketTotals(object $row): array
+    {
+        $planned = Decimal::normalize((string) $row->planned);
+        $paid = Decimal::normalize((string) $row->paid);
+
+        return ['planned' => $planned, 'paid' => $paid, 'remaining' => Decimal::subtract($planned, $paid), 'count' => (int) $row->aggregate_count];
+    }
+
     /** @return array<string, string|int> */
     public function kpis(Organization $organization, FinancePeriod $period, ?Store $store): array
     {

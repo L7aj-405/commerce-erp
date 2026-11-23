@@ -213,6 +213,10 @@ type Props = {
         count: number;
         overdue_count: number;
     };
+    breakdown: Record<
+        "current_month" | "carried_forward" | "inclusive",
+        { planned: string; paid: string; remaining: string; count: number }
+    >;
     obligations: Paginator;
     futureObligations: FutureObligation[];
     recurringTemplatesCount: number;
@@ -797,6 +801,61 @@ export default function MonthlySituation(props: Props) {
                     }
                 />
             </div>
+
+            <section
+                className="surface-card mb-6 overflow-hidden p-0"
+                aria-labelledby="fin-breakdown-title"
+            >
+                <div className="px-4 pt-4">
+                    <h2 id="fin-breakdown-title" className="text-sm font-semibold">
+                        {t("finance.monthEnd.breakdown.title")} · {props.periodLabel}
+                    </h2>
+                </div>
+                <div className="overflow-x-auto">
+                    <table className="erp-table min-w-[520px]">
+                        <thead>
+                            <tr>
+                                <th className="px-4 py-3 font-semibold" />
+                                <th className="num px-4 py-3 font-semibold">
+                                    {t("finance.monthEnd.planned")}
+                                </th>
+                                <th className="num px-4 py-3 font-semibold">
+                                    {t("orders.show.paid")}
+                                </th>
+                                <th className="num px-4 py-3 font-semibold">
+                                    {t("orders.show.remaining")}
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {(
+                                [
+                                    ["current_month", "currentMonth"],
+                                    ["carried_forward", "carriedForward"],
+                                    ["inclusive", "inclusive"],
+                                ] as const
+                            ).map(([key, label]) => (
+                                <tr
+                                    key={key}
+                                    className={key === "inclusive" ? "font-semibold" : ""}
+                                >
+                                    <th scope="row" className="px-4 py-3 text-start font-medium">
+                                        {t(`finance.monthEnd.breakdown.${label}`)}
+                                    </th>
+                                    {(["planned", "paid", "remaining"] as const).map((field) => (
+                                        <td key={field} className="num px-4 py-3">
+                                            {formatMoney(props.breakdown[key][field], currencyCode)}
+                                        </td>
+                                    ))}
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+                <p className="px-4 pb-4 pt-2 text-xs text-ink-muted">
+                    {t("finance.monthEnd.breakdown.hint")}
+                </p>
+            </section>
 
             {props.treasury.mode !== "historical" && (
                 <div className="surface-card mb-6 p-4 text-sm">
