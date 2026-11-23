@@ -24,7 +24,7 @@ export function buildNavGroups(t: (key: TranslationKey) => string, tenant: Tenan
     const groups: NavGroup[] = [
         {
             key: 'dashboard',
-            label: t('nav.dashboard'),
+            label: t('nav.group.overview'),
             icon: <IconDashboard />,
             items: [
                 { href: '/platform', label: t('nav.dashboard'), icon: <IconHome /> },
@@ -33,58 +33,49 @@ export function buildNavGroups(t: (key: TranslationKey) => string, tenant: Tenan
         },
         {
             key: 'sales',
-            label: t('nav.sales'),
+            label: t('nav.group.sales'),
             icon: <IconShoppingBag />,
             items: [
                 { href: '/pos', label: t('nav.pos'), permission: 'pos.access', needsStore: true, icon: <IconRegister /> },
                 { href: '/sales/orders', label: t('nav.orders'), permission: 'sales_orders.view', needsStore: true, icon: <IconClipboard /> },
                 { href: '/quotations', label: t('nav.quotations'), permission: 'quotations.view', needsStore: true, icon: <IconFileText /> },
-                { href: '/invoices', label: t('nav.invoices'), permission: 'invoices.view', needsStore: true, icon: <IconInvoice /> },
+                { href: '/invoices', label: t('nav.customerInvoices'), permission: 'invoices.view', needsStore: true, icon: <IconInvoice /> },
                 { href: '/delivery-notes', label: t('nav.deliveryNotes'), permission: 'delivery_notes.view', needsStore: true, icon: <IconTruck /> },
                 { href: '/sales/returns', label: t('nav.returns'), permission: 'sales_returns.view', needsStore: true, icon: <IconRotateBack /> },
+                {
+                    key: 'sales-customers',
+                    label: t('nav.section.customers'),
+                    icon: <IconUsers />,
+                    items: [
+                        { href: '/sales/customers', label: t('nav.customers'), permission: 'customers.view', icon: <IconUsers /> },
+                        { href: '/contacts', label: t('nav.contacts'), permission: 'contacts.view', icon: <IconContact /> },
+                    ],
+                },
                 { href: '/my-commissions', label: t('nav.myCommissions'), permission: 'commissions.own.view', icon: <IconPercent /> },
             ],
         },
         {
-            key: 'catalog-stock',
-            label: t('nav.catalog'),
-            icon: <IconPackage />,
-            items: [
-                { href: '/catalog/products', label: t('nav.products'), permission: 'products.view', icon: <IconPackage /> },
-                { href: '/catalog/categories', label: t('nav.categories'), permission: 'categories.manage', icon: <IconFolder /> },
-                { href: '/catalog/brands', label: t('nav.brands'), permission: 'brands.manage', icon: <IconTag /> },
-                { href: '/catalog/products/import', label: t('nav.productImport'), permission: 'products.import', icon: <IconImport /> },
-                { href: '/catalog/purchase-prices', label: t('nav.purchasePrices'), permission: 'product_cost.view', icon: <IconBanknote /> },
-                { href: '/catalog/non-stock-items', label: t('nav.nonStockItems'), permission: 'quotations.view', icon: <IconAlertBox /> },
-            ],
-        },
-        {
-            key: 'inventory',
-            label: t('nav.inventory'),
-            icon: <IconWarehouse />,
-            items: [
-                { href: '/inventory/stock', label: t('nav.stockState'), permission: 'inventory.view', icon: <IconWarehouse /> },
-                { href: '/inventory/movements', label: t('nav.stockMovements'), permission: 'inventory.view', icon: <IconArrows /> },
-                { href: '/inventory/transfers', label: t('nav.transfers'), permission: 'inventory.view', icon: <IconTransfer /> },
-                { href: '/inventory/transfer-requests', label: t('nav.transferRequests'), permission: 'inventory.transfer_requests.view', icon: <IconRoute /> },
-                { href: '/inventory/warehouses', label: t('nav.warehouses'), permission: 'warehouses.view', icon: <IconPin /> },
-            ],
-        },
-        {
             key: 'purchasing',
-            label: t('nav.purchasing'),
+            label: t('nav.group.purchasing'),
             icon: <IconCart />,
             items: [
-                { href: '/procurement', label: t('nav.procurement'), permission: 'procurement.view', icon: <IconCart /> },
                 { href: '/procurement/purchase-orders', label: t('nav.purchaseOrders'), permission: 'procurement.view', icon: <IconClipboard /> },
-                { href: '/procurement/supplier-requests', label: t('nav.supplierRequests'), permission: 'procurement.view', needsStore: true, icon: <IconChecklist /> },
-                { href: '/procurement/out-of-stock-articles', label: t('nav.catalogTasks'), permission: 'procurement.view', icon: <IconAlertBox /> },
+                { href: '/procurement', label: t('nav.procurement'), permission: 'procurement.view', icon: <IconCart /> },
                 { href: '/procurement/suppliers', label: t('nav.suppliers'), permission: 'suppliers.view', icon: <IconBuilding /> },
+                {
+                    key: 'purchasing-followup',
+                    label: t('nav.section.sourcingFollowUp'),
+                    icon: <IconChecklist />,
+                    items: [
+                        { href: '/procurement/supplier-requests', label: t('nav.supplierRequests'), permission: 'procurement.view', needsStore: true, icon: <IconChecklist /> },
+                        { href: '/procurement/out-of-stock-articles', label: t('nav.catalogTasks'), permission: 'procurement.view', icon: <IconAlertBox /> },
+                    ],
+                },
             ],
         },
         {
             key: 'finance',
-            label: t('nav.finance'),
+            label: t('nav.group.finance'),
             icon: <IconChart />,
             // Deliberately no `needsStore`: Finance reporting works across the
             // whole organization without the viewer's active store switcher.
@@ -132,25 +123,36 @@ export function buildNavGroups(t: (key: TranslationKey) => string, tenant: Tenan
             ],
         },
         {
-            key: 'customers',
-            label: t('nav.customers'),
-            icon: <IconUsers />,
+            key: 'inventory',
+            label: t('nav.group.stock'),
+            icon: <IconWarehouse />,
             items: [
-                { href: '/sales/customers', label: t('nav.customers'), permission: 'customers.view', icon: <IconUsers /> },
-                { href: '/contacts', label: t('nav.contacts'), permission: 'contacts.view', icon: <IconContact /> },
+                { href: '/inventory/stock', label: t('nav.stockState'), permission: 'inventory.view', icon: <IconWarehouse /> },
+                { href: '/inventory/movements', label: t('nav.stockMovements'), permission: 'inventory.view', icon: <IconArrows /> },
+                { href: '/inventory/transfers', label: t('nav.transfers'), permission: 'inventory.view', icon: <IconTransfer /> },
+                { href: '/inventory/transfer-requests', label: t('nav.transferRequests'), permission: 'inventory.transfer_requests.view', icon: <IconRoute /> },
+                { href: '/inventory/warehouses', label: t('nav.warehouses'), permission: 'warehouses.view', icon: <IconPin /> },
             ],
         },
         {
-            key: 'integrations',
-            label: t('nav.integrations'),
-            icon: <IconPlug />,
+            key: 'catalog',
+            label: t('nav.catalog'),
+            icon: <IconPackage />,
             items: [
-                { href: '/integrations/woocommerce', label: 'WooCommerce', permission: 'integrations.view', icon: <IconPlug /> },
+                { href: '/catalog/products', label: t('nav.products'), permission: 'products.view', icon: <IconPackage /> },
+                { href: '/catalog/categories', label: t('nav.categories'), permission: 'categories.manage', icon: <IconFolder /> },
+                { href: '/catalog/brands', label: t('nav.brands'), permission: 'brands.manage', icon: <IconTag /> },
+                { href: '/catalog/products/import', label: t('nav.productImport'), permission: 'products.import', icon: <IconImport /> },
+                { href: '/catalog/purchase-prices', label: t('nav.purchasePrices'), permission: 'product_cost.view', icon: <IconBanknote /> },
+                { href: '/catalog/non-stock-items', label: t('nav.nonStockItems'), permission: 'quotations.view', icon: <IconAlertBox /> },
                 {
-                    href: '/integrations/woocommerce/stock-tasks',
-                    label: t('nav.wooStock'),
-                    permission: 'integrations.woocommerce.stock_tasks.view',
-                    icon: <IconSync />,
+                    key: 'catalog-reference',
+                    label: t('nav.section.references'),
+                    icon: <IconList />,
+                    items: [
+                        { href: '/catalog/units', label: t('nav.units'), permission: 'units.view', icon: <IconBoxes /> },
+                        { href: '/catalog/tax-rates', label: t('nav.taxes'), permission: 'tax_rates.view', icon: <IconPercent /> },
+                    ],
                 },
             ],
         },
@@ -159,8 +161,6 @@ export function buildNavGroups(t: (key: TranslationKey) => string, tenant: Tenan
             label: t('nav.administration'),
             icon: <IconShield />,
             items: [
-                { href: '/activity', label: t('nav.activity'), permission: 'audit.view', icon: <IconList /> },
-                { href: '/system-health', label: t('nav.systemOperations'), permission: 'system.health.view', icon: <IconShield /> },
                 ...(tenant.organization
                     ? [
                           {
@@ -171,39 +171,61 @@ export function buildNavGroups(t: (key: TranslationKey) => string, tenant: Tenan
                           },
                       ]
                     : []),
-            ],
-        },
-        {
-            key: 'settings',
-            label: t('nav.settings'),
-            icon: <IconSettings />,
-            items: [
-                ...(tenant.organization
-                    ? [
-                          {
-                              href: '/document-profile',
-                              label: t('nav.company'),
-                              permission: ['settings.view', 'settings.update'],
-                              icon: <IconBuilding />,
-                          },
-                          {
-                              href: '/document-profile/studio',
-                              label: t('nav.pdfStudio'),
-                              permission: ['settings.view', 'settings.update'],
-                              icon: <IconFileText />,
-                          },
-                      ]
-                    : []),
-                { href: '/settings/stores', label: t('nav.stores'), permission: 'stores.view', icon: <IconPin /> },
-                { href: '/quotation-settings', label: t('nav.quotationSettings'), permission: ['settings.view', 'settings.update'], icon: <IconFileText /> },
-                { href: '/document-stamp', label: t('nav.companyStamp'), permission: ['settings.view', 'settings.update'], icon: <IconStamp /> },
-                { href: '/return-policy', label: t('nav.returnPolicy'), permission: ['settings.view', 'settings.update'], icon: <IconRotateBack /> },
-                { href: '/email-settings', label: t('nav.email'), permission: ['settings.view', 'settings.update'], icon: <IconMail /> },
-                { href: '/organization-backups', label: t('nav.backups'), permission: 'organization_backups.view', icon: <IconShield /> },
-                { href: '/settings/data-reset', label: t('nav.dataReset'), permission: 'system.data_reset', icon: <IconTrash /> },
-                { href: '/settings/ai-mcp', label: t('nav.aiMcp'), icon: <IconPlug /> },
-                { href: '/account/notifications', label: t('common.notifications'), icon: <IconBell /> },
-                { href: '/catalog/tax-rates', label: t('nav.taxes'), permission: 'tax_rates.view', icon: <IconPercent /> },
+                { href: '/activity', label: t('nav.activity'), permission: 'audit.view', icon: <IconList /> },
+                { href: '/system-health', label: t('nav.systemOperations'), permission: 'system.health.view', icon: <IconShield /> },
+                {
+                    key: 'admin-settings',
+                    label: t('nav.settings'),
+                    icon: <IconSettings />,
+                    items: [
+                        ...(tenant.organization
+                            ? [
+                                  {
+                                      href: '/document-profile',
+                                      label: t('nav.company'),
+                                      permission: ['settings.view', 'settings.update'],
+                                      icon: <IconBuilding />,
+                                  },
+                                  {
+                                      href: '/document-profile/studio',
+                                      label: t('nav.pdfStudio'),
+                                      permission: ['settings.view', 'settings.update'],
+                                      icon: <IconFileText />,
+                                  },
+                              ]
+                            : []),
+                        { href: '/settings/stores', label: t('nav.stores'), permission: 'stores.view', icon: <IconPin /> },
+                        { href: '/quotation-settings', label: t('nav.quotationSettings'), permission: ['settings.view', 'settings.update'], icon: <IconFileText /> },
+                        { href: '/document-stamp', label: t('nav.companyStamp'), permission: ['settings.view', 'settings.update'], icon: <IconStamp /> },
+                        { href: '/return-policy', label: t('nav.returnPolicy'), permission: ['settings.view', 'settings.update'], icon: <IconRotateBack /> },
+                        { href: '/email-settings', label: t('nav.email'), permission: ['settings.view', 'settings.update'], icon: <IconMail /> },
+                        { href: '/account/notifications', label: t('common.notifications'), icon: <IconBell /> },
+                    ],
+                },
+                {
+                    key: 'admin-data',
+                    label: t('nav.section.dataSecurity'),
+                    icon: <IconShield />,
+                    items: [
+                        { href: '/organization-backups', label: t('nav.backups'), permission: 'organization_backups.view', icon: <IconShield /> },
+                        { href: '/settings/data-reset', label: t('nav.dataReset'), permission: 'system.data_reset', icon: <IconTrash /> },
+                        { href: '/settings/ai-mcp', label: t('nav.aiMcp'), icon: <IconPlug /> },
+                    ],
+                },
+                {
+                    key: 'admin-integrations',
+                    label: t('nav.integrations'),
+                    icon: <IconPlug />,
+                    items: [
+                        { href: '/integrations/woocommerce', label: 'WooCommerce', permission: 'integrations.view', icon: <IconPlug /> },
+                        {
+                            href: '/integrations/woocommerce/stock-tasks',
+                            label: t('nav.wooStock'),
+                            permission: 'integrations.woocommerce.stock_tasks.view',
+                            icon: <IconSync />,
+                        },
+                    ],
+                },
             ],
         },
     ];
