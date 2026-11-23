@@ -25,11 +25,13 @@ class FinanceMonthlySituationService
         $query = FinanceObligation::query()
             ->where('finance_obligations.organization_id', $organization->getKey())
             ->when($store, fn (Builder $query) => $query->where('finance_obligations.store_id', $store->getKey()))
-            ->where(function (Builder $query) use ($period, $cutoff) {
+            ->where(function (Builder $query) use ($period) {
+                // FIN-001: every unsettled obligation due before the period is carried forward, not only the already
+                // overdue ones. The treasury forecast counts them all, so the list must show them (status stays
+                // "À venir" when not yet due).
                 $query->whereBetween('finance_obligations.due_date', [$period->start->toDateString(), $period->end->toDateString()])
-                    ->orWhere(function (Builder $query) use ($period, $cutoff) {
+                    ->orWhere(function (Builder $query) use ($period) {
                         $query->whereDate('finance_obligations.due_date', '<', $period->start->toDateString())
-                            ->whereDate('finance_obligations.due_date', '<', $cutoff->toDateString())
                             ->whereNull('finance_obligations.cancelled_at')
                             ->whereRaw(self::PAID_SQL.' < finance_obligations.planned_amount');
                     });
@@ -73,10 +75,10 @@ class FinanceMonthlySituationService
         $query = FinanceObligation::query()->withoutGlobalScopes()
             ->where('finance_obligations.organization_id', $organization->id)
             ->when($store, fn (Builder $query) => $query->where('finance_obligations.store_id', $store->id))
-            ->where(function (Builder $query) use ($period, $cutoff) {
+            ->where(function (Builder $query) use ($period) {
                 $query->whereBetween('finance_obligations.due_date', [$period->start->toDateString(), $period->end->toDateString()])
                     ->orWhere(fn (Builder $query) => $query->whereDate('finance_obligations.due_date', '<', $period->start->toDateString())
-                        ->whereDate('finance_obligations.due_date', '<', $cutoff->toDateString())->whereNull('finance_obligations.cancelled_at')
+                        ->whereNull('finance_obligations.cancelled_at')
                         ->whereRaw(self::PAID_SQL.' < finance_obligations.planned_amount'));
             })
             ->when($filters['category'] ?? null, fn (Builder $query, string $value) => $query->where('finance_obligations.category', $value))
@@ -176,10 +178,10 @@ class FinanceMonthlySituationService
             })
             ->where('finance_obligations.organization_id', $organization->id)
             ->when($store, fn (Builder $query) => $query->where('finance_obligations.store_id', $store->id))
-            ->where(function (Builder $query) use ($period, $cutoff) {
+            ->where(function (Builder $query) use ($period) {
                 $query->whereBetween('finance_obligations.due_date', [$period->start->toDateString(), $period->end->toDateString()])
                     ->orWhere(fn (Builder $query) => $query->whereDate('finance_obligations.due_date', '<', $period->start->toDateString())
-                        ->whereDate('finance_obligations.due_date', '<', $cutoff->toDateString())->whereNull('finance_obligations.cancelled_at')
+                        ->whereNull('finance_obligations.cancelled_at')
                         ->whereRaw(self::PAID_SQL.' < finance_obligations.planned_amount'));
             })
             ->groupBy(['finance_obligations.supplier_id', 'finance_obligations.beneficiary_name', 'suppliers.name'])

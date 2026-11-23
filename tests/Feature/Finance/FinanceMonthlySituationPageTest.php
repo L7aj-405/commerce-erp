@@ -34,6 +34,31 @@ class FinanceMonthlySituationPageTest extends PaymentTestCase
                 ->where('obligations.data.0.status', 'overdue'));
     }
 
+    /** FIN-001: an unsettled obligation due before a future month but not yet overdue must be listed, as the forecast counts it. */
+    public function test_future_month_lists_not_yet_overdue_prior_obligations_matching_the_forecast(): void
+    {
+        $owner = User::factory()->create();
+        $organization = $this->createOrganization($owner);
+        $store = $this->createStore($organization, $owner);
+        $this->activate($owner, $organization, $store);
+        $action = app(ManageFinanceObligationAction::class);
+        foreach ([['2026-11-22', 'Overdue'], ['2026-11-30', 'Not yet due, before month'], ['2026-12-23', 'In month']] as [$due, $label]) {
+            $action->create($owner, $organization, $this->data(['label' => $label, 'due_date' => $due, 'planned_amount' => '120.0000']));
+        }
+
+        $this->travelTo('2026-11-23');
+        $this->actingAs($owner)->get(route('finance.monthly-situation.index', ['month' => '2026-12']))
+            ->assertOk()->assertInertia(fn (Assert $page) => $page
+                ->has('obligations.data', 3)
+                ->where('obligations.data.0.label', 'Overdue')
+                ->where('obligations.data.1.label', 'Not yet due, before month')
+                ->where('obligations.data.1.carry_forward', true)
+                ->where('obligations.data.1.status', 'upcoming')
+                ->where('treasury.remaining_outflows', '360.0000')
+                ->where('kpis.overdue', '120.0000')
+                ->where('kpis.remaining', '120.0000'));
+    }
+
     public function test_store_category_status_and_search_filters_are_applied_server_side(): void
     {
         // "upcoming" is relative to today: pinned before the default 2026-10-25 due date.
