@@ -28,14 +28,14 @@ class FinanceMonthlySituationPageTest extends PaymentTestCase
         $this->travelTo('2026-10-17');
         $this->actingAs($owner)->get(route('finance.monthly-situation.index', ['month' => '2026-10']))
             ->assertOk()->assertInertia(fn (Assert $page) => $page
-                ->component('Finance/MonthlySituation')
-                ->where('kpis.planned', '10000.0000')
-                ->where('kpis.remaining', '10000.0000')
-                ->where('kpis.overdue', '3000.0000')
-                ->where('kpis.count', 1)
-                ->has('obligations.data', 2)
-                ->where('obligations.data.0.carry_forward', true)
-                ->where('obligations.data.0.status', 'overdue'));
+            ->component('Finance/MonthlySituation')
+            ->where('kpis.planned', '10000.0000')
+            ->where('kpis.remaining', '10000.0000')
+            ->where('kpis.overdue', '3000.0000')
+            ->where('kpis.count', 1)
+            ->has('obligations.data', 2)
+            ->where('obligations.data.0.carry_forward', true)
+            ->where('obligations.data.0.status', 'overdue'));
     }
 
     /** FIN-001: an unsettled obligation due before a future month but not yet overdue must be listed, as the forecast counts it. */
@@ -53,22 +53,22 @@ class FinanceMonthlySituationPageTest extends PaymentTestCase
         $this->travelTo('2026-11-23');
         $this->actingAs($owner)->get(route('finance.monthly-situation.index', ['month' => '2026-12']))
             ->assertOk()->assertInertia(fn (Assert $page) => $page
-                ->has('obligations.data', 3)
-                ->where('obligations.data.0.label', 'Overdue')
-                ->where('obligations.data.0.carry_forward', true)
-                ->where('obligations.data.0.status', 'overdue')
-                ->where('obligations.data.0.remaining_amount', '120.0000')
-                ->where('obligations.data.1.label', 'Not yet due, before month')
-                ->where('obligations.data.1.carry_forward', true)
-                ->where('obligations.data.1.status', 'upcoming')
-                ->where('obligations.data.1.remaining_amount', '120.0000')
-                ->where('obligations.data.2.label', 'In month')
-                ->where('obligations.data.2.carry_forward', false)
-                ->where('obligations.data.2.status', 'upcoming')
-                ->where('obligations.data.2.remaining_amount', '120.0000')
-                ->where('treasury.remaining_outflows', '360.0000')
-                ->where('kpis.overdue', '120.0000')
-                ->where('kpis.remaining', '120.0000'));
+            ->has('obligations.data', 3)
+            ->where('obligations.data.0.label', 'Overdue')
+            ->where('obligations.data.0.carry_forward', true)
+            ->where('obligations.data.0.status', 'overdue')
+            ->where('obligations.data.0.remaining_amount', '120.0000')
+            ->where('obligations.data.1.label', 'Not yet due, before month')
+            ->where('obligations.data.1.carry_forward', true)
+            ->where('obligations.data.1.status', 'upcoming')
+            ->where('obligations.data.1.remaining_amount', '120.0000')
+            ->where('obligations.data.2.label', 'In month')
+            ->where('obligations.data.2.carry_forward', false)
+            ->where('obligations.data.2.status', 'upcoming')
+            ->where('obligations.data.2.remaining_amount', '120.0000')
+            ->where('treasury.remaining_outflows', '360.0000')
+            ->where('kpis.overdue', '120.0000')
+            ->where('kpis.remaining', '120.0000'));
     }
 
     /** FIN-001: the export and the supplier summary share the list scope, so all three obligations reconcile to the forecast. */
@@ -121,8 +121,11 @@ class FinanceMonthlySituationPageTest extends PaymentTestCase
 
     public function test_permissions_are_separate_and_cross_tenant_store_filter_is_hidden(): void
     {
-        $ownerA = User::factory()->create(); $ownerB = User::factory()->create(); $viewer = User::factory()->create();
-        $organizationA = $this->createOrganization($ownerA); $organizationB = $this->createOrganization($ownerB);
+        $ownerA = User::factory()->create();
+        $ownerB = User::factory()->create();
+        $viewer = User::factory()->create();
+        $organizationA = $this->createOrganization($ownerA);
+        $organizationB = $this->createOrganization($ownerB);
         $foreignStore = $this->createStore($organizationB, $ownerB);
         $this->addOrganizationMember($organizationA, $viewer, ['finance.monthly_situation.view']);
         $this->activate($viewer, $organizationA);
