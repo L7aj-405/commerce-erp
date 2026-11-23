@@ -1,3 +1,4 @@
+import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
 import { Checkbox, TextAreaField, TextField } from '@/components/ui/form';
@@ -5,7 +6,7 @@ import { useI18n } from '@/i18n';
 import { formatMoney } from '@/utils/format';
 import { useState } from 'react';
 import { MatchingStatusBadge } from './Badges';
-import { approvalProblems, canApprove } from './rules';
+import { approvalProblems, canApprove, unmappedErrors } from './rules';
 import { SoftWarningList } from './SoftWarningList';
 import type { SupplierInvoiceMatchStatus, SupplierInvoiceWarning } from './types';
 
@@ -43,7 +44,7 @@ export function ApproveDialog({
     matchStatus: SupplierInvoiceMatchStatus;
     warnings: SupplierInvoiceWarning[];
     processing?: boolean;
-    errors?: Partial<Record<keyof ApprovePayload, string>>;
+    errors?: Record<string, string | undefined>;
 }) {
     const { t } = useI18n();
     const [controlTotal, setControlTotal] = useState(initialControlTotal ?? '');
@@ -54,6 +55,7 @@ export function ApproveDialog({
 
     const input = { controlTotal, totalTtc, matchStatus, acknowledgeUnmatched: ackUnmatched, matchNote: note, warningCodes: warnings.map((warning) => warning.code), acknowledgedWarnings: ackWarnings };
     const problems = approvalProblems(input);
+    const refusals = unmappedErrors(errors, ['control_total_ttc', 'acknowledge_unmatched', 'match_note', 'acknowledged_warnings']);
     const needsMatchAck = matchStatus !== 'po_matched';
 
     const submit = () => {
@@ -82,6 +84,14 @@ export function ApproveDialog({
             }
         >
             <div className="space-y-4 px-4 py-4 sm:px-6">
+                {refusals.length > 0 && (
+                    <Alert tone="danger" title={t('supplierInvoice.approve.refusedTitle')}>
+                        {refusals.map((message) => (
+                            <p key={message}>{message}</p>
+                        ))}
+                        <p>{t('supplierInvoice.approve.refusedHint')}</p>
+                    </Alert>
+                )}
                 <div className="flex items-baseline justify-between gap-3 text-sm">
                     <span className="text-ink-muted">{t('supplierInvoice.totals.ttc')}</span>
                     <span className="text-base font-bold tabular-nums text-ink">{formatMoney(totalTtc, currencyCode)}</span>

@@ -5,7 +5,7 @@ import { SelectField, TextAreaField } from '@/components/ui/form';
 import { useI18n } from '@/i18n';
 import type { TranslationKey } from '@/i18n/translations';
 import { useState } from 'react';
-import { canVoid, voidProblems } from './rules';
+import { canVoid, unmappedErrors, voidProblems } from './rules';
 import { VOID_REASON_CODES } from './types';
 import type { SupplierInvoiceVoidReasonCode } from './types';
 
@@ -27,13 +27,14 @@ export function VoidDialog({
     onClose: () => void;
     onConfirm: (payload: VoidPayload) => void;
     processing?: boolean;
-    errors?: Partial<Record<keyof VoidPayload, string>>;
+    errors?: Record<string, string | undefined>;
 }) {
     const { t } = useI18n();
     const [code, setCode] = useState<SupplierInvoiceVoidReasonCode | ''>('');
     const [text, setText] = useState('');
     const [touched, setTouched] = useState(false);
     const problems = voidProblems(code, text);
+    const refusals = unmappedErrors(errors, ['reason_code', 'reason']);
 
     const submit = () => {
         setTouched(true);
@@ -62,6 +63,14 @@ export function VoidDialog({
             }
         >
             <div className="space-y-4 px-4 py-4 sm:px-6">
+                {refusals.length > 0 && (
+                    <Alert tone="danger" title={t('supplierInvoice.void.refusedTitle')}>
+                        {refusals.map((message) => (
+                            <p key={message}>{message}</p>
+                        ))}
+                        <p>{t('supplierInvoice.void.refusedHint')}</p>
+                    </Alert>
+                )}
                 <Alert tone="info" title={t('supplierInvoice.void.creditNoteTitle')}>
                     {t('supplierInvoice.void.creditNote')}
                 </Alert>
