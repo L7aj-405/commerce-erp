@@ -7,6 +7,7 @@ import {
     IconAlertBox,
     IconBanknote,
     IconCart,
+    IconInvoice,
     IconChart,
     IconClipboard,
     IconClockCoins,
@@ -183,7 +184,7 @@ export default function RoleDashboard({ firstName, dashboard, onboarding, execut
         { href: '/catalog/products/create', label: t('platform.addProduct'), icon: <IconPackage />, tint: 'blue' as Tint, show: can('products.create') },
         { href: '/sales/customers/create', label: t('dash.newCustomer'), icon: <IconContact />, tint: 'mint' as Tint, show: can('customers.create') },
         { href: '/quotations/create', label: t('dash.newQuote'), icon: <IconFileText />, tint: 'amber' as Tint, show: can('quotations.create') && hasStore },
-        { href: '/finance/factures-fournisseurs/nouvelle', label: t('shell.newSupplierInvoice'), icon: <IconCart />, tint: 'rose' as Tint, show: canCreateSupplierInvoice },
+        { href: '/finance/factures-fournisseurs/nouvelle', label: t('shell.newSupplierInvoice'), icon: <IconInvoice />, tint: 'rose' as Tint, show: canCreateSupplierInvoice },
     ].filter((action) => action.show);
 
     const shortcuts = byRole(
