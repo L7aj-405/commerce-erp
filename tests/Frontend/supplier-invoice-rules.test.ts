@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { decimalDiff, decimalEquals, formatScaled, interpolate, parseScaled, sumDecimals } from '../../resources/js/components/finance/supplier-invoices/math.ts';
-import { approvalProblems, canApprove, canVoid } from '../../resources/js/components/finance/supplier-invoices/rules.ts';
+import { approvalProblems, canApprove, canVoid, unmappedErrors } from '../../resources/js/components/finance/supplier-invoices/rules.ts';
 
 test('sums decimal strings exactly (no float drift)', () => {
     assert.equal(sumDecimals(['0.1', '0.2']).sum, '0.3000');
@@ -73,4 +73,17 @@ test('totals sum rounded lines and add the bounded adjustment', () => {
     const lines = [calculateLine('2', '10', '20'), calculateLine('1', '0.99', '10')];
     assert.deepEqual(calculateTotals(lines, '-0.01'), { subtotal_ht: '20.9900', total_tva: '4.1000', rounding_adjustment: '-0.0100', total_ttc: '25.0800', incomplete: false });
     assert.equal(calculateTotals([null], '').incomplete, true);
+});
+
+test('server refusals not tied to a field are surfaced, never dropped (void refused after a payment / closed period)', () => {
+    const voidFields = ['reason_code', 'reason'];
+    const refusal = 'Un paiement est enregistré sur l’échéance OBL-1 : inversez d’abord les paiements, puis annulez la facture.';
+    assert.deepEqual(unmappedErrors({ invoice: refusal }, voidFields), [refusal]);
+    assert.deepEqual(unmappedErrors({ period: 'La période est clôturée.', invoice: refusal }, voidFields), ['La période est clôturée.', refusal]);
+    // field errors stay on their field and are not duplicated in the banner
+    assert.deepEqual(unmappedErrors({ reason: 'Précisez le motif.' }, voidFields), []);
+    // blank / missing / duplicate messages produce nothing
+    assert.deepEqual(unmappedErrors({ invoice: '  ' }, voidFields), []);
+    assert.deepEqual(unmappedErrors(undefined, voidFields), []);
+    assert.deepEqual(unmappedErrors({ a: 'x', b: 'x' }, voidFields), ['x']);
 });

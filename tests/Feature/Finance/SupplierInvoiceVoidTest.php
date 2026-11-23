@@ -187,6 +187,69 @@ class SupplierInvoiceVoidTest extends SupplierInvoiceTestCase
         $this->assertSame('reversed', DB::table('finance_outgoing_payments')->value('status'));
     }
 
+    /**
+     * UAT defect: the refusal came back as a validation error on the `invoice` key (not a form field), the dialog only
+     * rendered `reason_code` / `reason`, so the user saw nothing. The contract the UI relies on is pinned here: an
+     * Inertia void that is refused redirects back with the message under `invoice`, which Inertia shares as `errors`,
+     * and no financial state moves.
+     */
+    public function test_a_refused_void_reaches_the_inertia_page_as_an_invoice_error_and_changes_nothing(): void
+    {
+        $invoice = $this->approved();
+        $obligation = FinanceObligation::query()->sole();
+        $this->pay($obligation, $this->account(), '50.0000');
+        $before = [
+            'obligation' => $obligation->fresh()->only(['cancelled_at', 'amount']),
+            'payments' => DB::table('finance_outgoing_payments')->get(['id', 'status', 'amount'])->toArray(),
+            'allocations' => DB::table('finance_outgoing_payment_allocations')->get(['id', 'amount'])->toArray(),
+            'audit' => AuditLog::query()->where('action', 'supplier_invoice.voided')->count(),
+        ];
+
+        $headers = ['X-Inertia' => 'true', 'X-Requested-With' => 'XMLHttpRequest', 'Referer' => route('finance.supplier-invoices.show', $invoice)];
+        $this->actingAs($this->owner)->withHeaders($headers)
+            ->post(route('finance.supplier-invoices.void', $invoice), ['reason_code' => 'wrong_data_entry', 'reason' => 'Erreur de saisie'])
+            ->assertRedirect()
+            ->assertSessionHasErrors('invoice');
+
+        // The page the user lands on after the redirect carries the refusal as the shared `errors` prop.
+        $page = $this->actingAs($this->owner)->withHeaders($headers)->followingRedirects()
+            ->post(route('finance.supplier-invoices.void', $invoice), ['reason_code' => 'wrong_data_entry', 'reason' => 'Erreur de saisie']);
+        $message = $page->json('props.errors.invoice');
+        $this->assertStringContainsString('inversez d’abord les paiements', (string) $message);
+        $this->assertSame('approved', $page->json('props.invoice.status'));
+
+        $invoice = $invoice->fresh();
+        $this->assertSame('approved', $invoice->status->value);
+        $this->assertNull($invoice->voided_at);
+        $this->assertEquals($before['obligation'], $obligation->fresh()->only(['cancelled_at', 'amount']));
+        $this->assertEquals($before['payments'], DB::table('finance_outgoing_payments')->get(['id', 'status', 'amount'])->toArray());
+        $this->assertEquals($before['allocations'], DB::table('finance_outgoing_payment_allocations')->get(['id', 'amount'])->toArray());
+        $this->assertSame($before['audit'], AuditLog::query()->where('action', 'supplier_invoice.voided')->count());
+    }
+
+    /** A reversed payment is history, not a blocker (existing rule); a closed period still refuses with a visible `invoice` error. */
+    public function test_a_reversed_payment_does_not_block_but_a_closed_period_still_refuses_with_an_invoice_error(): void
+    {
+        $invoice = $this->approved();
+        $obligation = FinanceObligation::query()->sole();
+        $payment = $this->pay($obligation, $this->account(), '50.0000');
+        app(ReverseFinanceOutgoingPaymentAction::class)->execute($this->owner, $payment, 'Erreur');
+
+        DB::table('finance_month_reviews')->insert(['organization_id' => $this->org->id, 'period' => '2026-11-01', 'status' => 'closed', 'closed_at' => now(), 'created_at' => now(), 'updated_at' => now()]);
+        $this->actingAs($this->owner)->withHeaders(['X-Inertia' => 'true', 'X-Requested-With' => 'XMLHttpRequest'])
+            ->post(route('finance.supplier-invoices.void', $invoice), ['reason_code' => 'wrong_data_entry', 'reason' => 'Erreur de saisie'])
+            ->assertRedirect()
+            ->assertSessionHasErrors('invoice');
+        $this->assertStringContainsString('clôturée', (string) session('errors')->get('invoice')[0]);
+        $this->assertSame('approved', $invoice->fresh()->status->value);
+        $this->assertNull($obligation->fresh()->cancelled_at);
+        $this->assertSame('reversed', DB::table('finance_outgoing_payments')->value('status'));
+
+        DB::table('finance_month_reviews')->delete();
+        $this->void($invoice)->assertRedirect();
+        $this->assertNotNull($obligation->fresh()->cancelled_at);
+    }
+
     public function test_an_issued_instrument_blocks_the_void(): void
     {
         $invoice = $this->approved();

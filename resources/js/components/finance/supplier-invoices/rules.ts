@@ -34,3 +34,14 @@ export function canVoid(reasonCode: SupplierInvoiceVoidReasonCode | '', text: st
     const p = voidProblems(reasonCode, text);
     return !p.reasonCode && !p.text;
 }
+
+/**
+ * Server refusals that are not tied to a form field (e.g. `invoice` for "a payment exists", "period closed").
+ * A dialog maps `fieldKeys` onto its inputs; everything else must still reach the user, never be dropped silently.
+ */
+export function unmappedErrors(errors: Record<string, string | undefined> | undefined, fieldKeys: readonly string[]): string[] {
+    const messages = Object.entries(errors ?? {})
+        .filter(([key, message]) => !fieldKeys.includes(key) && typeof message === 'string' && message.trim() !== '')
+        .map(([, message]) => (message as string).trim());
+    return [...new Set(messages)];
+}
