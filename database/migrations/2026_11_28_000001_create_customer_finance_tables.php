@@ -3,6 +3,7 @@
 use App\Services\PermissionProvisioner;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 /**
@@ -142,10 +143,17 @@ return new class extends Migration
             $table->index(['organization_id', 'instrument_id'], 'cust_instr_evt_idx');
         });
 
-        Schema::table('payments', function (Blueprint $table) {
-            $table->foreignId('customer_id')->nullable()->after('financial_account_id')->constrained('customers')->nullOnDelete();
-            $table->index(['organization_id', 'customer_id'], 'payment_org_customer_idx');
-        });
+        if (DB::connection()->getDriverName() === 'sqlite') {
+            // SQLite: a Blueprint ALTER rebuilds the table and would DROP the amount CHECK triggers added by
+            // 2026_11_24_000001_add_financial_check_constraints. A plain ADD COLUMN keeps them.
+            DB::statement('ALTER TABLE payments ADD COLUMN customer_id integer null references customers (id) on delete set null');
+            DB::statement('CREATE INDEX payment_org_customer_idx ON payments (organization_id, customer_id)');
+        } else {
+            Schema::table('payments', function (Blueprint $table) {
+                $table->foreignId('customer_id')->nullable()->after('financial_account_id')->constrained('customers')->nullOnDelete();
+                $table->index(['organization_id', 'customer_id'], 'payment_org_customer_idx');
+            });
+        }
 
         app(PermissionProvisioner::class)->provisionAllOrganizations();
     }

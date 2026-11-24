@@ -2,13 +2,9 @@
 
 namespace App\Http\Controllers\Finance;
 
-use App\Enums\CustomerStatus;
-use App\Enums\InvoiceStatus;
 use App\Http\Controllers\Controller;
 use App\Models\Customer;
-use App\Models\Invoice;
 use App\Models\Organization;
-use App\Models\Payment;
 use App\Models\Store;
 use App\Services\ActiveTenantContext;
 use App\Services\CustomerFinancialSummary;
@@ -61,52 +57,6 @@ class FinanceClientsController extends Controller
                 'unbilled_orders' => null,
             ],
             'can' => ['accounts' => $request->user()->hasPermission($organization, 'customers.view')],
-        ]);
-    }
-
-    /** FC-02 — customer accounts index: identity only. No per-row financial figure (those are viewer-scoped, computed on the account). */
-    public function accounts(Request $request, ActiveTenantContext $context, FinanceAccessGuard $guard): Response
-    {
-        $organization = $context->organizationOrFail();
-        $guard->authorizeView($request->user(), $organization);
-        $this->authorize('viewAny', [Customer::class, $organization]);
-        $filters = $request->validate(['search' => ['nullable', 'string', 'max:255'], 'status' => ['nullable', Rule::enum(CustomerStatus::class)]]);
-        $customers = Customer::query()->where('organization_id', $organization->getKey())
-            ->when($filters['search'] ?? null, fn ($query, string $search) => $query->where(fn ($query) => $query
-                ->where('display_name', 'like', "%{$search}%")->orWhere('company_name', 'like', "%{$search}%")
-                ->orWhere('email', 'like', "%{$search}%")->orWhere('phone', 'like', "%{$search}%")))
-            ->when($filters['status'] ?? null, fn ($query, string $status) => $query->where('status', $status))
-            ->orderBy('display_name')
-            ->paginate(20, ['id', 'display_name', 'company_name', 'email', 'phone', 'status'])
-            ->withQueryString();
-
-        return Inertia::render('Finance/Clients/Accounts', ['customers' => $customers, 'filters' => $filters]);
-    }
-
-    /** FC-02 — one customer account: viewer-scoped figures and recent documents, same visibility rules as the commercial profile. */
-    public function accountShow(Request $request, Customer $customer, FinanceAccessGuard $guard, CustomerFinancialSummary $summary, DocumentVisibility $visibility): Response
-    {
-        $organization = $customer->organization;
-        $guard->authorizeView($request->user(), $organization);
-        $this->authorize('view', $customer);
-        $user = $request->user();
-        $customerId = $customer->getKey();
-        $stores = $visibility->storeIds($user, $organization) ?: [0];
-        $limit = 15;
-
-        $invoices = $visibility->visible($user, $organization, Invoice::class)
-            ->where('customer_id', $customerId)->where('status', '!=', InvoiceStatus::Superseded->value);
-        $payments = $visibility->visible($user, $organization, Payment::class)
-            ->whereHas('allocations.salesOrder', fn ($query) => $query->where('customer_id', $customerId)->whereIn('store_id', $stores));
-
-        return Inertia::render('Finance/Clients/AccountShow', [
-            'customer' => $customer->only(['id', 'display_name', 'company_name', 'email', 'phone', 'status']),
-            'summary' => $summary->forCustomer($customer, $user),
-            'invoices' => (clone $invoices)->orderByDesc('invoice_date')->limit($limit)->get(['id', 'invoice_number', 'version', 'invoice_date', 'status', 'total_incl_tax']),
-            'invoicesCount' => (clone $invoices)->count(),
-            'payments' => (clone $payments)->orderByDesc('payment_date')->limit($limit)->get(['id', 'payment_number', 'payment_date', 'method', 'status', 'amount']),
-            'paymentsCount' => (clone $payments)->count(),
-            'can' => ['commercialProfile' => $user->can('view', $customer)],
         ]);
     }
 

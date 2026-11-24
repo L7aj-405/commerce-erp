@@ -23,6 +23,10 @@ type InvoiceRow = {
     outstanding: string;
     fully_paid_at: string | null;
     status: 'unpaid' | 'partial' | 'paid';
+    subtotal_excl_tax?: string;
+    tax_total?: string;
+    due_date?: string | null;
+    is_overdue?: boolean;
 };
 type LinkData = { url: string | null; label: string; active: boolean };
 type Props = {
@@ -33,9 +37,13 @@ type Props = {
     stores: FinanceStore[];
     invoices: { data: InvoiceRow[]; links: LinkData[]; total: number; from?: number | null; to?: number | null };
     summary?: { gross: string; credit_notes: string; net: string };
+    creditNotes?: { data: CreditNoteRow[]; links: LinkData[]; total: number; from?: number | null; to?: number | null } | null;
+    unbilledOrders?: { data: UnbilledRow[]; links: LinkData[]; total: number; from?: number | null; to?: number | null } | null;
 };
+type CreditNoteRow = { id: number; credit_note_number: string | null; date: string; subtotal_excl_tax: string; tax_total: string; total_incl_tax: string; reason: string; invoice_id: number; invoice_number: string | null; customer: string };
+type UnbilledRow = { id: number; order_number: string; sale_date: string; due_date: string | null; is_overdue: boolean; customer: string; total_incl_tax: string; paid_amount: string; outstanding: string };
 
-export default function FinanceFacturation({ organization, period, periodLabel, storeId, stores, invoices, summary }: Props) {
+export default function FinanceFacturation({ organization, period, periodLabel, storeId, stores, invoices, summary, creditNotes, unbilledOrders }: Props) {
     const { t } = useI18n();
     const path = useCurrentPath();
     const section = useSection(['invoices', 'credit_notes', 'unbilled', 'summary'] as const, 'invoices');
@@ -61,12 +69,15 @@ export default function FinanceFacturation({ organization, period, periodLabel, 
                 className="hidden md:block"
                 footer={invoices.data.length === 0 ? undefined : <TablePager links={invoices.links} from={invoices.from} to={invoices.to} total={invoices.total} />}
             >
-                <table className="erp-table min-w-[1080px]">
+                <table className="erp-table min-w-[1380px]">
                             <thead>
                                 <tr>
                                     <th className="px-4 py-2.5">{t('finance.billing.invoiceNumber')}</th>
                                     <th className="px-4 py-2.5">{t('common.date')}</th>
                                     <th className="px-4 py-2.5">{t('common.customer')}</th>
+                                    <th className="px-4 py-2.5">{t('fc2.due')}</th>
+                                    <th className="num px-4 py-2.5">{t('fc2.ht')}</th>
+                                    <th className="num px-4 py-2.5">{t('fc2.tva')}</th>
                                     <th className="num px-4 py-2.5">{t('finance.billing.grossInvoice')}</th>
                                     <th className="num px-4 py-2.5">{t('finance.billing.creditNotes')}</th>
                                     <th className="num px-4 py-2.5">{t('finance.billing.netBilled')}</th>
@@ -83,6 +94,9 @@ export default function FinanceFacturation({ organization, period, periodLabel, 
                                         </td>
                                         <td className="px-4 py-2.5 text-ink-muted">{invoice.invoice_date}</td>
                                         <td className="px-4 py-2.5">{invoice.customer_company || invoice.customer_name || '—'}</td>
+                                        <td className={`px-4 py-2.5 ${invoice.is_overdue ? 'text-danger' : 'text-ink-muted'}`}>{invoice.due_date ?? '—'}{invoice.is_overdue && ` · ${t('fc2.col.overdue')}`}</td>
+                                        <td className="num px-4 py-2.5" dir="ltr">{invoice.subtotal_excl_tax ? formatMoney(invoice.subtotal_excl_tax) : '—'}</td>
+                                        <td className="num px-4 py-2.5" dir="ltr">{invoice.tax_total ? formatMoney(invoice.tax_total) : '—'}</td>
                                         <td className="num px-4 py-2.5" dir="ltr">{formatMoney(invoice.total_incl_tax)}</td>
                                         <td className="num px-4 py-2.5 text-danger" dir="ltr">-{formatMoney(invoice.credited_amount)}</td>
                                         <td className="num px-4 py-2.5 font-medium" dir="ltr">{formatMoney(invoice.net_total_incl_tax)}</td>
@@ -151,7 +165,6 @@ export default function FinanceFacturation({ organization, period, periodLabel, 
                 </>
             )}
 
-            {/* Credit notes: only the period total exists today (the list lives in Journal clients). Future: dedicated credit-note list. */}
             {section === 'credit_notes' && (
                 <>
                     {summary && (
@@ -161,11 +174,66 @@ export default function FinanceFacturation({ organization, period, periodLabel, 
                             <MetricCard level="secondary" label={t('fc.inv.m.net')} value={formatMoney(summary.net)} />
                         </div>
                     )}
-                    <FinancePlaceholder plannedKey="fc.inv.p.creditNotes" />
+                    <TableShell
+                        label={t('fc.inv.s.creditNotes')}
+                        state={!creditNotes || creditNotes.data.length === 0 ? 'empty' : 'ready'}
+                        emptyTitle={t('fc2.inv.noCreditNotes')}
+                        footer={creditNotes && creditNotes.data.length > 0 ? <TablePager links={creditNotes.links} from={creditNotes.from} to={creditNotes.to} total={creditNotes.total} /> : undefined}
+                    >
+                        <table className="erp-table min-w-[960px]">
+                            <thead>
+                                <tr>
+                                    <th className="px-4 py-2.5">{t('fc2.inv.creditNoteNumber')}</th><th className="px-4 py-2.5">{t('common.date')}</th><th className="px-4 py-2.5">{t('common.customer')}</th>
+                                    <th className="px-4 py-2.5">{t('finance.billing.invoiceNumber')}</th><th className="num px-4 py-2.5">{t('fc2.ht')}</th><th className="num px-4 py-2.5">{t('fc2.tva')}</th><th className="num px-4 py-2.5">{t('fc.acct.ttc')}</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {(creditNotes?.data ?? []).map((note) => (
+                                    <tr key={note.id}>
+                                        <td className="px-4 py-2.5 font-medium"><Link href={`/credit-notes/${note.id}`}>{note.credit_note_number ?? '—'}</Link></td>
+                                        <td className="px-4 py-2.5 text-ink-muted">{note.date}</td>
+                                        <td className="px-4 py-2.5">{note.customer}</td>
+                                        <td className="px-4 py-2.5"><Link href={`/invoices/${note.invoice_id}`}>{note.invoice_number ?? '—'}</Link></td>
+                                        <td className="num px-4 py-2.5" dir="ltr">{formatMoney(note.subtotal_excl_tax)}</td>
+                                        <td className="num px-4 py-2.5" dir="ltr">{formatMoney(note.tax_total)}</td>
+                                        <td className="num px-4 py-2.5 text-danger" dir="ltr">-{formatMoney(note.total_incl_tax)}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </TableShell>
                 </>
             )}
-            {/* Future: orders confirmed but not yet invoiced (no safe organization-wide aggregate exists yet). */}
-            {section === 'unbilled' && <FinancePlaceholder plannedKey="fc.inv.p.unbilled" />}
+            {section === 'unbilled' && (
+                <TableShell
+                    label={t('fc.inv.s.unbilled')}
+                    state={!unbilledOrders || unbilledOrders.data.length === 0 ? 'empty' : 'ready'}
+                    emptyTitle={t('fc2.inv.noUnbilled')}
+                    footer={unbilledOrders && unbilledOrders.data.length > 0 ? <TablePager links={unbilledOrders.links} from={unbilledOrders.from} to={unbilledOrders.to} total={unbilledOrders.total} /> : undefined}
+                >
+                    <table className="erp-table min-w-[860px]">
+                        <thead>
+                            <tr>
+                                <th className="px-4 py-2.5">{t('fc2.settle.order')}</th><th className="px-4 py-2.5">{t('common.date')}</th><th className="px-4 py-2.5">{t('fc2.due')}</th><th className="px-4 py-2.5">{t('common.customer')}</th>
+                                <th className="num px-4 py-2.5">{t('fc.acct.ttc')}</th><th className="num px-4 py-2.5">{t('finance.paid')}</th><th className="num px-4 py-2.5">{t('fc2.settle.remaining')}</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {(unbilledOrders?.data ?? []).map((order) => (
+                                <tr key={order.id}>
+                                    <td className="px-4 py-2.5 font-medium"><Link href={`/documents/open/sales_order/${order.id}`} method="post" as="button" className="text-start hover:underline">{order.order_number}</Link></td>
+                                    <td className="px-4 py-2.5 text-ink-muted">{order.sale_date}</td>
+                                    <td className={`px-4 py-2.5 ${order.is_overdue ? 'text-danger' : 'text-ink-muted'}`}>{order.due_date ?? t('fc2.undated')}{order.is_overdue && ` · ${t('fc2.col.overdue')}`}</td>
+                                    <td className="px-4 py-2.5">{order.customer}</td>
+                                    <td className="num px-4 py-2.5" dir="ltr">{formatMoney(order.total_incl_tax)}</td>
+                                    <td className="num px-4 py-2.5" dir="ltr">{formatMoney(order.paid_amount)}</td>
+                                    <td className="num px-4 py-2.5 font-medium" dir="ltr">{formatMoney(order.outstanding)}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </TableShell>
+            )}
             {section === 'summary' &&
                 (summary ? (
                     <div className="grid gap-4 sm:grid-cols-3">

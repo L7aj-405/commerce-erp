@@ -36,6 +36,7 @@ use App\Http\Controllers\Documents\InvoiceCorrectionLineController;
 use App\Http\Controllers\Finance\CommissionDashboardController;
 use App\Http\Controllers\Finance\CommissionLedgerController;
 use App\Http\Controllers\Finance\CommissionRuleController;
+use App\Http\Controllers\Finance\CustomerAccountsController;
 use App\Http\Controllers\Finance\FinanceClientsController;
 use App\Http\Controllers\Finance\FinanceDashboardController;
 use App\Http\Controllers\Finance\FinanceExpectedCollectionController;
@@ -791,8 +792,17 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
         // composition / placeholder pages, server-authorized by FinanceAccessGuard.
         Route::prefix('clients')->name('clients.')->group(function () {
             Route::get('/', [FinanceClientsController::class, 'overview'])->name('overview');
-            Route::get('/comptes', [FinanceClientsController::class, 'accounts'])->name('accounts');
-            Route::get('/comptes/{customer}', [FinanceClientsController::class, 'accountShow'])->whereNumber('customer')->name('accounts.show');
+            Route::get('/comptes', [CustomerAccountsController::class, 'index'])->name('accounts');
+            Route::get('/comptes/export/{format}', [CustomerAccountsController::class, 'export'])->whereIn('format', ['csv', 'xlsx'])->middleware('throttle:10,1')->name('accounts.export');
+            Route::get('/comptes/{customer}', [CustomerAccountsController::class, 'show'])->whereNumber('customer')->name('accounts.show');
+            Route::get('/comptes/{customer}/releve/{format}', [CustomerAccountsController::class, 'statementExport'])->whereNumber('customer')->whereIn('format', ['pdf', 'xlsx'])->middleware('throttle:10,1')->name('accounts.statement');
+            Route::post('/comptes/{customer}/solde-ouverture', [CustomerAccountsController::class, 'recordOpeningBalance'])->whereNumber('customer')->middleware('throttle:20,1')->name('accounts.opening.store');
+            Route::post('/comptes/{customer}/solde-ouverture/{openingBalance}/inverser', [CustomerAccountsController::class, 'reverseOpeningBalance'])->whereNumber(['customer', 'openingBalance'])->middleware('throttle:20,1')->name('accounts.opening.reverse');
+            Route::post('/comptes/{customer}/conditions', [CustomerAccountsController::class, 'saveTerms'])->whereNumber('customer')->middleware('throttle:20,1')->name('accounts.terms');
+            Route::post('/comptes/{customer}/reglement/apercu', [CustomerAccountsController::class, 'previewSettlement'])->whereNumber('customer')->name('accounts.settlement.preview');
+            Route::post('/comptes/{customer}/reglement', [CustomerAccountsController::class, 'settle'])->whereNumber('customer')->middleware('throttle:20,1')->name('accounts.settlement.store');
+            Route::post('/comptes/{customer}/avances/{payment}/affecter', [CustomerAccountsController::class, 'allocateAdvance'])->whereNumber(['customer', 'payment'])->middleware('throttle:20,1')->name('accounts.advance.allocate');
+            Route::post('/comptes/{customer}/avances/{payment}/desaffecter/{order}', [CustomerAccountsController::class, 'deallocateAdvance'])->whereNumber(['customer', 'payment', 'order'])->middleware('throttle:20,1')->name('accounts.advance.deallocate');
             Route::get('/facturation', [FinanceDashboardController::class, 'facturation'])->name('invoicing');
             Route::get('/encaissements', [FinanceDashboardController::class, 'encaissements'])->name('collections');
             Route::get('/creances', [FinanceDashboardController::class, 'creances'])->name('receivables');

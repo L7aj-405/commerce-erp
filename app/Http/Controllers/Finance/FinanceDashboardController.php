@@ -86,11 +86,13 @@ class FinanceDashboardController extends Controller
         FinanceAccessGuard $guard,
         FinanceInvoiceReadModel $invoices,
         FinanceMonthlyReportService $report,
+        FinanceReceivablesService $receivables,
     ): Response {
         $organization = $context->organizationOrFail();
         $guard->authorizeView($request->user(), $organization);
         $period = $this->period($request);
         $store = $guard->resolveStore($organization, $request->query('store_id'));
+        $section = in_array($request->query('section'), ['credit_notes', 'unbilled', 'summary'], true) ? $request->query('section') : 'invoices';
 
         return Inertia::render('Finance/Facturation', [
             'organization' => $organization->only(['id', 'name']),
@@ -98,7 +100,10 @@ class FinanceDashboardController extends Controller
             'periodLabel' => $period->label(),
             'storeId' => $store?->id,
             'stores' => $this->stores($organization),
-            'invoices' => $invoices->issuedDuring($organization, $period, $store),
+            // Section data is computed only for the requested tab (invoices stays the default and the original payload).
+            'invoices' => $section === 'invoices' ? $invoices->issuedDuring($organization, $period, $store) : ['data' => [], 'links' => [], 'total' => 0],
+            'creditNotes' => $section === 'credit_notes' ? $invoices->creditNotesDuring($organization, $period, $store) : null,
+            'unbilledOrders' => $section === 'unbilled' ? $receivables->unbilledOrdersAsOf($organization, $period->end, $store) : null,
             // Additive, read-only (Finance clients "Synthèse"): the same two totals the monthly situation already uses.
             'summary' => $this->invoicingSummary($report, $organization, $period, $store),
         ]);

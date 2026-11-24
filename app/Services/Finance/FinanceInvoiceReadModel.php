@@ -46,6 +46,30 @@ class FinanceInvoiceReadModel
     }
 
     /**
+     * Issued credit notes of a period, newest first (Finance clients "Avoirs"). Each row keeps the HT / TVA / TTC of the
+     * document and the number of the invoice it credits; Test Mode documents are excluded.
+     *
+     * @return LengthAwarePaginator<int, array<string, mixed>>
+     */
+    public function creditNotesDuring(Organization $organization, FinancePeriod $period, ?Store $store, int $perPage = 30): LengthAwarePaginator
+    {
+        return DB::table('credit_notes')->join('invoices', 'invoices.id', '=', 'credit_notes.invoice_id')->whereNull('credit_notes.sandbox_id')
+            ->where('credit_notes.organization_id', $organization->getKey())->where('credit_notes.status', 'issued')
+            ->whereDate('credit_notes.credit_note_date', '>=', $period->start->toDateString())->whereDate('credit_notes.credit_note_date', '<=', $period->end->toDateString())
+            ->when($store, fn ($query) => $query->where('credit_notes.store_id', $store->getKey()))
+            ->orderByDesc('credit_notes.credit_note_date')->orderByDesc('credit_notes.id')
+            ->select(['credit_notes.id', 'credit_notes.credit_note_number', 'credit_notes.credit_note_date', 'credit_notes.subtotal_excl_tax', 'credit_notes.tax_total', 'credit_notes.total_incl_tax',
+                'credit_notes.reason', 'invoices.id as invoice_id', 'invoices.invoice_number', 'invoices.customer_name', 'invoices.customer_company'])
+            ->paginate($perPage)->withQueryString()
+            ->through(fn ($row) => [
+                'id' => $row->id, 'credit_note_number' => $row->credit_note_number, 'date' => substr((string) $row->credit_note_date, 0, 10),
+                'subtotal_excl_tax' => Decimal::normalize((string) $row->subtotal_excl_tax), 'tax_total' => Decimal::normalize((string) $row->tax_total),
+                'total_incl_tax' => Decimal::normalize((string) $row->total_incl_tax), 'reason' => $row->reason,
+                'invoice_id' => $row->invoice_id, 'invoice_number' => $row->invoice_number, 'customer' => trim($row->customer_company ?: $row->customer_name ?: '') ?: '—',
+            ]);
+    }
+
+    /**
      * Enrich an arbitrary (already bounded) collection/paginator of Invoice
      * models with paid/outstanding/status/fully_paid_at, as of a given date
      * (defaults to "now" — the full picture, not just within-period paid
@@ -192,6 +216,11 @@ class FinanceInvoiceReadModel
             'customer_company' => $invoice->customer_company,
             'sales_order_id' => $invoice->sales_order_id,
             'store_id' => $invoice->store_id,
+            // Additive (Finance clients): HT / TVA of the issued document and its stamped due date (never invented for old invoices).
+            'subtotal_excl_tax' => (string) $invoice->subtotal_excl_tax,
+            'tax_total' => (string) $invoice->tax_total,
+            'due_date' => $invoice->due_date?->toDateString(),
+            'is_overdue' => $invoice->due_date !== null && Decimal::compare($outstanding, '0.0000') > 0 && $invoice->due_date->toDateString() < now()->toDateString(),
             'total_incl_tax' => (string) $invoice->total_incl_tax,
             'credited_amount' => $creditedAmount,
             'net_total_incl_tax' => $netTotal,

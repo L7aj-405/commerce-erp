@@ -96,6 +96,26 @@ class FinanceReceivablesService
     }
 
     /**
+     * Confirmed orders with a payable balance and NO issued/superseded invoice (the commercial exposure, disjoint from the
+     * invoice receivable), paginated, oldest due date first (undated last).
+     *
+     * @return LengthAwarePaginator<int, array<string,mixed>>
+     */
+    public function unbilledOrdersAsOf(Organization $organization, Carbon $asOf, ?Store $store, int $perPage = 30): LengthAwarePaginator
+    {
+        $organizationId = (int) $organization->getKey();
+        $page = $this->orderExposureQuery($organization, $asOf, $store)
+            ->whereNotExists(fn ($bill) => $bill->selectRaw('1')->from('invoices as bill')
+                ->whereColumn('bill.sales_order_id', 'sales_orders.id')->where('bill.organization_id', $organizationId)
+                ->whereIn('bill.status', [InvoiceStatus::Issued->value, InvoiceStatus::Superseded->value]))
+            ->orderByRaw('CASE WHEN sales_orders.due_date IS NULL THEN 1 ELSE 0 END')->orderBy('sales_orders.due_date')->orderBy('sales_orders.id')
+            ->paginate($perPage)->withQueryString();
+        $page->setCollection($page->getCollection()->map(fn (SalesOrder $order) => $this->exposureRow($order)));
+
+        return $page;
+    }
+
+    /**
      * Order exposure totals only (dashboards): one aggregate query.
      *
      * @return array{total: string, status_counts: array{unpaid:int,partially_paid:int}, status_amounts: array{unpaid:string,partially_paid:string}}
@@ -230,6 +250,10 @@ class FinanceReceivablesService
             'outstanding' => $summary['remaining'],
             'payment_status' => $summary['status'],
             'last_payment_date' => $summary['last_payment_date'],
+            // Additive (Finance clients): the order due date stamped at confirmation (null when none) and overdue flag.
+            'due_date' => $order->due_date?->toDateString(),
+            'is_overdue' => $order->due_date !== null && Decimal::compare($summary['remaining'], '0') > 0 && $order->due_date->toDateString() < Carbon::now()->toDateString(),
+            'customer_id' => $order->customer_id,
         ];
     }
 
