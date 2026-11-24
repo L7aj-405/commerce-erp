@@ -40,6 +40,9 @@ class FinancialAccountController extends Controller
                 'create' => request()->user()->can('create', [FinancialAccount::class, $organization]),
                 'update' => request()->user()->hasPermission($organization, 'financial_accounts.update'),
                 'manageBalance' => request()->user()->hasPermission($organization, 'finance.financial_accounts.manage_balance'),
+                'movements' => ! app(\App\Services\Sandbox\SandboxContext::class)->isRestricted()
+                    && request()->user()->hasPermission($organization, 'financial_accounts.view')
+                    && request()->user()->hasPermission($organization, 'finance.view'),
             ],
         ]);
     }
