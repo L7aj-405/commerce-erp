@@ -5988,6 +5988,9 @@ export const fr = {
     "p3.inv.countIssued": "facture(s) émise(s) sur la période",
     "p3.inv.countCredit": "avoir(s) émis sur la période",
     "p3.inv.countTab": "{count} dans cet onglet",
+    "p3.rem.basis": "Date de référence des relances : {date} (date du jour de l’organisation). Les montants échus ci-dessous sont calculés à cette date, indépendamment du mois du filtre de reporting.",
+    "p3.rem.none": "Aucun client n’a de montant échu à la date du {date} : aucune relance de retard à envoyer.",
+    "p3.rem.error": "Aperçu indisponible.",
 } as const;
 
 export type TranslationKey = keyof typeof fr;
@@ -11829,4 +11832,7 @@ export const ar: Record<TranslationKey, string> = {
     "p3.inv.countIssued": "فاتورة صادرة في الفترة",
     "p3.inv.countCredit": "إشعار دائن صادر في الفترة",
     "p3.inv.countTab": "{count} في هذا التبويب",
+    "p3.rem.basis": "تاريخ مرجع التذكيرات: {date} (تاريخ اليوم للمؤسسة). تُحسب المبالغ المتأخرة أدناه في هذا التاريخ بغض النظر عن شهر مرشح التقارير.",
+    "p3.rem.none": "لا يوجد عميل لديه مبلغ متأخر بتاريخ {date}: لا توجد تذكيرات تأخر.",
+    "p3.rem.error": "المعاينة غير متاحة.",
 };

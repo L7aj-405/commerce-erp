@@ -12,12 +12,14 @@ use App\Services\Finance\CustomerReminderTemplates;
 use App\Services\Finance\FinanceAccessGuard;
 use App\Services\Sandbox\SandboxContext;
 use App\Support\BusinessTime;
+use App\Support\Decimal;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 /**
  * Manual customer payment reminders (FC-05 "Relances"): preview a rendered French/Arabic message for a customer, record it as a
@@ -33,7 +35,13 @@ class CustomerRemindersController extends Controller
         $customer = Customer::query()->where('organization_id', $organization->getKey())->findOrFail($data['customer_id']);
         $this->authorize('view', $customer);
 
-        return response()->json(['message' => $templates->render($organization, $data['template'], $data['language'], $this->variables($organization, $customer, $request, $positions))]);
+        $vars = $this->variables($organization, $customer, $request, $positions);
+        // Operational reminders always use the organization's CURRENT business date (never the historical reporting month).
+        if (! $this->hasOverdue($vars)) {
+            return response()->json(['message' => 'Aucun montant échu à la date du '.$vars['business_date'].' : aucune relance de retard à générer.', 'business_date' => $vars['business_date']], 422);
+        }
+
+        return response()->json(['message' => $templates->render($organization, $data['template'], $data['language'], $vars), 'business_date' => $vars['business_date'], 'amount' => $vars['amount'], 'currency' => $vars['currency']]);
     }
 
     public function followUp(Request $request, ActiveTenantContext $context, FinanceAccessGuard $guard, CustomerReminderTemplates $templates, CustomerFinancialPositionService $positions, SaveFollowUpAction $followUps, AuditLogger $audit): RedirectResponse
@@ -45,7 +53,11 @@ class CustomerRemindersController extends Controller
             'due_in_days' => ['nullable', 'integer', 'min:0', 'max:60']]);
         $customer = Customer::query()->where('organization_id', $organization->getKey())->findOrFail($data['customer_id']);
         $this->authorize('view', $customer);
-        $message = $templates->render($organization, $data['template'], $data['language'], $this->variables($organization, $customer, $request, $positions));
+        $vars = $this->variables($organization, $customer, $request, $positions);
+        if (! $this->hasOverdue($vars)) {
+            throw ValidationException::withMessages(['customer_id' => 'Aucun montant échu à la date du '.$vars['business_date'].' : aucune relance de retard à enregistrer.']);
+        }
+        $message = $templates->render($organization, $data['template'], $data['language'], $vars);
         $due = Carbon::parse(BusinessTime::today($organization))->addDays((int) ($data['due_in_days'] ?? 0))->toDateString();
         $followUp = $followUps->create($request->user(), $organization, ['title' => 'Relance paiement — '.$customer->display_name, 'note' => $message, 'customer_id' => $customer->getKey(), 'due_date' => $due]);
         $audit->record('customer_reminder.follow_up_created', $request->user(), $organization, null, $customer, newValues: ['follow_up_id' => $followUp->getKey(), 'template' => $data['template'], 'language' => $data['language']]);
@@ -68,12 +80,22 @@ class CustomerRemindersController extends Controller
     /** @return array<string, scalar|null> */
     private function variables($organization, Customer $customer, Request $request, CustomerFinancialPositionService $positions): array
     {
-        $p = $positions->forCustomers($organization, [$customer->getKey()], $request->user())[$customer->getKey()];
+        $businessDate = BusinessTime::today($organization);
+        $today = Carbon::parse($businessDate);
+        // The overdue basis is the business date, exactly like the eligible-customers list (same service, same date).
+        $p = $positions->forCustomers($organization, [$customer->getKey()], $request->user(), null, $today)[$customer->getKey()];
         $firstDue = DB::table('sales_orders')->where('organization_id', $organization->getKey())->where('customer_id', $customer->getKey())
-            ->where('status', 'confirmed')->whereNotNull('due_date')->where('due_date', '<', now()->toDateString())->min('due_date');
-        $days = $firstDue ? (int) Carbon::parse($firstDue)->diffInDays(now()->startOfDay(), true) : null;
+            ->where('status', 'confirmed')->whereNotNull('due_date')->where('due_date', '<', $businessDate)->min('due_date');
+        $days = $firstDue ? (int) Carbon::parse($firstDue)->diffInDays($today, true) : null;
 
-        return ['customer' => $customer->display_name, 'organization' => $organization->name, 'amount' => $p['overdue'] ?? $p['receivable'], 'currency' => $p['currency_code'],
-            'due_date' => $firstDue ? substr((string) $firstDue, 0, 10) : null, 'oldest_days' => $days];
+        // No fallback to the total receivable: a customer with nothing overdue has no overdue amount (null), never a different figure.
+        return ['customer' => $customer->display_name, 'organization' => $organization->name, 'amount' => $p['overdue'] ?? null, 'currency' => $p['currency_code'],
+            'due_date' => $firstDue ? substr((string) $firstDue, 0, 10) : null, 'oldest_days' => $days, 'business_date' => $businessDate];
+    }
+
+    /** @param array<string, scalar|null> $vars */
+    private function hasOverdue(array $vars): bool
+    {
+        return $vars['amount'] !== null && Decimal::compare((string) $vars['amount'], '0') > 0;
     }
 }

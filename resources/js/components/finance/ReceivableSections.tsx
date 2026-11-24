@@ -5,7 +5,7 @@ import { MetricCard } from '@/components/ui/MetricCard';
 import { TableShell } from '@/components/ui/TableShell';
 import { useI18n } from '@/i18n';
 import type { TranslationKey } from '@/i18n/translations';
-import { formatMoney } from '@/utils/format';
+import { formatBusinessDate, formatMoney } from '@/utils/format';
 import { Link, router } from '@inertiajs/react';
 import { useState } from 'react';
 
@@ -25,6 +25,8 @@ export type Forecast = {
 };
 export type ReminderTemplates = Record<string, { label: { fr: string; ar: string }; fr: string; ar: string; customized: boolean }>;
 export type Reminders = {
+    /** The organization's current business date: the single date basis of the eligible list, the preview and the follow-up. */
+    businessDate: string;
     templates: ReminderTemplates;
     overdueCustomers: { customer_id: number; customer: string; overdue: string; currency_code: string }[];
     canManageTemplates: boolean;
@@ -151,12 +153,20 @@ function ReminderComposer({ reminders }: { reminders: Reminders }) {
     const [template, setTemplate] = useState<string>(Object.keys(reminders.templates)[0] ?? 'courtesy');
     const [language, setLanguage] = useState<'fr' | 'ar'>('fr');
     const [message, setMessage] = useState('');
+    const [error, setError] = useState('');
     const [edit, setEdit] = useState<{ fr: string; ar: string } | null>(null);
     const preview = async () => {
         if (!customerId) return;
         const query = new URLSearchParams({ customer_id: customerId, template, language }).toString();
         const response = await fetch(`/finance/clients/creances/relances/apercu?${query}`, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
-        if (response.ok) setMessage(((await response.json()) as { message: string }).message);
+        const body = (await response.json().catch(() => ({}))) as { message?: string };
+        if (response.ok) {
+            setError('');
+            setMessage(body.message ?? '');
+        } else {
+            setMessage('');
+            setError(body.message ?? t('p3.rem.error'));
+        }
     };
     const record = () => router.post('/finance/clients/creances/relances/suivi', { customer_id: customerId, template, language }, { preserveScroll: true });
     const save = () => edit && router.post('/finance/clients/creances/relances/modele', { template, fr: edit.fr, ar: edit.ar }, { preserveScroll: true, onSuccess: () => setEdit(null) });
@@ -164,7 +174,9 @@ function ReminderComposer({ reminders }: { reminders: Reminders }) {
         <section aria-label={t('fc6.reminder.title')} className="surface-card space-y-3 p-4">
             <h3 className="text-sm font-semibold text-ink">{t('fc6.reminder.title')}</h3>
             <p className="text-[13px] text-ink-muted">{t('fc6.reminder.help')}</p>
-            {reminders.overdueCustomers.length === 0 ? <p className="text-sm text-ink-muted">{t('fc6.reminder.none')}</p> : (
+            <Alert tone="info">{t('p3.rem.basis').replace('{date}', formatBusinessDate(reminders.businessDate))}</Alert>
+            {error && <Alert tone="danger">{error}</Alert>}
+            {reminders.overdueCustomers.length === 0 ? <p className="text-sm text-ink-muted">{t('p3.rem.none').replace('{date}', formatBusinessDate(reminders.businessDate))}</p> : (
                 <div className="flex flex-wrap items-end gap-3">
                     <label className="text-sm">{t('common.customer')}
                         <select className="control-select mt-1 block h-10" value={customerId} onChange={(e) => { setCustomerId(e.target.value); setMessage(''); }}>

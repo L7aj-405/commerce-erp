@@ -17,6 +17,7 @@ use App\Services\Finance\FinanceInvoiceReadModel;
 use App\Services\Finance\FinanceMonthlyReportService;
 use App\Services\Finance\FinancePeriod;
 use App\Services\Finance\FinanceReceivablesService;
+use App\Support\BusinessTime;
 use App\Support\Decimal;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -183,7 +184,7 @@ class FinanceDashboardController extends Controller
             // Section data is computed only for the requested tab.
             'aging' => $section === 'aging' ? $aging->build($organization, $store, $period->end, max(1, (int) $request->query('page', 1))) : null,
             'forecast' => $plan,
-            'reminders' => $section === 'reminders' ? $this->reminders($organization, $aging, $period->end, $request->user()->hasPermission($organization, 'finance.customers.schedules.manage')) : null,
+            'reminders' => $section === 'reminders' ? $this->reminders($organization, $aging, Carbon::parse(BusinessTime::today($organization)), $request->user()->hasPermission($organization, 'finance.customers.schedules.manage')) : null,
             'can' => ['export' => $request->user()->hasPermission($organization, 'finance.export'), 'monthEnd' => $request->user()->hasPermission($organization, 'finance.monthly_situation.view')],
         ]);
     }
@@ -240,6 +241,7 @@ class FinanceDashboardController extends Controller
             ->map(fn ($r) => ['customer_id' => $r['customer_id'], 'customer' => $r['customer'], 'overdue' => $r['overdue'], 'currency_code' => $r['currency_code']])->values()->all() : [];
 
         return [
+            'businessDate' => ($asOf ?? Carbon::now())->toDateString(),
             'templates' => app(CustomerReminderTemplates::class)->forOrganization($organization),
             'overdueCustomers' => $overdue,
             'canManageTemplates' => $canManage,
