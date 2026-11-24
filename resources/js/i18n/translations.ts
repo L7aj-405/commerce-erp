@@ -6030,6 +6030,11 @@ export const fr = {
     "p3.profit.unavailable": "Non calculable",
     "p3.profit.partial": "Partiel",
     "p3.profit.unavailableNote": "Aucune ligne vendue n’a de coût historique enregistré : la marge n’est pas calculable (elle n’est pas nulle).",
+    "p3.return.label": "Retour",
+    "p3.return.account": "Retour au compte client",
+    "p3.return.page": "Retour à la page précédente",
+    "p3.acct.advances": "Avances du client",
+    "p3.acct.risk": "Risque de crédit",
 } as const;
 
 export type TranslationKey = keyof typeof fr;
@@ -11913,4 +11918,9 @@ export const ar: Record<TranslationKey, string> = {
     "p3.profit.unavailable": "غير قابل للحساب",
     "p3.profit.partial": "جزئي",
     "p3.profit.unavailableNote": "لا يوجد بند مباع له تكلفة تاريخية مسجلة: لا يمكن حساب الهامش (وهو ليس صفراً).",
+    "p3.return.label": "رجوع",
+    "p3.return.account": "العودة إلى حساب العميل",
+    "p3.return.page": "العودة إلى الصفحة السابقة",
+    "p3.acct.advances": "دفعات العميل المقدمة",
+    "p3.acct.risk": "مخاطر الائتمان",
 };

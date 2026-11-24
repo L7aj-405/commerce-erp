@@ -1,3 +1,4 @@
+import { withFinanceReturn } from '@/components/shell/FinanceReturnLink';
 import { ParentTabs, useCurrentPath, useSection } from '@/components/finance/FinanceClientsKit';
 import { AgingSection, DuesSection, ForecastSection, RemindersSection } from '@/components/finance/ReceivableSections';
 import type { Aging, Forecast, Reminders } from '@/components/finance/ReceivableSections';
@@ -11,7 +12,7 @@ import { useI18n } from '@/i18n';
 import ApplicationShell from '@/layouts/ApplicationShell';
 import { formatBusinessDate, formatMoney } from '@/utils/format';
 import { label, paymentStatusLabel } from '@/utils/labels';
-import { Head, Link } from '@inertiajs/react';
+import { Head, Link, usePage } from '@inertiajs/react';
 
 type OrderRow = {
     id: number;
@@ -45,6 +46,7 @@ type Props = {
 export default function FinanceCreances({ organization, period, periodLabel, asOf, storeId, stores, total, orders, aging, forecast, reminders, can }: Props) {
     const { t } = useI18n();
     const path = useCurrentPath();
+    const current = usePage().url;
     const section = useSection(['receivables', 'dues', 'aging', 'reminders', 'forecasts'] as const, 'receivables');
     return (
         <ApplicationShell wide>
@@ -89,7 +91,7 @@ export default function FinanceCreances({ organization, period, periodLabel, asO
                                 {orders.data.map((order) => (
                                     <tr key={order.id}>
                                         <td className="bidi-isolate px-4 py-2.5 font-medium text-ink" dir="ltr">
-                                            <Link href={`/sales/orders/${order.id}`}>{order.order_number}</Link>
+                                            <Link href={withFinanceReturn(`/sales/orders/${order.id}`, current)}>{order.order_number}</Link>
                                         </td>
                                         <td className="px-4 py-2.5 text-ink-muted">{order.sale_date}</td>
                                         <td className={`px-4 py-2.5 ${order.is_overdue ? 'text-danger' : 'text-ink-muted'}`}>{order.due_date ? formatBusinessDate(order.due_date) : t('fc2.undated')}{order.is_overdue && ` · ${t('fc2.col.overdue')}`}</td>
@@ -99,7 +101,7 @@ export default function FinanceCreances({ organization, period, periodLabel, asO
                                         <td className="num px-4 py-2.5 font-medium" dir="ltr">{formatMoney(order.outstanding)}</td>
                                         <td className="px-4 py-2.5"><StatusBadge status={order.payment_status}>{label(paymentStatusLabel, order.payment_status)}</StatusBadge></td>
                                         <td className="px-4 py-2.5 text-ink-muted">{formatBusinessDate(order.last_payment_date)}</td>
-                                        <td className="px-4 py-2.5 text-end"><Link href={`/sales/orders/${order.id}`} className="font-medium text-ink underline-offset-4 hover:underline">{t('common.open')}</Link></td>
+                                        <td className="px-4 py-2.5 text-end"><Link href={withFinanceReturn(`/sales/orders/${order.id}`, current)} className="font-medium text-ink underline-offset-4 hover:underline">{t('common.open')}</Link></td>
                                     </tr>
                                 ))}
                             </tbody>
@@ -117,7 +119,7 @@ export default function FinanceCreances({ organization, period, periodLabel, asO
                             <li key={order.id} className="surface-card p-4">
                                 <div className="flex items-start justify-between gap-3">
                                     <div className="min-w-0">
-                                        <Link href={`/sales/orders/${order.id}`} className="block truncate text-sm font-semibold text-ink">
+                                        <Link href={withFinanceReturn(`/sales/orders/${order.id}`, current)} className="block truncate text-sm font-semibold text-ink">
                                             {order.order_number}
                                         </Link>
                                         <p className="truncate text-[13px] text-ink-muted">{order.customer}</p>
@@ -146,7 +148,7 @@ export default function FinanceCreances({ organization, period, periodLabel, asO
                                         <dd className="text-ink-muted">{formatBusinessDate(order.last_payment_date)}</dd>
                                     </div>
                                 </dl>
-                                <Link href={`/sales/orders/${order.id}`} className="mt-3 inline-flex text-sm font-medium text-ink underline-offset-4 hover:underline">{t('common.open')}</Link>
+                                <Link href={withFinanceReturn(`/sales/orders/${order.id}`, current)} className="mt-3 inline-flex text-sm font-medium text-ink underline-offset-4 hover:underline">{t('common.open')}</Link>
                             </li>
                         ))}
                     </ul>

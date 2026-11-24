@@ -2,6 +2,7 @@ import { BrandLockup, PRODUCT_NAME } from '@/components/ui/brand';
 import NotificationBell from '@/components/notifications/NotificationBell';
 import SandboxBanner from '@/components/SandboxBanner';
 import Breadcrumbs from '@/components/shell/Breadcrumbs';
+import FinanceReturnLink from '@/components/shell/FinanceReturnLink';
 import CommandPalette from '@/components/shell/CommandPalette';
 import { useToast } from '@/components/ui/toast';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
@@ -373,6 +374,7 @@ export default function ApplicationShell({
                     <main id="erp-main" tabIndex={-1} className="min-h-0 flex-1 overflow-hidden focus:outline-none">{children}</main>
                 ) : (
                     <main id="erp-main" tabIndex={-1} className={`mx-auto min-w-0 px-4 py-5 focus:outline-none sm:px-6 lg:px-7 lg:pt-[18px] lg:pb-12 min-[2000px]:pe-9 ${widthClass}`}>
+                        <FinanceReturnLink />
                         <Breadcrumbs crumbs={breadcrumbs} />
                         {children}
                     </main>

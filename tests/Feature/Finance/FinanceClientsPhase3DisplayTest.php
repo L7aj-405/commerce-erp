@@ -153,4 +153,18 @@ class FinanceClientsPhase3DisplayTest extends DocumentTestCase
         $note = $rows['creditNotes']['data'][0];
         $this->assertSame(bcsub($note['subtotal_excl_tax'], $note['discount_total'], 4), $note['net_excl_tax']);
     }
+
+    public function test_document_open_carries_a_safe_finance_return_target_and_drops_unsafe_ones(): void
+    {
+        [, $invoice] = $this->invoicedOrder('1.0000');
+        $from = '/finance/clients/comptes/'.$this->customer->id.'?section=invoices';
+
+        $location = $this->post(route('documents.open', ['type' => 'invoice', 'id' => $invoice->id]), ['fc_return' => $from])->assertRedirect()->headers->get('Location');
+        $this->assertStringContainsString('fc_return='.rawurlencode($from), $location);
+        $this->assertStringContainsString('/invoices/'.$invoice->id, $location);
+
+        foreach (['https://evil.test/finance/clients/x', '//evil.test/finance/clients/', '/sales/orders/1'] as $bad) {
+            $this->assertStringNotContainsString('fc_return', $this->post(route('documents.open', ['type' => 'invoice', 'id' => $invoice->id]), ['fc_return' => $bad])->assertRedirect()->headers->get('Location'));
+        }
+    }
 }

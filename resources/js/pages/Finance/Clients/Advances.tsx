@@ -9,7 +9,8 @@ import type { TranslationKey } from '@/i18n/translations';
 import ApplicationShell from '@/layouts/ApplicationShell';
 import { formatBusinessDate as formatDate, formatMoney } from '@/utils/format';
 import { label, paymentMethodLabel } from '@/utils/labels';
-import { Head, Link, router } from '@inertiajs/react';
+import { withFinanceReturn } from '@/components/shell/FinanceReturnLink';
+import { Head, Link, router, usePage } from '@inertiajs/react';
 import { Fragment, useState } from 'react';
 import type { FormEvent } from 'react';
 
@@ -39,6 +40,7 @@ const TONE: Record<State, StatusVariant> = { available: 'success', partial: 'inf
 /** Customer advances register: derived, read-only figures; allocation reuses the account's allocator (ManageCustomerAdvanceAction). */
 export default function FinanceClientsAdvances({ organization, advances, helpers, filters, statuses, stores, activeStoreId, can }: Props) {
     const { t } = useI18n();
+    const current = usePage().url;
     const [open, setOpen] = useState<number | null>(null);
     const [form, setForm] = useState({ q: filters.q ?? '', status: filters.status ?? '', store_id: filters.store_id ? String(filters.store_id) : '', from: filters.from ?? '', to: filters.to ?? '', customer_id: filters.customer_id ? String(filters.customer_id) : '' });
     const apply = (event: FormEvent) => {
@@ -145,7 +147,7 @@ export default function FinanceClientsAdvances({ organization, advances, helpers
                                                     <HistoryBlock title={t('p3.adv.releases')} empty={t('p3.adv.noHistory')} rows={a.releases.map((x) => `${x.order_number} · ${formatMoney(x.amount, a.currency_code)} · ${formatDate(x.effective_date)} → ${formatDate(x.released_date)} · ${x.reason}`)} />
                                                 </div>
                                                 <div className="mt-3 flex flex-wrap items-start gap-3">
-                                                    {can.payments && <ButtonLink href={`/payments/${a.id}`} variant="outline" size="sm">{t('p3.adv.originPayment')}</ButtonLink>}
+                                                    {can.payments && <ButtonLink href={withFinanceReturn(`/payments/${a.id}`, current)} variant="outline" size="sm">{t('p3.adv.originPayment')}</ButtonLink>}
                                                     {can.accounts && <ButtonLink href={`/finance/clients/comptes/${a.customer_id}?section=payments`} variant="outline" size="sm">{t('p3.adv.customerAccount')}</ButtonLink>}
                                                     {(a.state === 'available' || a.state === 'partial') && (can.allocate && helper && a.store_id === activeStoreId
                                                         ? <AdvanceAllocator customerId={a.customer_id} paymentId={a.id} left={a.remaining} orders={helper.orders} currency={a.currency_code} openings={helper.openings} />

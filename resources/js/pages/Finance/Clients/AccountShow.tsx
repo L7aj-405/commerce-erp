@@ -79,6 +79,8 @@ export default function FinanceClientsAccountShow(props: Props) {
                         <DocBadge tone={STATUS_TONE[position.financial_status] ?? 'neutral'}>{t(`fc2.status.${position.financial_status}` as TranslationKey)}</DocBadge>
                         <ButtonLink href="/finance/clients/comptes" variant="secondary" size="sm">{t('fc.accounts.title')}</ButtonLink>
                         {can.commercialProfile && <ButtonLink href={`/sales/customers/${customer.id}`} variant="outline" size="sm">{t('fc.acct.commercialProfile')}</ButtonLink>}
+                        <ButtonLink href={`/finance/clients/avances?customer_id=${customer.id}`} variant="outline" size="sm">{t('p3.acct.advances')}</ButtonLink>
+                        <ButtonLink href="/finance/clients/credit" variant="outline" size="sm">{t('p3.acct.risk')}</ButtonLink>
                     </div>
                 }
             />
@@ -129,6 +131,7 @@ function Summary({ position, money }: { position: Position; money: (v: string | 
 }
 
 function Invoices({ rows, count, currency }: { rows: InvoiceRow[]; count: number; currency: string }) {
+    const returnTo = usePage().url;
     const { t } = useI18n();
     return (
         <TableShell label={t('fc.acct.tab.invoices')} state={rows.length === 0 ? 'empty' : 'ready'} emptyTitle={t('fc.acct.noInvoices')}>
@@ -141,7 +144,7 @@ function Invoices({ rows, count, currency }: { rows: InvoiceRow[]; count: number
                     {rows.map((i) => (
                         <tr key={i.id}>
                             <td className="px-4 py-2.5 font-medium">
-                                <Link href={`/documents/open/invoice/${i.id}`} method="post" as="button" className="text-start hover:underline">{i.invoice_number}{i.version > 1 && <span className="ms-1 text-ink-faint">v{i.version}</span>}</Link>
+                                <Link href={`/documents/open/invoice/${i.id}`} method="post" data={{ fc_return: returnTo }} as="button" className="text-start hover:underline">{i.invoice_number}{i.version > 1 && <span className="ms-1 text-ink-faint">v{i.version}</span>}</Link>
                             </td>
                             <td className="px-4 py-2.5 text-ink-muted">{formatBusinessDate(i.invoice_date)}</td>
                             <td className="px-4 py-2.5 text-ink-muted">{formatBusinessDate(i.due_date, UNAVAILABLE)}</td>
@@ -159,6 +162,7 @@ function Invoices({ rows, count, currency }: { rows: InvoiceRow[]; count: number
 }
 
 function Payments(props: Props & { currency: string }) {
+    const returnTo = usePage().url;
     const { t } = useI18n();
     const { customer, can, currency } = props;
     const rows = props.payments ?? [];
@@ -176,7 +180,7 @@ function Payments(props: Props & { currency: string }) {
                     <tbody>
                         {rows.map((p) => (
                             <tr key={p.id}>
-                                <td className="px-4 py-2.5 font-medium"><Link href={`/documents/open/payment/${p.id}`} method="post" as="button" className="text-start hover:underline">{p.payment_number}</Link></td>
+                                <td className="px-4 py-2.5 font-medium"><Link href={`/documents/open/payment/${p.id}`} method="post" data={{ fc_return: returnTo }} as="button" className="text-start hover:underline">{p.payment_number}</Link></td>
                                 <td className="px-4 py-2.5 text-ink-muted">{formatBusinessDate(p.payment_date)}</td>
                                 <td className="px-4 py-2.5 text-ink-muted">{label(paymentMethodLabel, p.method)}</td>
                                 <td className="px-4 py-2.5"><StatusBadge status={p.status}>{label(paymentEntryStatusLabel, p.status)}</StatusBadge></td>
@@ -198,6 +202,7 @@ function Payments(props: Props & { currency: string }) {
 }
 
 function Schedule({ customerId, orders, position, currency, installments, promises, canManage }: { customerId: number; orders: OpenOrder[]; position: Position; currency: string; installments: PlanInstallment[]; promises: Promise_[]; canManage: boolean }) {
+    const returnTo = usePage().url;
     const { t } = useI18n();
     return (
         <>
@@ -207,7 +212,7 @@ function Schedule({ customerId, orders, position, currency, installments, promis
                     <tbody>
                         {orders.map((o) => (
                             <tr key={o.id}>
-                                <td className="px-4 py-2.5 font-medium"><Link href={`/documents/open/sales_order/${o.id}`} method="post" as="button" className="text-start hover:underline">{o.order_number}</Link></td>
+                                <td className="px-4 py-2.5 font-medium"><Link href={`/documents/open/sales_order/${o.id}`} method="post" data={{ fc_return: returnTo }} as="button" className="text-start hover:underline">{o.order_number}</Link></td>
                                 <td className="px-4 py-2.5 text-ink-muted">{o.sale_date}</td>
                                 <td className={`px-4 py-2.5 ${o.is_overdue ? 'text-danger' : 'text-ink-muted'}`}>{o.due_date ? formatBusinessDate(o.due_date) : t('fc2.undated')}{o.is_overdue && ` · ${t('fc2.col.overdue')}`}</td>
                                 <td className="num px-4 py-2.5" dir="ltr">{formatMoney(o.remaining, currency)}</td>
@@ -232,6 +237,7 @@ function Schedule({ customerId, orders, position, currency, installments, promis
 }
 
 function StatementTab({ customerId, statement, period, canExport }: { customerId: number; statement: Statement; period?: { from: string; to: string }; canExport: boolean }) {
+    const returnTo = usePage().url;
     const { t } = useI18n();
     const params = useQueryParams();
     const [from, setFrom] = useState(period?.from ?? '');
@@ -266,7 +272,7 @@ function StatementTab({ customerId, statement, period, canExport }: { customerId
                                 <tr key={`${r.type}-${i}`}>
                                     <td className="px-4 py-2.5 text-ink-muted">{r.date}</td>
                                     <td className="px-4 py-2.5">{t(`fc2.stmt.${r.type}` as TranslationKey)}</td>
-                                    <td className="px-4 py-2.5 font-medium">{r.doc_type && r.doc_id ? <Link href={`/documents/open/${r.doc_type}/${r.doc_id}`} method="post" as="button" className="text-start hover:underline">{r.reference}</Link> : r.reference}</td>
+                                    <td className="px-4 py-2.5 font-medium">{r.doc_type && r.doc_id ? <Link href={`/documents/open/${r.doc_type}/${r.doc_id}`} method="post" data={{ fc_return: returnTo }} as="button" className="text-start hover:underline">{r.reference}</Link> : r.reference}</td>
                                     <td className="px-4 py-2.5 text-ink-muted">{r.description}</td>
                                     <td className="num px-4 py-2.5" dir="ltr">{Number(r.debit) === 0 ? '' : formatMoney(r.debit, cur)}</td>
                                     <td className="num px-4 py-2.5" dir="ltr">{Number(r.credit) === 0 ? '' : formatMoney(r.credit, cur)}</td>

@@ -1,3 +1,4 @@
+import { withFinanceReturn } from '@/components/shell/FinanceReturnLink';
 import { ParentTabs, useCurrentPath, useSection } from '@/components/finance/FinanceClientsKit';
 import FinanceFilters, { type FinanceStore } from '@/components/finance/FinanceFilters';
 import PageHeader from '@/components/ui/PageHeader';
@@ -9,7 +10,7 @@ import { Button } from '@/components/ui/Button';
 import { MetricCard } from '@/components/ui/MetricCard';
 import { formatBusinessDate, formatMoney } from '@/utils/format';
 import { label, paymentMethodLabel } from '@/utils/labels';
-import { Head, Link, router } from '@inertiajs/react';
+import { Head, Link, router, usePage } from '@inertiajs/react';
 import { useState } from 'react';
 
 type PaymentRow = {
@@ -49,6 +50,7 @@ type Props = {
 export default function FinanceEncaissements({ organization, period, periodLabel, storeId, stores, payments, refunds, summary, settlementCustomers, can }: Props) {
     const { t } = useI18n();
     const path = useCurrentPath();
+    const current = usePage().url;
     // One authoritative register: the legacy "monthly" section is the same register and is shown as "settlements".
     const section = useSection(['settlements', 'monthly', 'refunds'] as const, 'settlements') === 'refunds' ? 'refunds' : 'settlements';
     const [picking, setPicking] = useState(false);
@@ -110,13 +112,13 @@ export default function FinanceEncaissements({ organization, period, periodLabel
                                 {payments.data.map((payment) => (
                                     <tr key={payment.id}>
                                         <td className="bidi-isolate px-4 py-2.5 font-medium text-ink" dir="ltr">
-                                            <Link href={`/payments/${payment.id}`}>{payment.payment_number}</Link>
+                                            <Link href={withFinanceReturn(`/payments/${payment.id}`, current)}>{payment.payment_number}</Link>
                                         </td>
                                         <td className="px-4 py-2.5 text-ink-muted">{formatBusinessDate(payment.payment_date)}</td>
                                         <td className="px-4 py-2.5">{label(paymentMethodLabel, payment.method)}</td>
                                         <td className="px-4 py-2.5 text-ink-muted">{payment.financial_account?.name ?? '—'}</td>
                                         <td className="px-4 py-2.5">
-                                            {payment.order ? <Link href={`/sales/orders/${payment.order.id}`}>{payment.order.order_number}</Link> : '—'}
+                                            {payment.order ? <Link href={withFinanceReturn(`/sales/orders/${payment.order.id}`, current)}>{payment.order.order_number}</Link> : '—'}
                                         </td>
                                         <td className="px-4 py-2.5">{payment.order?.customer_company || payment.order?.customer_name || '—'}</td>
                                         <td className="num px-4 py-2.5" dir="ltr">{formatMoney(payment.amount)}</td>
@@ -137,7 +139,7 @@ export default function FinanceEncaissements({ organization, period, periodLabel
                             <li key={payment.id} className="surface-card p-4">
                                 <div className="flex items-start justify-between gap-3">
                                     <div className="min-w-0">
-                                        <Link href={`/payments/${payment.id}`} className="block truncate text-sm font-semibold text-ink">
+                                        <Link href={withFinanceReturn(`/payments/${payment.id}`, current)} className="block truncate text-sm font-semibold text-ink">
                                             {payment.payment_number}
                                         </Link>
                                         <p className="truncate text-[13px] text-ink-muted">
@@ -162,7 +164,7 @@ export default function FinanceEncaissements({ organization, period, periodLabel
                                     <div className="min-w-0">
                                         <dt className="text-ink-faint">{t('finance.collections.order')}</dt>
                                         <dd className="truncate">
-                                            {payment.order ? <Link href={`/sales/orders/${payment.order.id}`}>{payment.order.order_number}</Link> : '—'}
+                                            {payment.order ? <Link href={withFinanceReturn(`/sales/orders/${payment.order.id}`, current)}>{payment.order.order_number}</Link> : '—'}
                                         </dd>
                                     </div>
                                 </dl>
@@ -205,7 +207,7 @@ export default function FinanceEncaissements({ organization, period, periodLabel
                                         <td className="px-4 py-2.5 text-ink-muted">{formatBusinessDate(refund.refund_date)}</td>
                                         <td className="px-4 py-2.5 text-ink-muted">{refund.original_payment?.payment_number ?? '—'}</td>
                                         <td className="px-4 py-2.5 text-ink-muted">{label(paymentMethodLabel, refund.method)} · {refund.financial_account?.name ?? '—'}</td>
-                                        <td className="px-4 py-2.5">{refund.order ? <Link href={`/sales/orders/${refund.order.id}`}>{refund.order.order_number}</Link> : '—'}</td>
+                                        <td className="px-4 py-2.5">{refund.order ? <Link href={withFinanceReturn(`/sales/orders/${refund.order.id}`, current)}>{refund.order.order_number}</Link> : '—'}</td>
                                         <td className="px-4 py-2.5 text-ink-muted">{refund.reason}</td>
                                         <td className="num px-4 py-2.5 font-medium text-danger" dir="ltr">− {formatMoney(refund.amount)}</td>
                                     </tr>

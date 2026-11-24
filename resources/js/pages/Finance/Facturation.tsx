@@ -1,3 +1,4 @@
+import { withFinanceReturn } from '@/components/shell/FinanceReturnLink';
 import { FinancePlaceholder, SectionTabs, useCurrentPath, useSection } from '@/components/finance/FinanceClientsKit';
 import FinanceFilters, { type FinanceStore } from '@/components/finance/FinanceFilters';
 import { MetricCard } from '@/components/ui/MetricCard';
@@ -8,7 +9,7 @@ import StatusBadge from '@/components/ui/StatusBadge';
 import { useI18n } from '@/i18n';
 import ApplicationShell from '@/layouts/ApplicationShell';
 import { formatBusinessDate, formatMoney } from '@/utils/format';
-import { Head, Link } from '@inertiajs/react';
+import { Head, Link, usePage } from '@inertiajs/react';
 
 type InvoiceRow = {
     id: number;
@@ -50,6 +51,7 @@ type UnbilledRow = { id: number; order_number: string; sale_date: string; due_da
 export default function FinanceFacturation({ organization, period, periodLabel, storeId, stores, invoices, summary, counts, creditNotes, unbilledOrders }: Props) {
     const { t } = useI18n();
     const path = useCurrentPath();
+    const current = usePage().url;
     const section = useSection(['invoices', 'credit_notes', 'unbilled', 'summary'] as const, 'invoices');
     const sections = [{ key: 'invoices', label: t('fc.inv.s.invoices') }, { key: 'credit_notes', label: t('fc.inv.s.creditNotes') }, { key: 'unbilled', label: t('fc.inv.s.unbilled') }, { key: 'summary', label: t('fc.inv.s.summary') }];
     const statusLabel = (status: NonNullable<InvoiceRow['settlement_status']>) => status === 'paid' ? t('finance.billing.settled') : status === 'partial' ? t('finance.partiallyPaid')
@@ -98,7 +100,7 @@ export default function FinanceFacturation({ organization, period, periodLabel, 
                                 {invoices.data.map((invoice) => (
                                     <tr key={invoice.id}>
                                         <td className="bidi-isolate px-4 py-2.5 font-medium text-ink" dir="ltr">
-                                            <Link href={`/invoices/${invoice.id}`}>{invoice.invoice_number}</Link>
+                                            <Link href={withFinanceReturn(`/invoices/${invoice.id}`, current)}>{invoice.invoice_number}</Link>
                                         </td>
                                         <td className="px-4 py-2.5 text-ink-muted">{formatBusinessDate(invoice.invoice_date)}</td>
                                         <td className="px-4 py-2.5">{invoice.customer_company || invoice.customer_name || '—'}</td>
@@ -133,7 +135,7 @@ export default function FinanceFacturation({ organization, period, periodLabel, 
                             <li key={invoice.id} className="surface-card p-4">
                                 <div className="flex items-start justify-between gap-3">
                                     <div className="min-w-0">
-                                        <Link href={`/invoices/${invoice.id}`} className="block truncate text-sm font-semibold text-ink">
+                                        <Link href={withFinanceReturn(`/invoices/${invoice.id}`, current)} className="block truncate text-sm font-semibold text-ink">
                                             {invoice.invoice_number}
                                         </Link>
                                         <p className="truncate text-[13px] text-ink-muted">{invoice.customer_company || invoice.customer_name || '—'}</p>
@@ -201,7 +203,7 @@ export default function FinanceFacturation({ organization, period, periodLabel, 
                                         <td className="px-4 py-2.5 font-medium"><Link href={`/credit-notes/${note.id}`}>{note.credit_note_number ?? '—'}</Link></td>
                                         <td className="px-4 py-2.5 text-ink-muted">{formatBusinessDate(note.date)}</td>
                                         <td className="px-4 py-2.5">{note.customer}</td>
-                                        <td className="px-4 py-2.5"><Link href={`/invoices/${note.invoice_id}`}>{note.invoice_number ?? '—'}</Link></td>
+                                        <td className="px-4 py-2.5"><Link href={withFinanceReturn(`/invoices/${note.invoice_id}`, current)}>{note.invoice_number ?? '—'}</Link></td>
                                         <td className="num px-4 py-2.5" dir="ltr">{formatMoney(note.net_excl_tax)}</td>
                                         <td className="num px-4 py-2.5" dir="ltr">{formatMoney(note.tax_total)}</td>
                                         <td className="num px-4 py-2.5 text-danger" dir="ltr">-{formatMoney(note.total_incl_tax)}</td>
