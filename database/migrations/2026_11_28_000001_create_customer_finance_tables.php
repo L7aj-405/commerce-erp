@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Schema;
  *                                     corrected by a reversal, never deleted.
  *  - customer_financial_terms         per-customer credit conditions (credit stays OFF until an organization enables it).
  *  - customer_credit_exceptions       audited one-order credit overrides.
- *  - customer_payment_installments    payment schedule of one issued invoice (must reconcile to its net obligation).
+ *  - customer_payment_installments    payment schedule of one confirmed order (must reconcile to its remaining balance; replaced, never edited).
  *  - customer_payment_promises        customer payment promises (a follow-up aid, never a financial fact).
  *  - customer_payment_instruments     incoming cheques / commercial effects + customer_instrument_events (status history).
  *  - payments.customer_id             set ONLY on unallocated customer advances (a Payment with no allocation yet).
@@ -75,7 +75,7 @@ return new class extends Migration
             $table->id();
             $table->foreignId('organization_id')->constrained()->cascadeOnDelete();
             $table->foreignId('customer_id')->constrained()->restrictOnDelete();
-            $table->foreignId('invoice_id')->constrained()->restrictOnDelete();
+            $table->foreignId('sales_order_id')->constrained()->restrictOnDelete();
             $table->unsignedSmallInteger('sequence');
             $table->date('due_date');
             $table->decimal('amount', 19, 4);
@@ -83,7 +83,7 @@ return new class extends Migration
             $table->foreignId('created_by_user_id')->nullable()->constrained('users')->nullOnDelete();
             $table->timestamp('cancelled_at')->nullable();
             $table->timestamps();
-            $table->index(['organization_id', 'invoice_id'], 'cust_inst_invoice_idx');
+            $table->index(['organization_id', 'sales_order_id'], 'cust_inst_order_idx');
             $table->index(['organization_id', 'customer_id', 'due_date'], 'cust_inst_due_idx');
         });
 

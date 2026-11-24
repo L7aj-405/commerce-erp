@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Finance;
 
 use App\Actions\Finance\Customers\ManageCustomerAdvanceAction;
+use App\Actions\Finance\Customers\ManageCustomerCollectionPlanAction;
 use App\Actions\Finance\Customers\ManageCustomerOpeningBalanceAction;
 use App\Actions\Finance\Customers\RecordCustomerSettlementAction;
 use App\Actions\Finance\Customers\SaveCustomerFinancialTermsAction;
@@ -19,6 +20,7 @@ use App\Models\User;
 use App\Services\ActiveTenantContext;
 use App\Services\AuditLogger;
 use App\Services\DocumentVisibility;
+use App\Services\Finance\CustomerCollectionForecast;
 use App\Services\Finance\CustomerCreditGuard;
 use App\Services\Finance\CustomerFinancialPositionService;
 use App\Services\Finance\CustomerStatementService;
@@ -92,7 +94,7 @@ class CustomerAccountsController extends Controller
         return $format === 'csv' ? TabularExport::csv($name, $headers, $lines, $money) : TabularExport::xlsx($name, 'Comptes clients', $headers, $lines, $money);
     }
 
-    public function show(Request $request, Customer $customer, FinanceAccessGuard $guard, CustomerFinancialPositionService $positions, CustomerStatementService $statements, DocumentVisibility $visibility, SalesOrderPaymentCalculator $calculator): Response
+    public function show(Request $request, Customer $customer, FinanceAccessGuard $guard, CustomerFinancialPositionService $positions, CustomerStatementService $statements, DocumentVisibility $visibility, SalesOrderPaymentCalculator $calculator, CustomerCollectionForecast $forecast): Response
     {
         $organization = $customer->organization;
         $user = $request->user();
@@ -136,7 +138,13 @@ class CustomerAccountsController extends Controller
             ];
         }
         if ($section === 'schedule') {
-            $props += ['openOrders' => $this->openOrders($customer, $user, $calculator)];
+            $plan = $forecast->build($organization, null, now(), (int) $customer->getKey());
+            $props += [
+                'openOrders' => $this->openOrders($customer, $user, $calculator),
+                'forecast' => ['by_currency' => $plan['by_currency'], 'installments' => $plan['installments'], 'instruments' => $plan['instruments']],
+                'promises' => DB::table('customer_payment_promises')->where('organization_id', $organization->getKey())->where('customer_id', $customer->getKey())->orderByDesc('promised_date')->limit(50)->get(),
+                'can' => $props['can'] + ['schedules' => $user->hasPermission($organization, 'finance.customers.schedules.manage')],
+            ];
         }
         if ($section === 'statement') {
             [$from, $to] = $this->period($request);
@@ -253,6 +261,33 @@ class CustomerAccountsController extends Controller
         $action->deallocate($request->user(), $payment, $order, (string) $request->validate(['reason' => ['required', 'string', 'max:2000']])['reason']);
 
         return back()->with('success', 'Affectation retirée.');
+    }
+
+    public function saveSchedule(Request $request, Customer $customer, SalesOrder $order, ManageCustomerCollectionPlanAction $action): RedirectResponse
+    {
+        $this->authorize('view', $customer);
+        $data = $request->validate(['installments' => ['required', 'array', 'min:1', 'max:24'], 'installments.*.due_date' => ['required', 'date_format:Y-m-d'], 'installments.*.amount' => ['required', 'decimal:0,4']]);
+        $action->replaceSchedule($request->user(), $customer, $order, $data['installments']);
+
+        return back()->with('success', 'Échéancier enregistré.');
+    }
+
+    public function createPromise(Request $request, Customer $customer, ManageCustomerCollectionPlanAction $action): RedirectResponse
+    {
+        $this->authorize('view', $customer);
+        $data = $request->validate(['sales_order_id' => ['nullable', 'integer'], 'promised_date' => ['required', 'date_format:Y-m-d'], 'amount' => ['required', 'decimal:0,4'], 'note' => ['nullable', 'string', 'max:2000']]);
+        $order = ! empty($data['sales_order_id']) ? SalesOrder::query()->where('organization_id', $customer->organization_id)->findOrFail($data['sales_order_id']) : null;
+        $action->createPromise($request->user(), $customer, $order, $data['promised_date'], $data['amount'], $data['note'] ?? null);
+
+        return back()->with('success', 'Promesse de paiement enregistrée.');
+    }
+
+    public function promiseStatus(Request $request, Customer $customer, int $promise, ManageCustomerCollectionPlanAction $action): RedirectResponse
+    {
+        $this->authorize('view', $customer);
+        $action->setPromiseStatus($request->user(), $customer, $promise, (string) $request->validate(['status' => ['required', Rule::in(['kept', 'broken', 'cancelled'])]])['status']);
+
+        return back()->with('success', 'Promesse mise à jour.');
     }
 
     // ------------------------------------------------------------------ helpers

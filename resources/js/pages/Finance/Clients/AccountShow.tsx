@@ -1,5 +1,7 @@
 import { AdvanceAllocator, OpeningBalanceForm, SettlementForm, TermsForm } from '@/components/finance/CustomerAccountForms';
 import type { FinAccount, OpenOrder } from '@/components/finance/CustomerAccountForms';
+import { InstallmentsTable, PromisesPanel, ScheduleEditor } from '@/components/finance/CustomerCollectionPlan';
+import type { PlanInstallment, Promise_ } from '@/components/finance/CustomerCollectionPlan';
 import { SectionTabs, UNAVAILABLE, useQueryParams, useSection } from '@/components/finance/FinanceClientsKit';
 import { Alert } from '@/components/ui/Alert';
 import { Button, ButtonLink, DownloadLink } from '@/components/ui/Button';
@@ -32,7 +34,9 @@ type Statement = { currency_code: string | null; opening: string; closing: strin
 type Props = {
     customer: { id: number; display_name: string; company_name: string | null; email: string | null; phone: string | null; status: string; type: string };
     position: Position;
-    can: { commercialProfile: boolean; openingBalance: boolean; terms: boolean; settlements: boolean; creditOverride: boolean; export: boolean };
+    can: { commercialProfile: boolean; openingBalance: boolean; terms: boolean; settlements: boolean; creditOverride: boolean; export: boolean; schedules?: boolean };
+    forecast?: { by_currency: Record<string, Record<string, string>>; installments: PlanInstallment[]; instruments: { id: number; type: string; number: string; amount: string; currency_code: string; expected_date: string | null; maturity_date: string | null; state: string }[] };
+    promises?: Promise_[];
     invoices?: InvoiceRow[]; invoicesCount?: number;
     payments?: PaymentRow[]; paymentsCount?: number; openOrders?: OpenOrder[]; accounts?: FinAccount[];
     statement?: Statement; period?: { from: string; to: string };
@@ -80,7 +84,7 @@ export default function FinanceClientsAccountShow(props: Props) {
             {section === 'summary' && <Summary position={position} money={money} />}
             {section === 'invoices' && <Invoices rows={props.invoices ?? []} count={props.invoicesCount ?? 0} currency={cur} />}
             {section === 'payments' && <Payments {...props} currency={cur} />}
-            {section === 'schedule' && <Schedule orders={props.openOrders ?? []} position={position} currency={cur} />}
+            {section === 'schedule' && <Schedule customerId={customer.id} orders={props.openOrders ?? []} position={position} currency={cur} installments={props.forecast?.installments ?? []} promises={props.promises ?? []} canManage={Boolean(can.schedules)} />}
             {section === 'statement' && <StatementTab customerId={customer.id} statement={props.statement ?? null} period={props.period} canExport={can.export} />}
             {section === 'terms' && (
                 <div className="space-y-4">
@@ -188,13 +192,13 @@ function Payments(props: Props & { currency: string }) {
     );
 }
 
-function Schedule({ orders, position, currency }: { orders: OpenOrder[]; position: Position; currency: string }) {
+function Schedule({ customerId, orders, position, currency, installments, promises, canManage }: { customerId: number; orders: OpenOrder[]; position: Position; currency: string; installments: PlanInstallment[]; promises: Promise_[]; canManage: boolean }) {
     const { t } = useI18n();
     return (
         <>
             <TableShell label={t('fc.acct.tab.schedule')} state={orders.length === 0 ? 'empty' : 'ready'} emptyTitle={t('fc2.schedule.empty')}>
                 <table className="erp-table min-w-[560px]">
-                    <thead><tr><th className="px-4 py-2.5">{t('fc2.settle.order')}</th><th className="px-4 py-2.5">{t('common.date')}</th><th className="px-4 py-2.5">{t('fc2.due')}</th><th className="num px-4 py-2.5">{t('fc2.settle.remaining')}</th></tr></thead>
+                    <thead><tr><th className="px-4 py-2.5">{t('fc2.settle.order')}</th><th className="px-4 py-2.5">{t('common.date')}</th><th className="px-4 py-2.5">{t('fc2.due')}</th><th className="num px-4 py-2.5">{t('fc2.settle.remaining')}</th><th /></tr></thead>
                     <tbody>
                         {orders.map((o) => (
                             <tr key={o.id}>
@@ -202,12 +206,14 @@ function Schedule({ orders, position, currency }: { orders: OpenOrder[]; positio
                                 <td className="px-4 py-2.5 text-ink-muted">{o.sale_date}</td>
                                 <td className={`px-4 py-2.5 ${o.is_overdue ? 'text-danger' : 'text-ink-muted'}`}>{o.due_date ?? t('fc2.undated')}{o.is_overdue && ` · ${t('fc2.col.overdue')}`}</td>
                                 <td className="num px-4 py-2.5" dir="ltr">{formatMoney(o.remaining, currency)}</td>
+                                <td className="px-4 py-2.5 text-end">{canManage && <ScheduleEditor customerId={customerId} order={o} currency={currency} />}</td>
                             </tr>
                         ))}
                     </tbody>
                 </table>
             </TableShell>
             <p className="mt-3 text-[13px] text-ink-muted">{t('fc2.schedule.note')}</p>
+            <div className="mt-5"><InstallmentsTable rows={installments} /></div>
             {position.bands && (
                 <div className="mt-4 grid gap-3 sm:grid-cols-3 xl:grid-cols-6">
                     {Object.entries(position.unbilled_bands ?? position.bands).map(([band, value]) => (
@@ -215,6 +221,7 @@ function Schedule({ orders, position, currency }: { orders: OpenOrder[]; positio
                     ))}
                 </div>
             )}
+            <PromisesPanel customerId={customerId} promises={promises} orders={orders} canManage={canManage} currency={currency} />
         </>
     );
 }

@@ -121,4 +121,35 @@ class CustomerCreditGuard
 
         return Decimal::add(Decimal::add((string) ($position['receivable'] ?? '0'), (string) ($position['unbilled'] ?? '0')), $opening);
     }
+
+    /**
+     * Bulk org-wide exposure for a set of customers (credit control pages; same formula as exposureExcluding()).
+     *
+     * @param  list<int>  $customerIds
+     * @return array<int, array{currency_code:?string, receivable:string, unbilled:string, overdue:string, opening:string, exposure:string, mixed_currency:bool}>
+     */
+    public function exposures(Organization $organization, array $customerIds): array
+    {
+        if ($customerIds === []) {
+            return [];
+        }
+        $storeIds = DB::table('stores')->where('organization_id', $organization->getKey())->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $positions = $this->receivables->customerPositionsAsOf($organization, $customerIds, $storeIds);
+        $openings = DB::table('customer_opening_balances')->where('organization_id', $organization->getKey())->where('status', 'posted')->whereIn('customer_id', $customerIds)
+            ->groupBy('customer_id')->select('customer_id')->selectRaw('ROUND(SUM(amount), 4) as total')->pluck('total', 'customer_id');
+        $out = [];
+        foreach ($customerIds as $id) {
+            $p = $positions[$id] ?? null;
+            $opening = Decimal::normalize((string) ($openings[$id] ?? '0'));
+            $positiveOpening = Decimal::compare($opening, '0') > 0 ? $opening : '0.0000';
+            $mixed = (bool) ($p['mixed_currency'] ?? false);
+            $receivable = $mixed ? '0.0000' : (string) ($p['receivable'] ?? '0.0000');
+            $unbilled = $mixed ? '0.0000' : (string) ($p['unbilled'] ?? '0.0000');
+            $out[$id] = ['currency_code' => $p['currency_code'] ?? null, 'receivable' => $receivable, 'unbilled' => $unbilled,
+                'overdue' => $mixed ? '0.0000' : Decimal::add((string) ($p['overdue'] ?? '0'), (string) ($p['unbilled_overdue'] ?? '0')), 'opening' => $opening,
+                'exposure' => Decimal::add(Decimal::add($receivable, $unbilled), $positiveOpening), 'mixed_currency' => $mixed];
+        }
+
+        return $out;
+    }
 }

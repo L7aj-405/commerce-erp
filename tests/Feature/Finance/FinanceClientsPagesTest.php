@@ -61,8 +61,8 @@ class FinanceClientsPagesTest extends PaymentTestCase
             'finance.clients.invoicing' => 'Finance/Facturation',
             'finance.clients.collections' => 'Finance/Encaissements',
             'finance.clients.receivables' => 'Finance/Creances',
-            'finance.clients.credit' => 'Finance/Clients/Planned',
-            'finance.clients.instruments' => 'Finance/Clients/Planned',
+            'finance.clients.credit' => 'Finance/Clients/Credit',
+            'finance.clients.instruments' => 'Finance/Clients/Instruments',
             'finance.clients.journal' => 'Finance/Journal',
             'finance.clients.reports' => 'Finance/Clients/Reports',
         ];
@@ -153,7 +153,7 @@ class FinanceClientsPagesTest extends PaymentTestCase
     {
         $this->recordPayment($this->owner, $this->order, $this->account, '50.0000', ['payment_date' => now()->toDateString()]);
         $this->actingAs($this->owner);
-        foreach (['finance.clients.credit' => 'credit', 'finance.clients.instruments' => 'instruments', 'finance.personnel' => 'personnel'] as $route => $key) {
+        foreach (['finance.personnel' => 'personnel'] as $route => $key) {
             $props = $this->get(route($route))->assertOk()->viewData('page')['props'];
             $this->assertSame($key, $props['page']);
             $business = array_diff(array_keys($props), ['page', 'organization', 'errors', 'auth', 'tenant', 'flash', 'sandbox', 'locale', 'supplierInvoices', 'features', 'ziggy', 'name', 'quote']);

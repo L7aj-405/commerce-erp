@@ -7,6 +7,8 @@ use App\Models\Organization;
 use App\Models\Store;
 use App\Services\ActiveTenantContext;
 use App\Services\Dashboards\ExecutiveDashboardService;
+use App\Services\Finance\CustomerAgingReport;
+use App\Services\Finance\CustomerCollectionForecast;
 use App\Services\Finance\FinanceAccessGuard;
 use App\Services\Finance\FinanceCaEncaisseService;
 use App\Services\Finance\FinanceInvoiceReadModel;
@@ -15,6 +17,8 @@ use App\Services\Finance\FinancePeriod;
 use App\Services\Finance\FinanceReceivablesService;
 use App\Support\Decimal;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -136,12 +140,16 @@ class FinanceDashboardController extends Controller
         ActiveTenantContext $context,
         FinanceAccessGuard $guard,
         FinanceReceivablesService $receivables,
+        CustomerAgingReport $aging,
+        CustomerCollectionForecast $forecast,
     ): Response {
         $organization = $context->organizationOrFail();
         $guard->authorizeReceivables($request->user(), $organization);
         $period = $this->period($request);
         $store = $guard->resolveStore($organization, $request->query('store_id'));
         $receivableData = $receivables->salesOrderReceivablesAsOf($organization, $period->end, $store);
+        $section = in_array($request->query('section'), ['dues', 'aging', 'reminders', 'forecasts'], true) ? $request->query('section') : 'receivables';
+        $plan = in_array($section, ['dues', 'forecasts'], true) ? $forecast->build($organization, $store, Carbon::now()) : null;
 
         return Inertia::render('Finance/Creances', [
             'organization' => $organization->only(['id', 'name']),
@@ -152,6 +160,11 @@ class FinanceDashboardController extends Controller
             'stores' => $this->stores($organization),
             'total' => $receivableData['total'],
             'orders' => $receivableData['orders'],
+            // Section data is computed only for the requested tab.
+            'aging' => $section === 'aging' ? $aging->build($organization, $store, $period->end) : null,
+            'forecast' => $plan,
+            'reminders' => $section === 'reminders' ? $this->reminders($organization) : null,
+            'can' => ['export' => $request->user()->hasPermission($organization, 'finance.export'), 'monthEnd' => $request->user()->hasPermission($organization, 'finance.monthly_situation.view')],
         ]);
     }
 
@@ -191,6 +204,22 @@ class FinanceDashboardController extends Controller
         $credits = $report->creditNotesTotal($organization, $period, $store);
 
         return ['gross' => $gross, 'credit_notes' => $credits, 'net' => Decimal::subtract($gross, $credits)];
+    }
+
+    /**
+     * Reminders = the EXISTING follow-up system (open follow-ups attached to a customer) and open payment promises. Read-only here:
+     * follow-ups are created and completed in "Mon travail"; nothing is ever sent to a customer automatically.
+     *
+     * @return array{followUps: list<mixed>, promises: list<mixed>}
+     */
+    private function reminders(Organization $organization): array
+    {
+        return [
+            'followUps' => DB::table('follow_ups as f')->join('customers as c', 'c.id', '=', 'f.customer_id')->where('f.organization_id', $organization->getKey())
+                ->where('f.status', 'open')->orderBy('f.due_date')->limit(100)->get(['f.id', 'f.title', 'f.due_date', 'f.priority', 'c.display_name as customer', 'f.customer_id'])->all(),
+            'promises' => DB::table('customer_payment_promises as p')->join('customers as c', 'c.id', '=', 'p.customer_id')->where('p.organization_id', $organization->getKey())
+                ->where('p.status', 'open')->orderBy('p.promised_date')->limit(100)->get(['p.id', 'p.promised_date', 'p.amount', 'p.currency_code', 'p.note', 'c.display_name as customer', 'p.customer_id'])->all(),
+        ];
     }
 
     private function period(Request $request): FinancePeriod

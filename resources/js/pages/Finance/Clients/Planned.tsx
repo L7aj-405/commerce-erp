@@ -6,7 +6,7 @@ import type { TranslationKey } from '@/i18n/translations';
 import ApplicationShell from '@/layouts/ApplicationShell';
 import { Head } from '@inertiajs/react';
 
-type PageKey = 'credit' | 'instruments' | 'personnel';
+type PageKey = 'personnel';
 type Props = { page: PageKey; organization: { id: number; name: string } };
 type Config = { title: TranslationKey; description: TranslationKey; notice?: TranslationKey; sections: { key: string; label: TranslationKey; planned: TranslationKey }[] };
 
@@ -20,30 +20,6 @@ type Config = { title: TranslationKey; description: TranslationKey; notice?: Tra
  *  - personnel: future staff finance (beyond the existing commissions screens).
  */
 const CONFIG: Record<PageKey, Config> = {
-    credit: {
-        title: 'fc.credit.title',
-        description: 'fc.credit.description',
-        sections: [
-            { key: 'limits', label: 'fc.credit.s.limits', planned: 'fc.credit.p.limits' },
-            { key: 'exposure', label: 'fc.credit.s.exposure', planned: 'fc.credit.p.exposure' },
-            { key: 'terms', label: 'fc.credit.s.terms', planned: 'fc.credit.p.terms' },
-            { key: 'overruns', label: 'fc.credit.s.overruns', planned: 'fc.credit.p.overruns' },
-            { key: 'blocked', label: 'fc.credit.s.blocked', planned: 'fc.credit.p.blocked' },
-            { key: 'authorizations', label: 'fc.credit.s.authorizations', planned: 'fc.credit.p.authorizations' },
-        ],
-    },
-    instruments: {
-        title: 'fc.inst.title',
-        description: 'fc.inst.description',
-        notice: 'fc.inst.notice',
-        sections: [
-            { key: 'portfolio', label: 'fc.inst.s.portfolio', planned: 'fc.inst.p.portfolio' },
-            { key: 'deposits', label: 'fc.inst.s.deposits', planned: 'fc.inst.p.deposits' },
-            { key: 'cashed', label: 'fc.inst.s.cashed', planned: 'fc.inst.p.cashed' },
-            { key: 'rejected', label: 'fc.inst.s.rejected', planned: 'fc.inst.p.rejected' },
-            { key: 'dues', label: 'fc.inst.s.dues', planned: 'fc.inst.p.dues' },
-        ],
-    },
     personnel: {
         title: 'fc.staff.title',
         description: 'fc.staff.description',

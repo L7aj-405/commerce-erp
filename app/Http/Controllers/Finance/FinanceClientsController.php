@@ -7,8 +7,11 @@ use App\Models\Customer;
 use App\Models\Organization;
 use App\Models\Store;
 use App\Services\ActiveTenantContext;
+use App\Services\AuditLogger;
 use App\Services\CustomerFinancialSummary;
 use App\Services\DocumentVisibility;
+use App\Services\Finance\CustomerAgingReport;
+use App\Services\Finance\Export\TabularExport;
 use App\Services\Finance\FinanceAccessGuard;
 use App\Services\Finance\FinanceMonthlyReportService;
 use App\Services\Finance\FinancePeriod;
@@ -16,6 +19,7 @@ use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * Finance clients — entry pages (Phase 1: UI/UX organization only).
@@ -36,7 +40,7 @@ use Inertia\Response;
 class FinanceClientsController extends Controller
 {
     /** Pages whose functionality is announced but not built yet (no data, no actions). */
-    private const PLANNED = ['credit', 'instruments', 'personnel'];
+    private const PLANNED = ['personnel'];
 
     /** FC-01 — customer-finance dashboard: authoritative metrics already produced by the monthly situation. */
     public function overview(Request $request, ActiveTenantContext $context, FinanceAccessGuard $guard, FinanceMonthlyReportService $report): Response
@@ -78,6 +82,25 @@ class FinanceClientsController extends Controller
         return Inertia::render('Finance/Clients/Reports', $this->base($organization, $period, $store) + [
             'can' => ['export' => $request->user()->hasPermission($organization, 'finance.export')],
         ]);
+    }
+
+    /** Receivable aging export (same service and filters as the page): finance.export, audited, safe CSV / XLSX. */
+    public function agingExport(Request $request, string $format, ActiveTenantContext $context, FinanceAccessGuard $guard, CustomerAgingReport $aging, AuditLogger $audit): StreamedResponse
+    {
+        [$organization, $period, $store] = $this->scope($request, $context, $guard);
+        $guard->authorizeExport($request->user(), $organization);
+        abort_unless(in_array($format, ['csv', 'xlsx'], true), 404);
+        $report = $aging->build($organization, $store, $period->end);
+        $audit->record('finance_clients.aging_exported', $request->user(), $organization, $store, null, newValues: ['format' => $format, 'as_of' => $report['as_of'], 'rows' => count($report['rows'])]);
+        $headers = ['Client', 'Devise', 'Créance sur factures', 'Exposition non facturée', 'Total', 'Dont en retard', 'Non échu', '1-30 j', '31-60 j', '61-90 j', '> 90 j', 'Sans échéance'];
+        $lines = (function () use ($report) {
+            foreach ($report['rows'] as $r) {
+                yield [$r['customer'], $r['currency_code'], $r['receivable'], $r['unbilled'], $r['total'], $r['overdue'], ...array_values($r['bands'] ?? array_fill(0, 6, null))];
+            }
+        })();
+        $name = 'balance-agee-'.$report['as_of'];
+
+        return $format === 'csv' ? TabularExport::csv($name, $headers, $lines) : TabularExport::xlsx($name, 'Balance âgée', $headers, $lines, range(2, 11));
     }
 
     /** @return array{0: Organization, 1: FinancePeriod, 2: ?Store} */
