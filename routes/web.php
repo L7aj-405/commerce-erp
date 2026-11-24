@@ -288,6 +288,7 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
         ->name('document-profile.studio.preview');
     Route::put('/document-profile/studio', [DocumentTemplateStudioController::class, 'update'])->name('document-profile.studio.update');
     Route::delete('/document-profile/studio', [DocumentTemplateStudioController::class, 'reset'])->name('document-profile.studio.reset');
+    Route::get('/customer-credit-settings', [CustomerCreditController::class, 'policy'])->name('customer-credit-settings.edit');
     Route::get('/quotation-settings', [QuotationSettingsController::class, 'edit'])->name('quotation-settings.edit');
     Route::put('/quotation-settings', [QuotationSettingsController::class, 'update'])->name('quotation-settings.update');
     Route::get('/email-settings', [OrganizationMailSettingController::class, 'edit'])->name('email-settings.edit');

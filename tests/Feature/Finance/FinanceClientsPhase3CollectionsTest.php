@@ -116,4 +116,28 @@ class FinanceClientsPhase3CollectionsTest extends PaymentTestCase
         $this->preview()->assertStatus(422);
         $this->assertDatabaseMissing('follow_ups', ['organization_id' => $this->org->id]);
     }
+
+    public function test_global_credit_policy_has_its_own_protected_page_and_risk_viewers_cannot_open_it(): void
+    {
+        $member = function (array $permissions) {
+            $u = User::factory()->create();
+            $this->addOrganizationMember($this->org, $u, $permissions, 'active', 'C'.Str::random(5));
+            $this->addStoreMember($this->store, $u);
+            $this->activate($u, $this->org, $this->store);
+
+            return $u;
+        };
+
+        $viewer = $member(['finance.view', 'customers.view']);
+        $this->actingAs($viewer)->get(route('finance.clients.credit'))->assertOk()
+            ->assertInertia(fn ($p) => $p->component('Finance/Clients/Credit')->where('can.policy', false)->has('businessDate'));
+        $this->actingAs($viewer)->get(route('customer-credit-settings.edit'))->assertForbidden();
+        $this->actingAs($viewer)->post(route('finance.clients.credit.policy'), ['enforcement' => 'block'])->assertForbidden();
+
+        $manager = $member(['finance.view', 'finance.customers.terms.manage']);
+        $this->actingAs($manager)->get(route('customer-credit-settings.edit'))->assertOk()
+            ->assertInertia(fn ($p) => $p->component('Settings/CustomerCreditPolicy')->where('enforcement', 'off'));
+        $this->actingAs($manager)->post(route('finance.clients.credit.policy'), ['enforcement' => 'warn', 'deduct_advances' => false])->assertSessionHasNoErrors();
+        $this->actingAs($manager)->get(route('customer-credit-settings.edit'))->assertInertia(fn ($p) => $p->where('enforcement', 'warn'));
+    }
 }

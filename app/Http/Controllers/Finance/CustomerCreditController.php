@@ -9,6 +9,7 @@ use App\Services\AuditLogger;
 use App\Services\Finance\CustomerCreditGuard;
 use App\Services\Finance\FinanceAccessGuard;
 use App\Services\Sandbox\SandboxContext;
+use App\Support\BusinessTime;
 use App\Support\Decimal;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -50,10 +51,24 @@ class CustomerCreditController extends Controller
 
         return Inertia::render('Finance/Clients/Credit', [
             'organization' => $organization->only(['id', 'name']), 'enforcement' => CustomerCreditGuard::enforcement($organization), 'deductAdvances' => CustomerCreditGuard::deductsAdvances($organization), 'rows' => $rows, 'exceptions' => $exceptions,
+            'businessDate' => BusinessTime::today($organization),
             'customers' => $request->user()->hasPermission($organization, 'finance.customers.credit_override') ? Customer::query()->where('organization_id', $organization->getKey())->orderBy('display_name')->limit(1000)->get(['id', 'display_name']) : [],
             'can' => ['policy' => $request->user()->hasPermission($organization, 'finance.customers.terms.manage'), 'override' => $request->user()->hasPermission($organization, 'finance.customers.credit_override')],
             'truncated' => $terms->count() >= self::CAP,
         ]);
+    }
+
+    /**
+     * Protected destination of the GLOBAL credit policy (moved out of the risk register). Same permission as the existing save endpoint:
+     * being able to see credit risks never grants access to the organization-wide settings.
+     */
+    public function policy(Request $request, ActiveTenantContext $context): Response
+    {
+        abort_if(app(SandboxContext::class)->isRestricted(), 404);
+        $organization = $context->organizationOrFail();
+        abort_unless($request->user()->hasPermission($organization, 'finance.customers.terms.manage'), 403);
+
+        return Inertia::render('Settings/CustomerCreditPolicy', ['organization' => $organization->only(['id', 'name']), 'enforcement' => CustomerCreditGuard::enforcement($organization), 'deductAdvances' => CustomerCreditGuard::deductsAdvances($organization)]);
     }
 
     public function savePolicy(Request $request, ActiveTenantContext $context, AuditLogger $audit): RedirectResponse

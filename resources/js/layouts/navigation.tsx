@@ -227,6 +227,7 @@ export function buildNavGroups(t: (key: TranslationKey) => string, tenant: Tenan
                         { href: '/settings/stores', label: t('nav.stores'), permission: 'stores.view', icon: <IconPin /> },
                         { href: '/quotation-settings', label: t('nav.quotationSettings'), permission: ['settings.view', 'settings.update'], icon: <IconFileText /> },
                         { href: '/document-stamp', label: t('nav.companyStamp'), permission: ['settings.view', 'settings.update'], icon: <IconStamp /> },
+                        { href: '/customer-credit-settings', label: t('nav.customerCreditPolicy'), permission: 'finance.customers.terms.manage', icon: <IconShield /> },
                         { href: '/return-policy', label: t('nav.returnPolicy'), permission: ['settings.view', 'settings.update'], icon: <IconRotateBack /> },
                         { href: '/email-settings', label: t('nav.email'), permission: ['settings.view', 'settings.update'], icon: <IconMail /> },
                         { href: '/account/notifications', label: t('common.notifications'), icon: <IconBell /> },

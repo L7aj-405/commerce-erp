@@ -49,7 +49,7 @@ const LEGACY_HREFS = [
     '/finance/encaissements', '/payments', '/financial-accounts', '/finance/journal',
     '/sales/customers', '/contacts', '/integrations/woocommerce', '/integrations/woocommerce/stock-tasks',
     '/activity', '/system-health', '/organizations/9/users-access', '/document-profile', '/document-profile/studio', '/settings/stores',
-    '/quotation-settings', '/document-stamp', '/return-policy', '/email-settings', '/organization-backups', '/settings/data-reset',
+    '/quotation-settings', '/customer-credit-settings', '/document-stamp', '/return-policy', '/email-settings', '/organization-backups', '/settings/data-reset',
     '/settings/ai-mcp', '/account/notifications', '/catalog/tax-rates',
 ];
 
