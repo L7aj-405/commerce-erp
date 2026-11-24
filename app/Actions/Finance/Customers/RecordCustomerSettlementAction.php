@@ -76,12 +76,14 @@ class RecordCustomerSettlementAction
 
         try {
             return DB::transaction(function () use ($actor, $customer, $organization, $store, $data, $operationId, $method, $amount, $allocations, $allocated) {
+                // The account row is locked FIRST (it always exists): serializing here keeps the idempotency lookup below from taking
+                // concurrent gap locks on a not-yet-existing operation row (inserter deadlocks between identical requests).
+                $account = FinancialAccount::query()->where('organization_id', $organization->getKey())->whereKey($data['financial_account_id'])->lockForUpdate()->firstOrFail();
                 $existing = Payment::query()->where('organization_id', $organization->getKey())->where('store_id', $store->getKey())
                     ->where('client_operation_id', $operationId)->where('operation_sequence', 1)->lockForUpdate()->first();
                 if ($existing) {
                     return $this->assertSameRequest($existing, $customer, $data, $amount);
                 }
-                $account = FinancialAccount::query()->where('organization_id', $organization->getKey())->whereKey($data['financial_account_id'])->lockForUpdate()->firstOrFail();
                 if ($account->status !== FinancialAccountStatus::Active) {
                     throw ValidationException::withMessages(['financial_account_id' => 'Seul un compte financier actif peut recevoir un règlement.']);
                 }

@@ -100,6 +100,9 @@ class ConfirmSalesOrderAction
 
         return DB::transaction(function () use ($actor, $order) {
             $order = SalesOrder::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
+            // Credit control: take the per-customer lock BEFORE any consistent read, so the exposure the check later reads is
+            // never an older InnoDB snapshot than the commitments a concurrent confirmation just committed.
+            $this->credit->lockCustomer($order);
             if ($order->status !== SalesOrderStatus::Draft) {
                 throw ValidationException::withMessages(['order' => 'Only a draft order can be confirmed.']);
             }

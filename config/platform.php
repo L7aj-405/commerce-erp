@@ -702,7 +702,6 @@ return [
                 'finance.financial_accounts.manage_balance',
                 'finance.customers.opening_balance.manage',
                 'finance.customers.terms.manage',
-                'finance.customers.credit_override',
                 'finance.customers.settlements.manage',
                 'finance.customers.schedules.manage',
                 'finance.customers.instruments.manage',

@@ -818,8 +818,10 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
             Route::get('/facturation', [FinanceDashboardController::class, 'facturation'])->name('invoicing');
             Route::get('/encaissements', [FinanceDashboardController::class, 'encaissements'])->name('collections');
             Route::get('/creances', [FinanceDashboardController::class, 'creances'])->name('receivables');
+            Route::get('/journal/export/{format}', [FinanceJournalController::class, 'export'])->whereIn('format', ['csv', 'xlsx'])->middleware('throttle:10,1')->name('journal.export');
             Route::get('/journal', [FinanceJournalController::class, 'index'])->name('journal');
             Route::get('/rapports', [FinanceClientsController::class, 'reports'])->name('reports');
+            Route::get('/rapports/rentabilite/export/{format}', [FinanceClientsController::class, 'profitabilityExport'])->whereIn('format', ['csv', 'xlsx'])->middleware('throttle:10,1')->name('profitability.export');
         });
         Route::get('/personnel', [FinanceClientsController::class, 'planned'])->defaults('page', 'personnel')->name('personnel');
         Route::get('/ca-encaisse', [FinanceDashboardController::class, 'caEncaisse'])->name('ca-encaisse');

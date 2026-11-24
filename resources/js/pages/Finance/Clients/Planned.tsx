@@ -11,13 +11,9 @@ type Props = { page: PageKey; organization: { id: number; name: string } };
 type Config = { title: TranslationKey; description: TranslationKey; notice?: TranslationKey; sections: { key: string; label: TranslationKey; planned: TranslationKey }[] };
 
 /**
- * Complete page shells for functionality that is announced but NOT built (Phase 1: UI/UX only).
- * There is deliberately no data, no form and no action here:
- *  - credit: future credit limits / exposure / payment terms / overruns / blocked customers / authorizations
- *    (no credit validation engine, no new database field).
- *  - instruments: future incoming customer cheques & bills (portfolio, bank deposits, cashed, rejected, due dates).
- *    Posted cheque payments are NOT proof of bank clearance and supplier (outgoing) instruments are never reused.
- *  - personnel: future staff finance (beyond the existing commissions screens).
+ * Placeholder shell for the one Finance clients area that is still announced but NOT built: future staff finance beyond the existing
+ * commissions screens. There is deliberately no data, no form and no action here. (Credit control and incoming instruments, formerly
+ * shells, are implemented in Credit.tsx and Instruments.tsx.)
  */
 const CONFIG: Record<PageKey, Config> = {
     personnel: {

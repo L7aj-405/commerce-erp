@@ -11,9 +11,10 @@ use App\Services\AuditLogger;
 use App\Services\CustomerFinancialSummary;
 use App\Services\DocumentVisibility;
 use App\Services\Finance\CustomerAgingReport;
+use App\Services\Finance\CustomerFinanceDashboard;
+use App\Services\Finance\CustomerProfitabilityReport;
 use App\Services\Finance\Export\TabularExport;
 use App\Services\Finance\FinanceAccessGuard;
-use App\Services\Finance\FinanceMonthlyReportService;
 use App\Services\Finance\FinancePeriod;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -43,10 +44,11 @@ class FinanceClientsController extends Controller
     private const PLANNED = ['personnel'];
 
     /** FC-01 — customer-finance dashboard: authoritative metrics already produced by the monthly situation. */
-    public function overview(Request $request, ActiveTenantContext $context, FinanceAccessGuard $guard, FinanceMonthlyReportService $report): Response
+    public function overview(Request $request, ActiveTenantContext $context, FinanceAccessGuard $guard, CustomerFinanceDashboard $dashboard): Response
     {
         [$organization, $period, $store] = $this->scope($request, $context, $guard);
-        $situation = $report->situation($organization, $period, $store);
+        $data = $dashboard->build($organization, $period, $store);
+        $situation = $data['situation'];
 
         return Inertia::render('Finance/Clients/Overview', $this->base($organization, $period, $store) + [
             'metrics' => [
@@ -60,7 +62,8 @@ class FinanceClientsController extends Controller
                 // on the account page): shown as unavailable, never as zero.
                 'unbilled_orders' => null,
             ],
-            'can' => ['accounts' => $request->user()->hasPermission($organization, 'customers.view')],
+            'dashboard' => array_diff_key($data, ['situation' => 1]),
+            'can' => ['accounts' => $request->user()->hasPermission($organization, 'customers.view'), 'credit' => true],
         ]);
     }
 
@@ -75,13 +78,35 @@ class FinanceClientsController extends Controller
     }
 
     /** FC-09 — reports hub: links to the existing reports and exports (their own routes keep their own permissions). */
-    public function reports(Request $request, ActiveTenantContext $context, FinanceAccessGuard $guard): Response
+    public function reports(Request $request, ActiveTenantContext $context, FinanceAccessGuard $guard, CustomerProfitabilityReport $profit): Response
     {
         [$organization, $period, $store] = $this->scope($request, $context, $guard);
+        $profitability = $request->query('section') === 'profitability'
+            ? $profit->build($organization, $period->start->toDateString(), $period->end->toDateString(), $store) : null;
 
         return Inertia::render('Finance/Clients/Reports', $this->base($organization, $period, $store) + [
+            'profitability' => $profitability,
             'can' => ['export' => $request->user()->hasPermission($organization, 'finance.export')],
         ]);
+    }
+
+    /** Customer profitability export (same service and period as the page; finance.export; audited). Incomplete cost data is flagged per row. */
+    public function profitabilityExport(Request $request, string $format, ActiveTenantContext $context, FinanceAccessGuard $guard, CustomerProfitabilityReport $profit, AuditLogger $audit): StreamedResponse
+    {
+        [$organization, $period, $store] = $this->scope($request, $context, $guard);
+        $guard->authorizeExport($request->user(), $organization);
+        abort_unless(in_array($format, ['csv', 'xlsx'], true), 404);
+        $report = $profit->build($organization, $period->start->toDateString(), $period->end->toDateString(), $store);
+        $audit->record('finance_clients.profitability_exported', $request->user(), $organization, $store, null, newValues: ['format' => $format, 'month' => $period->month, 'rows' => count($report['rows'])]);
+        $headers = ['Client', 'CA HT net de retours', 'CA HT couvert par un coût', 'Coût', 'Marge', 'Taux de marge', 'Lignes sans coût', 'Données incomplètes'];
+        $lines = (function () use ($report) {
+            foreach ($report['rows'] as $r) {
+                yield [$r['customer'], $r['revenue'], $r['covered_revenue'], $r['cost'], $r['margin'], $r['margin_rate'], $r['missing_cost_lines'], $r['incomplete'] ? 'oui' : 'non'];
+            }
+        })();
+        $name = 'rentabilite-clients-'.$period->month;
+
+        return $format === 'csv' ? TabularExport::csv($name, $headers, $lines) : TabularExport::xlsx($name, 'Rentabilité clients', $headers, $lines, [1, 2, 3, 4, 5]);
     }
 
     /** Receivable aging export (same service and filters as the page): finance.export, audited, safe CSV / XLSX. */

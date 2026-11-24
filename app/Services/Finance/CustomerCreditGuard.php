@@ -56,6 +56,18 @@ class CustomerCreditGuard
         return $days === null ? null : (int) $days;
     }
 
+    /**
+     * Serialize concurrent confirmations of one customer's orders. MUST be the first read of the confirmation transaction: under
+     * InnoDB REPEATABLE READ the snapshot is fixed by the first plain SELECT, so a lock taken later would still read exposure from
+     * a snapshot older than the commitments the lock holder just committed. A locking read always sees the latest committed data.
+     */
+    public function lockCustomer(SalesOrder $order): void
+    {
+        if ($order->customer_id !== null && $order->sandbox_id === null) {
+            DB::table('customer_financial_terms')->where('organization_id', $order->organization_id)->where('customer_id', $order->customer_id)->lockForUpdate()->first();
+        }
+    }
+
     public function assertCanConfirm(User $actor, SalesOrder $order): void
     {
         $organization = $order->organization;
