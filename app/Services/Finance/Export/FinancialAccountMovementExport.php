@@ -9,6 +9,8 @@ use App\Models\Organization;
 use App\Models\User;
 use App\Services\Finance\FinancialAccountMovementJournal;
 use App\Support\SpreadsheetSafeText;
+use OpenSpout\Common\Entity\Cell;
+use OpenSpout\Common\Entity\Cell\NumericCell;
 use OpenSpout\Common\Entity\Row;
 use OpenSpout\Common\Entity\Style\Style;
 use OpenSpout\Writer\XLSX\Writer;
@@ -54,9 +56,9 @@ class FinancialAccountMovementExport
     }
 
     /** @param array<string,mixed> $row @return list<mixed> */
-    private function line(array $row, bool $withRunning, bool $numeric): array
+    private function line(array $row, bool $withRunning): array
     {
-        $money = fn (?string $v) => $v === null ? '' : ($numeric ? (float) $v : $v);
+        $money = fn (?string $v) => $v ?? '';
         $description = trim(implode(' · ', array_filter([
             $row['counterparty'],
             $row['documents'] === [] ? null : implode(', ', $row['documents']),
@@ -101,7 +103,7 @@ class FinancialAccountMovementExport
             fwrite($out, "\xEF\xBB\xBF");
             fputcsv($out, $this->headers($withRunning), ';');
             foreach ($this->journal->stream($organization, $account, $ctx, $filters, $user, $withRunning) as $row) {
-                fputcsv($out, array_map(fn ($v) => SpreadsheetSafeText::escape($v), $this->line($row, $withRunning, false)), ';');
+                fputcsv($out, array_map(fn ($v) => SpreadsheetSafeText::escape($v), $this->line($row, $withRunning)), ';');
             }
             fclose($out);
         };
@@ -120,9 +122,17 @@ class FinancialAccountMovementExport
             $writer->getCurrentSheet()->setName('Mouvements');
             $writer->addRow(Row::fromValuesWithStyles(SpreadsheetSafeText::row($this->headers($withRunning)), (new Style)->setFontBold()->setFontColor('FFFFFF')->setBackgroundColor('243B31')));
             $money = (new Style)->setFormat('#,##0.00');
-            $styles = $withRunning ? [6 => $money, 7 => $money, 8 => $money] : [6 => $money, 7 => $money];
+            $moneyColumns = $withRunning ? [6, 7, 8] : [6, 7];
             foreach ($this->journal->stream($organization, $account, $ctx, $filters, $user, $withRunning) as $row) {
-                $writer->addRow(Row::fromValuesWithStyles(SpreadsheetSafeText::row($this->line($row, $withRunning, true)), null, $styles));
+                // Amounts stay exact decimal strings in PHP; the only numeric conversion happens inside
+                // NumericCell at the XLSX file boundary (the format stores IEEE doubles). CSV is exact text.
+                $cells = [];
+                foreach ($this->line($row, $withRunning) as $i => $value) {
+                    $cells[] = in_array($i, $moneyColumns, true) && $value !== ''
+                        ? new NumericCell($value, $money)
+                        : Cell::fromValue(SpreadsheetSafeText::escape($value));
+                }
+                $writer->addRow(new Row($cells));
             }
             $writer->close();
         } catch (\Throwable $e) {

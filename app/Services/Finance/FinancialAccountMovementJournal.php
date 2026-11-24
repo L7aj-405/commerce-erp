@@ -445,10 +445,18 @@ class FinancialAccountMovementJournal
         if ($value === null || $value === '') {
             return '0.0000';
         }
-        if (is_string($value) && preg_match('/^-?\d+(\.\d{1,4})?$/', $value) === 1) {
-            return Decimal::normalize($value);
+        if (is_int($value)) {
+            return Decimal::normalize((string) $value);
+        }
+        if (is_float($value)) {
+            // SQLite returns SUM() of decimals as a double: format to 4 decimals, no arithmetic on it.
+            return Decimal::normalize(sprintf('%.4F', $value));
+        }
+        $text = (string) $value;
+        if (preg_match('/^-?\d+(\.\d{1,4})?$/', $text) === 1) {
+            return Decimal::normalize($text);
         }
 
-        return Decimal::normalize(sprintf('%.4F', (float) $value));
+        return Decimal::normalize(bcadd($text, '0', 4));
     }
 }
