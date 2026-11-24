@@ -215,6 +215,7 @@ export default function FinanceFacturation({ organization, period, periodLabel, 
                 </>
             )}
             {section === 'unbilled' && (
+                <>
                 <p className="mb-3 text-[13px] text-ink-muted">{t('p3.inv.unbilledNote')}</p>
                 <TableShell
                     label={t('fc.inv.s.unbilled')}
@@ -244,6 +245,7 @@ export default function FinanceFacturation({ organization, period, periodLabel, 
                         </tbody>
                     </table>
                 </TableShell>
+                </>
             )}
             {section === 'summary' &&
                 (summary ? (
