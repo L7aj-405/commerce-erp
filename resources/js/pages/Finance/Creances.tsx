@@ -1,3 +1,4 @@
+import { FinancePlaceholder, SectionTabs, useCurrentPath, useSection } from '@/components/finance/FinanceClientsKit';
 import FinanceFilters, { type FinanceStore } from '@/components/finance/FinanceFilters';
 import PageHeader from '@/components/ui/PageHeader';
 import EmptyState from '@/components/ui/EmptyState';
@@ -35,6 +36,9 @@ type Props = {
 
 export default function FinanceCreances({ organization, period, periodLabel, asOf, storeId, stores, total, orders }: Props) {
     const { t } = useI18n();
+    const path = useCurrentPath();
+    const section = useSection(['receivables', 'dues', 'aging', 'reminders', 'forecasts'] as const, 'receivables');
+    const sections = [{ key: 'receivables', label: t('fc.rec.s.receivables') }, { key: 'dues', label: t('fc.rec.s.dues') }, { key: 'aging', label: t('fc.rec.s.aging') }, { key: 'reminders', label: t('fc.rec.s.reminders') }, { key: 'forecasts', label: t('fc.rec.s.forecasts') }];
     return (
         <ApplicationShell wide>
             <Head title={`${t('finance.receivables.title')} — Finance`} />
@@ -46,8 +50,11 @@ export default function FinanceCreances({ organization, period, periodLabel, asO
                 {t('finance.receivables.title')} : <strong className="text-ink" dir="ltr">{formatMoney(total)}</strong>
                 <InfoTip label={t('finance.receivables.totalDefinitionLabel')}>{t('finance.receivables.totalDefinition')}</InfoTip>
             </p>
-            <FinanceFilters path="/finance/creances" period={period} storeId={storeId} stores={stores} />
+            <SectionTabs sections={sections} active={section} label={t('fc.sections')} />
+            <FinanceFilters path={path} extra={{ section }} period={period} storeId={storeId} stores={stores} />
 
+            {section === 'receivables' && (
+                <>
             {/* Desktop/tablet: table */}
             <TableShell
                 label={t('finance.receivables.title')}
@@ -138,6 +145,13 @@ export default function FinanceCreances({ organization, period, periodLabel, asO
                     </>
                 )}
             </div>
+                </>
+            )}
+            {/* Future: due dates (no payment-terms field exists), aged balance, reminders (no automation), customer forecasts. */}
+            {section === 'dues' && <FinancePlaceholder plannedKey="fc.rec.p.dues" />}
+            {section === 'aging' && <FinancePlaceholder plannedKey="fc.rec.p.aging" />}
+            {section === 'reminders' && <FinancePlaceholder plannedKey="fc.rec.p.reminders" />}
+            {section === 'forecasts' && <FinancePlaceholder plannedKey="fc.rec.p.forecasts" />}
         </ApplicationShell>
     );
 }

@@ -13,6 +13,7 @@ use App\Services\Finance\FinanceInvoiceReadModel;
 use App\Services\Finance\FinanceMonthlyReportService;
 use App\Services\Finance\FinancePeriod;
 use App\Services\Finance\FinanceReceivablesService;
+use App\Support\Decimal;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -84,6 +85,7 @@ class FinanceDashboardController extends Controller
         ActiveTenantContext $context,
         FinanceAccessGuard $guard,
         FinanceInvoiceReadModel $invoices,
+        FinanceMonthlyReportService $report,
     ): Response {
         $organization = $context->organizationOrFail();
         $guard->authorizeView($request->user(), $organization);
@@ -97,6 +99,8 @@ class FinanceDashboardController extends Controller
             'storeId' => $store?->id,
             'stores' => $this->stores($organization),
             'invoices' => $invoices->issuedDuring($organization, $period, $store),
+            // Additive, read-only (Finance clients "Synthèse"): the same two totals the monthly situation already uses.
+            'summary' => $this->invoicingSummary($report, $organization, $period, $store),
         ]);
     }
 
@@ -173,6 +177,15 @@ class FinanceDashboardController extends Controller
             'rows' => $caEncaisse->rows($organization, $period, $store),
             'can' => ['export' => $request->user()->hasPermission($organization, 'finance.export')],
         ]);
+    }
+
+    /** @return array{gross: string, credit_notes: string, net: string} */
+    private function invoicingSummary(FinanceMonthlyReportService $report, Organization $organization, FinancePeriod $period, ?Store $store): array
+    {
+        $gross = $report->facturationTotal($organization, $period, $store);
+        $credits = $report->creditNotesTotal($organization, $period, $store);
+
+        return ['gross' => $gross, 'credit_notes' => $credits, 'net' => Decimal::subtract($gross, $credits)];
     }
 
     private function period(Request $request): FinancePeriod

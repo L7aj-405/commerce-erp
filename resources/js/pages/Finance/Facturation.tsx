@@ -1,4 +1,6 @@
+import { FinancePlaceholder, SectionTabs, useCurrentPath, useSection } from '@/components/finance/FinanceClientsKit';
 import FinanceFilters, { type FinanceStore } from '@/components/finance/FinanceFilters';
+import { MetricCard } from '@/components/ui/MetricCard';
 import PageHeader from '@/components/ui/PageHeader';
 import EmptyState from '@/components/ui/EmptyState';
 import { TablePager, TableShell } from '@/components/ui/TableShell';
@@ -30,10 +32,14 @@ type Props = {
     storeId: number | null;
     stores: FinanceStore[];
     invoices: { data: InvoiceRow[]; links: LinkData[]; total: number; from?: number | null; to?: number | null };
+    summary?: { gross: string; credit_notes: string; net: string };
 };
 
-export default function FinanceFacturation({ organization, period, periodLabel, storeId, stores, invoices }: Props) {
+export default function FinanceFacturation({ organization, period, periodLabel, storeId, stores, invoices, summary }: Props) {
     const { t } = useI18n();
+    const path = useCurrentPath();
+    const section = useSection(['invoices', 'credit_notes', 'unbilled', 'summary'] as const, 'invoices');
+    const sections = [{ key: 'invoices', label: t('fc.inv.s.invoices') }, { key: 'credit_notes', label: t('fc.inv.s.creditNotes') }, { key: 'unbilled', label: t('fc.inv.s.unbilled') }, { key: 'summary', label: t('fc.inv.s.summary') }];
     const statusLabel = (status: InvoiceRow['status']) => status === 'paid' ? t('finance.billing.settled') : status === 'partial' ? t('finance.partiallyPaid') : t('finance.unpaid');
     return (
         <ApplicationShell wide>
@@ -42,8 +48,11 @@ export default function FinanceFacturation({ organization, period, periodLabel, 
                 title={t('finance.billing.title')}
                 description={`${organization.name} · ${periodLabel} · ${invoices.total} ${t('finance.billing.issuedCount')} — ${t('finance.billing.currentDocumentHelp')}`}
             />
-            <FinanceFilters path="/finance/facturation" period={period} storeId={storeId} stores={stores} />
+            <SectionTabs sections={sections} active={section} label={t('fc.sections')} />
+            <FinanceFilters path={path} extra={{ section }} period={period} storeId={storeId} stores={stores} />
 
+            {section === 'invoices' && (
+                <>
             {/* Desktop/tablet: table */}
             <TableShell
                 label={t('finance.billing.title')}
@@ -139,6 +148,34 @@ export default function FinanceFacturation({ organization, period, periodLabel, 
                     </>
                 )}
             </div>
+                </>
+            )}
+
+            {/* Credit notes: only the period total exists today (the list lives in Journal clients). Future: dedicated credit-note list. */}
+            {section === 'credit_notes' && (
+                <>
+                    {summary && (
+                        <div className="mb-4 grid gap-3 sm:grid-cols-3">
+                            <MetricCard level="secondary" label={t('fc.inv.m.gross')} value={formatMoney(summary.gross)} />
+                            <MetricCard level="secondary" label={t('fc.inv.m.creditNotes')} value={formatMoney(summary.credit_notes)} tone="negative" />
+                            <MetricCard level="secondary" label={t('fc.inv.m.net')} value={formatMoney(summary.net)} />
+                        </div>
+                    )}
+                    <FinancePlaceholder plannedKey="fc.inv.p.creditNotes" />
+                </>
+            )}
+            {/* Future: orders confirmed but not yet invoiced (no safe organization-wide aggregate exists yet). */}
+            {section === 'unbilled' && <FinancePlaceholder plannedKey="fc.inv.p.unbilled" />}
+            {section === 'summary' &&
+                (summary ? (
+                    <div className="grid gap-4 sm:grid-cols-3">
+                        <MetricCard label={t('fc.inv.m.gross')} value={formatMoney(summary.gross)} />
+                        <MetricCard label={t('fc.inv.m.creditNotes')} value={formatMoney(summary.credit_notes)} tone="negative" />
+                        <MetricCard label={t('fc.inv.m.net')} value={formatMoney(summary.net)} helper={t('fc.inv.m.net.help')} />
+                    </div>
+                ) : (
+                    <FinancePlaceholder />
+                ))}
         </ApplicationShell>
     );
 }

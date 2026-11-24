@@ -10,7 +10,9 @@ import { useQueryFilters } from '@/hooks/useQueryFilters';
 import { useI18n } from '@/i18n';
 import PaymentsLayout from '@/layouts/PaymentsLayout';
 import { formatDate, formatMoney } from '@/utils/format';
-import { Head, Link } from '@inertiajs/react';
+import { Head, Link, usePage } from '@inertiajs/react';
+import { SectionTabs } from '@/components/finance/FinanceClientsKit';
+import type { SharedPageProps } from '@/types/app';
 
 type Account = { id: number; name: string; code: string };
 type Payment = {
@@ -35,6 +37,9 @@ type Props = {
 
 export default function PaymentIndex({ payments, accounts, filters }: Props) {
     const { t } = useI18n();
+    const { tenant } = usePage<SharedPageProps>().props;
+    // Finance users see this store-scoped list as the "Règlements" section of Encaissements clients; its data scope is unchanged.
+    const showFinanceTabs = tenant.permissions.includes('finance.view');
     // Exactly the params PaymentController@index validates.
     const f = useQueryFilters('/payments', filters as Record<string, string | undefined>, {
         keys: ['search', 'date', 'method', 'status', 'account'],
@@ -80,6 +85,18 @@ export default function PaymentIndex({ payments, accounts, filters }: Props) {
                 title={t('payments.customerTitle')}
                 description={t('payments.description')}
             />
+            {showFinanceTabs && (
+                <SectionTabs
+                    label={t('fc.sections')}
+                    active="settlements"
+                    sections={[
+                        { key: 'settlements', label: t('fc.col.s.settlements'), href: '/payments' },
+                        { key: 'monthly', label: t('fc.col.s.monthly'), href: '/finance/clients/encaissements?section=monthly' },
+                        { key: 'advances', label: t('fc.col.s.advances'), href: '/finance/clients/encaissements?section=advances' },
+                        { key: 'refunds', label: t('fc.col.s.refunds'), href: '/finance/clients/encaissements?section=refunds' },
+                    ]}
+                />
+            )}
             <SandboxPaymentBadge />
 
             <div className="mb-4">

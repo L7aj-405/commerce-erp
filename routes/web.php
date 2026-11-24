@@ -36,6 +36,7 @@ use App\Http\Controllers\Documents\InvoiceCorrectionLineController;
 use App\Http\Controllers\Finance\CommissionDashboardController;
 use App\Http\Controllers\Finance\CommissionLedgerController;
 use App\Http\Controllers\Finance\CommissionRuleController;
+use App\Http\Controllers\Finance\FinanceClientsController;
 use App\Http\Controllers\Finance\FinanceDashboardController;
 use App\Http\Controllers\Finance\FinanceExpectedCollectionController;
 use App\Http\Controllers\Finance\FinanceExportController;
@@ -784,6 +785,23 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
         Route::get('/encaissements', [FinanceDashboardController::class, 'encaissements'])->name('encaissements');
         Route::get('/creances', [FinanceDashboardController::class, 'creances'])->name('creances');
         Route::get('/journal', [FinanceJournalController::class, 'index'])->name('journal');
+
+        // Finance clients (Phase 1 UI/UX): entry routes. The four aliases below run the EXISTING controllers
+        // unchanged (same authorization, scopes, data); legacy URLs keep working. The others are read-only
+        // composition / placeholder pages, server-authorized by FinanceAccessGuard.
+        Route::prefix('clients')->name('clients.')->group(function () {
+            Route::get('/', [FinanceClientsController::class, 'overview'])->name('overview');
+            Route::get('/comptes', [FinanceClientsController::class, 'accounts'])->name('accounts');
+            Route::get('/comptes/{customer}', [FinanceClientsController::class, 'accountShow'])->whereNumber('customer')->name('accounts.show');
+            Route::get('/facturation', [FinanceDashboardController::class, 'facturation'])->name('invoicing');
+            Route::get('/encaissements', [FinanceDashboardController::class, 'encaissements'])->name('collections');
+            Route::get('/creances', [FinanceDashboardController::class, 'creances'])->name('receivables');
+            Route::get('/credit', [FinanceClientsController::class, 'planned'])->defaults('page', 'credit')->name('credit');
+            Route::get('/instruments', [FinanceClientsController::class, 'planned'])->defaults('page', 'instruments')->name('instruments');
+            Route::get('/journal', [FinanceJournalController::class, 'index'])->name('journal');
+            Route::get('/rapports', [FinanceClientsController::class, 'reports'])->name('reports');
+        });
+        Route::get('/personnel', [FinanceClientsController::class, 'planned'])->defaults('page', 'personnel')->name('personnel');
         Route::get('/ca-encaisse', [FinanceDashboardController::class, 'caEncaisse'])->name('ca-encaisse');
         Route::get('/situation-fin-de-mois', [FinanceMonthlySituationController::class, 'index'])->name('monthly-situation.index');
         Route::get('/situation-fin-de-mois/export/xlsx', [FinanceMonthReviewController::class, 'export'])

@@ -63,6 +63,7 @@ const everyPermission = (groups: Group[]) => {
         if (Array.isArray(value)) value.forEach(walk);
         else if (value && typeof value === 'object') {
             if (value.permission) [value.permission].flat().forEach((p: string) => found.add(p));
+            if (value.alsoRequires) found.add(value.alsoRequires);
             if (value.items) walk(value.items);
         }
     };
@@ -87,8 +88,13 @@ test('exposes exactly the seven target groups in order', () => {
 });
 
 test('keeps every legacy destination reachable and lists none twice', () => {
-    const hrefs = flat(full()).map((i) => i.href);
-    for (const href of LEGACY_HREFS) assert.ok(hrefs.includes(href), `legacy destination missing from navigation: ${href}`);
+    const groups = full();
+    const hrefs = flat(groups).map((i) => i.href);
+    for (const href of LEGACY_HREFS) {
+        // Reachable = listed in the navigation, or an explicit alias of a listed entry (Finance clients keeps legacy URLs alive).
+        const alias = (nav.matchActiveNav(groups, href)?.item.aliases ?? []).includes(href);
+        assert.ok(hrefs.includes(href) || alias, `legacy destination missing from navigation: ${href}`);
+    }
     assert.equal(new Set(hrefs).size, hrefs.length, 'a destination is listed twice');
 });
 
@@ -112,7 +118,7 @@ test('store-bound entries disappear without an active store', () => {
     for (const href of ['/pos', '/sales/orders', '/quotations', '/invoices', '/delivery-notes', '/sales/returns', '/procurement/supplier-requests', '/payments']) {
         assert.ok(!hrefs.includes(href), `${href} must need an active store`);
     }
-    assert.ok(hrefs.includes('/finance/encaissements'), 'organization-wide Finance reporting stays reachable');
+    assert.ok(hrefs.includes('/finance/clients/encaissements'), 'organization-wide Finance reporting stays reachable');
 });
 
 test('supplier invoices stay behind the kill switch and Test Mode', () => {
@@ -132,26 +138,70 @@ test('supplier invoices live under Achats & Fournisseurs, not Finance, with the 
     for (const href of ['/procurement/purchase-orders', '/procurement', '/procurement/suppliers']) assert.equal(where(href), 'purchasing');
 });
 
-test('Finance keeps incoming customer money and outgoing supplier money apart', () => {
+const FINANCE_CLIENTS = [
+    ['/finance/clients', 'Vue financière clients'],
+    ['/finance/clients/comptes', 'Comptes clients'],
+    ['/finance/clients/facturation', 'Facturation & avoirs'],
+    ['/finance/clients/encaissements', 'Encaissements clients'],
+    ['/finance/clients/creances', 'Créances & échéances'],
+    ['/finance/clients/credit', 'Crédit client'],
+    ['/finance/clients/instruments', 'Chèques & effets à recevoir'],
+    ['/finance/clients/journal', 'Journal clients'],
+    ['/finance/clients/rapports', 'Rapports & exports'],
+];
+
+test('Finance & Trésorerie has the approved six areas and Finance clients lists exactly nine entries in order', () => {
     const finance = full().find((g) => g.key === 'finance')!;
-    const section = (key: string) => finance.items.find((e: any) => e.key === key) as any;
-    assert.deepEqual(section('finance-incoming').items.map((i: Item) => i.href), ['/finance/encaissements', '/payments', '/finance/creances']);
-    // /payments is the customer payments list and must never be filed with supplier payments / obligations.
-    for (const key of ['finance-obligations', 'finance-reports']) {
-        assert.ok(!section(key).items.some((i: Item) => i.href === '/payments' || i.href === '/finance/encaissements'), key);
-    }
-    // The single existing outgoing-payment entry point is named for what it is (no dedicated list exists).
-    const monthEnd = finance.items.find((e) => e.href === '/finance/situation-fin-de-mois')!;
+    assert.deepEqual(finance.items.map((e) => e.href ?? e.key), [
+        '/finance', 'finance-clients', 'finance-suppliers', 'finance-staff', 'finance-treasury', 'finance-steering',
+    ]);
+    assert.deepEqual(finance.items.map((e) => e.label), [
+        'Vue d’ensemble', 'Finance clients', 'Finance fournisseurs', 'Finance du personnel', 'Trésorerie générale', 'Pilotage financier',
+    ]);
+    const clients = finance.items.find((e: any) => e.key === 'finance-clients') as any;
+    // The tenth item (/payments) exists only for users WITHOUT finance.view; with it, exactly the nine approved entries remain.
+    assert.deepEqual(clients.items.map((i: Item) => [i.href, i.label]), FINANCE_CLIENTS);
+});
+
+test('other Finance areas keep their existing destinations and the supplier-invoices entry stays under Achats', () => {
+    const finance = full().find((g) => g.key === 'finance')!;
+    const hrefs = (key: string) => (finance.items.find((e: any) => e.key === key) as any).items.map((i: Item) => i.href);
+    assert.deepEqual(hrefs('finance-suppliers'), ['/finance/situation-fin-de-mois/echeanciers-fournisseurs']);
+    assert.deepEqual(hrefs('finance-staff'), ['/finance/commissions', '/finance/commissions/ledger', '/finance/commissions/rules', '/finance/personnel']);
+    assert.deepEqual(hrefs('finance-treasury'), ['/financial-accounts']);
+    assert.deepEqual(hrefs('finance-steering'), ['/finance/situation-fin-de-mois', '/finance/situation-fin-de-mois/charges-recurrentes']);
+    // The single outgoing-payment entry point keeps its honest label.
+    const monthEnd = (finance.items.find((e: any) => e.key === 'finance-steering') as any).items[0];
     assert.match(monthEnd.label, /fournisseurs/i);
     assert.match(monthEnd.label, /fin de mois/i);
-    const customerPayments = section('finance-incoming').items.find((i: Item) => i.href === '/payments');
-    assert.match(customerPayments.label, /clients/i);
-    // /finance/journal is customer-side (invoices, credit notes, customer payments, refunds): named accordingly.
-    const journal = section('finance-reports').items.find((i: Item) => i.href === '/finance/journal');
-    assert.equal(journal.label, 'Journal des ventes');
-    assert.deepEqual(finance.items.map((e) => e.href ?? e.key), [
-        '/finance', 'finance-incoming', '/finance/situation-fin-de-mois', 'finance-obligations', '/financial-accounts', 'finance-reports', 'finance-commissions',
-    ]);
+    // Customer money never sits in a supplier / staff / treasury / steering area.
+    for (const key of ['finance-suppliers', 'finance-staff', 'finance-treasury', 'finance-steering']) {
+        assert.ok(!hrefs(key).some((h: string) => h.startsWith('/finance/clients') || h === '/payments' || h === '/finance/encaissements'), key);
+    }
+});
+
+test('Finance clients entries keep the permissions of the pages they front, and Comptes clients needs both permissions', () => {
+    const items = build('fr', tenant([])).find((g) => g.key === 'finance')!.items.find((e: any) => e.key === 'finance-clients') as any;
+    for (const item of items.items.filter((i: any) => i.href.startsWith('/finance/clients'))) assert.equal(item.permission, 'finance.view', item.href);
+    assert.equal(items.items.find((i: any) => i.href === '/finance/clients/comptes').alsoRequires, 'customers.view');
+    const onlyFinance = tenant(['finance.view']);
+    const hrefs = flat(nav.visibleNavGroups(build('fr', onlyFinance), onlyFinance)).map((i) => i.href);
+    assert.ok(!hrefs.includes('/finance/clients/comptes'), 'finance.view alone must not expose customer accounts');
+    assert.ok(hrefs.includes('/finance/clients/journal'));
+    const both = tenant(['finance.view', 'customers.view']);
+    assert.ok(flat(nav.visibleNavGroups(build('fr', both), both)).some((i) => i.href === '/finance/clients/comptes'));
+});
+
+test('a payments-only user keeps their direct (store-bound) entry; Finance users reach /payments from Encaissements clients', () => {
+    const hrefsFor = (permissions: string[], store = true) => {
+        const t = tenant(permissions, { store });
+        return flat(nav.visibleNavGroups(build('fr', t), t)).map((i) => i.href);
+    };
+    assert.ok(hrefsFor(['payments.view']).includes('/payments'));
+    assert.ok(!hrefsFor(['payments.view'], false).includes('/payments'), 'needs an active store');
+    assert.ok(!hrefsFor(['payments.view', 'finance.view']).includes('/payments'));
+    const groups = full();
+    assert.equal(nav.matchActiveNav(groups, '/payments/12')?.item.href, '/finance/clients/encaissements');
 });
 
 test('moved entries keep their permission', () => {
@@ -173,6 +223,17 @@ test('deep links highlight the right group (longest prefix wins)', () => {
     assert.equal(m('/catalog/tax-rates')?.groupKey, 'catalog');
     assert.equal(m('/integrations/woocommerce/stock-tasks')?.groupKey, 'administration');
     assert.equal(m('/finance/commissions/ledger/12')?.groupKey, 'finance');
+    // Legacy URLs highlight their Finance clients entry; deeper URLs keep the longest match.
+    assert.equal(m('/finance/facturation')?.item.href, '/finance/clients/facturation');
+    assert.equal(m('/finance/encaissements')?.item.href, '/finance/clients/encaissements');
+    assert.equal(m('/finance/creances')?.item.href, '/finance/clients/creances');
+    assert.equal(m('/finance/journal')?.item.href, '/finance/clients/journal');
+    assert.equal(m('/finance/ventes')?.item.href, '/finance/clients/rapports');
+    assert.equal(m('/finance/ca-encaisse')?.item.href, '/finance/clients/rapports');
+    assert.equal(m('/finance/clients/comptes/42')?.item.href, '/finance/clients/comptes');
+    assert.equal(m('/finance/situation-fin-de-mois/echeanciers-fournisseurs/3')?.item.href, '/finance/situation-fin-de-mois/echeanciers-fournisseurs');
+    assert.equal(m('/finance/situation-fin-de-mois')?.item.href, '/finance/situation-fin-de-mois');
+    assert.equal(m('/financial-accounts/5/movements')?.item.href, '/financial-accounts');
 });
 
 test('every label resolves in French and Arabic (no raw key, Arabic differs from French)', () => {
@@ -205,7 +266,10 @@ test('breadcrumbs follow the registry, add a terminal crumb on deeper URLs and s
     assert.equal(detail[2]!.href, undefined);
     assert.deepEqual(crumbs('/finance/factures-fournisseurs/nouvelle').map((c) => c.label), ['Achats & Fournisseurs', 'Factures fournisseurs', 'Création']);
     assert.deepEqual(crumbs('/sales/customers/7/edit').map((c) => c.label), ['Ventes & Clients', 'Clients & contacts', 'Clients', 'Modification']);
-    assert.deepEqual(crumbs('/finance/encaissements').map((c) => c.label), ['Finance & Trésorerie', 'Encaissements clients', 'Encaissements du mois']);
+    assert.deepEqual(crumbs('/finance/encaissements').map((c) => c.label), ['Finance & Trésorerie', 'Finance clients', 'Encaissements clients']);
+    assert.deepEqual(crumbs('/finance/clients/encaissements').map((c) => c.label), ['Finance & Trésorerie', 'Finance clients', 'Encaissements clients']);
+    assert.deepEqual(crumbs('/payments/7').map((c) => c.label), ['Finance & Trésorerie', 'Finance clients', 'Encaissements clients', 'Détail']);
+    assert.deepEqual(crumbs('/finance/clients/comptes/42').map((c) => c.label), ['Finance & Trésorerie', 'Finance clients', 'Comptes clients', 'Détail']);
 });
 
 test('breadcrumbs never reveal a page the user may not open', () => {
