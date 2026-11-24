@@ -66,6 +66,9 @@ class ManageCustomerOpeningBalanceAction
             if ($row->status !== 'posted') {
                 throw ValidationException::withMessages(['opening_balance' => 'Ce solde d’ouverture est déjà inversé.']);
             }
+            if (DB::table('customer_opening_balance_settlements')->where('organization_id', $customer->organization_id)->where('opening_balance_id', $openingBalanceId)->whereNull('released_date')->exists()) {
+                throw ValidationException::withMessages(['opening_balance' => 'Des avances sont affectées à ce solde d’ouverture : retirez d’abord ces affectations.']);
+            }
             $this->periods->assertOpen($customer->organization_id, $row->effective_date, 'effective_date');
             DB::table('customer_opening_balances')->where('id', $openingBalanceId)->update([
                 'status' => 'reversed', 'reversed_at' => now(), 'reversed_by_user_id' => $actor->getKey(), 'reversal_reason' => trim($reason), 'updated_at' => now(),

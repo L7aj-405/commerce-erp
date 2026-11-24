@@ -49,7 +49,7 @@ class CustomerCreditController extends Controller
             ->orderByDesc('x.id')->limit(100)->get(['x.id', 'x.customer_id', 'c.display_name', 'x.authorized_amount', 'x.reason', 'x.expires_on', 'x.consumed_at', 'x.sales_order_id', 'x.created_at']);
 
         return Inertia::render('Finance/Clients/Credit', [
-            'organization' => $organization->only(['id', 'name']), 'enforcement' => CustomerCreditGuard::enforcement($organization), 'rows' => $rows, 'exceptions' => $exceptions,
+            'organization' => $organization->only(['id', 'name']), 'enforcement' => CustomerCreditGuard::enforcement($organization), 'deductAdvances' => CustomerCreditGuard::deductsAdvances($organization), 'rows' => $rows, 'exceptions' => $exceptions,
             'customers' => $request->user()->hasPermission($organization, 'finance.customers.credit_override') ? Customer::query()->where('organization_id', $organization->getKey())->orderBy('display_name')->limit(1000)->get(['id', 'display_name']) : [],
             'can' => ['policy' => $request->user()->hasPermission($organization, 'finance.customers.terms.manage'), 'override' => $request->user()->hasPermission($organization, 'finance.customers.credit_override')],
             'truncated' => $terms->count() >= self::CAP,
@@ -61,11 +61,12 @@ class CustomerCreditController extends Controller
         abort_if(app(SandboxContext::class)->isRestricted(), 404);
         $organization = $context->organizationOrFail();
         abort_unless($request->user()->hasPermission($organization, 'finance.customers.terms.manage'), 403);
-        $data = $request->validate(['enforcement' => ['required', Rule::in(CustomerCreditGuard::ENFORCEMENT)]]);
-        $old = CustomerCreditGuard::enforcement($organization);
-        $organization->settings = array_replace_recursive($organization->settings ?? [], ['customer_credit' => ['enforcement' => $data['enforcement']]]);
+        $data = $request->validate(['enforcement' => ['required', Rule::in(CustomerCreditGuard::ENFORCEMENT)], 'deduct_advances' => ['sometimes', 'boolean']]);
+        $old = ['enforcement' => CustomerCreditGuard::enforcement($organization), 'deduct_advances' => CustomerCreditGuard::deductsAdvances($organization)];
+        $new = ['enforcement' => $data['enforcement'], 'deduct_advances' => (bool) ($data['deduct_advances'] ?? $old['deduct_advances'])];
+        $organization->settings = array_replace_recursive($organization->settings ?? [], ['customer_credit' => $new]);
         $organization->save();
-        $audit->record('customer_credit.policy_changed', $request->user(), $organization, null, $organization, oldValues: ['enforcement' => $old], newValues: ['enforcement' => $data['enforcement']]);
+        $audit->record('customer_credit.policy_changed', $request->user(), $organization, null, $organization, oldValues: $old, newValues: $new);
 
         return back()->with('success', 'Politique de crédit enregistrée.');
     }

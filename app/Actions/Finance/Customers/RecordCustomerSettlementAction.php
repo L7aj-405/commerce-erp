@@ -21,6 +21,7 @@ use App\Services\Sandbox\SandboxContext;
 use App\Support\BusinessTime;
 use App\Support\Decimal;
 use Illuminate\Database\UniqueConstraintViolationException;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -74,15 +75,16 @@ class RecordCustomerSettlementAction
             throw ValidationException::withMessages(['allocations' => 'La somme des affectations dépasse le montant du règlement.']);
         }
 
+        $fingerprint = $this->fingerprint($customer, $store, $data, $method, $amount, $allocations);
         try {
-            return DB::transaction(function () use ($actor, $customer, $organization, $store, $data, $operationId, $method, $amount, $allocations, $allocated) {
+            return DB::transaction(function () use ($actor, $customer, $organization, $store, $data, $operationId, $method, $amount, $allocations, $allocated, $fingerprint) {
                 // The account row is locked FIRST (it always exists): serializing here keeps the idempotency lookup below from taking
                 // concurrent gap locks on a not-yet-existing operation row (inserter deadlocks between identical requests).
                 $account = FinancialAccount::query()->where('organization_id', $organization->getKey())->whereKey($data['financial_account_id'])->lockForUpdate()->firstOrFail();
                 $existing = Payment::query()->where('organization_id', $organization->getKey())->where('store_id', $store->getKey())
                     ->where('client_operation_id', $operationId)->where('operation_sequence', 1)->lockForUpdate()->first();
                 if ($existing) {
-                    return $this->assertSameRequest($existing, $customer, $data, $amount);
+                    return $this->assertSameRequest($existing, $customer, $fingerprint, $data, $amount, $store);
                 }
                 if ($account->status !== FinancialAccountStatus::Active) {
                     throw ValidationException::withMessages(['financial_account_id' => 'Seul un compte financier actif peut recevoir un règlement.']);
@@ -132,6 +134,7 @@ class RecordCustomerSettlementAction
                 $payment->received_by_user_id = $actor->getKey();
                 $payment->client_operation_id = $operationId;
                 $payment->operation_sequence = 1;
+                $payment->request_fingerprint = $fingerprint;
                 $payment->save();
 
                 foreach ($allocations as $row) {
@@ -158,7 +161,7 @@ class RecordCustomerSettlementAction
                 throw $exception;
             }
 
-            return $this->assertSameRequest($existing, $customer, $data, $amount);
+            return $this->assertSameRequest($existing, $customer, $fingerprint, $data, $amount, $store);
         }
     }
 
@@ -193,10 +196,33 @@ class RecordCustomerSettlementAction
         return ['allocations' => $rows, 'advance' => $left];
     }
 
-    private function assertSameRequest(Payment $existing, Customer $customer, array $data, string $amount): Payment
+    /**
+     * Fingerprint of EVERY material attribute of the request, including the original allocation instructions. It is stored on the
+     * payment at creation, so a retry is compared with what was originally asked even after the advance was later allocated or
+     * de-allocated (the live allocations then differ, the fingerprint does not).
+     *
+     * @param  Collection<int, array{order_id:int, amount:string}>  $allocations
+     */
+    private function fingerprint(Customer $customer, Store $store, array $data, PaymentMethod $method, string $amount, $allocations): string
     {
-        if ($existing->customer_id !== $customer->getKey() || Decimal::compare((string) $existing->amount, $amount) !== 0
-            || (int) $existing->financial_account_id !== (int) $data['financial_account_id']) {
+        return hash('sha256', json_encode([
+            'organization' => (int) $customer->organization_id, 'store' => (int) $store->getKey(), 'customer' => (int) $customer->getKey(),
+            'account' => (int) $data['financial_account_id'], 'method' => $method->value, 'date' => (string) $data['payment_date'], 'amount' => $amount,
+            'reference' => trim((string) ($data['reference'] ?? '')), 'external_reference' => trim((string) ($data['external_reference'] ?? '')),
+            'notes' => trim((string) ($data['notes'] ?? '')),
+            'allocations' => $allocations->map(fn (array $row) => [(int) $row['order_id'], (string) $row['amount']])->sortBy(0)->values()->all(),
+        ], JSON_THROW_ON_ERROR));
+    }
+
+    private function assertSameRequest(Payment $existing, Customer $customer, string $fingerprint, array $data, string $amount, ?Store $store = null): Payment
+    {
+        $same = $existing->request_fingerprint !== null
+            ? hash_equals((string) $existing->request_fingerprint, $fingerprint)
+            // Legacy / pre-fingerprint rows: compare every attribute the payment itself still holds.
+            : ($existing->customer_id === $customer->getKey() && Decimal::compare((string) $existing->amount, $amount) === 0
+                && (int) $existing->financial_account_id === (int) $data['financial_account_id'] && $existing->method->value === (string) $data['method']
+                && substr((string) $existing->getRawOriginal('payment_date'), 0, 10) === (string) $data['payment_date']);
+        if (! $same || (int) $existing->organization_id !== (int) $customer->organization_id || ($store && (int) $existing->store_id !== (int) $store->getKey())) {
             throw ValidationException::withMessages(['client_operation_id' => 'Cette opération a déjà été enregistrée avec des données différentes.']);
         }
 

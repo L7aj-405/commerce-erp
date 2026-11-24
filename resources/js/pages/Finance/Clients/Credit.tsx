@@ -19,7 +19,7 @@ type Row = {
 };
 type Exception = { id: number; customer_id: number; display_name: string; authorized_amount: string; reason: string; expires_on: string | null; consumed_at: string | null; sales_order_id: number | null };
 type Props = {
-    organization: { id: number; name: string }; enforcement: 'off' | 'warn' | 'block'; rows: Row[]; exceptions: Exception[]; customers: { id: number; display_name: string }[];
+    organization: { id: number; name: string }; enforcement: 'off' | 'warn' | 'block'; deductAdvances: boolean; rows: Row[]; exceptions: Exception[]; customers: { id: number; display_name: string }[];
     can: { policy: boolean; override: boolean }; truncated: boolean;
 };
 
@@ -29,16 +29,17 @@ const LABEL: Record<(typeof SECTIONS)[number], TranslationKey> = {
 };
 
 /** FC-06 — credit control: policy, limits, exposure, terms, overruns, blocked customers and authorized exceptions (all real, audited). */
-export default function FinanceClientsCredit({ organization, enforcement, rows, exceptions, customers, can, truncated }: Props) {
+export default function FinanceClientsCredit({ organization, enforcement, deductAdvances, rows, exceptions, customers, can, truncated }: Props) {
     const { t } = useI18n();
     const section = useSection(SECTIONS, 'limits');
     const errors = usePage<{ errors?: Record<string, string> }>().props.errors ?? {};
     const [mode, setMode] = useState(enforcement);
+    const [deduct, setDeduct] = useState(deductAdvances);
     const [form, setForm] = useState({ customer_id: '', authorized_amount: '', reason: '', expires_on: '' });
     const money = (v: string | null, c: string | null) => (v === null ? UNAVAILABLE : formatMoney(v, c ?? 'MAD'));
     const list = section === 'overruns' ? rows.filter((r) => r.available !== null && Number(r.available) < 0) : section === 'blocked' ? rows.filter((r) => r.financial_status === 'blocked')
         : section === 'terms' ? rows.filter((r) => r.payment_term_days !== null) : section === 'limits' ? rows.filter((r) => r.credit_enabled) : rows;
-    const savePolicy = (e: FormEvent) => { e.preventDefault(); router.post('/finance/clients/credit/politique', { enforcement: mode }, { preserveScroll: true }); };
+    const savePolicy = (e: FormEvent) => { e.preventDefault(); router.post('/finance/clients/credit/politique', { enforcement: mode, deduct_advances: deduct },{ preserveScroll: true }); };
     const grant = (e: FormEvent) => { e.preventDefault(); router.post('/finance/clients/credit/exceptions', form, { preserveScroll: true, onSuccess: () => setForm({ customer_id: '', authorized_amount: '', reason: '', expires_on: '' }) }); };
 
     return (
@@ -49,7 +50,9 @@ export default function FinanceClientsCredit({ organization, enforcement, rows, 
                 <SelectField label={t('fc4.policy.title')} value={mode} onChange={(e) => setMode(e.target.value as Props['enforcement'])} disabled={!can.policy} className="min-w-64">
                     <option value="off">{t('fc4.policy.off')}</option><option value="warn">{t('fc4.policy.warn')}</option><option value="block">{t('fc4.policy.block')}</option>
                 </SelectField>
+                <label className="flex items-center gap-2 pb-2 text-sm"><input type="checkbox" checked={deduct} disabled={!can.policy} onChange={(e) => setDeduct(e.target.checked)} />{t('fc6.credit.deductAdvances')}</label>
                 {can.policy && <Button type="submit" variant="outline">{t('common.save')}</Button>}
+                <p className="basis-full text-[13px] text-ink-muted">{t('fc6.credit.deductHelp')}</p>
                 <p className="basis-full text-[13px] text-ink-muted">{t('fc4.policy.help')}</p>
             </form>
             {truncated && <div className="mb-4"><Alert tone="warning">{t('fc2.accounts.tooMany')}</Alert></div>}

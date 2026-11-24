@@ -9,6 +9,7 @@ use App\Services\ActiveTenantContext;
 use App\Services\Dashboards\ExecutiveDashboardService;
 use App\Services\Finance\CustomerAgingReport;
 use App\Services\Finance\CustomerCollectionForecast;
+use App\Services\Finance\CustomerReminderTemplates;
 use App\Services\Finance\FinanceAccessGuard;
 use App\Services\Finance\FinanceCaEncaisseService;
 use App\Services\Finance\FinanceInvoiceReadModel;
@@ -161,9 +162,9 @@ class FinanceDashboardController extends Controller
             'total' => $receivableData['total'],
             'orders' => $receivableData['orders'],
             // Section data is computed only for the requested tab.
-            'aging' => $section === 'aging' ? $aging->build($organization, $store, $period->end) : null,
+            'aging' => $section === 'aging' ? $aging->build($organization, $store, $period->end, max(1, (int) $request->query('page', 1))) : null,
             'forecast' => $plan,
-            'reminders' => $section === 'reminders' ? $this->reminders($organization) : null,
+            'reminders' => $section === 'reminders' ? $this->reminders($organization, $aging, $period->end, $request->user()->hasPermission($organization, 'finance.customers.schedules.manage')) : null,
             'can' => ['export' => $request->user()->hasPermission($organization, 'finance.export'), 'monthEnd' => $request->user()->hasPermission($organization, 'finance.monthly_situation.view')],
         ]);
     }
@@ -212,9 +213,17 @@ class FinanceDashboardController extends Controller
      *
      * @return array{followUps: list<mixed>, promises: list<mixed>}
      */
-    private function reminders(Organization $organization): array
+    private function reminders(Organization $organization, ?CustomerAgingReport $aging = null, ?Carbon $asOf = null, bool $canManage = false): array
     {
+        // Customers with overdue balances (invoices + unbilled orders): the targets of a manual reminder. The whole report is evaluated.
+        $overdue = $aging ? collect($aging->build($organization, null, $asOf ?? Carbon::now())['rows'])
+            ->filter(fn ($r) => ! $r['mixed_currency'] && Decimal::compare((string) $r['overdue'], '0') > 0)->take(200)
+            ->map(fn ($r) => ['customer_id' => $r['customer_id'], 'customer' => $r['customer'], 'overdue' => $r['overdue'], 'currency_code' => $r['currency_code']])->values()->all() : [];
+
         return [
+            'templates' => app(CustomerReminderTemplates::class)->forOrganization($organization),
+            'overdueCustomers' => $overdue,
+            'canManageTemplates' => $canManage,
             'followUps' => DB::table('follow_ups as f')->join('customers as c', 'c.id', '=', 'f.customer_id')->where('f.organization_id', $organization->getKey())
                 ->where('f.status', 'open')->orderBy('f.due_date')->limit(100)->get(['f.id', 'f.title', 'f.due_date', 'f.priority', 'c.display_name as customer', 'f.customer_id'])->all(),
             'promises' => DB::table('customer_payment_promises as p')->join('customers as c', 'c.id', '=', 'p.customer_id')->where('p.organization_id', $organization->getKey())

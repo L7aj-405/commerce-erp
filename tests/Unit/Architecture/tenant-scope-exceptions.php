@@ -95,8 +95,6 @@ return [
     'app/Services/Finance/FinanceJournalService.php::App\\Services\\Finance\\FinanceJournalService::events::Invoice' => $r5,
     'app/Services/Finance/FinanceJournalService.php::App\\Services\\Finance\\FinanceJournalService::events::PaymentRefund' => $r5,
     'app/Services/Finance/FinanceJournalService.php::App\\Services\\Finance\\FinanceJournalService::paymentMethodsBySalesOrder::PaymentAllocation' => $r17,
-    'app/Services/Finance/FinanceReceivablesService.php::App\\Services\\Finance\\FinanceReceivablesService::orderedAllocationsBySalesOrder::PaymentAllocation' => $r17,
-    'app/Services/Finance/FinanceReceivablesService.php::App\\Services\\Finance\\FinanceReceivablesService::paidAmountsBySalesOrder::PaymentAllocation' => $r17,
     'app/Services/Finance/FinanceReceivablesService.php::App\\Services\\Finance\\FinanceReceivablesService::paidAmountsBySalesOrder::PaymentRefund' => $r17,
     'app/Services/FollowUps/FollowUpAccess.php::App\\Services\\FollowUps\\FollowUpAccess::hasStoreAccess::StoreMembership' => $r18,
     'app/Services/FollowUps/FollowUpAssignmentReleaser.php::App\\Services\\FollowUps\\FollowUpAssignmentReleaser::release::Store' => $r5,

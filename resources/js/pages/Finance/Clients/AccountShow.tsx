@@ -30,7 +30,11 @@ type Position = {
 type InvoiceRow = { id: number; invoice_number: string; version: number; invoice_date: string; due_date: string | null; status: string; subtotal_excl_tax: string; tax_total: string; total_incl_tax: string };
 type PaymentRow = { id: number; payment_number: string; payment_date: string; method: string; status: string; amount: string; customer_id: number | null; allocated: string; advance_left: string };
 type StatementRow = { date: string; type: string; reference: string; description: string; debit: string; credit: string; balance: string; doc_type: string | null; doc_id: number | null };
-type Statement = { currency_code: string | null; opening: string; closing: string; total_debit: string; total_credit: string; rows: StatementRow[]; truncated: boolean; mixed_currency: boolean } | null;
+type Statement = {
+    currency_code: string | null; opening: string; closing: string; total_debit: string; total_credit: string; rows: StatementRow[]; mixed_currency: boolean;
+    page: number; pages: number; total_rows: number; per_page: number;
+    breakdown: { commercial_balance: string; invoiced_receivable: string; unbilled: string; advances_available: string; refund_obligation: string; credit_notes_without_received_return: number } | null;
+} | null;
 type Props = {
     customer: { id: number; display_name: string; company_name: string | null; email: string | null; phone: string | null; status: string; type: string };
     position: Position;
@@ -38,6 +42,7 @@ type Props = {
     forecast?: { by_currency: Record<string, Record<string, string>>; installments: PlanInstallment[]; instruments: { id: number; type: string; number: string; amount: string; currency_code: string; expected_date: string | null; maturity_date: string | null; state: string }[] };
     promises?: Promise_[];
     invoices?: InvoiceRow[]; invoicesCount?: number;
+    openingTargets?: { id: number; reference: string; currency_code: string; outstanding: string }[];
     payments?: PaymentRow[]; paymentsCount?: number; openOrders?: OpenOrder[]; accounts?: FinAccount[];
     statement?: Statement; period?: { from: string; to: string };
     terms?: Record<string, string | number | boolean | null> | null;
@@ -179,7 +184,7 @@ function Payments(props: Props & { currency: string }) {
                                 <td className="num px-4 py-2.5" dir="ltr">{formatMoney(p.allocated, currency)}</td>
                                 <td className="px-4 py-2.5">
                                     {p.customer_id && p.status === 'posted' && Number(p.advance_left) > 0 ? (
-                                        can.settlements ? <AdvanceAllocator customerId={customer.id} paymentId={p.id} left={p.advance_left} orders={orders} currency={currency} /> : formatMoney(p.advance_left, currency)
+                                        can.settlements ? <AdvanceAllocator customerId={customer.id} paymentId={p.id} left={p.advance_left} orders={orders} currency={currency} openings={props.openingTargets ?? []} /> : formatMoney(p.advance_left, currency)
                                     ) : UNAVAILABLE}
                                 </td>
                             </tr>
@@ -272,8 +277,28 @@ function StatementTab({ customerId, statement, period, canExport }: { customerId
                                 <td className="num px-4 py-2.5" dir="ltr">{formatMoney(statement.total_debit, cur)}</td><td className="num px-4 py-2.5" dir="ltr">{formatMoney(statement.total_credit, cur)}</td><td className="num px-4 py-2.5" dir="ltr">{formatMoney(statement.closing, cur)}</td></tr>
                         </tbody>
                     </table>
-                    {statement.truncated && <p className="px-4 py-3 text-[13px] text-warning">{t('fc2.statement.truncated')}</p>}
+                    {statement.pages > 1 && (
+                        <div className="flex items-center justify-between gap-3 px-4 py-3 text-sm text-ink-muted">
+                            <span>{statement.total_rows} {t('fc6.page.rows')} · {t('fc6.page.of')} {statement.page}/{statement.pages}</span>
+                            <span className="flex gap-2">
+                                <Button variant="outline" size="sm" disabled={statement.page <= 1} onClick={() => router.get(`/finance/clients/comptes/${customerId}`, { section: 'statement', from, to, page: statement.page - 1 }, { preserveState: true, preserveScroll: true })}>{t('fc6.page.prev')}</Button>
+                                <Button variant="outline" size="sm" disabled={statement.page >= statement.pages} onClick={() => router.get(`/finance/clients/comptes/${customerId}`, { section: 'statement', from, to, page: statement.page + 1 }, { preserveState: true, preserveScroll: true })}>{t('fc6.page.next')}</Button>
+                            </span>
+                        </div>
+                    )}
                 </TableShell>
+            )}
+            {statement?.breakdown && !statement.mixed_currency && (
+                <section aria-label={t('fc6.stmt.breakdown')} className="surface-card mt-4 p-4">
+                    <h3 className="mb-2 text-sm font-semibold text-ink">{t('fc6.stmt.breakdown')}</h3>
+                    <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+                        {([['fc6.stmt.commercial', statement.breakdown.commercial_balance], ['fc6.stmt.invoiced', statement.breakdown.invoiced_receivable], ['fc6.stmt.unbilled', statement.breakdown.unbilled],
+                            ['fc6.stmt.advances', statement.breakdown.advances_available], ['fc6.stmt.refund', statement.breakdown.refund_obligation]] as [TranslationKey, string][]).map(([label, value]) => (
+                            <div key={label}><dt className="text-[13px] text-ink-muted">{t(label)}</dt><dd className="num font-semibold" dir="ltr">{formatMoney(value, cur)}</dd></div>
+                        ))}
+                    </dl>
+                    {statement.breakdown.credit_notes_without_received_return > 0 && <div className="mt-3"><Alert tone="warning">{t('fc6.stmt.cnWarning')} ({statement.breakdown.credit_notes_without_received_return})</Alert></div>}
+                </section>
             )}
             <p className="mt-3 text-[13px] text-ink-muted">{t('fc2.statement.note')}</p>
         </>

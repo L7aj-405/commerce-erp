@@ -68,7 +68,10 @@ final class CustomerFinancialPositionService
         $openings = DB::table('customer_opening_balances')->where('organization_id', $organizationId)->where('status', 'posted')
             ->whereIn('customer_id', $customerIds)->whereDate('effective_date', '<=', $dateLimit)
             ->groupBy('customer_id', 'currency_code')->select('customer_id', 'currency_code')
-            ->selectRaw('ROUND(COALESCE(SUM(amount), 0), 4) as total')->get()->groupBy('customer_id');
+            // Outstanding opening balance: the signed line minus the advances applied to it (and not released) as of the date.
+            ->selectRaw('ROUND(COALESCE(SUM(amount - COALESCE((SELECT SUM(s.amount) FROM customer_opening_balance_settlements s WHERE s.organization_id = customer_opening_balances.organization_id'
+                .' AND s.opening_balance_id = customer_opening_balances.id AND DATE(s.effective_date) <= ? AND (s.released_date IS NULL OR DATE(s.released_date) > ?)), 0)), 0), 4) as total', [$dateLimit, $dateLimit])
+            ->get()->groupBy('customer_id');
 
         $allocated = DB::table('payment_allocations')->where('organization_id', $organizationId)->groupBy('payment_id')
             ->select('payment_id')->selectRaw('SUM(amount) as allocated');
@@ -76,7 +79,8 @@ final class CustomerFinancialPositionService
             ->where('p.organization_id', $organizationId)->where('p.status', 'posted')->whereNotNull('p.customer_id')
             ->whereIn('p.customer_id', $customerIds)->whereIn('p.store_id', $stores)
             ->groupBy('p.customer_id', 'p.currency_code')->select('p.customer_id', 'p.currency_code')
-            ->selectRaw('ROUND(COALESCE(SUM(p.amount - COALESCE(a.allocated, 0)), 0), 4) as total')->get()->groupBy('customer_id') : collect();
+            ->selectRaw('ROUND(COALESCE(SUM(p.amount - COALESCE(a.allocated, 0) - COALESCE((SELECT SUM(s.amount) FROM customer_opening_balance_settlements s WHERE s.organization_id = p.organization_id'
+                .' AND s.payment_id = p.id AND s.released_date IS NULL), 0)), 0), 4) as total')->get()->groupBy('customer_id') : collect();
 
         $instruments = DB::table('customer_payment_instruments')->where('organization_id', $organizationId)
             ->whereIn('state', self::PENDING_INSTRUMENT_STATES)->whereIn('customer_id', $customerIds)->whereIn('store_id', $stores)

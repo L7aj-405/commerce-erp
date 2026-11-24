@@ -53,7 +53,8 @@ class CustomerAccountsController extends Controller
 
     private const EXPORT_LIMIT = 20000;
 
-    private const FILTER_CAP = 5000;
+    /** Largest customer set a financial sort/filter is evaluated on; above it the request is refused with a message, never truncated. */
+    private const FILTER_CAP = 50000;
 
     public function index(Request $request, ActiveTenantContext $context, FinanceAccessGuard $guard, CustomerFinancialPositionService $positions): Response
     {
@@ -132,6 +133,11 @@ class CustomerAccountsController extends Controller
                 'payments' => $rows->map(fn ($p) => $p->toArray() + ['allocated' => Decimal::normalize((string) ($sums[$p->id] ?? '0')), 'advance_left' => $p->customer_id && $p->status->value === 'posted'
                     ? Decimal::subtract((string) $p->amount, Decimal::normalize((string) ($sums[$p->id] ?? '0'))) : '0.0000']),
                 'paymentsCount' => (clone $payments)->count(),
+                'openingTargets' => DB::table('customer_opening_balances as o')->where('o.organization_id', $organization->getKey())->where('o.customer_id', $customer->getKey())
+                    ->where('o.status', 'posted')->where('o.amount', '>', 0)
+                    ->selectRaw('o.id, o.reference, o.currency_code, ROUND(o.amount - COALESCE((SELECT SUM(s.amount) FROM customer_opening_balance_settlements s WHERE s.organization_id = o.organization_id'
+                        .' AND s.opening_balance_id = o.id AND s.released_date IS NULL), 0), 4) as outstanding')->get()
+                    ->filter(fn ($o) => Decimal::compare(Decimal::normalize((string) $o->outstanding), '0') > 0)->map(fn ($o) => ['id' => (int) $o->id, 'reference' => $o->reference, 'currency_code' => $o->currency_code, 'outstanding' => Decimal::normalize((string) $o->outstanding)])->values(),
                 'openOrders' => $this->openOrders($customer, $user, $calculator),
                 'accounts' => DB::table('financial_accounts')->where('organization_id', $organization->getKey())->where('status', 'active')->orderBy('name')->get(['id', 'name', 'code', 'currency_code', 'accepted_methods'])
                     ->map(fn ($a) => (array) $a + ['accepted_methods' => json_decode((string) $a->accepted_methods, true) ?: []]),
@@ -148,7 +154,7 @@ class CustomerAccountsController extends Controller
         }
         if ($section === 'statement') {
             [$from, $to] = $this->period($request);
-            $props += ['statement' => $statements->build($organization, $customer, $user, $from, $to), 'period' => ['from' => $from, 'to' => $to]];
+            $props += ['statement' => $statements->build($organization, $customer, $user, $from, $to, max(1, (int) $request->query('page', 1))), 'period' => ['from' => $from, 'to' => $to]];
         }
         if ($section === 'terms') {
             $props += [
@@ -248,10 +254,30 @@ class CustomerAccountsController extends Controller
     {
         $this->authorize('view', $customer);
         abort_unless($payment->customer_id === $customer->getKey(), 404);
-        $data = $request->validate(['allocations' => ['required', 'array', 'min:1', 'max:200'], 'allocations.*.sales_order_id' => ['required', 'integer'], 'allocations.*.amount' => ['required', 'decimal:0,4']]);
-        $action->allocate($request->user(), $payment, $data['allocations']);
+        $data = $request->validate(['allocations' => ['required', 'array', 'min:1', 'max:200'], 'allocations.*.sales_order_id' => ['required', 'integer'], 'allocations.*.amount' => ['required', 'decimal:0,4'],
+            'effective_date' => ['nullable', 'date_format:Y-m-d']]);
+        $action->allocate($request->user(), $payment, $data['allocations'], $data['effective_date'] ?? null);
 
         return back()->with('success', 'Avance affectée.');
+    }
+
+    public function settleOpeningBalance(Request $request, Customer $customer, Payment $payment, int $openingBalance, ManageCustomerAdvanceAction $action): RedirectResponse
+    {
+        $this->authorize('view', $customer);
+        abort_unless($payment->customer_id === $customer->getKey(), 404);
+        $data = $request->validate(['amount' => ['required', 'decimal:0,4'], 'effective_date' => ['nullable', 'date_format:Y-m-d']]);
+        $action->settleOpeningBalance($request->user(), $payment, $openingBalance, $data['amount'], $data['effective_date'] ?? null);
+
+        return back()->with('success', 'Avance affectée au solde d’ouverture.');
+    }
+
+    public function releaseOpeningSettlement(Request $request, Customer $customer, Payment $payment, int $settlement, ManageCustomerAdvanceAction $action): RedirectResponse
+    {
+        $this->authorize('view', $customer);
+        abort_unless($payment->customer_id === $customer->getKey(), 404);
+        $action->releaseOpeningSettlement($request->user(), $payment, $settlement, (string) $request->validate(['reason' => ['required', 'string', 'max:2000']])['reason']);
+
+        return back()->with('success', 'Affectation au solde d’ouverture retirée.');
     }
 
     public function deallocateAdvance(Request $request, Customer $customer, Payment $payment, SalesOrder $order, ManageCustomerAdvanceAction $action): RedirectResponse
@@ -329,31 +355,43 @@ class CustomerAccountsController extends Controller
 
             return ['items' => $customers->map(fn ($c) => $this->row($c, $figures[$c->id]))->all(), 'total' => $total, 'limited' => false];
         }
-        // Financial sort / filter needs every matching customer's figures: bounded (two grouped queries per chunk), capped.
-        $all = $query->orderBy('display_name')->orderBy('id')->limit(self::FILTER_CAP + 1)->get($columns);
-        if ($all->count() > self::FILTER_CAP) {
+        // Financial sort / filter needs every matching customer's figures. They are computed in chunks (two grouped queries per chunk, no
+        // per-customer queries) keeping only a compact (id, sort key, status) tuple per customer; the full row is built for the page only.
+        // Above HARD_CAP the request is REFUSED explicitly (`limited`), never answered with a partial list.
+        if ((clone $query)->count() > self::FILTER_CAP) {
             return ['items' => [], 'total' => 0, 'limited' => true];
         }
-        $figures = [];
-        foreach ($all->pluck('id')->chunk(1000) as $chunk) {
-            $figures += $positions->forCustomers($organization, $chunk->all(), $user);
-        }
-        $rows = $all->map(fn ($c) => $this->row($c, $figures[$c->id]))
-            ->when($filters['financial_status'] ?? null, fn ($rows, string $status) => $rows->filter(fn ($r) => $r['position']['financial_status'] === $status));
         $sort = $filters['sort'] ?? 'name';
-        if ($sort !== 'name') {
-            $key = $sort === 'advances_available' ? 'advances_available' : $sort;
-            $rows = $rows->sort(function ($a, $b) use ($key, $dir) {
-                $x = $a['position'][$key];
-                $y = $b['position'][$key];
-                $cmp = $x === null ? ($y === null ? 0 : -1) : ($y === null ? 1 : Decimal::compare($x, $y));
+        $key = $sort === 'name' ? null : $sort;
+        $tuples = [];
+        $query->select(['id', 'display_name'])->chunkById(1000, function ($chunk) use ($organization, $user, $positions, &$tuples, $filters, $key) {
+            $figures = $positions->forCustomers($organization, $chunk->pluck('id')->all(), $user);
+            foreach ($chunk as $c) {
+                $p = $figures[$c->id];
+                if (isset($filters['financial_status']) && $p['financial_status'] !== $filters['financial_status']) {
+                    continue;
+                }
+                $tuples[] = ['id' => $c->id, 'name' => (string) $c->display_name, 'sort' => $key ? $p[$key] : null];
+            }
+        });
+        usort($tuples, function ($a, $b) use ($dir, $key) {
+            $cmp = $key === null ? 0 : ($a['sort'] === null ? ($b['sort'] === null ? 0 : -1) : ($b['sort'] === null ? 1 : Decimal::compare($a['sort'], $b['sort'])));
+            if ($key !== null && $dir === 'desc') {
+                $cmp = -$cmp;
+            }
+            $byName = strcasecmp($a['name'], $b['name']) ?: $a['id'] <=> $b['id'];
 
-                return $dir === 'desc' ? -$cmp : $cmp;
-            });
+            return $cmp ?: ($key === null && $dir === 'desc' ? -$byName : $byName);
+        });
+        $slice = array_slice($tuples, ($page - 1) * $perPage, $perPage);
+        $ids = array_column($slice, 'id');
+        $customers = Customer::query()->where('organization_id', $organization->getKey())->whereIn('id', $ids)->get($columns)->keyBy('id');
+        $figures = [];
+        foreach (array_chunk($ids, 1000) as $chunk) {
+            $figures += $positions->forCustomers($organization, $chunk, $user);
         }
-        $rows = $rows->values();
 
-        return ['items' => $rows->slice(($page - 1) * $perPage, $perPage)->values()->all(), 'total' => $rows->count(), 'limited' => false];
+        return ['items' => array_map(fn ($id) => $this->row($customers[$id], $figures[$id]), $ids), 'total' => count($tuples), 'limited' => false];
     }
 
     /** @param array<string,mixed> $position @return array<string,mixed> */

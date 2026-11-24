@@ -60,7 +60,14 @@ class ManageCustomerInstrumentAction
         return DB::transaction(function () use ($actor, $customer, $data, $idempotencyKey, $store, $amount, $type) {
             $existing = DB::table('customer_payment_instruments')->where('organization_id', $customer->organization_id)->where('idempotency_key', $idempotencyKey)->first();
             if ($existing) {
-                if ((int) $existing->customer_id !== (int) $customer->getKey() || Decimal::compare((string) $existing->amount, $amount) !== 0) {
+                $same = (int) $existing->customer_id === (int) $customer->getKey() && Decimal::compare((string) $existing->amount, $amount) === 0
+                    && $existing->type === $type && (string) $existing->instrument_number === trim($data['instrument_number'])
+                    && (string) $existing->issuing_bank === (string) ($data['issuing_bank'] ?? '')
+                    && substr((string) $existing->received_date, 0, 10) === (string) $data['received_date'] && (int) $existing->financial_account_id === (int) $data['financial_account_id']
+                    && (int) ($existing->sales_order_id ?? 0) === (int) ($data['sales_order_id'] ?? 0)
+                    && substr((string) $existing->maturity_date, 0, 10) === substr((string) ($data['maturity_date'] ?? ''), 0, 10)
+                    && substr((string) $existing->expected_collection_date, 0, 10) === substr((string) ($data['expected_collection_date'] ?? ''), 0, 10);
+                if (! $same) {
                     throw ValidationException::withMessages(['idempotency_key' => 'Cette opération a déjà été enregistrée avec des données différentes.']);
                 }
 
@@ -78,6 +85,7 @@ class ManageCustomerInstrumentAction
                 }
                 $orderId = $order->getKey();
             }
+            $this->assertNoDirectPayment($customer->organization_id, trim($data['instrument_number']), null);
             $duplicate = DB::table('customer_payment_instruments')->where('organization_id', $customer->organization_id)->where('type', $type)
                 ->where('instrument_number', trim($data['instrument_number']))->where('issuing_bank', $data['issuing_bank'] ?? null)->exists();
             if ($duplicate) {
@@ -146,6 +154,8 @@ class ManageCustomerInstrumentAction
         if ($date > BusinessTime::today($customer->organization)) {
             throw ValidationException::withMessages(['date' => 'La date de compensation ne peut pas être dans le futur.']);
         }
+        // The same physical cheque must not be recorded twice: once through the instrument workflow and once as a direct cheque payment.
+        $this->assertNoDirectPayment((int) $customer->organization_id, (string) $row->instrument_number, (string) $row->idempotency_key);
         $allocations = [];
         $amount = Decimal::normalize((string) $row->amount);
         if ($row->sales_order_id) {
@@ -163,6 +173,21 @@ class ManageCustomerInstrumentAction
             'financial_account_id' => $row->financial_account_id, 'method' => $row->type === 'cheque' ? 'cheque' : 'bank_transfer', 'amount' => $amount, 'payment_date' => $date,
             'reference' => $row->instrument_number, 'external_reference' => $row->customer_reference, 'notes' => 'Compensation '.$row->type.' '.$row->instrument_number, 'allocations' => $allocations,
         ], $row->idempotency_key);
+    }
+
+    /**
+     * A POSTED cheque payment recorded directly (legacy payment flow) that already carries this instrument number as its reference
+     * means the receipt exists: recording or clearing the instrument would count the same money twice. The instrument's own clearance
+     * payment (same operation id) is the only one allowed. Legacy payment semantics are untouched: this only guards the new workflow.
+     */
+    private function assertNoDirectPayment(int $organizationId, string $number, ?string $ownOperationId): void
+    {
+        $direct = DB::table('payments')->where('organization_id', $organizationId)->where('status', 'posted')->where('method', 'cheque')
+            ->where(fn ($q) => $q->where('reference', $number)->orWhere('external_reference', $number))
+            ->when($ownOperationId, fn ($q) => $q->where(fn ($q) => $q->whereNull('client_operation_id')->orWhere('client_operation_id', '!=', $ownOperationId)))->exists();
+        if ($direct) {
+            throw ValidationException::withMessages(['instrument_number' => 'Un paiement par chèque portant ce numéro est déjà enregistré : l’encaissement serait compté deux fois.']);
+        }
     }
 
     private function event(int $organizationId, int $instrumentId, ?string $from, string $to, string $date, User $actor, ?string $note): void

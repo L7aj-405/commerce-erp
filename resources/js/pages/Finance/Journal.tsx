@@ -1,4 +1,5 @@
 import { useCurrentPath } from '@/components/finance/FinanceClientsKit';
+import { PageNav } from '@/components/finance/PageNav';
 import FinanceFilters, { type FinanceStore } from '@/components/finance/FinanceFilters';
 import SoldLines, { type SoldLine } from '@/components/finance/SoldLines';
 import PageHeader from '@/components/ui/PageHeader';
@@ -30,12 +31,13 @@ type Props = {
     stores: FinanceStore[];
     rows: { data: JournalRow[]; links: LinkData[]; total: number; from?: number | null; to?: number | null };
     events: AccountingEvent[];
+    eventsMeta?: { total: number; page: number; pages: number };
     filters?: { type?: string; search?: string };
     eventTypes?: string[];
     can?: { export: boolean };
 };
 
-export default function FinanceJournal({ organization, period, periodLabel, storeId, stores, rows, events, filters, eventTypes, can }: Props) {
+export default function FinanceJournal({ organization, period, periodLabel, storeId, stores, rows, events, eventsMeta, filters, eventTypes, can }: Props) {
     const { t } = useI18n();
     const path = useCurrentPath();
     const go = (next: { type?: string; search?: string }) => router.get(path, { month: period, store_id: storeId ?? '', ...filters, ...next }, { preserveState: true, preserveScroll: true });
@@ -90,6 +92,7 @@ export default function FinanceJournal({ organization, period, periodLabel, stor
                             ))}
                         </tbody>
                     </table>
+                    {eventsMeta && <PageNav page={eventsMeta.page} pages={eventsMeta.pages} total={eventsMeta.total} param="events_page" />}
                 </TableShell>
             </section>
 

@@ -36,6 +36,10 @@ class CustomerCreditGuard
 {
     public const ENFORCEMENT = ['off', 'warn', 'block'];
 
+    /** Signed opening balances minus the advances currently applied to them (customer_opening_balance_settlements, not released). */
+    private const OUTSTANDING_OPENING_SQL = 'ROUND(COALESCE(SUM(amount - COALESCE((SELECT SUM(s.amount) FROM customer_opening_balance_settlements s WHERE s.organization_id = customer_opening_balances.organization_id'
+        .' AND s.opening_balance_id = customer_opening_balances.id AND s.released_date IS NULL), 0)), 0), 4)';
+
     public function __construct(private readonly FinanceReceivablesService $receivables, private readonly AuditLogger $audit) {}
 
     public static function enforcement(Organization $organization): string
@@ -68,11 +72,48 @@ class CustomerCreditGuard
         }
     }
 
+    /** Optional policy: count verified, available advances (posted customer payments not allocated yet) against exposure. Default false. */
+    public static function deductsAdvances(Organization $organization): bool
+    {
+        return (bool) data_get($organization->settings, 'customer_credit.deduct_advances', false);
+    }
+
+    /**
+     * Commitment-increasing workflows other than first confirmation. `$increase` is the amount the order's total grows by.
+     * The order is already confirmed (so already inside the exposure): exposure + increase is compared with the limit.
+     * Never called for a reduction: a decrease is not a new commitment and is never blocked.
+     */
+    public function assertCanIncrease(User $actor, SalesOrder $order, string $increase, string $context): void
+    {
+        if (Decimal::compare($increase, '0') <= 0) {
+            return;
+        }
+        $this->lockCustomer($order);
+        $this->evaluate($actor, $order, $increase, $context);
+    }
+
     public function assertCanConfirm(User $actor, SalesOrder $order): void
+    {
+        if ($order->confirmed_at !== null) {
+            return;
+        }
+        $revision = $order->currentRevision;
+        if ($revision && $revision->status === 'in_progress') {
+            // Commercial correction re-confirmation: only a GROWTH of the previously committed total is a new commitment.
+            $before = (string) data_get($revision->before_snapshot, 'totals.total_incl_tax', '');
+            if ($before !== '' && Decimal::compare((string) $order->total_incl_tax, $before) <= 0) {
+                return;
+            }
+        }
+        $this->evaluate($actor, $order, (string) $order->total_incl_tax, 'confirmation');
+    }
+
+    /** `$amount` is what the exposure grows by: the order is a draft (not in the exposure yet) or already confirmed (only the increase is new). */
+    private function evaluate(User $actor, SalesOrder $order, string $amount, string $context): void
     {
         $organization = $order->organization;
         $enforcement = self::enforcement($organization);
-        if ($enforcement === 'off' || $order->customer_id === null || $order->sandbox_id !== null || $order->confirmed_at !== null) {
+        if ($enforcement === 'off' || $order->customer_id === null || $order->sandbox_id !== null) {
             return;
         }
         $terms = DB::table('customer_financial_terms')->where('organization_id', $order->organization_id)->where('customer_id', $order->customer_id)->lockForUpdate()->first();
@@ -85,8 +126,24 @@ class CustomerCreditGuard
             return;
         }
 
-        $exposure = $this->exposureExcluding($organization, (int) $order->customer_id);
-        $after = Decimal::add($exposure, (string) $order->total_incl_tax);
+        $info = $this->exposureInfo($organization, (int) $order->customer_id, (string) $order->currency_code);
+        if (! $info['comparable']) {
+            // Never compare incompatible currencies silently: the limit is expressed in one currency.
+            $this->audit->record('customer_credit.currency_not_comparable', $actor, $organization, $order->store, $order, newValues: [
+                'customer_id' => $order->customer_id, 'order_currency' => $order->currency_code, 'exposure_currencies' => $info['currencies'], 'context' => $context,
+            ]);
+            if (! $blockedStatus) {
+                if ($enforcement === 'block' && $terms->policy === 'block') {
+                    logger()->notice('customer_credit.blocked', ['organization_id' => $order->organization_id, 'customer_id' => $order->customer_id, 'order_id' => $order->getKey(), 'reason' => 'currency_not_comparable']);
+                    throw ValidationException::withMessages(['order' => 'Le plafond de crédit ne peut pas être évalué : le client a des engagements dans plusieurs devises.']);
+                }
+
+                return;
+            }
+            $info['exposure'] = '0.0000';
+        }
+        $after = Decimal::add($info['exposure'], $amount);
+        $after = Decimal::compare($after, '0') < 0 ? '0.0000' : $after;
         $excess = $limited ? Decimal::subtract($after, (string) $terms->credit_limit) : '0.0000';
         $exceeds = $limited && Decimal::compare($excess, '0') > 0;
         if (! $blockedStatus && ! $exceeds) {
@@ -126,12 +183,50 @@ class CustomerCreditGuard
     /** Current exposure (organization-wide, every store): receivable + unbilled + max(opening, 0). */
     public function exposureExcluding(Organization $organization, int $customerId): string
     {
+        return $this->exposureInfo($organization, $customerId, null)['exposure'];
+    }
+
+    /**
+     * Exposure in ONE currency. `comparable` is false when the customer has commitments (documents or opening balances) in more than
+     * one currency, or in a currency other than `$currency`: the figure is then meaningless against a single limit and is never used silently.
+     *
+     * @return array{exposure:string, comparable:bool, currencies:list<string>}
+     */
+    public function exposureInfo(Organization $organization, int $customerId, ?string $currency): array
+    {
         $storeIds = DB::table('stores')->where('organization_id', $organization->getKey())->pluck('id')->map(fn ($id) => (int) $id)->all();
         $position = $this->receivables->customerPositionsAsOf($organization, [$customerId], $storeIds)[$customerId] ?? null;
-        $opening = (string) DB::table('customer_opening_balances')->where('organization_id', $organization->getKey())->where('customer_id', $customerId)->where('status', 'posted')->sum('amount');
-        $opening = Decimal::compare(Decimal::normalize($opening), '0') > 0 ? Decimal::normalize($opening) : '0.0000';
+        $currencies = $position && ! $position['mixed_currency'] && $position['currency_code'] ? [(string) $position['currency_code']] : [];
+        $mixed = (bool) ($position['mixed_currency'] ?? false);
+        $openings = DB::table('customer_opening_balances')->where('organization_id', $organization->getKey())->where('customer_id', $customerId)->where('status', 'posted')
+            ->groupBy('currency_code')->select('currency_code')->selectRaw(self::OUTSTANDING_OPENING_SQL.' as total')->get();
+        $opening = '0.0000';
+        foreach ($openings as $row) {
+            $total = Decimal::normalize((string) $row->total);
+            if (Decimal::compare($total, '0') === 0) {
+                continue;
+            }
+            $currencies[] = (string) $row->currency_code;
+            if ($currency === null || $row->currency_code === $currency) {
+                $opening = Decimal::compare($total, '0') > 0 ? $total : '0.0000';
+            }
+        }
+        $currencies = array_values(array_unique($currencies));
+        $comparable = ! $mixed && count($currencies) <= 1 && ($currency === null || $currencies === [] || $currencies[0] === $currency);
+        $exposure = Decimal::add(Decimal::add((string) ($position['receivable'] ?? '0'), (string) ($position['unbilled'] ?? '0')), $opening);
+        if ($comparable && self::deductsAdvances($organization)) {
+            $payments = DB::table('payments as p')->where('p.organization_id', $organization->getKey())->where('p.customer_id', $customerId)->where('p.status', 'posted')
+                ->when($currency, fn ($q) => $q->where('p.currency_code', $currency));
+            $received = Decimal::normalize((string) (clone $payments)->sum('p.amount'));
+            $allocated = Decimal::normalize((string) (clone $payments)->join('payment_allocations as a', 'a.payment_id', '=', 'p.id')->sum('a.amount'));
+            $allocated = Decimal::add($allocated, Decimal::normalize((string) (clone $payments)->join('customer_opening_balance_settlements as s', 's.payment_id', '=', 'p.id')
+                ->whereNull('s.released_date')->sum('s.amount')));
+            $advances = Decimal::subtract($received, $allocated);
+            // Verified money only: a pending cheque/effect has no posted payment yet, so it can never be deducted here.
+            $exposure = Decimal::subtract($exposure, Decimal::compare($advances, '0') > 0 ? $advances : '0.0000');
+        }
 
-        return Decimal::add(Decimal::add((string) ($position['receivable'] ?? '0'), (string) ($position['unbilled'] ?? '0')), $opening);
+        return ['exposure' => $exposure, 'comparable' => $comparable, 'currencies' => $currencies];
     }
 
     /**
@@ -148,7 +243,7 @@ class CustomerCreditGuard
         $storeIds = DB::table('stores')->where('organization_id', $organization->getKey())->pluck('id')->map(fn ($id) => (int) $id)->all();
         $positions = $this->receivables->customerPositionsAsOf($organization, $customerIds, $storeIds);
         $openings = DB::table('customer_opening_balances')->where('organization_id', $organization->getKey())->where('status', 'posted')->whereIn('customer_id', $customerIds)
-            ->groupBy('customer_id')->select('customer_id')->selectRaw('ROUND(SUM(amount), 4) as total')->pluck('total', 'customer_id');
+            ->groupBy('customer_id')->select('customer_id')->selectRaw(self::OUTSTANDING_OPENING_SQL.' as total')->pluck('total', 'customer_id');
         $out = [];
         foreach ($customerIds as $id) {
             $p = $positions[$id] ?? null;

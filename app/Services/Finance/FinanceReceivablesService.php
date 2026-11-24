@@ -153,18 +153,17 @@ class FinanceReceivablesService
         $organizationId = (int) $organization->getKey();
         $date = $asOf->toDateString();
 
-        $collections = DB::table('payment_allocations')
+        $collections = $this->allocationLedger($date)
             ->join('payments', function ($join) {
                 $join->on('payments.id', '=', 'payment_allocations.payment_id')
                     ->on('payments.organization_id', '=', 'payment_allocations.organization_id');
             })
             ->where('payment_allocations.organization_id', $organizationId)
             ->where('payments.status', PaymentStatus::Posted->value)
-            ->whereDate('payments.payment_date', '<=', $date)
             ->groupBy('payment_allocations.sales_order_id')
             ->select('payment_allocations.sales_order_id')
             ->selectRaw('SUM(payment_allocations.amount) as collected_amount')
-            ->selectRaw('MAX(payments.payment_date) as last_payment_date');
+            ->selectRaw('MAX(payment_allocations.effective_date) as last_payment_date');
         $refunds = DB::table('payment_refunds')
             ->where('organization_id', $organizationId)
             ->where('status', 'posted')
@@ -581,12 +580,11 @@ class FinanceReceivablesService
             ->groupBy('sales_order_id')
             ->select('sales_order_id', DB::raw('SUM(amount) as refunded_amount'));
 
-        return DB::table('payment_allocations')
+        return $this->allocationLedger($asOf->toDateString())
             ->join('payments', 'payments.id', '=', 'payment_allocations.payment_id')
             ->leftJoinSub($refunds, 'refunds', 'refunds.sales_order_id', '=', 'payment_allocations.sales_order_id')
             ->whereIn('payment_allocations.sales_order_id', $salesOrderIds)
             ->where('payments.status', PaymentStatus::Posted->value)
-            ->whereDate('payments.payment_date', '<=', $asOf->toDateString())
             ->groupBy('payment_allocations.sales_order_id')
             ->select('payment_allocations.sales_order_id', DB::raw('SUM(payment_allocations.amount) - COALESCE(MAX(refunds.refunded_amount), 0) as amount'))
             ->pluck('amount', 'payment_allocations.sales_order_id')
@@ -612,14 +610,13 @@ class FinanceReceivablesService
             return [];
         }
 
-        return DB::table('payment_allocations')
+        return $this->allocationLedger($asOf?->toDateString() ?? '9999-12-31')
             ->join('payments', 'payments.id', '=', 'payment_allocations.payment_id')
             ->whereIn('payment_allocations.sales_order_id', $salesOrderIds)
             ->where('payments.status', PaymentStatus::Posted->value)
-            ->when($asOf, fn ($query) => $query->whereDate('payments.payment_date', '<=', $asOf->toDateString()))
-            ->orderBy('payments.payment_date')
+            ->orderBy('payment_allocations.effective_date')
             ->orderBy('payments.id')
-            ->get(['payment_allocations.sales_order_id', 'payments.id as payment_id', 'payments.payment_date', 'payment_allocations.amount'])
+            ->get(['payment_allocations.sales_order_id', 'payments.id as payment_id', 'payment_allocations.effective_date as payment_date', 'payment_allocations.amount'])
             ->groupBy('sales_order_id')
             ->map(fn ($rows) => $rows->map(fn ($row) => [
                 'payment_id' => (int) $row->payment_id,
@@ -650,13 +647,35 @@ class FinanceReceivablesService
             ->map(fn ($row) => $this->toOutstandingRow($row));
     }
 
+    /**
+     * Allocation ledger as of a date, exposed under the alias `payment_allocations` so existing joins keep working.
+     * An allocation counts from its effective date (NULL = the payment's own date: legacy rows and allocations made at receipt),
+     * and a de-allocated one (payment_allocation_releases) still counts until the day it was released. Treasury (payment_date)
+     * is never read here: a late allocation of an old advance moves the receivable, not the cash.
+     */
+    public function allocationLedger(string $date): \Illuminate\Database\Query\Builder
+    {
+        $live = DB::table('payment_allocations as pa')
+            ->join('payments as pay', function ($join) {
+                $join->on('pay.id', '=', 'pa.payment_id')->on('pay.organization_id', '=', 'pa.organization_id');
+            })
+            ->whereRaw('DATE(COALESCE(pa.effective_date, pay.payment_date)) <= ?', [$date])
+            ->select('pa.organization_id', 'pa.payment_id', 'pa.sales_order_id', 'pa.amount')
+            ->selectRaw('DATE(COALESCE(pa.effective_date, pay.payment_date)) as effective_date');
+        $released = DB::table('payment_allocation_releases as rel')
+            ->whereRaw('DATE(rel.effective_date) <= ?', [$date])->whereRaw('DATE(rel.released_date) > ?', [$date])
+            ->select('rel.organization_id', 'rel.payment_id', 'rel.sales_order_id', 'rel.amount')
+            ->selectRaw('DATE(rel.effective_date) as effective_date');
+
+        return DB::query()->fromSub($live->unionAll($released), 'payment_allocations');
+    }
+
     private function obligationsQuery(Organization $organization, Carbon $asOf, ?Store $store)
     {
-        $collectionsSubquery = DB::table('payment_allocations')
+        $collectionsSubquery = $this->allocationLedger($asOf->toDateString())
             ->join('payments', 'payments.id', '=', 'payment_allocations.payment_id')
             ->where('payments.organization_id', $organization->getKey())
             ->where('payments.status', PaymentStatus::Posted->value)
-            ->whereDate('payments.payment_date', '<=', $asOf->toDateString())
             ->groupBy('payment_allocations.sales_order_id')
             ->select('payment_allocations.sales_order_id', DB::raw('SUM(payment_allocations.amount) as collected_amount'));
 

@@ -106,21 +106,38 @@ export function SettlementForm({ customerId, accounts, orders }: { customerId: n
 }
 
 /** Allocate what is left of one advance to open orders (the server enforces every limit). */
-export function AdvanceAllocator({ customerId, paymentId, left, orders, currency }: { customerId: number; paymentId: number; left: string; orders: OpenOrder[]; currency: string }) {
+export type OpeningTarget = { id: number; reference: string; currency_code: string; outstanding: string };
+
+export function AdvanceAllocator({ customerId, paymentId, left, orders, currency, openings = [] }: { customerId: number; paymentId: number; left: string; orders: OpenOrder[]; currency: string; openings?: OpeningTarget[] }) {
     const { t } = useI18n();
     const [open, setOpen] = useState(false);
     const [alloc, setAlloc] = useState<Record<number, string>>({});
+    const [effective, setEffective] = useState('');
+    const [openingAmounts, setOpeningAmounts] = useState<Record<number, string>>({});
     const errors = usePage<{ errors?: Record<string, string> }>().props.errors ?? {};
     const submit = (event: FormEvent) => {
         event.preventDefault();
-        router.post(`/finance/clients/comptes/${customerId}/avances/${paymentId}/affecter`, {
-            allocations: Object.entries(alloc).filter(([, v]) => v && Number(v) > 0).map(([id, v]) => ({ sales_order_id: Number(id), amount: v })),
-        }, { preserveScroll: true, onSuccess: () => { setOpen(false); setAlloc({}); } });
+        const rows = Object.entries(alloc).filter(([, v]) => v && Number(v) > 0).map(([id, v]) => ({ sales_order_id: Number(id), amount: v }));
+        const openingRows = Object.entries(openingAmounts).filter(([, v]) => v && Number(v) > 0);
+        const done = { preserveScroll: true, onSuccess: () => { setOpen(false); setAlloc({}); setOpeningAmounts({}); } };
+        // Opening-balance applications are separate requests (one per opening line); order allocations go in one.
+        openingRows.forEach(([id, amount], index) => router.post(`/finance/clients/comptes/${customerId}/avances/${paymentId}/solde-ouverture/${id}`, { amount, effective_date: effective || undefined }, index === openingRows.length - 1 && rows.length === 0 ? done : { preserveScroll: true }));
+        if (rows.length > 0) router.post(`/finance/clients/comptes/${customerId}/avances/${paymentId}/affecter`, { allocations: rows, effective_date: effective || undefined }, done);
     };
     if (!open) return <Button size="sm" variant="outline" onClick={() => setOpen(true)}>{t('fc2.advance.allocate')} ({formatMoney(left, currency)})</Button>;
     return (
         <form onSubmit={submit} className="mt-2 space-y-2 rounded-card border border-line p-3">
-            {errors.allocations && <Alert tone="danger">{errors.allocations}</Alert>}
+            {(errors.allocations || errors.effective_date || errors.amount || errors.opening_balance) && <Alert tone="danger">{errors.allocations ?? errors.effective_date ?? errors.amount ?? errors.opening_balance}</Alert>}
+            <label className="flex items-center justify-between gap-3 text-sm">
+                <span>{t('fc6.alloc.effectiveDate')}<span className="block text-[12px] text-ink-muted">{t('fc6.alloc.effectiveHelp')}</span></span>
+                <input type="date" className="control-input h-9 px-2" value={effective} onChange={(e) => setEffective(e.target.value)} />
+            </label>
+            {openings.map((o) => (
+                <label key={`o${o.id}`} className="flex items-center justify-between gap-3 text-sm">
+                    <span>{t('fc6.alloc.opening')} {o.reference} <span className="text-ink-muted">({formatMoney(o.outstanding, o.currency_code)})</span></span>
+                    <input className="control-input h-9 w-32 px-2 text-end" inputMode="decimal" dir="ltr" value={openingAmounts[o.id] ?? ''} onChange={(e) => setOpeningAmounts({ ...openingAmounts, [o.id]: e.target.value })} />
+                </label>
+            ))}
             {orders.map((o) => (
                 <label key={o.id} className="flex items-center justify-between gap-3 text-sm">
                     <span>{o.order_number} <span className="text-ink-muted">({formatMoney(o.remaining, currency)})</span></span>

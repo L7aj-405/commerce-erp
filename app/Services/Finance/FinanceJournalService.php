@@ -135,7 +135,8 @@ class FinanceJournalService
         }
 
         $audits = DB::table('audit_logs')->where('organization_id', $orgId)->whereIn('event', ['customer_advance.allocated', 'customer_advance.deallocated'])
-            ->when($store, fn ($q) => $q->where('store_id', $store->getKey()))->whereDate('created_at', '>=', $from)->whereDate('created_at', '<=', $to.' 23:59:59')->get(['id', 'event', 'auditable_id', 'old_values', 'new_values', 'created_at']);
+            // No upper bound on created_at: a back-dated allocation is dated by its EFFECTIVE date (filtered below), not by when it was typed.
+            ->when($store, fn ($q) => $q->where('store_id', $store->getKey()))->whereDate('created_at', '>=', $from)->get(['id', 'event', 'auditable_id', 'old_values', 'new_values', 'created_at']);
         if ($audits->isNotEmpty()) {
             $names = DB::table('payments as p')->leftJoin('customers as c', 'c.id', '=', 'p.customer_id')->where('p.organization_id', $orgId)->whereIn('p.id', $audits->pluck('auditable_id')->map(fn ($v) => (int) $v))->pluck('c.display_name', 'p.id');
             foreach ($audits as $audit) {
@@ -143,9 +144,28 @@ class FinanceJournalService
                 $old = json_decode((string) $audit->old_values, true) ?: [];
                 $allocated = $audit->event === 'customer_advance.allocated';
                 $amount = Decimal::normalize((string) ($allocated ? ($new['allocated'] ?? '0') : ($old['amount'] ?? '0')));
-                $date = BusinessTime::toLocal($organization, Carbon::parse((string) $audit->created_at, 'UTC'))->toDateString();
+                $date = ($allocated ? ($new['effective_date'] ?? null) : null) ?: BusinessTime::toLocal($organization, Carbon::parse((string) $audit->created_at, 'UTC'))->toDateString();
+                if ($date < $from || $date > $to) {
+                    continue;
+                }
                 $events->push($info($allocated ? 'allocation' : 'deallocation', $allocated ? 'Affectation d’avance' : 'Désaffectation d’avance', (int) $audit->id, $date,
                     (string) ($new['payment_number'] ?? '—'), null, $names[(int) $audit->auditable_id] ?? null, $amount, ! $allocated, "/payments/{$audit->auditable_id}"));
+            }
+        }
+
+        // Advances applied to / released from an opening balance (historical debt): dated by effective / release date, informational.
+        foreach (DB::table('customer_opening_balance_settlements as s')->join('customers as c', 'c.id', '=', 's.customer_id')->join('customer_opening_balances as o', 'o.id', '=', 's.opening_balance_id')
+            ->join('payments as p', 'p.id', '=', 's.payment_id')->where('s.organization_id', $orgId)->when($store, fn ($q) => $q->where('p.store_id', $store->getKey()))
+            ->get(['s.id', 's.amount', 's.effective_date', 's.released_date', 'c.display_name', 's.customer_id', 'o.reference as opening_reference', 'p.payment_number']) as $s) {
+            $url = "/finance/clients/comptes/{$s->customer_id}?section=terms";
+            $amount = Decimal::normalize((string) $s->amount);
+            $applied = substr((string) $s->effective_date, 0, 10);
+            if ($applied >= $from && $applied <= $to) {
+                $events->push($info('opening_settlement', 'Avance affectée à un solde d’ouverture', (int) $s->id, $applied, (string) $s->payment_number, (string) $s->opening_reference, $s->display_name, $amount, false, $url));
+            }
+            $released = $s->released_date ? substr((string) $s->released_date, 0, 10) : null;
+            if ($released !== null && $released >= $from && $released <= $to) {
+                $events->push($info('opening_settlement_release', 'Affectation à un solde d’ouverture retirée', 1000000000 + (int) $s->id, $released, (string) $s->payment_number, (string) $s->opening_reference, $s->display_name, $amount, true, $url));
             }
         }
 

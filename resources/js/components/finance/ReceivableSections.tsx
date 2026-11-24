@@ -1,17 +1,20 @@
+import { PageNav } from '@/components/finance/PageNav';
 import { Alert } from '@/components/ui/Alert';
-import { ButtonLink, DownloadLink } from '@/components/ui/Button';
+import { Button, ButtonLink, DownloadLink } from '@/components/ui/Button';
 import { MetricCard } from '@/components/ui/MetricCard';
 import { TableShell } from '@/components/ui/TableShell';
 import { useI18n } from '@/i18n';
 import type { TranslationKey } from '@/i18n/translations';
 import { formatMoney } from '@/utils/format';
-import { Link } from '@inertiajs/react';
+import { Link, router } from '@inertiajs/react';
+import { useState } from 'react';
 
 export type Aging = {
     as_of: string;
     rows: { customer_id: number; customer: string; currency_code: string | null; mixed_currency: boolean; receivable: string | null; unbilled: string | null; total: string | null; overdue: string | null; bands: Record<string, string> | null }[];
     totals: Record<string, Record<string, string>>;
     truncated: boolean;
+    total_rows: number; page: number; pages: number; per_page: number;
 };
 export type Forecast = {
     today: string;
@@ -20,7 +23,11 @@ export type Forecast = {
     instruments: { id: number; customer: string; type: string; number: string; amount: string; currency_code: string; expected_date: string | null; maturity_date: string | null; state: string }[];
     truncated: boolean;
 };
+export type ReminderTemplates = Record<string, { label: { fr: string; ar: string }; fr: string; ar: string; customized: boolean }>;
 export type Reminders = {
+    templates: ReminderTemplates;
+    overdueCustomers: { customer_id: number; customer: string; overdue: string; currency_code: string }[];
+    canManageTemplates: boolean;
     followUps: { id: number; title: string; due_date: string | null; priority: string; customer: string; customer_id: number }[];
     promises: { id: number; promised_date: string; amount: string; currency_code: string; note: string | null; customer: string; customer_id: number }[];
 };
@@ -73,6 +80,7 @@ export function AgingSection({ aging, canExport, query }: { aging: Aging | null;
                         ))}
                     </tbody>
                 </table>
+                <PageNav page={aging.page} pages={aging.pages} total={aging.total_rows} />
             </TableShell>
         </>
     );
@@ -136,12 +144,78 @@ export function ForecastSection({ forecast, monthEnd }: { forecast: Forecast | n
 }
 
 /** "Relances": open follow-ups of the existing follow-up system + open promises. Read-only; nothing is sent automatically. */
+/** Manual reminder: pick an overdue customer, a template and a language; preview the rendered text, copy it or record a follow-up. Nothing is sent. */
+function ReminderComposer({ reminders }: { reminders: Reminders }) {
+    const { t } = useI18n();
+    const [customerId, setCustomerId] = useState<string>(reminders.overdueCustomers[0] ? String(reminders.overdueCustomers[0].customer_id) : '');
+    const [template, setTemplate] = useState<string>(Object.keys(reminders.templates)[0] ?? 'courtesy');
+    const [language, setLanguage] = useState<'fr' | 'ar'>('fr');
+    const [message, setMessage] = useState('');
+    const [edit, setEdit] = useState<{ fr: string; ar: string } | null>(null);
+    const preview = async () => {
+        if (!customerId) return;
+        const query = new URLSearchParams({ customer_id: customerId, template, language }).toString();
+        const response = await fetch(`/finance/clients/creances/relances/apercu?${query}`, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+        if (response.ok) setMessage(((await response.json()) as { message: string }).message);
+    };
+    const record = () => router.post('/finance/clients/creances/relances/suivi', { customer_id: customerId, template, language }, { preserveScroll: true });
+    const save = () => edit && router.post('/finance/clients/creances/relances/modele', { template, fr: edit.fr, ar: edit.ar }, { preserveScroll: true, onSuccess: () => setEdit(null) });
+    return (
+        <section aria-label={t('fc6.reminder.title')} className="surface-card space-y-3 p-4">
+            <h3 className="text-sm font-semibold text-ink">{t('fc6.reminder.title')}</h3>
+            <p className="text-[13px] text-ink-muted">{t('fc6.reminder.help')}</p>
+            {reminders.overdueCustomers.length === 0 ? <p className="text-sm text-ink-muted">{t('fc6.reminder.none')}</p> : (
+                <div className="flex flex-wrap items-end gap-3">
+                    <label className="text-sm">{t('common.customer')}
+                        <select className="control-select mt-1 block h-10" value={customerId} onChange={(e) => { setCustomerId(e.target.value); setMessage(''); }}>
+                            {reminders.overdueCustomers.map((c) => <option key={c.customer_id} value={c.customer_id}>{c.customer} — {formatMoney(c.overdue, c.currency_code)}</option>)}
+                        </select>
+                    </label>
+                    <label className="text-sm">{t('fc6.reminder.template')}
+                        <select className="control-select mt-1 block h-10" value={template} onChange={(e) => { setTemplate(e.target.value); setMessage(''); setEdit(null); }}>
+                            {Object.entries(reminders.templates).map(([key, tpl]) => <option key={key} value={key}>{tpl.label[language]}</option>)}
+                        </select>
+                    </label>
+                    <label className="text-sm">{t('fc6.reminder.language')}
+                        <select className="control-select mt-1 block h-10" value={language} onChange={(e) => { setLanguage(e.target.value as 'fr' | 'ar'); setMessage(''); }}>
+                            <option value="fr">Français</option><option value="ar">العربية</option>
+                        </select>
+                    </label>
+                    <Button variant="outline" onClick={preview}>{t('fc6.reminder.preview')}</Button>
+                </div>
+            )}
+            {message && (
+                <div className="space-y-2">
+                    <textarea readOnly dir={language === 'ar' ? 'rtl' : 'ltr'} value={message} rows={5} className="control-input w-full p-3 text-sm" />
+                    <div className="flex gap-2">
+                        <Button variant="secondary" size="sm" onClick={() => void navigator.clipboard?.writeText(message)}>{t('fc6.reminder.copy')}</Button>
+                        <Button variant="secondary" size="sm" onClick={record}>{t('fc6.reminder.followUp')}</Button>
+                    </div>
+                </div>
+            )}
+            {reminders.canManageTemplates && (
+                <div className="border-t border-line pt-3">
+                    {edit === null ? <Button variant="outline" size="sm" onClick={() => setEdit({ fr: reminders.templates[template]?.fr ?? '', ar: reminders.templates[template]?.ar ?? '' })}>{t('fc6.reminder.edit')}</Button> : (
+                        <div className="space-y-2">
+                            <p className="text-[13px] text-ink-muted">{t('fc6.reminder.placeholders')} {'{customer} {organization} {amount} {currency} {due_date} {oldest_days}'}</p>
+                            <textarea value={edit.fr} onChange={(e) => setEdit({ ...edit, fr: e.target.value })} rows={4} dir="ltr" className="control-input w-full p-3 text-sm" aria-label="Français" />
+                            <textarea value={edit.ar} onChange={(e) => setEdit({ ...edit, ar: e.target.value })} rows={4} dir="rtl" className="control-input w-full p-3 text-sm" aria-label="العربية" />
+                            <div className="flex gap-2"><Button size="sm" onClick={save}>{t('common.save')}</Button><Button variant="outline" size="sm" onClick={() => setEdit(null)}>{t('common.cancel')}</Button></div>
+                        </div>
+                    )}
+                </div>
+            )}
+        </section>
+    );
+}
+
 export function RemindersSection({ reminders }: { reminders: Reminders | null }) {
     const { t } = useI18n();
     if (!reminders) return null;
     return (
         <div className="space-y-6">
             <Alert tone="info">{t('fc3.reminders.note')} <Link href="/work" className="underline">{t('nav.myWork')}</Link></Alert>
+            <ReminderComposer reminders={reminders} />
             <TableShell label={t('fc3.reminders.followUps')} state={reminders.followUps.length === 0 ? 'empty' : 'ready'} emptyTitle={t('fc3.reminders.noFollowUps')}>
                 <table className="erp-table min-w-[620px]"><thead><tr><th className="px-4 py-2.5">{t('common.customer')}</th><th className="px-4 py-2.5">{t('fc3.reminders.title')}</th><th className="px-4 py-2.5">{t('fc2.due')}</th></tr></thead>
                     <tbody>{reminders.followUps.map((f) => <tr key={f.id}><td className="px-4 py-2.5"><Link href={`/finance/clients/comptes/${f.customer_id}?section=schedule`}>{f.customer}</Link></td><td className="px-4 py-2.5">{f.title}</td><td className="px-4 py-2.5 text-ink-muted">{f.due_date ?? '—'}</td></tr>)}</tbody></table>

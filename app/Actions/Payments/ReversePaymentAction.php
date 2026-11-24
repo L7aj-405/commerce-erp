@@ -69,6 +69,9 @@ class ReversePaymentAction
             if ($payment->status !== PaymentStatus::Posted) {
                 throw ValidationException::withMessages(['payment' => 'Seul un paiement comptabilisé peut être annulé.']);
             }
+            if (DB::table('customer_opening_balance_settlements')->where('organization_id', $payment->organization_id)->where('payment_id', $payment->getKey())->whereNull('released_date')->exists()) {
+                throw ValidationException::withMessages(['payment' => 'Ce règlement est affecté à un solde d’ouverture : retirez d’abord cette affectation.']);
+            }
             if ($payment->refunds->isNotEmpty()) {
                 throw ValidationException::withMessages([
                     'payment' => 'Un paiement déjà remboursé ne peut pas être annulé : les deux mouvements financiers restent historiques.',

@@ -19,7 +19,9 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 class FinanceJournalController extends Controller
 {
     private const EVENT_TYPES = ['invoice', 'credit_note', 'payment', 'refund', 'payment_reversal', 'opening_balance', 'opening_balance_reversal', 'allocation', 'deallocation',
-        'instrument_received', 'instrument_in_portfolio', 'instrument_submitted', 'instrument_cleared', 'instrument_rejected', 'instrument_cancelled'];
+        'opening_settlement', 'opening_settlement_release', 'instrument_received', 'instrument_in_portfolio', 'instrument_submitted', 'instrument_cleared', 'instrument_rejected', 'instrument_cancelled'];
+
+    private const EVENTS_PER_PAGE = 100;
 
     public function index(
         Request $request,
@@ -35,6 +37,11 @@ class FinanceJournalController extends Controller
         $store = $guard->resolveStore($organization, $request->query('store_id'));
         $filters = $this->filters($request);
 
+        // Events are filtered over the WHOLE period, then only the displayed page is sliced (exports always return every filtered event).
+        $allEvents = $journal->events($organization, $period, $store, $filters)->values();
+        $eventPages = max(1, intdiv($allEvents->count() + self::EVENTS_PER_PAGE - 1, self::EVENTS_PER_PAGE));
+        $eventPage = min(max(1, (int) $request->query('events_page', 1)), $eventPages);
+
         return Inertia::render('Finance/Journal', [
             'organization' => $organization->only(['id', 'name']),
             'period' => $period->month,
@@ -43,7 +50,8 @@ class FinanceJournalController extends Controller
             'stores' => Store::query()->where('organization_id', $organization->getKey())
                 ->where('status', 'active')->orderBy('name')->get(['id', 'name', 'code']),
             'rows' => $journal->rows($organization, $period, $store),
-            'events' => $journal->events($organization, $period, $store, $filters)->values(),
+            'events' => $allEvents->slice(($eventPage - 1) * self::EVENTS_PER_PAGE, self::EVENTS_PER_PAGE)->values(),
+            'eventsMeta' => ['total' => $allEvents->count(), 'page' => $eventPage, 'pages' => $eventPages],
             'filters' => $filters,
             'eventTypes' => self::EVENT_TYPES,
             'can' => ['export' => $request->user()->hasPermission($organization, 'finance.export')],
