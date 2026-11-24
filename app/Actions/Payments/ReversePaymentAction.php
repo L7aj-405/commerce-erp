@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Services\AuditLogger;
 use App\Services\Finance\FinanceClosedPeriodGuard;
 use App\Services\SalesOrderPaymentCalculator;
+use App\Services\Sandbox\SandboxContext;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -26,8 +27,18 @@ class ReversePaymentAction
 
     public function execute(User $actor, Payment $payment, string $reason): Payment
     {
-        $order = $payment->allocations()->with('salesOrder')->firstOrFail()->salesOrder;
-        $this->authorizePayment($actor, $order, 'payments.reverse');
+        $first = $payment->allocations()->with('salesOrder')->first();
+        if ($first !== null) {
+            $this->authorizePayment($actor, $first->salesOrder, 'payments.reverse');
+        } else {
+            // Finance clients: a fully UNALLOCATED customer advance has no order to authorize from; it is authorized
+            // against its own store with the same permission and tenant rules. Any other payment without an allocation stays a 404.
+            abort_unless($payment->customer_id !== null, 404);
+            abort_if(app(SandboxContext::class)->isRestricted(), 404);
+            abort_unless($actor->active_organization_id === $payment->organization_id && $actor->active_store_id === $payment->store_id
+                && $payment->store->memberships()->where('user_id', $actor->getKey())->exists()
+                && $actor->hasPermission($payment->organization_id, 'payments.reverse'), 403);
+        }
 
         if (trim($reason) === '') {
             throw ValidationException::withMessages(['reason' => 'Un motif d’annulation est obligatoire.']);

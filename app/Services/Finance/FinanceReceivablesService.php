@@ -177,7 +177,7 @@ class FinanceReceivablesService
             ->select([
                 'sales_orders.id', 'sales_orders.organization_id', 'sales_orders.store_id', 'sales_orders.order_number',
                 'sales_orders.sale_date', 'sales_orders.customer_name', 'sales_orders.customer_company',
-                'sales_orders.customer_id', 'sales_orders.total_incl_tax', 'sales_orders.currency_code', 'sales_orders.status',
+                'sales_orders.customer_id', 'sales_orders.total_incl_tax', 'sales_orders.currency_code', 'sales_orders.status', 'sales_orders.due_date',
             ])
             ->selectRaw('COALESCE(exp_collections.collected_amount, 0) as collected_amount')
             ->selectRaw('COALESCE(exp_refunds.refunded_amount, 0) as refunded_amount')
@@ -323,6 +323,117 @@ class FinanceReceivablesService
             'overcollected' => $this->nonNegative(Decimal::normalize((string) ($invoices->overcollected ?? '0'))),
             'unbilled' => Decimal::normalize((string) ($unbilled ?? '0')),
         ];
+    }
+
+    /**
+     * BULK customer positions (Finance clients accounts index / aging): the same operands as customerPositionAsOf()
+     * (order-specific credits and net collections, settlement-precision threshold, Test Mode excluded) but grouped by
+     * customer and currency in TWO bounded aggregate queries, whatever the number of customers. Never one query per
+     * customer and never pooled across orders.
+     *
+     * Per (customer, currency): invoiced_gross, credited, net_invoiced, paid (net collections of the invoiced orders),
+     * receivable (sum per invoice of max(net - paid, 0)), overdue (receivable whose due_date < $today), undated (receivable
+     * with NO due date - never silently dated), not_due, bands 1-30 / 31-60 / 61-90 / 90+ (days past due as of $today),
+     * overcollected (refund obligation) and unbilled (confirmed orders without an issued/superseded invoice).
+     * `$asOf = null` means every document whatever its date (current position); `$today` is the overdue basis date.
+     *
+     * @param  list<int>  $customerIds
+     * @param  list<int>  $storeIds
+     * @return array<int, array<string, mixed>> keyed by customer id; `mixed_currency` is true when several currencies exist (figures then null)
+     */
+    public function customerPositionsAsOf(Organization $organization, array $customerIds, array $storeIds, ?Carbon $asOf = null, ?Carbon $today = null): array
+    {
+        $customerIds = array_values(array_unique(array_map('intval', $customerIds)));
+        $storeIds = array_values(array_unique(array_map('intval', $storeIds)));
+        if ($customerIds === [] || $storeIds === []) {
+            return [];
+        }
+        $asOf ??= Carbon::parse(self::OPEN_ENDED_AS_OF);
+        $today ??= $asOf->copy();
+        if ($today->year >= 2999) {
+            $today = Carbon::now();
+        }
+        $day = $today->toDateString();
+        $b1a = $today->copy()->subDays(30)->toDateString();
+        $b1b = $today->copy()->subDays(1)->toDateString();
+        $b2a = $today->copy()->subDays(60)->toDateString();
+        $b2b = $today->copy()->subDays(31)->toDateString();
+        $b3a = $today->copy()->subDays(90)->toDateString();
+        $b3b = $today->copy()->subDays(61)->toDateString();
+        $b4 = $today->copy()->subDays(91)->toDateString();
+        $organizationId = (int) $organization->getKey();
+
+        $netBilled = '(invoices.total_incl_tax - COALESCE(credits.credited_amount, 0))';
+        $netCollected = '(COALESCE(paid.paid_amount, 0))';
+        $threshold = Money::payableThresholdSql('invoices.currency_code');
+        $due = "ROUND({$netBilled} - {$netCollected}, 4)";
+        $over = "ROUND({$netCollected} - {$netBilled}, 4)";
+        $open = "{$due} >= ({$threshold})";
+        $sum = fn (string $condition) => "ROUND(COALESCE(SUM(CASE WHEN {$condition} THEN {$due} ELSE 0 END), 0), 4)";
+
+        $invoiceRows = $this->obligationsQuery($organization, $asOf, null)
+            ->whereIn('invoices.customer_id', $customerIds)->whereIn('invoices.store_id', $storeIds)
+            ->groupBy('invoices.customer_id', 'invoices.currency_code')
+            ->select('invoices.customer_id', 'invoices.currency_code')
+            ->selectRaw('ROUND(COALESCE(SUM(invoices.total_incl_tax), 0), 4) as invoiced_gross')
+            ->selectRaw('ROUND(COALESCE(SUM(COALESCE(credits.credited_amount, 0)), 0), 4) as credited')
+            ->selectRaw('ROUND(COALESCE(SUM(COALESCE(paid.paid_amount, 0)), 0), 4) as paid')
+            ->selectRaw($sum($open).' as receivable')
+            ->selectRaw($sum("{$open} AND invoices.due_date IS NOT NULL AND invoices.due_date < ?").' as overdue', [$day])
+            ->selectRaw($sum("{$open} AND invoices.due_date IS NULL").' as undated')
+            ->selectRaw($sum("{$open} AND invoices.due_date >= ?").' as not_due', [$day])
+            ->selectRaw($sum("{$open} AND invoices.due_date >= ? AND invoices.due_date <= ?").' as band_1_30', [$b1a, $b1b])
+            ->selectRaw($sum("{$open} AND invoices.due_date >= ? AND invoices.due_date <= ?").' as band_31_60', [$b2a, $b2b])
+            ->selectRaw($sum("{$open} AND invoices.due_date >= ? AND invoices.due_date <= ?").' as band_61_90', [$b3a, $b3b])
+            ->selectRaw($sum("{$open} AND invoices.due_date < ?").' as band_90_plus', [$b4])
+            ->selectRaw("ROUND(COALESCE(SUM(CASE WHEN {$over} >= ({$threshold}) THEN {$over} ELSE 0 END), 0), 4) as overcollected")
+            ->get();
+
+        $exposure = $this->orderExposureQuery($organization, $asOf, null)
+            ->whereIn('sales_orders.customer_id', $customerIds)->whereIn('sales_orders.store_id', $storeIds)
+            ->whereNotExists(fn ($bill) => $bill->selectRaw('1')->from('invoices as bill')
+                ->whereColumn('bill.sales_order_id', 'sales_orders.id')->where('bill.organization_id', $organizationId)
+                ->whereIn('bill.status', [InvoiceStatus::Issued->value, InvoiceStatus::Superseded->value]));
+        $unbilledRows = DB::query()->fromSub($exposure->toBase(), 'exposure')
+            ->groupBy('customer_id', 'currency_code')->select('customer_id', 'currency_code')
+            ->selectRaw('ROUND(COALESCE(SUM(ROUND(outstanding_raw, 4)), 0), 4) as unbilled')
+            ->selectRaw('ROUND(COALESCE(SUM(CASE WHEN due_date IS NOT NULL AND due_date < ? THEN ROUND(outstanding_raw, 4) ELSE 0 END), 0), 4) as unbilled_overdue', [$day])
+            ->selectRaw('ROUND(COALESCE(SUM(CASE WHEN due_date IS NULL THEN ROUND(outstanding_raw, 4) ELSE 0 END), 0), 4) as unbilled_undated')
+            ->selectRaw('ROUND(COALESCE(SUM(CASE WHEN due_date >= ? THEN ROUND(outstanding_raw, 4) ELSE 0 END), 0), 4) as unbilled_not_due', [$day])
+            ->selectRaw('ROUND(COALESCE(SUM(CASE WHEN due_date >= ? AND due_date <= ? THEN ROUND(outstanding_raw, 4) ELSE 0 END), 0), 4) as unbilled_band_1_30', [$b1a, $b1b])
+            ->selectRaw('ROUND(COALESCE(SUM(CASE WHEN due_date >= ? AND due_date <= ? THEN ROUND(outstanding_raw, 4) ELSE 0 END), 0), 4) as unbilled_band_31_60', [$b2a, $b2b])
+            ->selectRaw('ROUND(COALESCE(SUM(CASE WHEN due_date >= ? AND due_date <= ? THEN ROUND(outstanding_raw, 4) ELSE 0 END), 0), 4) as unbilled_band_61_90', [$b3a, $b3b])
+            ->selectRaw('ROUND(COALESCE(SUM(CASE WHEN due_date < ? THEN ROUND(outstanding_raw, 4) ELSE 0 END), 0), 4) as unbilled_band_90_plus', [$b4])
+            ->get();
+
+        $zero = ['invoiced_gross', 'credited', 'paid', 'receivable', 'overdue', 'undated', 'not_due', 'band_1_30', 'band_31_60', 'band_61_90', 'band_90_plus', 'overcollected', 'unbilled',
+            'unbilled_overdue', 'unbilled_undated', 'unbilled_not_due', 'unbilled_band_1_30', 'unbilled_band_31_60', 'unbilled_band_61_90', 'unbilled_band_90_plus'];
+        $out = [];
+        $merge = function (object $row) use (&$out, $zero) {
+            $id = (int) $row->customer_id;
+            $out[$id]['by_currency'][(string) $row->currency_code] ??= array_fill_keys($zero, '0.0000');
+            foreach ($zero as $column) {
+                if (property_exists($row, $column)) {
+                    $out[$id]['by_currency'][(string) $row->currency_code][$column] = Decimal::normalize((string) $row->{$column});
+                }
+            }
+        };
+        foreach ($invoiceRows as $row) {
+            $merge($row);
+        }
+        foreach ($unbilledRows as $row) {
+            $merge($row);
+        }
+        $result = [];
+        foreach ($out as $id => $data) {
+            $currencies = array_keys($data['by_currency']);
+            $mixed = count($currencies) > 1;
+            $figures = $mixed ? array_fill_keys($zero, null) : $data['by_currency'][$currencies[0]];
+            $figures['net_invoiced'] = $mixed ? null : Decimal::subtract($figures['invoiced_gross'], $figures['credited']);
+            $result[$id] = $figures + ['currency_code' => $mixed ? null : $currencies[0], 'mixed_currency' => $mixed];
+        }
+
+        return $result;
     }
 
     /**
