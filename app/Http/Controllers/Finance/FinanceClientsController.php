@@ -86,7 +86,10 @@ class FinanceClientsController extends Controller
 
         return Inertia::render('Finance/Clients/Reports', $this->base($organization, $period, $store) + [
             'profitability' => $profitability,
-            'can' => ['export' => $request->user()->hasPermission($organization, 'finance.export')],
+            // Statement access needs the same customer permission as the account page; the picker only lists customers the user may open.
+            'statementCustomers' => $request->user()->hasPermission($organization, 'customers.view')
+                ? Customer::query()->where('organization_id', $organization->getKey())->orderBy('display_name')->limit(300)->get(['id', 'display_name']) : [],
+            'can' => ['export' => $request->user()->hasPermission($organization, 'finance.export'), 'accounts' => $request->user()->hasPermission($organization, 'customers.view')],
         ]);
     }
 
@@ -98,15 +101,15 @@ class FinanceClientsController extends Controller
         abort_unless(in_array($format, ['csv', 'xlsx'], true), 404);
         $report = $profit->build($organization, $period->start->toDateString(), $period->end->toDateString(), $store);
         $audit->record('finance_clients.profitability_exported', $request->user(), $organization, $store, null, newValues: ['format' => $format, 'month' => $period->month, 'rows' => count($report['rows'])]);
-        $headers = ['Client', 'CA HT net de retours', 'CA HT couvert par un coût', 'Coût', 'Marge', 'Taux de marge', 'Lignes sans coût', 'Données incomplètes'];
+        $headers = ['Client', 'CA HT net de retours', 'CA HT couvert par un coût', 'Couverture des coûts', 'Coût', 'Marge', 'Taux de marge', 'Lignes sans coût', 'Données incomplètes', 'Statut des coûts'];
         $lines = (function () use ($report) {
             foreach ($report['rows'] as $r) {
-                yield [$r['customer'], $r['revenue'], $r['covered_revenue'], $r['cost'], $r['margin'], $r['margin_rate'], $r['missing_cost_lines'], $r['incomplete'] ? 'oui' : 'non'];
+                yield [$r['customer'], $r['revenue'], $r['covered_revenue'], $r['coverage_rate'], $r['cost'], $r['margin'], $r['margin_rate'], $r['missing_cost_lines'], $r['incomplete'] ? 'oui' : 'non', ['complete' => 'complet', 'partial' => 'partiel', 'unavailable' => 'non calculable'][$r['status']]];
             }
         })();
         $name = 'rentabilite-clients-'.$period->month;
 
-        return $format === 'csv' ? TabularExport::csv($name, $headers, $lines) : TabularExport::xlsx($name, 'Rentabilité clients', $headers, $lines, [1, 2, 3, 4, 5]);
+        return $format === 'csv' ? TabularExport::csv($name, $headers, $lines) : TabularExport::xlsx($name, 'Rentabilité clients', $headers, $lines, [1, 2, 4, 5]);
     }
 
     /** Receivable aging export (same service and filters as the page): finance.export, audited, safe CSV / XLSX. */

@@ -60,16 +60,26 @@ final class CustomerProfitabilityReport
             $margin = Decimal::subtract($this->n($s->margin ?? 0), $returnMargin);
             $missing = (int) ($s->missing ?? 0) + (int) ($r->missing ?? 0);
             $rate = Decimal::compare($covered, '0') > 0 ? Decimal::divide($margin, $covered, 4) : null;
-            $rows[] = ['customer_id' => (int) $id, 'customer' => $names[$id] ?? '—', 'revenue' => $revenue, 'covered_revenue' => $covered, 'cost' => $cost, 'margin' => $margin,
-                'margin_rate' => $rate, 'missing_cost_lines' => $missing, 'incomplete' => $missing > 0];
+            // Cost coverage (FCUX-12): with no costed line at all, cost / margin are UNAVAILABLE (null), never a confirmed zero profit.
+            $unavailable = $missing > 0 && Decimal::compare($covered, '0') <= 0;
+            $rows[] = ['customer_id' => (int) $id, 'customer' => $names[$id] ?? '—', 'revenue' => $revenue, 'covered_revenue' => $covered, 'cost' => $unavailable ? null : $cost, 'margin' => $unavailable ? null : $margin,
+                'margin_rate' => $unavailable ? null : $rate, 'coverage_rate' => Decimal::compare($revenue, '0') > 0 ? Decimal::divide($covered, $revenue, 4) : null,
+                'status' => $unavailable ? 'unavailable' : ($missing > 0 ? 'partial' : 'complete'), 'missing_cost_lines' => $missing, 'incomplete' => $missing > 0];
             foreach (['revenue' => $revenue, 'covered_revenue' => $covered, 'cost' => $cost, 'margin' => $margin] as $k => $v) {
                 $total[$k] = Decimal::add($total[$k], $v);
             }
             $total['missing_cost_lines'] += $missing;
         }
-        usort($rows, fn ($a, $b) => Decimal::compare($b['margin'], $a['margin']) ?: strcmp($a['customer'], $b['customer']));
+        usort($rows, fn ($a, $b) => Decimal::compare($b['margin'] ?? '-999999999999', $a['margin'] ?? '-999999999999') ?: strcmp($a['customer'], $b['customer']));
         $total['margin_rate'] = Decimal::compare($total['covered_revenue'], '0') > 0 ? Decimal::divide($total['margin'], $total['covered_revenue'], 4) : null;
         $total['incomplete'] = $total['missing_cost_lines'] > 0 ? 1 : 0;
+        $total['coverage_rate'] = Decimal::compare($total['revenue'], '0') > 0 ? Decimal::divide($total['covered_revenue'], $total['revenue'], 4) : null;
+        $total['status'] = $total['missing_cost_lines'] > 0 ? (Decimal::compare($total['covered_revenue'], '0') > 0 ? 'partial' : 'unavailable') : 'complete';
+        if ($total['status'] === 'unavailable') {
+            $total['cost'] = null;
+            $total['margin'] = null;
+            $total['margin_rate'] = null;
+        }
 
         return ['from' => $from, 'to' => $to, 'rows' => $rows, 'totals' => $total, 'truncated' => $truncated];
     }

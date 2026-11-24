@@ -6020,6 +6020,16 @@ export const fr = {
     "p3.credit.backToRisk": "Retour au risque de crédit",
     "p3.inst.new": "Nouvel instrument",
     "p3.settle.noCompatibleAccount": "Aucun compte financier actif n’accepte ce mode de règlement.",
+    "p3.rep.consult": "Consulter",
+    "p3.rep.export": "Exporter",
+    "p3.rep.profitability.help": "Marge par client à partir des coûts historiques enregistrés ; un coût manquant n’est jamais remplacé par un coût actuel.",
+    "p3.rep.statement.pick": "Choisir un client…",
+    "p3.rep.statement.open": "Ouvrir le relevé",
+    "p3.rep.statement.noAccess": "La consultation des relevés demande l’accès aux comptes clients.",
+    "p3.profit.coverage": "Couverture des coûts",
+    "p3.profit.unavailable": "Non calculable",
+    "p3.profit.partial": "Partiel",
+    "p3.profit.unavailableNote": "Aucune ligne vendue n’a de coût historique enregistré : la marge n’est pas calculable (elle n’est pas nulle).",
 } as const;
 
 export type TranslationKey = keyof typeof fr;
@@ -11893,4 +11903,14 @@ export const ar: Record<TranslationKey, string> = {
     "p3.credit.backToRisk": "العودة إلى مخاطر الائتمان",
     "p3.inst.new": "أداة جديدة",
     "p3.settle.noCompatibleAccount": "لا يوجد حساب مالي نشط يقبل طريقة الدفع هذه.",
+    "p3.rep.consult": "استعراض",
+    "p3.rep.export": "تصدير",
+    "p3.rep.profitability.help": "هامش الربح لكل عميل اعتماداً على التكاليف التاريخية المسجلة؛ لا تُستبدل التكلفة الناقصة بتكلفة حالية.",
+    "p3.rep.statement.pick": "اختر عميلاً…",
+    "p3.rep.statement.open": "فتح كشف الحساب",
+    "p3.rep.statement.noAccess": "يتطلب عرض كشوف الحساب صلاحية حسابات العملاء.",
+    "p3.profit.coverage": "تغطية التكاليف",
+    "p3.profit.unavailable": "غير قابل للحساب",
+    "p3.profit.partial": "جزئي",
+    "p3.profit.unavailableNote": "لا يوجد بند مباع له تكلفة تاريخية مسجلة: لا يمكن حساب الهامش (وهو ليس صفراً).",
 };
