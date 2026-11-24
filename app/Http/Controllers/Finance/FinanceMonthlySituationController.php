@@ -82,6 +82,7 @@ class FinanceMonthlySituationController extends Controller
             'paymentMethods' => collect(FinancePaymentMethod::cases())->map(fn ($case) => ['value' => $case->value, 'label' => $case->label()]),
             'currencyCode' => config('platform.currency_code', 'MAD'),
             'kpis' => $situation->kpis($organization, $period, $store),
+            'breakdown' => $situation->breakdown($organization, $period, $store),
             'obligations' => $situation->rows($organization, $period, $store, $filters),
             'futureObligations' => $situation->futureSupplierObligations($organization, $period, $store),
             'treasury' => $treasury->forecast($organization, $period, $store),
