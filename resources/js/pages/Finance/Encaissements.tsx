@@ -1,5 +1,5 @@
 import { withFinanceReturn } from '@/components/shell/FinanceReturnLink';
-import { ParentTabs, useCurrentPath, useSection } from '@/components/finance/FinanceClientsKit';
+import { ParentTabs, useCurrentPath, useQueryParams, useSection } from '@/components/finance/FinanceClientsKit';
 import FinanceFilters, { type FinanceStore } from '@/components/finance/FinanceFilters';
 import PageHeader from '@/components/ui/PageHeader';
 import EmptyState from '@/components/ui/EmptyState';
@@ -33,6 +33,7 @@ type RefundRow = {
     financial_account: { id: number; name: string; code: string; type: string } | null;
     order: { id: number; order_number: string; customer_name: string | null; customer_company: string | null } | null;
 };
+type Obligation = { invoice_id: number; invoice_number: string; sales_order_id: number; order_number: string; customer_id: number | null; customer: string; currency_code: string; amount: string };
 type LinkData = { url: string | null; label: string; active: boolean };
 type Props = {
     organization: { id: number; name: string };
@@ -42,17 +43,21 @@ type Props = {
     stores: FinanceStore[];
     payments: { data: PaymentRow[]; links: LinkData[]; total: number; from?: number | null; to?: number | null };
     refunds: { data: RefundRow[]; links: LinkData[]; total: number; from?: number | null; to?: number | null };
+    obligations: { data: Obligation[]; links: LinkData[]; total: number; from?: number | null; to?: number | null } | null;
+    obligationsTotal: string | null;
+    asOf: string;
     summary: { gross: string; refunds: string; net: string; count: number };
     settlementCustomers: { id: number; display_name: string }[];
-    can: { newSettlement: boolean };
+    can: { newSettlement: boolean; accounts: boolean };
 };
 
-export default function FinanceEncaissements({ organization, period, periodLabel, storeId, stores, payments, refunds, summary, settlementCustomers, can }: Props) {
+export default function FinanceEncaissements({ organization, period, periodLabel, storeId, stores, payments, refunds, obligations, obligationsTotal, asOf, summary, settlementCustomers, can }: Props) {
     const { t } = useI18n();
     const path = useCurrentPath();
     const current = usePage().url;
     // One authoritative register: the legacy "monthly" section is the same register and is shown as "settlements".
     const section = useSection(['settlements', 'monthly', 'refunds'] as const, 'settlements') === 'refunds' ? 'refunds' : 'settlements';
+    const refundView = useQueryParams().get('view') === 'obligations' ? 'obligations' : 'done';
     const [picking, setPicking] = useState(false);
     const [customerId, setCustomerId] = useState('');
     return (
@@ -180,6 +185,39 @@ export default function FinanceEncaissements({ organization, period, periodLabel
             )}
 
             {section === 'refunds' && (
+                <nav aria-label={t('finance.collections.refunds')} className="mb-4 flex gap-2">
+                    {(['done', 'obligations'] as const).map((v) => (
+                        <Link key={v} href={`${path}?section=refunds&view=${v}&month=${period}${storeId ? `&store_id=${storeId}` : ''}`} aria-current={refundView === v ? 'page' : undefined}
+                            className={`rounded-full border px-3 py-1 text-sm ${refundView === v ? 'border-ink bg-ink text-surface' : 'border-line text-ink-muted hover:text-ink'}`}>{v === 'done' ? t('p3.ref.done') : t('p3.ref.obligations')}</Link>
+                    ))}
+                </nav>
+            )}
+
+            {section === 'refunds' && refundView === 'obligations' && (
+                <section aria-labelledby="obl-title">
+                    <h2 id="obl-title" className="mb-1 text-base font-semibold text-ink">{t('p3.ref.total')} : <span dir="ltr">{formatMoney(obligationsTotal ?? '0')}</span></h2>
+                    <p className="mb-3 text-[13px] text-ink-muted">{t('p3.ref.obligationsHelp').replace('{date}', formatBusinessDate(asOf))}</p>
+                    <TableShell label={t('p3.ref.obligations')} state={!obligations || obligations.data.length === 0 ? 'empty' : 'ready'} emptyTitle={t('p3.ref.empty')}
+                        footer={obligations && obligations.data.length > 0 ? <TablePager links={obligations.links} from={obligations.from} to={obligations.to} total={obligations.total} /> : undefined}>
+                        <table className="erp-table min-w-[820px]">
+                            <thead><tr><th className="px-4 py-2.5">{t('common.customer')}</th><th className="px-4 py-2.5">{t('p3.ref.col.source')}</th><th className="px-4 py-2.5">{t('p3.ref.col.status')}</th><th className="num px-4 py-2.5">{t('common.amount')}</th><th className="px-4 py-2.5"><span className="sr-only">{t('common.actions')}</span></th></tr></thead>
+                            <tbody>
+                                {(obligations?.data ?? []).map((o) => (
+                                    <tr key={o.invoice_id}>
+                                        <td className="px-4 py-2.5">{o.customer_id && can.accounts ? <Link href={withFinanceReturn(`/finance/clients/comptes/${o.customer_id}?section=summary`, current)}>{o.customer}</Link> : o.customer}</td>
+                                        <td className="px-4 py-2.5"><Link href={withFinanceReturn(`/invoices/${o.invoice_id}`, current)}>{o.invoice_number}</Link> · <Link href={withFinanceReturn(`/sales/orders/${o.sales_order_id}`, current)}>{o.order_number}</Link></td>
+                                        <td className="px-4 py-2.5 text-warning">{t('p3.ref.status')}</td>
+                                        <td className="num px-4 py-2.5 font-medium" dir="ltr">{formatMoney(o.amount, o.currency_code)}</td>
+                                        <td className="px-4 py-2.5 text-end"><Link className="text-[13px] underline" href={withFinanceReturn(`/sales/orders/${o.sales_order_id}`, current)}>{t('p3.ref.openOrder')}</Link></td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </TableShell>
+                </section>
+            )}
+
+            {section === 'refunds' && refundView === 'done' && (
             <section className="mt-8" aria-labelledby="refunds-title">
                 <h2 id="refunds-title" className="mb-3 text-base font-semibold text-ink">{t('finance.collections.refunds')} · <span className="tabular-nums">{refunds.total}</span></h2>
                 <TableShell

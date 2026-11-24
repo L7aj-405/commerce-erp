@@ -815,6 +815,7 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
             Route::get('/avances', [CustomerAdvancesController::class, 'index'])->name('advances');
             Route::get('/avances/export/{format}', [CustomerAdvancesController::class, 'export'])->whereIn('format', ['csv', 'xlsx'])->middleware('throttle:10,1')->name('advances.export');
             Route::get('/instruments', [CustomerInstrumentsController::class, 'index'])->name('instruments');
+            Route::get('/instruments/export/{format}', [CustomerInstrumentsController::class, 'export'])->whereIn('format', ['csv', 'xlsx'])->middleware('throttle:10,1')->name('instruments.export');
             Route::post('/instruments', [CustomerInstrumentsController::class, 'store'])->middleware('throttle:30,1')->name('instruments.store');
             Route::post('/instruments/{instrument}/etat', [CustomerInstrumentsController::class, 'transition'])->whereNumber('instrument')->middleware('throttle:30,1')->name('instruments.transition');
             Route::get('/creances/relances/apercu', [CustomerRemindersController::class, 'preview'])->middleware('throttle:60,1')->name('reminders.preview');

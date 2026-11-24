@@ -16,6 +16,8 @@ use App\Models\User;
 use App\Services\Finance\FinanceInvoiceReadModel;
 use App\Services\Finance\FinanceMonthlyReportService;
 use App\Services\Finance\FinancePeriod;
+use App\Services\Finance\FinanceReceivablesService;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -55,7 +57,7 @@ class FinanceClientsPhase3DisplayTest extends DocumentTestCase
         $this->org->settings = $settings;
         $this->org->save();
         $warehouse = $this->createWarehouse($this->org);
-        $variant = $this->createProduct($this->org, 'Produit', 'P3-1', ['default_sale_price' => '100.0000'])->variants->first();
+        $variant = $this->createProduct($this->org, 'Produit '.Str::random(4), 'P3-'.Str::random(6), ['default_sale_price' => '100.0000'])->variants->first();
         $this->openStock($this->owner, $this->org, $warehouse, $variant, '10.0000');
         $order = $this->createDraftOrder($this->owner, $this->org, $this->store, $this->customer, ['sale_date' => now()->toDateString()]);
         $this->addCatalogLine($this->owner, $order, $variant, $warehouse, ['quantity' => $quantity]);
@@ -166,5 +168,44 @@ class FinanceClientsPhase3DisplayTest extends DocumentTestCase
         foreach (['https://evil.test/finance/clients/x', '//evil.test/finance/clients/', '/sales/orders/1'] as $bad) {
             $this->assertStringNotContainsString('fc_return', $this->post(route('documents.open', ['type' => 'invoice', 'id' => $invoice->id]), ['fc_return' => $bad])->assertRedirect()->headers->get('Location'));
         }
+    }
+
+    public function test_refund_obligations_are_per_document_authoritative_and_never_offset_by_other_receivables(): void
+    {
+        [$order] = $this->invoicedOrder('2.0000');
+        $this->recordPayment($this->owner, $order->fresh(), $this->cash, '200.0000');
+        $this->receiveReturn($order, '1.0000');             // 100 credited, 200 collected -> 100 owed back
+        $this->invoicedOrder('3.0000');                      // an unrelated, fully unpaid receivable
+
+        $props = $this->get(route('finance.clients.collections', ['section' => 'refunds', 'view' => 'obligations']))->assertOk()->viewData('page')['props'];
+        $this->assertCount(1, $props['obligations']['data']);
+        $row = $props['obligations']['data'][0];
+        $this->assertSame('100.0000', $row['amount']);
+        $this->assertSame($order->id, $row['sales_order_id']);
+        $this->assertSame($this->customer->id, $row['customer_id']);
+        $this->assertSame('MAD', $row['currency_code']);
+        $this->assertSame('100.0000', $props['obligationsTotal'], 'the unpaid receivable of another order does not reduce it');
+        $this->assertSame($props['obligationsTotal'], app(FinanceReceivablesService::class)->refundObligationAsOf($this->org, Carbon::parse($props['asOf']), null));
+
+        // The executed-refund view does not load obligations, and viewing creates no refund.
+        $done = $this->get(route('finance.clients.collections', ['section' => 'refunds']))->assertOk()->viewData('page')['props'];
+        $this->assertNull($done['obligations']);
+        $this->assertSame(0, DB::table('payment_refunds')->where('organization_id', $this->org->id)->count());
+    }
+
+    public function test_refund_views_require_finance_view_and_hide_customer_links_without_customer_permission(): void
+    {
+        $nobody = User::factory()->create();
+        $this->addOrganizationMember($this->org, $nobody, ['payments.view'], 'active', 'R'.Str::random(4));
+        $this->addStoreMember($this->store, $nobody);
+        $this->activate($nobody, $this->org, $this->store);
+        $this->actingAs($nobody)->get(route('finance.clients.collections', ['section' => 'refunds', 'view' => 'obligations']))->assertForbidden();
+
+        $viewer = User::factory()->create();
+        $this->addOrganizationMember($this->org, $viewer, ['finance.view'], 'active', 'R'.Str::random(4));
+        $this->addStoreMember($this->store, $viewer);
+        $this->activate($viewer, $this->org, $this->store);
+        $this->actingAs($viewer)->get(route('finance.clients.collections', ['section' => 'refunds', 'view' => 'obligations']))->assertOk()
+            ->assertInertia(fn (Assert $p) => $p->where('can.accounts', false));
     }
 }

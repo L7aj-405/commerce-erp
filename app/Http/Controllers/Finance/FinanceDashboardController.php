@@ -124,6 +124,7 @@ class FinanceDashboardController extends Controller
         ActiveTenantContext $context,
         FinanceAccessGuard $guard,
         FinanceMonthlyReportService $report,
+        FinanceReceivablesService $receivables,
     ): Response|RedirectResponse {
         $organization = $context->organizationOrFail();
         $guard->authorizeView($request->user(), $organization);
@@ -149,10 +150,15 @@ class FinanceDashboardController extends Controller
             'stores' => $this->stores($organization),
             'payments' => $payments,
             'refunds' => $report->refundsBreakdown($organization, $period, $store),
+            // Outstanding refund obligations (as of the period end, same service as the dashboard figure); loaded only for that view.
+            'obligations' => $request->query('section') === 'refunds' && $request->query('view') === 'obligations'
+                ? $receivables->refundObligationsBreakdownAsOf($organization, $period->end, $store) : null,
+            'obligationsTotal' => $request->query('section') === 'refunds' ? $receivables->refundObligationAsOf($organization, $period->end, $store) : null,
+            'asOf' => $period->end->toDateString(),
             // Same period and store scope as the register below (one authoritative payment register + its summary).
             'summary' => ['gross' => $gross, 'refunds' => $refunded, 'net' => Decimal::subtract($gross, $refunded), 'count' => $payments->total()],
             'settlementCustomers' => $canSettle ? Customer::query()->where('organization_id', $organization->getKey())->orderBy('display_name')->limit(300)->get(['id', 'display_name']) : [],
-            'can' => ['newSettlement' => $canSettle],
+            'can' => ['newSettlement' => $canSettle, 'accounts' => $user->hasPermission($organization, 'customers.view')],
         ]);
     }
 

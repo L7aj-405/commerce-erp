@@ -6042,6 +6042,15 @@ export const fr = {
     "p3.inv.orderValue": "Valeur de la commande (TTC)",
     "p3.inv.toCollect": "Reste à encaisser",
     "p3.inv.unbilledNote": "Commandes confirmées non facturées : la valeur totale de la commande (exposition commerciale) est distincte du reste à encaisser après règlements.",
+    "p3.ref.done": "Remboursements effectués",
+    "p3.ref.obligations": "Obligations de remboursement",
+    "p3.ref.obligationsHelp": "Montants encaissés au-delà du net facturé d’une facture (après avoirs). Chaque obligation reste rattachée à son propre document : elle n’est jamais compensée avec la créance d’une autre commande. Situation au {date}.",
+    "p3.ref.total": "Total des obligations",
+    "p3.ref.empty": "Aucune obligation de remboursement à cette date.",
+    "p3.ref.col.source": "Document source",
+    "p3.ref.col.status": "Statut",
+    "p3.ref.status": "À rembourser",
+    "p3.ref.openOrder": "Ouvrir la commande (retours / remboursements)",
 } as const;
 
 export type TranslationKey = keyof typeof fr;
@@ -11937,4 +11946,13 @@ export const ar: Record<TranslationKey, string> = {
     "p3.inv.orderValue": "قيمة الطلب (شامل الضريبة)",
     "p3.inv.toCollect": "المتبقي للتحصيل",
     "p3.inv.unbilledNote": "طلبات مؤكدة غير مفوترة: القيمة الإجمالية للطلب (التعرض التجاري) مختلفة عن المتبقي للتحصيل بعد الدفعات.",
+    "p3.ref.done": "المبالغ المستردة المنفذة",
+    "p3.ref.obligations": "التزامات الاسترداد",
+    "p3.ref.obligationsHelp": "مبالغ محصلة تتجاوز صافي فاتورة (بعد الإشعارات الدائنة). يبقى كل التزام مرتبطاً بمستنده ولا يُقاص بذمة طلب آخر. الوضع بتاريخ {date}.",
+    "p3.ref.total": "إجمالي الالتزامات",
+    "p3.ref.empty": "لا توجد التزامات استرداد في هذا التاريخ.",
+    "p3.ref.col.source": "المستند المصدر",
+    "p3.ref.col.status": "الحالة",
+    "p3.ref.status": "مستحق الاسترداد",
+    "p3.ref.openOrder": "فتح الطلب (المرتجعات / الاسترداد)",
 };

@@ -1,6 +1,6 @@
 import { ParentTabs, SectionTabs, UNAVAILABLE, useSection } from '@/components/finance/FinanceClientsKit';
 import { Alert } from '@/components/ui/Alert';
-import { Button } from '@/components/ui/Button';
+import { Button, ButtonLink } from '@/components/ui/Button';
 import DocBadge from '@/components/ui/DocBadge';
 import { SelectField, TextAreaField, TextField } from '@/components/ui/form';
 import PageHeader from '@/components/ui/PageHeader';
@@ -23,22 +23,21 @@ type PageLink = { url: string | null; label: string; active: boolean };
 type Props = {
     organization: { id: number; name: string };
     instruments: { data: Instrument[]; links: PageLink[]; from?: number | null; to?: number | null; total?: number };
-    filters: { state?: string; search?: string };
+    filters: { state?: string; search?: string; from?: string; to?: string };
     totals: { state: string; currency_code: string; total: string; count: number }[];
     events: { instrument_id: number; from_state: string | null; to_state: string; event_date: string; note: string | null }[];
     customers: { id: number; display_name: string }[];
     accounts: { id: number; name: string; currency_code: string }[];
-    can: { manage: boolean };
+    can: { manage: boolean; export?: boolean };
 };
 
 const SECTIONS = ['portfolio', 'deposits', 'cashed', 'rejected', 'dues'] as const;
 const LABEL: Record<(typeof SECTIONS)[number], TranslationKey> = { portfolio: 'fc.inst.s.portfolio', deposits: 'fc.inst.s.deposits', cashed: 'fc.inst.s.cashed', rejected: 'fc.inst.s.rejected', dues: 'fc.inst.s.dues' };
-const STATES: Record<(typeof SECTIONS)[number], string[]> = { portfolio: ['received', 'in_portfolio'], deposits: ['submitted'], cashed: ['cleared'], rejected: ['rejected', 'cancelled'], dues: ['received', 'in_portfolio', 'submitted'] };
 const NEXT: Record<string, string[]> = { received: ['in_portfolio', 'submitted', 'cancelled'], in_portfolio: ['submitted', 'cancelled'], submitted: ['cleared', 'rejected', 'cancelled'], cleared: ['rejected'] };
 const TONE: Record<string, 'neutral' | 'info' | 'warning' | 'positive' | 'danger'> = { received: 'info', in_portfolio: 'info', submitted: 'warning', cleared: 'positive', rejected: 'danger', cancelled: 'neutral' };
 
 /** FC-07 — incoming customer cheques and effects. Receiving or holding one moves no money; only clearance posts the (single) payment. */
-export default function FinanceClientsInstruments({ organization, instruments, totals, events, customers, accounts, can }: Props) {
+export default function FinanceClientsInstruments({ organization, instruments, filters, totals, events, customers, accounts, can }: Props) {
     const { t } = useI18n();
     const today = useBusinessToday();
     const section = useSection(SECTIONS, 'portfolio');
@@ -47,7 +46,14 @@ export default function FinanceClientsInstruments({ organization, instruments, t
     const [form, setForm] = useState({ customer_id: '', type: 'cheque', instrument_number: '', issuing_bank: '', customer_reference: '', amount: '', received_date: today, expected_collection_date: '', maturity_date: '', financial_account_id: '', notes: '' });
     const [busy, setBusy] = useState(false);
     const [showForm, setShowForm] = useState(false);
-    const rows = instruments.data.filter((i) => STATES[section].includes(i.state));
+    // Server-side: the register, its totals, its pagination and its export all use the same filtered dataset.
+    const rows = instruments.data;
+    const exportQuery = new URLSearchParams({ section, ...(filters.search ? { search: filters.search } : {}), ...(filters.from ? { from: filters.from } : {}), ...(filters.to ? { to: filters.to } : {}) }).toString();
+    const [q, setQ] = useState({ search: filters.search ?? '', from: filters.from ?? '', to: filters.to ?? '' });
+    const applyFilters = (e: FormEvent) => {
+        e.preventDefault();
+        router.get('/finance/clients/instruments', { section, ...Object.fromEntries(Object.entries(q).filter(([, v]) => v !== '')) }, { preserveState: true, preserveScroll: true });
+    };
     const state = (s: string) => t(`fc4.inst.state.${s}` as TranslationKey);
     const submit = (e: FormEvent) => {
         e.preventDefault();
@@ -63,7 +69,7 @@ export default function FinanceClientsInstruments({ organization, instruments, t
     return (
         <ApplicationShell wide>
             <Head title={`${t('fc.inst.title')} — Finance`} />
-            <PageHeader title={t('fc.inst.title')} description={`${organization.name} — ${t('fc.inst.description')}`} actions={can.manage ? <Button size="sm" onClick={() => setShowForm((v) => !v)} aria-expanded={showForm}>{t('p3.inst.new')}</Button> : undefined} />
+            <PageHeader title={t('fc.inst.title')} description={`${organization.name} — ${t('fc.inst.description')}`} actions={<div className="flex flex-wrap gap-2">{can.export && <><ButtonLink href={`/finance/clients/instruments/export/csv?${exportQuery}`} variant="outline" size="sm">{t('p3.adv.exportCsv')}</ButtonLink><ButtonLink href={`/finance/clients/instruments/export/xlsx?${exportQuery}`} variant="outline" size="sm">{t('p3.adv.exportXlsx')}</ButtonLink></>}{can.manage && <Button size="sm" onClick={() => setShowForm((v) => !v)} aria-expanded={showForm}>{t('p3.inst.new')}</Button>}</div>} />
             <ParentTabs group="collections" active="instruments" />
             <div className="mb-4"><Alert tone="info">{t('fc.inst.notice')}</Alert></div>
             <div className="mb-4 flex flex-wrap gap-2 text-sm text-ink-muted">
@@ -89,6 +95,12 @@ export default function FinanceClientsInstruments({ organization, instruments, t
                 </form>
             )}
             <SectionTabs sections={SECTIONS.map((k) => ({ key: k, label: t(LABEL[k]) }))} active={section} label={t('fc.inst.title')} />
+            <form onSubmit={applyFilters} className="surface-card mb-3 flex flex-wrap items-end gap-3 p-3" role="search">
+                <label className="flex min-w-[12rem] flex-1 flex-col gap-1 text-[13px] text-ink-muted">{t('common.search')}<input className="control-input h-9 px-2" value={q.search} onChange={(e) => setQ({ ...q, search: e.target.value })} /></label>
+                <label className="flex flex-col gap-1 text-[13px] text-ink-muted">{t('p3.adv.from')}<input type="date" className="control-input h-9 px-2" value={q.from} onChange={(e) => setQ({ ...q, from: e.target.value })} /></label>
+                <label className="flex flex-col gap-1 text-[13px] text-ink-muted">{t('p3.adv.to')}<input type="date" className="control-input h-9 px-2" value={q.to} onChange={(e) => setQ({ ...q, to: e.target.value })} /></label>
+                <Button type="submit" size="sm">{t('p3.adv.apply')}</Button>
+            </form>
             <TableShell label={t(LABEL[section])} state={rows.length === 0 ? 'empty' : 'ready'} emptyTitle={t('fc4.inst.empty')} footer={<TablePager links={instruments.links} from={instruments.from} to={instruments.to} total={instruments.total} />}>
                 <table className="erp-table min-w-[1000px] text-sm">
                     <thead><tr><th className="px-4 py-2.5">{t('common.customer')}</th><th className="px-4 py-2.5">{t('fc2.col.type')}</th><th className="px-4 py-2.5">{t('fc4.inst.number')}</th><th className="px-4 py-2.5">{t('fc4.inst.bank')}</th>

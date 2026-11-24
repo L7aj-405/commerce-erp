@@ -13,6 +13,7 @@ use App\Services\DocumentVisibility;
 use App\Services\Finance\CustomerOpenOrders;
 use App\Services\Finance\Export\TabularExport;
 use App\Services\Finance\FinanceAccessGuard;
+use App\Services\Sandbox\SandboxContext;
 use App\Support\Decimal;
 use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Http\Request;
@@ -39,6 +40,7 @@ class CustomerAdvancesController extends Controller
 
     public function index(Request $request, ActiveTenantContext $context, FinanceAccessGuard $guard, DocumentVisibility $visibility, CustomerOpenOrders $lookups): Response
     {
+        abort_if(app(SandboxContext::class)->isRestricted(), 404);
         $organization = $context->organizationOrFail();
         $user = $request->user();
         $guard->authorizeView($user, $organization);
@@ -87,6 +89,7 @@ class CustomerAdvancesController extends Controller
 
     public function export(Request $request, string $format, ActiveTenantContext $context, FinanceAccessGuard $guard, DocumentVisibility $visibility, AuditLogger $audit): StreamedResponse
     {
+        abort_if(app(SandboxContext::class)->isRestricted(), 404);
         $organization = $context->organizationOrFail();
         $user = $request->user();
         $guard->authorizeExport($user, $organization);
