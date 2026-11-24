@@ -1,12 +1,15 @@
+import { FinancePlaceholder, SectionTabs, useCurrentPath, useSection } from '@/components/finance/FinanceClientsKit';
 import FinanceFilters, { type FinanceStore } from '@/components/finance/FinanceFilters';
 import PageHeader from '@/components/ui/PageHeader';
 import EmptyState from '@/components/ui/EmptyState';
 import { TablePager, TableShell } from '@/components/ui/TableShell';
 import { useI18n } from '@/i18n';
 import ApplicationShell from '@/layouts/ApplicationShell';
+import { ButtonLink } from '@/components/ui/Button';
+import type { SharedPageProps } from '@/types/app';
 import { formatMoney } from '@/utils/format';
 import { label, paymentMethodLabel } from '@/utils/labels';
-import { Head, Link } from '@inertiajs/react';
+import { Head, Link, usePage } from '@inertiajs/react';
 
 type PaymentRow = {
     id: number;
@@ -41,12 +44,21 @@ type Props = {
 
 export default function FinanceEncaissements({ organization, period, periodLabel, storeId, stores, payments, refunds }: Props) {
     const { t } = useI18n();
+    const path = useCurrentPath();
+    const { tenant } = usePage<SharedPageProps>().props;
+    // /payments is store-scoped (active store + payments.view): offered only when its own rules would open it.
+    const canOpenSettlements = tenant.permissions.includes('payments.view') && tenant.store !== null;
+    const section = useSection(['settlements', 'monthly', 'advances', 'refunds'] as const, 'monthly');
+    const sections = [{ key: 'settlements', label: t('fc.col.s.settlements') }, { key: 'monthly', label: t('fc.col.s.monthly') }, { key: 'advances', label: t('fc.col.s.advances') }, { key: 'refunds', label: t('fc.col.s.refunds') }];
     return (
         <ApplicationShell wide>
             <Head title={`${t('finance.collections.title')} — Finance`} />
             <PageHeader title={t('finance.collections.title')} description={`${organization.name} · ${periodLabel} · ${payments.total} ${t('finance.collections.paymentCount')}`} />
-            <FinanceFilters path="/finance/encaissements" period={period} storeId={storeId} stores={stores} />
+            <SectionTabs sections={sections} active={section} label={t('fc.sections')} />
+            <FinanceFilters path={path} extra={{ section }} period={period} storeId={storeId} stores={stores} />
 
+            {section === 'monthly' && (
+                <>
             {/* Desktop/tablet: table */}
             <TableShell
                 label={t('finance.collections.title')}
@@ -135,6 +147,10 @@ export default function FinanceEncaissements({ organization, period, periodLabel
                 )}
             </div>
 
+                </>
+            )}
+
+            {section === 'refunds' && (
             <section className="mt-8" aria-labelledby="refunds-title">
                 <h2 id="refunds-title" className="mb-3 text-base font-semibold text-ink">{t('finance.collections.refunds')} · <span className="tabular-nums">{refunds.total}</span></h2>
                 <TableShell
@@ -171,6 +187,25 @@ export default function FinanceEncaissements({ organization, period, periodLabel
                         </table>
                 </TableShell>
             </section>
+            )}
+            {/* Settlements = the existing store-scoped payments list (own filters, detail and reversal workflow). */}
+            {section === 'settlements' && (
+                <div className="surface-card p-5">
+                    <h2 className="text-base font-semibold text-ink">{t('fc.col.s.settlements')}</h2>
+                    <p className="mt-1 text-sm text-ink-muted">{t('fc.col.settlementsHelp')}</p>
+                    <div className="mt-4">
+                        {canOpenSettlements ? (
+                            <ButtonLink href="/payments" variant="outline" size="sm">
+                                {t('fc.col.openSettlements')}
+                            </ButtonLink>
+                        ) : (
+                            <p className="text-sm text-ink-muted">{t('fc.col.settlementsUnavailable')}</p>
+                        )}
+                    </div>
+                </div>
+            )}
+            {/* Future: unallocated customer advances and grouped settlements (no allocation logic is added here). */}
+            {section === 'advances' && <FinancePlaceholder plannedKey="fc.col.p.advances" />}
         </ApplicationShell>
     );
 }

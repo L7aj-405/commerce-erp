@@ -1,3 +1,4 @@
+import { useCurrentPath } from '@/components/finance/FinanceClientsKit';
 import FinanceFilters, { type FinanceStore } from '@/components/finance/FinanceFilters';
 import SoldLines, { type SoldLine } from '@/components/finance/SoldLines';
 import PageHeader from '@/components/ui/PageHeader';
@@ -31,11 +32,12 @@ type Props = {
 
 export default function FinanceJournal({ organization, period, periodLabel, storeId, stores, rows, events }: Props) {
     const { t } = useI18n();
+    const path = useCurrentPath();
     return (
         <ApplicationShell wide>
             <Head title={`${t('finance.journal.title')} — Finance`} />
             <PageHeader title={t('finance.journal.title')} description={`${organization.name} · ${periodLabel} · ${rows.total} ${t('finance.journal.invoiceCount')}`} />
-            <FinanceFilters path="/finance/journal" period={period} storeId={storeId} stores={stores} />
+            <FinanceFilters path={path} period={period} storeId={storeId} stores={stores} />
 
             <section className="mb-6" aria-labelledby="journal-events">
                 <div className="mb-3">

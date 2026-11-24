@@ -7,7 +7,19 @@ import type { ReactNode } from 'react';
  * and the contextual header tabs are all derived from `buildNavGroups()`;
  * never maintain a second route list elsewhere.
  */
-export type NavItem = { href: string; label: string; permission?: string | string[]; needsStore?: boolean; icon: ReactNode };
+export type NavItem = {
+    href: string;
+    label: string;
+    permission?: string | string[];
+    /** Extra permission that must ALSO be held (the server enforces the same AND). */
+    alsoRequires?: string;
+    /** Hidden when the user holds this permission (a narrower entry superseded by a richer one). */
+    hideWith?: string;
+    /** Legacy / sibling URLs that belong to this entry: active-state, breadcrumbs and deep links only (never listed twice). */
+    aliases?: string[];
+    needsStore?: boolean;
+    icon: ReactNode;
+};
 export type NavSection = { key: string; label: string; icon: ReactNode; items: NavItem[] };
 export type NavEntry = NavItem | NavSection;
 export type NavGroup = { key: string; label: string; icon: ReactNode; items: NavEntry[] };
@@ -80,57 +92,63 @@ export function buildNavGroups(t: (key: TranslationKey) => string, tenant: Tenan
             icon: <IconChart />,
             // Deliberately no `needsStore`: Finance reporting works across the
             // whole organization without the viewer's active store switcher.
-            // Incoming (customer) money and outgoing (supplier) money are kept apart:
+            // Finance clients (incoming customer money) is kept apart from supplier money:
             // customer payments never appear under supplier payments and vice versa.
             items: [
-                { href: '/finance', label: t('nav.financialView'), permission: 'finance.view', icon: <IconChart /> },
+                { href: '/finance', label: t('nav.financeOverview'), permission: 'finance.view', icon: <IconChart /> },
                 {
-                    key: 'finance-incoming',
-                    label: t('nav.section.customerCollections'),
-                    icon: <IconCoinsIn />,
+                    key: 'finance-clients',
+                    label: t('nav.section.financeClients'),
+                    icon: <IconUsers />,
                     items: [
-                        { href: '/finance/encaissements', label: t('nav.collectionsMonthly'), permission: 'finance.view', icon: <IconCoinsIn /> },
-                        { href: '/payments', label: t('nav.customerPayments'), permission: 'payments.view', needsStore: true, icon: <IconWallet /> },
-                        { href: '/finance/creances', label: t('nav.receivables'), permission: 'finance.view', icon: <IconClockCoins /> },
+                        { href: '/finance/clients', label: t('nav.fc.overview'), permission: 'finance.view', icon: <IconChart /> },
+                        { href: '/finance/clients/comptes', label: t('nav.fc.accounts'), permission: 'finance.view', alsoRequires: 'customers.view', icon: <IconUsers /> },
+                        { href: '/finance/clients/facturation', aliases: ['/finance/facturation'], label: t('nav.fc.invoicing'), permission: 'finance.view', icon: <IconInvoice /> },
+                        { href: '/finance/clients/encaissements', aliases: ['/finance/encaissements', '/payments'], label: t('nav.fc.collections'), permission: 'finance.view', icon: <IconCoinsIn /> },
+                        { href: '/finance/clients/creances', aliases: ['/finance/creances'], label: t('nav.fc.receivables'), permission: 'finance.view', icon: <IconClockCoins /> },
+                        { href: '/finance/clients/credit', label: t('nav.fc.credit'), permission: 'finance.view', icon: <IconShield /> },
+                        { href: '/finance/clients/instruments', label: t('nav.fc.instruments'), permission: 'finance.view', icon: <IconBanknote /> },
+                        { href: '/finance/clients/journal', aliases: ['/finance/journal'], label: t('nav.fc.journal'), permission: 'finance.view', icon: <IconList /> },
+                        { href: '/finance/clients/rapports', aliases: ['/finance/ventes', '/finance/ca-encaisse'], label: t('nav.fc.reports'), permission: 'finance.view', icon: <IconTrending /> },
+                        // A cashier-level user (payments.view, no finance.view) keeps their direct entry to the
+                        // store-scoped payments list; Finance users reach it from "Encaissements clients" instead.
+                        { href: '/payments', label: t('nav.customerPayments'), permission: 'payments.view', hideWith: 'finance.view', needsStore: true, icon: <IconWallet /> },
                     ],
                 },
-                // The only existing entry point for outgoing supplier payments (and month closing): there is
-                // no dedicated list of supplier payments, so the label names the page honestly.
                 {
-                    href: '/finance/situation-fin-de-mois',
-                    label: t('nav.supplierPaymentsMonthEnd'),
-                    permission: 'finance.monthly_situation.view',
-                    icon: <IconCalendarChart />,
-                },
-                {
-                    key: 'finance-obligations',
-                    label: t('nav.section.obligations'),
-                    icon: <IconClockCoins />,
+                    key: 'finance-suppliers',
+                    label: t('nav.section.financeSuppliers'),
+                    icon: <IconBuilding />,
                     items: [
-                        { href: '/finance/situation-fin-de-mois/charges-recurrentes', label: t('nav.recurringCharges'), permission: 'finance.monthly_situation.view', icon: <IconSync /> },
                         { href: '/finance/situation-fin-de-mois/echeanciers-fournisseurs', label: t('nav.supplierInstallments'), permission: 'finance.monthly_situation.view', icon: <IconList /> },
                     ],
                 },
-                { href: '/financial-accounts', label: t('nav.financialAccounts'), permission: 'financial_accounts.view', icon: <IconBank /> },
                 {
-                    key: 'finance-reports',
-                    label: t('nav.section.reportsClosing'),
-                    icon: <IconTrending />,
-                    items: [
-                        { href: '/finance/ventes', label: t('nav.salesReport'), permission: 'finance.view', icon: <IconShoppingBag /> },
-                        { href: '/finance/facturation', label: t('nav.invoicingReport'), permission: 'finance.view', icon: <IconInvoice /> },
-                        { href: '/finance/ca-encaisse', label: t('nav.cashRevenue'), permission: 'finance.view', icon: <IconBanknote /> },
-                        { href: '/finance/journal', label: t('nav.salesJournal'), permission: 'finance.view', icon: <IconList /> },
-                    ],
-                },
-                {
-                    key: 'finance-commissions',
-                    label: t('nav.commissions'),
+                    key: 'finance-staff',
+                    label: t('nav.section.financeStaff'),
                     icon: <IconPercent />,
                     items: [
                         { href: '/finance/commissions', label: t('nav.commissionDashboard'), permission: 'commissions.ledger.view', icon: <IconChart /> },
                         { href: '/finance/commissions/ledger', label: t('nav.ledger'), permission: 'commissions.ledger.view', icon: <IconList /> },
                         { href: '/finance/commissions/rules', label: t('nav.rules'), permission: 'commissions.rules.view', icon: <IconSettings /> },
+                        { href: '/finance/personnel', label: t('nav.staffFuture'), permission: 'finance.view', icon: <IconUsers /> },
+                    ],
+                },
+                {
+                    key: 'finance-treasury',
+                    label: t('nav.section.financeTreasury'),
+                    icon: <IconBank />,
+                    items: [{ href: '/financial-accounts', label: t('nav.financialAccounts'), permission: 'financial_accounts.view', icon: <IconBank /> }],
+                },
+                {
+                    key: 'finance-steering',
+                    label: t('nav.section.financeSteering'),
+                    icon: <IconCalendarChart />,
+                    items: [
+                        // The only existing entry point for outgoing supplier payments (and month closing): there is
+                        // no dedicated list of supplier payments, so the label names the page honestly.
+                        { href: '/finance/situation-fin-de-mois', label: t('nav.supplierPaymentsMonthEnd'), permission: 'finance.monthly_situation.view', icon: <IconCalendarChart /> },
+                        { href: '/finance/situation-fin-de-mois/charges-recurrentes', label: t('nav.recurringCharges'), permission: 'finance.monthly_situation.view', icon: <IconSync /> },
                     ],
                 },
             ],
@@ -253,7 +271,11 @@ export function buildNavGroups(t: (key: TranslationKey) => string, tenant: Tenan
 
 /** Filters by permission + store context and drops empty sections/groups. */
 export function visibleNavGroups(groups: NavGroup[], tenant: Tenant): NavGroup[] {
-    const allowed = (item: NavItem) => hasPermission(tenant, item.permission) && (!item.needsStore || tenant.store !== null);
+    const allowed = (item: NavItem) =>
+        hasPermission(tenant, item.permission) &&
+        (!item.alsoRequires || tenant.permissions.includes(item.alsoRequires)) &&
+        (!item.hideWith || !tenant.permissions.includes(item.hideWith)) &&
+        (!item.needsStore || tenant.store !== null);
     return groups
         .map((group): NavGroup => {
             const items: NavEntry[] = [];
@@ -284,9 +306,10 @@ export function matchActiveNav(groups: NavGroup[], currentPath: string): NavMatc
             else candidates.push({ groupKey: group.key, sectionKey: null, item: entry });
         }),
     );
-    return candidates
-        .filter(({ item }) => currentPath === item.href || currentPath.startsWith(`${item.href}/`))
-        .sort((a, b) => b.item.href.length - a.item.href.length)[0];
+    const prefixes = (item: NavItem) => [item.href, ...(item.aliases ?? [])];
+    const matched = (item: NavItem) => prefixes(item).filter((href) => currentPath === href || currentPath.startsWith(`${href}/`));
+    const best = (item: NavItem) => Math.max(...matched(item).map((href) => href.length));
+    return candidates.filter(({ item }) => matched(item).length > 0).sort((a, b) => best(b.item) - best(a.item))[0];
 }
 
 export type Crumb = { label: string; href?: string };
@@ -302,7 +325,7 @@ export function buildBreadcrumbs(groups: NavGroup[], currentPath: string, t: (ke
     const group = groups.find((candidate) => candidate.key === match.groupKey);
     if (!group) return [];
 
-    const deeper = currentPath !== match.item.href;
+    const deeper = currentPath !== match.item.href && !(match.item.aliases ?? []).includes(currentPath);
     const crumbs: Crumb[] = [{ label: group.label, href: firstNavItem(group).href }];
     if (match.sectionKey) {
         const section = group.items.find((entry): entry is NavSection => isNavSection(entry) && entry.key === match.sectionKey);
