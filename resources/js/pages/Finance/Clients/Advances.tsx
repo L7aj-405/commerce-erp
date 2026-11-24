@@ -7,7 +7,7 @@ import { TablePager, TableShell } from '@/components/ui/TableShell';
 import { useI18n } from '@/i18n';
 import type { TranslationKey } from '@/i18n/translations';
 import ApplicationShell from '@/layouts/ApplicationShell';
-import { formatDate, formatMoney } from '@/utils/format';
+import { formatBusinessDate as formatDate, formatMoney } from '@/utils/format';
 import { label, paymentMethodLabel } from '@/utils/labels';
 import { Head, Link, router } from '@inertiajs/react';
 import { Fragment, useState } from 'react';

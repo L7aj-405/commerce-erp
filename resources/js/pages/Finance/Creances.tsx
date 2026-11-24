@@ -9,7 +9,7 @@ import { TablePager, TableShell } from '@/components/ui/TableShell';
 import StatusBadge from '@/components/ui/StatusBadge';
 import { useI18n } from '@/i18n';
 import ApplicationShell from '@/layouts/ApplicationShell';
-import { formatMoney } from '@/utils/format';
+import { formatBusinessDate, formatMoney } from '@/utils/format';
 import { label, paymentStatusLabel } from '@/utils/labels';
 import { Head, Link } from '@inertiajs/react';
 
@@ -92,13 +92,13 @@ export default function FinanceCreances({ organization, period, periodLabel, asO
                                             <Link href={`/sales/orders/${order.id}`}>{order.order_number}</Link>
                                         </td>
                                         <td className="px-4 py-2.5 text-ink-muted">{order.sale_date}</td>
-                                        <td className={`px-4 py-2.5 ${order.is_overdue ? 'text-danger' : 'text-ink-muted'}`}>{order.due_date ?? t('fc2.undated')}{order.is_overdue && ` · ${t('fc2.col.overdue')}`}</td>
+                                        <td className={`px-4 py-2.5 ${order.is_overdue ? 'text-danger' : 'text-ink-muted'}`}>{order.due_date ? formatBusinessDate(order.due_date) : t('fc2.undated')}{order.is_overdue && ` · ${t('fc2.col.overdue')}`}</td>
                                         <td className="px-4 py-2.5">{order.customer}</td>
                                         <td className="num px-4 py-2.5" dir="ltr">{formatMoney(order.total_incl_tax)}</td>
                                         <td className="num px-4 py-2.5 text-ink-muted" dir="ltr">{formatMoney(order.paid_amount)}</td>
                                         <td className="num px-4 py-2.5 font-medium" dir="ltr">{formatMoney(order.outstanding)}</td>
                                         <td className="px-4 py-2.5"><StatusBadge status={order.payment_status}>{label(paymentStatusLabel, order.payment_status)}</StatusBadge></td>
-                                        <td className="px-4 py-2.5 text-ink-muted">{order.last_payment_date ?? '—'}</td>
+                                        <td className="px-4 py-2.5 text-ink-muted">{formatBusinessDate(order.last_payment_date)}</td>
                                         <td className="px-4 py-2.5 text-end"><Link href={`/sales/orders/${order.id}`} className="font-medium text-ink underline-offset-4 hover:underline">{t('common.open')}</Link></td>
                                     </tr>
                                 ))}
@@ -143,7 +143,7 @@ export default function FinanceCreances({ organization, period, periodLabel, asO
                                     </div>
                                     <div className="min-w-0">
                                         <dt className="text-ink-faint">{t('finance.receivables.lastPayment')}</dt>
-                                        <dd className="text-ink-muted">{order.last_payment_date ?? '—'}</dd>
+                                        <dd className="text-ink-muted">{formatBusinessDate(order.last_payment_date)}</dd>
                                     </div>
                                 </dl>
                                 <Link href={`/sales/orders/${order.id}`} className="mt-3 inline-flex text-sm font-medium text-ink underline-offset-4 hover:underline">{t('common.open')}</Link>

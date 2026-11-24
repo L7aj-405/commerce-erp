@@ -5,7 +5,7 @@ import { SelectField, TextField } from '@/components/ui/form';
 import { TableShell } from '@/components/ui/TableShell';
 import { useI18n } from '@/i18n';
 import type { TranslationKey } from '@/i18n/translations';
-import { formatMoney } from '@/utils/format';
+import { formatBusinessDate, formatMoney } from '@/utils/format';
 import { useBusinessToday } from '@/utils/businessDate';
 import { router, usePage } from '@inertiajs/react';
 import { useState } from 'react';
@@ -56,7 +56,7 @@ export function InstallmentsTable({ rows }: { rows: PlanInstallment[] }) {
                     {rows.map((r) => (
                         <tr key={`${r.order_id}-${r.sequence}`}>
                             <td className="px-4 py-2.5 font-medium">{r.order_number}</td><td className="px-4 py-2.5">{r.sequence}</td>
-                            <td className={`px-4 py-2.5 ${r.is_overdue ? 'text-danger' : 'text-ink-muted'}`}>{r.due_date}{r.is_overdue && ` · ${t('fc2.col.overdue')}`}</td>
+                            <td className={`px-4 py-2.5 ${r.is_overdue ? 'text-danger' : 'text-ink-muted'}`}>{formatBusinessDate(r.due_date)}{r.is_overdue && ` · ${t('fc2.col.overdue')}`}</td>
                             <td className="num px-4 py-2.5" dir="ltr">{formatMoney(r.amount, r.currency_code)}</td><td className="num px-4 py-2.5 font-medium" dir="ltr">{formatMoney(r.outstanding, r.currency_code)}</td>
                         </tr>
                     ))}
@@ -89,7 +89,7 @@ export function PromisesPanel({ customerId, promises, orders, canManage, currenc
                 <table className="erp-table min-w-[620px]">
                     <thead><tr><th className="px-4 py-2.5">{t('fc3.promise.date')}</th><th className="num px-4 py-2.5">{t('common.amount')}</th><th className="px-4 py-2.5">{t('common.status')}</th><th className="px-4 py-2.5">{t('fc2.settle.notes')}</th><th /></tr></thead>
                     <tbody>{promises.map((p) => (
-                        <tr key={p.id}><td className="px-4 py-2.5">{p.promised_date.slice(0, 10)}</td><td className="num px-4 py-2.5" dir="ltr">{formatMoney(p.amount, p.currency_code || currency)}</td><td className="px-4 py-2.5">{t(`fc3.promise.status.${p.status}` as TranslationKey)}</td><td className="px-4 py-2.5 text-ink-muted">{p.note ?? '—'}</td>
+                        <tr key={p.id}><td className="px-4 py-2.5">{formatBusinessDate(p.promised_date)}</td><td className="num px-4 py-2.5" dir="ltr">{formatMoney(p.amount, p.currency_code || currency)}</td><td className="px-4 py-2.5">{t(`fc3.promise.status.${p.status}` as TranslationKey)}</td><td className="px-4 py-2.5 text-ink-muted">{p.note ?? '—'}</td>
                             <td className="px-4 py-2.5 text-end">{canManage && p.status === 'open' && (['kept', 'broken', 'cancelled'] as const).map((s) => <Button key={s} size="sm" variant="outline" className="ms-1" onClick={() => mark(p.id, s)}>{t(`fc3.promise.status.${s}` as TranslationKey)}</Button>)}</td></tr>
                     ))}</tbody>
                 </table>

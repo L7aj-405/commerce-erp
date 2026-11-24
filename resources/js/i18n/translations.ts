@@ -5981,6 +5981,13 @@ export const fr = {
     "p3.journal.events": "Événements financiers",
     "p3.journal.invoices": "Factures de vente",
     "p3.journal.distinct": "Le journal clients ne remplace ni le relevé commercial du client, ni les mouvements des comptes financiers, ni les journaux comptables. Les montants d’événements de natures différentes ne s’additionnent pas.",
+    "p3.inv.htNet": "HT net",
+    "p3.inv.htDetail": "HT brut {gross} − remise {discount}",
+    "p3.inv.settled.credit": "Soldée par avoir",
+    "p3.inv.settled.mixed": "Soldée (règlement + avoir)",
+    "p3.inv.countIssued": "facture(s) émise(s) sur la période",
+    "p3.inv.countCredit": "avoir(s) émis sur la période",
+    "p3.inv.countTab": "{count} dans cet onglet",
 } as const;
 
 export type TranslationKey = keyof typeof fr;
@@ -11815,4 +11822,11 @@ export const ar: Record<TranslationKey, string> = {
     "p3.journal.events": "الأحداث المالية",
     "p3.journal.invoices": "فواتير البيع",
     "p3.journal.distinct": "دفتر العملاء لا يحل محل كشف حساب العميل التجاري ولا حركات الحسابات المالية ولا الدفاتر المحاسبية. لا تُجمع مبالغ الأحداث المختلفة الطبيعة.",
+    "p3.inv.htNet": "HT صافي",
+    "p3.inv.htDetail": "HT إجمالي {gross} − خصم {discount}",
+    "p3.inv.settled.credit": "مسددة بإشعار دائن",
+    "p3.inv.settled.mixed": "مسددة (دفعة + إشعار دائن)",
+    "p3.inv.countIssued": "فاتورة صادرة في الفترة",
+    "p3.inv.countCredit": "إشعار دائن صادر في الفترة",
+    "p3.inv.countTab": "{count} في هذا التبويب",
 };

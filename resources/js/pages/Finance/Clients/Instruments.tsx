@@ -8,7 +8,7 @@ import { TablePager, TableShell } from '@/components/ui/TableShell';
 import { useI18n } from '@/i18n';
 import type { TranslationKey } from '@/i18n/translations';
 import ApplicationShell from '@/layouts/ApplicationShell';
-import { formatMoney } from '@/utils/format';
+import { formatBusinessDate, formatMoney } from '@/utils/format';
 import { useBusinessToday } from '@/utils/businessDate';
 import { newOperationId } from '@/utils/uuid';
 import { Head, Link, router, usePage } from '@inertiajs/react';
@@ -98,10 +98,10 @@ export default function FinanceClientsInstruments({ organization, instruments, t
                                 <td className="px-4 py-2.5"><Link href={`/finance/clients/comptes/${i.customer_id}`}>{i.customer}</Link></td>
                                 <td className="px-4 py-2.5">{i.type === 'cheque' ? t('fc2.inst.cheque') : t('fc2.inst.effet')}</td>
                                 <td className="px-4 py-2.5 font-medium">{i.instrument_number}</td><td className="px-4 py-2.5 text-ink-muted">{i.issuing_bank ?? UNAVAILABLE}</td>
-                                <td className="px-4 py-2.5">{i.maturity_date?.slice(0, 10) ?? UNAVAILABLE}</td><td className="px-4 py-2.5">{i.expected_collection_date?.slice(0, 10) ?? UNAVAILABLE}</td>
+                                <td className="px-4 py-2.5">{formatBusinessDate(i.maturity_date, UNAVAILABLE)}</td><td className="px-4 py-2.5">{formatBusinessDate(i.expected_collection_date, UNAVAILABLE)}</td>
                                 <td className="num px-4 py-2.5" dir="ltr">{formatMoney(i.amount, i.currency_code)}</td>
                                 <td className="px-4 py-2.5"><DocBadge tone={TONE[i.state] ?? 'neutral'}>{state(i.state)}</DocBadge>
-                                    <ul className="mt-1 text-[12px] text-ink-muted">{events.filter((e) => e.instrument_id === i.id).map((e, n) => <li key={n}>{e.event_date.slice(0, 10)} → {state(e.to_state)}{e.note ? ` (${e.note})` : ''}</li>)}</ul></td>
+                                    <ul className="mt-1 text-[12px] text-ink-muted">{events.filter((e) => e.instrument_id === i.id).map((e, n) => <li key={n}>{formatBusinessDate(e.event_date)} → {state(e.to_state)}{e.note ? ` (${e.note})` : ''}</li>)}</ul></td>
                                 <td className="px-4 py-2.5 text-end">{can.manage && (NEXT[i.state] ?? []).map((to) => <Button key={to} size="sm" variant="outline" className="ms-1" onClick={() => move(i, to)}>{state(to)}</Button>)}</td>
                             </tr>
                         ))}

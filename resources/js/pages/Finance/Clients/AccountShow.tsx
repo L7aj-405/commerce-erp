@@ -13,7 +13,7 @@ import { TableShell } from '@/components/ui/TableShell';
 import { useI18n } from '@/i18n';
 import type { TranslationKey } from '@/i18n/translations';
 import ApplicationShell from '@/layouts/ApplicationShell';
-import { formatMoney } from '@/utils/format';
+import { formatBusinessDate, formatMoney } from '@/utils/format';
 import { invoiceStatusLabel, label, paymentEntryStatusLabel, paymentMethodLabel } from '@/utils/labels';
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import { useState } from 'react';
@@ -143,8 +143,8 @@ function Invoices({ rows, count, currency }: { rows: InvoiceRow[]; count: number
                             <td className="px-4 py-2.5 font-medium">
                                 <Link href={`/documents/open/invoice/${i.id}`} method="post" as="button" className="text-start hover:underline">{i.invoice_number}{i.version > 1 && <span className="ms-1 text-ink-faint">v{i.version}</span>}</Link>
                             </td>
-                            <td className="px-4 py-2.5 text-ink-muted">{i.invoice_date}</td>
-                            <td className="px-4 py-2.5 text-ink-muted">{i.due_date ?? UNAVAILABLE}</td>
+                            <td className="px-4 py-2.5 text-ink-muted">{formatBusinessDate(i.invoice_date)}</td>
+                            <td className="px-4 py-2.5 text-ink-muted">{formatBusinessDate(i.due_date, UNAVAILABLE)}</td>
                             <td className="px-4 py-2.5"><StatusBadge status={i.status}>{label(invoiceStatusLabel, i.status)}</StatusBadge></td>
                             <td className="num px-4 py-2.5" dir="ltr">{formatMoney(i.subtotal_excl_tax, currency)}</td>
                             <td className="num px-4 py-2.5" dir="ltr">{formatMoney(i.tax_total, currency)}</td>
@@ -177,7 +177,7 @@ function Payments(props: Props & { currency: string }) {
                         {rows.map((p) => (
                             <tr key={p.id}>
                                 <td className="px-4 py-2.5 font-medium"><Link href={`/documents/open/payment/${p.id}`} method="post" as="button" className="text-start hover:underline">{p.payment_number}</Link></td>
-                                <td className="px-4 py-2.5 text-ink-muted">{p.payment_date}</td>
+                                <td className="px-4 py-2.5 text-ink-muted">{formatBusinessDate(p.payment_date)}</td>
                                 <td className="px-4 py-2.5 text-ink-muted">{label(paymentMethodLabel, p.method)}</td>
                                 <td className="px-4 py-2.5"><StatusBadge status={p.status}>{label(paymentEntryStatusLabel, p.status)}</StatusBadge></td>
                                 <td className="num px-4 py-2.5" dir="ltr">{formatMoney(p.amount, currency)}</td>
@@ -209,7 +209,7 @@ function Schedule({ customerId, orders, position, currency, installments, promis
                             <tr key={o.id}>
                                 <td className="px-4 py-2.5 font-medium"><Link href={`/documents/open/sales_order/${o.id}`} method="post" as="button" className="text-start hover:underline">{o.order_number}</Link></td>
                                 <td className="px-4 py-2.5 text-ink-muted">{o.sale_date}</td>
-                                <td className={`px-4 py-2.5 ${o.is_overdue ? 'text-danger' : 'text-ink-muted'}`}>{o.due_date ?? t('fc2.undated')}{o.is_overdue && ` · ${t('fc2.col.overdue')}`}</td>
+                                <td className={`px-4 py-2.5 ${o.is_overdue ? 'text-danger' : 'text-ink-muted'}`}>{o.due_date ? formatBusinessDate(o.due_date) : t('fc2.undated')}{o.is_overdue && ` · ${t('fc2.col.overdue')}`}</td>
                                 <td className="num px-4 py-2.5" dir="ltr">{formatMoney(o.remaining, currency)}</td>
                                 <td className="px-4 py-2.5 text-end">{canManage && <ScheduleEditor customerId={customerId} order={o} currency={currency} />}</td>
                             </tr>
@@ -318,7 +318,7 @@ function Openings({ customerId, rows, canManage }: { customerId: number; rows: N
                 <tbody>
                     {rows.map((o) => (
                         <tr key={o.id} className={o.status === 'reversed' ? 'opacity-60' : undefined}>
-                            <td className="px-4 py-2.5">{o.effective_date.slice(0, 10)}</td><td className="px-4 py-2.5 font-medium">{o.reference}</td><td className="px-4 py-2.5 text-ink-muted">{o.reason}</td>
+                            <td className="px-4 py-2.5">{formatBusinessDate(o.effective_date)}</td><td className="px-4 py-2.5 font-medium">{o.reference}</td><td className="px-4 py-2.5 text-ink-muted">{o.reason}</td>
                             <td className="num px-4 py-2.5" dir="ltr">{formatMoney(o.amount, o.currency_code)}</td>
                             <td className="px-4 py-2.5">{o.status === 'reversed' ? t('fc2.opening.reversed') : t('fc2.opening.posted')}</td>
                             <td className="px-4 py-2.5 text-end">{canManage && o.status === 'posted' && <Button size="sm" variant="outline" onClick={() => reverse(o.id)}>{t('fc2.opening.reverse')}</Button>}</td>

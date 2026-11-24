@@ -113,6 +113,8 @@ class FinanceDashboardController extends Controller
             'unbilledOrders' => $section === 'unbilled' ? $receivables->unbilledOrdersAsOf($organization, $period->end, $store) : null,
             // Additive, read-only (Finance clients "Synthèse"): the same two totals the monthly situation already uses.
             'summary' => $this->invoicingSummary($report, $organization, $period, $store),
+            // Global period counts, independent of the active tab (the tab only loads its own rows).
+            'counts' => ['invoices' => $invoices->countIssuedDuring($organization, $period, $store), 'credit_notes' => $invoices->countCreditNotesDuring($organization, $period, $store)],
         ]);
     }
 

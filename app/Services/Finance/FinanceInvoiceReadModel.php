@@ -45,6 +45,20 @@ class FinanceInvoiceReadModel
         return $paginator->through(fn (Invoice $invoice) => $enrichedById[$invoice->id]);
     }
 
+    /** Number of issued invoices of the period: the same filter as the register, independent of the active tab (FCUX-04). */
+    public function countIssuedDuring(Organization $organization, FinancePeriod $period, ?Store $store): int
+    {
+        return $this->baseQuery($organization, $store)->where('status', InvoiceStatus::Issued->value)
+            ->whereDate('invoice_date', '>=', $period->start->toDateString())->whereDate('invoice_date', '<=', $period->end->toDateString())->count();
+    }
+
+    public function countCreditNotesDuring(Organization $organization, FinancePeriod $period, ?Store $store): int
+    {
+        return DB::table('credit_notes')->whereNull('sandbox_id')->where('organization_id', $organization->getKey())->where('status', 'issued')
+            ->whereDate('credit_note_date', '>=', $period->start->toDateString())->whereDate('credit_note_date', '<=', $period->end->toDateString())
+            ->when($store, fn ($query) => $query->where('store_id', $store->getKey()))->count();
+    }
+
     /**
      * Issued credit notes of a period, newest first (Finance clients "Avoirs"). Each row keeps the HT / TVA / TTC of the
      * document and the number of the invoice it credits; Test Mode documents are excluded.
@@ -58,12 +72,13 @@ class FinanceInvoiceReadModel
             ->whereDate('credit_notes.credit_note_date', '>=', $period->start->toDateString())->whereDate('credit_notes.credit_note_date', '<=', $period->end->toDateString())
             ->when($store, fn ($query) => $query->where('credit_notes.store_id', $store->getKey()))
             ->orderByDesc('credit_notes.credit_note_date')->orderByDesc('credit_notes.id')
-            ->select(['credit_notes.id', 'credit_notes.credit_note_number', 'credit_notes.credit_note_date', 'credit_notes.subtotal_excl_tax', 'credit_notes.tax_total', 'credit_notes.total_incl_tax',
+            ->select(['credit_notes.id', 'credit_notes.credit_note_number', 'credit_notes.credit_note_date', 'credit_notes.subtotal_excl_tax', 'credit_notes.discount_total', 'credit_notes.tax_total', 'credit_notes.total_incl_tax',
                 'credit_notes.reason', 'invoices.id as invoice_id', 'invoices.invoice_number', 'invoices.customer_name', 'invoices.customer_company'])
             ->paginate($perPage)->withQueryString()
             ->through(fn ($row) => [
                 'id' => $row->id, 'credit_note_number' => $row->credit_note_number, 'date' => substr((string) $row->credit_note_date, 0, 10),
-                'subtotal_excl_tax' => Decimal::normalize((string) $row->subtotal_excl_tax), 'tax_total' => Decimal::normalize((string) $row->tax_total),
+                'subtotal_excl_tax' => Decimal::normalize((string) $row->subtotal_excl_tax), 'discount_total' => Decimal::normalize((string) $row->discount_total),
+                'net_excl_tax' => Decimal::subtract((string) $row->subtotal_excl_tax, (string) $row->discount_total), 'tax_total' => Decimal::normalize((string) $row->tax_total),
                 'total_incl_tax' => Decimal::normalize((string) $row->total_incl_tax), 'reason' => $row->reason,
                 'invoice_id' => $row->invoice_id, 'invoice_number' => $row->invoice_number, 'customer' => trim($row->customer_company ?: $row->customer_name ?: '') ?: '—',
             ]);
@@ -218,6 +233,9 @@ class FinanceInvoiceReadModel
             'store_id' => $invoice->store_id,
             // Additive (Finance clients): HT / TVA of the issued document and its stamped due date (never invented for old invoices).
             'subtotal_excl_tax' => (string) $invoice->subtotal_excl_tax,
+            // Unambiguous presentation (FCUX-02): HT net = HT brut - remise, and HT net + TVA = TTC. Stored amounts are never altered.
+            'discount_total' => (string) $invoice->discount_total,
+            'net_excl_tax' => Decimal::subtract((string) $invoice->subtotal_excl_tax, (string) $invoice->discount_total),
             'tax_total' => (string) $invoice->tax_total,
             'due_date' => $invoice->due_date?->toDateString(),
             'is_overdue' => $invoice->due_date !== null && Decimal::compare($outstanding, '0.0000') > 0 && $invoice->due_date->toDateString() < now()->toDateString(),
@@ -228,7 +246,25 @@ class FinanceInvoiceReadModel
             'outstanding' => $outstanding,
             'fully_paid_at' => $fullyPaidAt,
             'status' => $status,
+            // Derived financial settlement (FCUX-11): document status and payment status are untouched; a credit note is never a cash payment.
+            'settlement_status' => $this->settlementStatus($outstanding, $paidAmount, $creditedAmount),
         ];
+    }
+
+    /** @return 'unpaid'|'partial'|'paid'|'settled_by_credit_note'|'settled_mixed' */
+    private function settlementStatus(string $outstanding, string $paid, string $credited): string
+    {
+        $hasPaid = Decimal::compare($paid, '0.0000') > 0;
+        $hasCredit = Decimal::compare($credited, '0.0000') > 0;
+        if (Decimal::compare($outstanding, '0.0000') > 0) {
+            return $hasPaid ? 'partial' : 'unpaid';
+        }
+
+        return match (true) {
+            $hasCredit && $hasPaid => 'settled_mixed',
+            $hasCredit => 'settled_by_credit_note',
+            default => 'paid',
+        };
     }
 
     /**

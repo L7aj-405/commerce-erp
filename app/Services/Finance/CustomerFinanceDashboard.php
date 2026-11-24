@@ -76,7 +76,7 @@ final class CustomerFinanceDashboard
         $trend = [];
         for ($i = 5; $i >= 0; $i--) {
             $p = FinancePeriod::fromMonth($period->start->copy()->subMonthsNoOverflow($i)->format('Y-m'));
-            $trend[] = ['month' => $p->month, 'sales' => $this->report->ventesTotal($organization, $p, $store), 'collections' => Decimal::subtract($this->report->encaissementsTotal($organization, $p, $store), $this->report->refundsTotal($organization, $p, $store))];
+            $trend[] = ['month' => $p->month, 'sales' => $this->report->ventesNettesTotal($organization, $p, $store), 'collections' => Decimal::subtract($this->report->encaissementsTotal($organization, $p, $store), $this->report->refundsTotal($organization, $p, $store))];
         }
 
         return [

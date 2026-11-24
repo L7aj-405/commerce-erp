@@ -7,7 +7,7 @@ import { useI18n } from '@/i18n';
 import ApplicationShell from '@/layouts/ApplicationShell';
 import { Button } from '@/components/ui/Button';
 import { MetricCard } from '@/components/ui/MetricCard';
-import { formatMoney } from '@/utils/format';
+import { formatBusinessDate, formatMoney } from '@/utils/format';
 import { label, paymentMethodLabel } from '@/utils/labels';
 import { Head, Link, router } from '@inertiajs/react';
 import { useState } from 'react';
@@ -112,7 +112,7 @@ export default function FinanceEncaissements({ organization, period, periodLabel
                                         <td className="bidi-isolate px-4 py-2.5 font-medium text-ink" dir="ltr">
                                             <Link href={`/payments/${payment.id}`}>{payment.payment_number}</Link>
                                         </td>
-                                        <td className="px-4 py-2.5 text-ink-muted">{payment.payment_date}</td>
+                                        <td className="px-4 py-2.5 text-ink-muted">{formatBusinessDate(payment.payment_date)}</td>
                                         <td className="px-4 py-2.5">{label(paymentMethodLabel, payment.method)}</td>
                                         <td className="px-4 py-2.5 text-ink-muted">{payment.financial_account?.name ?? '—'}</td>
                                         <td className="px-4 py-2.5">
@@ -149,7 +149,7 @@ export default function FinanceEncaissements({ organization, period, periodLabel
                                 <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1.5 text-[13px]">
                                     <div className="min-w-0">
                                         <dt className="text-ink-faint">{t('common.date')}</dt>
-                                        <dd className="text-ink-muted">{payment.payment_date}</dd>
+                                        <dd className="text-ink-muted">{formatBusinessDate(payment.payment_date)}</dd>
                                     </div>
                                     <div className="min-w-0">
                                         <dt className="text-ink-faint">{t('finance.collections.method')}</dt>
@@ -202,7 +202,7 @@ export default function FinanceEncaissements({ organization, period, periodLabel
                                 {refunds.data.map((refund) => (
                                     <tr key={refund.id}>
                                         <td className="bidi-isolate px-4 py-2.5 font-medium text-ink" dir="ltr">{refund.refund_number}</td>
-                                        <td className="px-4 py-2.5 text-ink-muted">{refund.refund_date}</td>
+                                        <td className="px-4 py-2.5 text-ink-muted">{formatBusinessDate(refund.refund_date)}</td>
                                         <td className="px-4 py-2.5 text-ink-muted">{refund.original_payment?.payment_number ?? '—'}</td>
                                         <td className="px-4 py-2.5 text-ink-muted">{label(paymentMethodLabel, refund.method)} · {refund.financial_account?.name ?? '—'}</td>
                                         <td className="px-4 py-2.5">{refund.order ? <Link href={`/sales/orders/${refund.order.id}`}>{refund.order.order_number}</Link> : '—'}</td>

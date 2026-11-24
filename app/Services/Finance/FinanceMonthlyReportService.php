@@ -46,7 +46,7 @@ class FinanceMonthlyReportService
         $ventes = $this->ventesTotal($organization, $period, $store);
         $facturationBrute = $this->facturationTotal($organization, $period, $store);
         $avoirs = $this->creditNotesTotal($organization, $period, $store);
-        $ventesNettes = Decimal::subtract($ventes, $avoirs);
+        $ventesNettes = $this->ventesNettesTotal($organization, $period, $store);
         $facturation = Decimal::subtract($facturationBrute, $avoirs);
         $encaissements = $this->encaissementsTotal($organization, $period, $store);
         $remboursements = $this->refundsTotal($organization, $period, $store);
@@ -96,6 +96,15 @@ class FinanceMonthlyReportService
                 'variance' => Decimal::subtract($positionFin, $expectedPositionFin),
             ],
         ];
+    }
+
+    /**
+     * THE authoritative "ventes nettes" definition (TTC sales minus issued credit notes of the period). The monthly situation KPI and the
+     * customer-finance trend both call it, so identical period / store filters always reconcile.
+     */
+    public function ventesNettesTotal(Organization $organization, FinancePeriod $period, ?Store $store): string
+    {
+        return Decimal::subtract($this->ventesTotal($organization, $period, $store), $this->creditNotesTotal($organization, $period, $store));
     }
 
     public function ventesTotal(
