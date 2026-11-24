@@ -59,7 +59,7 @@ class CustomerCreditController extends Controller
         $rows = collect($rows);
         $counts = collect(self::FILTERS)->mapWithKeys(fn ($f) => [$f => $rows->filter(fn ($r) => $this->matches($f, $r))->count()])->all();
         $filtered = $rows->filter(fn ($r) => $this->matches($filter, $r))->values();
-        $pages = max(1, (int) ceil($filtered->count() / self::PER_PAGE));
+        $pages = max(1, intdiv($filtered->count() + self::PER_PAGE - 1, self::PER_PAGE));
         $page = min(max(1, (int) $request->query('page', 1)), $pages);
         $rows = $filtered->slice(($page - 1) * self::PER_PAGE, self::PER_PAGE)->values();
         $exceptions = DB::table('customer_credit_exceptions as x')->join('customers as c', 'c.id', '=', 'x.customer_id')->where('x.organization_id', $organization->getKey())

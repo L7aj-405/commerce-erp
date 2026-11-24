@@ -73,4 +73,24 @@ class FinanceClientsPhase3CreditRegisterTest extends PaymentTestCase
         $this->assertSame('blocked', $this->props(['section' => 'blocked'])['filter']);
         $this->assertSame('all', $this->props(['filter' => 'bogus'])['filter']);
     }
+
+    public function test_page_counts_use_exact_integer_boundaries(): void
+    {
+        // 520 rows, 50 per page: partial final page (11 pages).
+        $this->assertSame(11, $this->props()['meta']['pages']);
+        // An empty population still has exactly one (empty) page.
+        $this->assertSame(0, $this->props(['filter' => 'overruns'])['meta']['total']);
+        $this->assertSame(1, $this->props(['filter' => 'overruns'])['meta']['pages']);
+        $this->assertSame([], $this->props(['filter' => 'overruns'])['rows']);
+        // Exactly 50 rows -> exactly 1 page; 51 rows -> 2 pages.
+        DB::table('customer_financial_terms')->where('organization_id', $this->org->id)->whereNotIn('customer_id', array_slice($this->ids, 0, 50))->delete();
+        $this->assertSame(1, $this->props()['meta']['pages']);
+        $this->assertCount(50, $this->props()['rows']);
+        DB::table('customer_financial_terms')->insert(['organization_id' => $this->org->id, 'customer_id' => $this->ids[51], 'credit_enabled' => true, 'credit_limit' => '1000.0000', 'policy' => 'warn',
+            'financial_status' => 'normal', 'overdue_tolerance_days' => 0, 'created_at' => now(), 'updated_at' => now()]);
+        $this->assertSame(2, $this->props()['meta']['pages']);
+        $this->assertCount(1, $this->props(['page' => 2])['rows']);
+        // A page beyond the last one is clamped to the last page.
+        $this->assertSame(2, $this->props(['page' => 99])['meta']['page']);
+    }
 }
