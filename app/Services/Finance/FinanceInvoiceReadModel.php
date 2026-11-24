@@ -232,11 +232,13 @@ class FinanceInvoiceReadModel
             'sales_order_id' => $invoice->sales_order_id,
             'store_id' => $invoice->store_id,
             // Additive (Finance clients): HT / TVA of the issued document and its stamped due date (never invented for old invoices).
-            'subtotal_excl_tax' => (string) $invoice->subtotal_excl_tax,
+            // Presentation-only HT / remise / TVA: null (never zero) when the caller loaded a partial invoice without those columns.
             // Unambiguous presentation (FCUX-02): HT net = HT brut - remise, and HT net + TVA = TTC. Stored amounts are never altered.
-            'discount_total' => (string) $invoice->discount_total,
-            'net_excl_tax' => Decimal::subtract((string) $invoice->subtotal_excl_tax, (string) $invoice->discount_total),
-            'tax_total' => (string) $invoice->tax_total,
+            'subtotal_excl_tax' => $this->loaded($invoice, 'subtotal_excl_tax'),
+            'discount_total' => $this->loaded($invoice, 'discount_total'),
+            'net_excl_tax' => $this->loaded($invoice, 'subtotal_excl_tax') !== null && $this->loaded($invoice, 'discount_total') !== null
+                ? Decimal::subtract((string) $invoice->subtotal_excl_tax, (string) $invoice->discount_total) : null,
+            'tax_total' => $this->loaded($invoice, 'tax_total'),
             'due_date' => $invoice->due_date?->toDateString(),
             'is_overdue' => $invoice->due_date !== null && Decimal::compare($outstanding, '0.0000') > 0 && $invoice->due_date->toDateString() < now()->toDateString(),
             'total_incl_tax' => (string) $invoice->total_incl_tax,
@@ -285,6 +287,14 @@ class FinanceInvoiceReadModel
         }
 
         return null;
+    }
+
+    /** The attribute as a string, or null when this (partial) invoice model did not select it: a missing column is unknown, never zero. */
+    private function loaded(Invoice $invoice, string $column): ?string
+    {
+        $value = $invoice->getAttributes()[$column] ?? null;
+
+        return $value === null ? null : (string) $invoice->{$column};
     }
 
     /** A receivable can never be negative — an overpayment floors at zero, it never offsets another invoice's balance. */

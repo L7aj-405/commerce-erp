@@ -208,4 +208,24 @@ class FinanceClientsPhase3DisplayTest extends DocumentTestCase
         $this->actingAs($viewer)->get(route('finance.clients.collections', ['section' => 'refunds', 'view' => 'obligations']))->assertOk()
             ->assertInertia(fn (Assert $p) => $p->where('can.accounts', false));
     }
+
+    public function test_partial_invoice_models_get_unknown_presentation_fields_never_zero_and_the_financial_figures_are_unaffected(): void
+    {
+        [, $invoice] = $this->invoicedOrder('1.0000');
+        DB::table('invoices')->where('id', $invoice->id)->update(['subtotal_excl_tax' => '124.1700', 'discount_total' => '74.1700', 'tax_total' => '10.0000', 'total_incl_tax' => '60.0000']);
+        $columns = ['id', 'organization_id', 'store_id', 'sales_order_id', 'customer_id', 'status', 'invoice_number', 'invoice_date', 'due_date', 'currency_code', 'total_incl_tax', 'customer_name', 'customer_company'];
+        $partial = Invoice::query()->select($columns)->findOrFail($invoice->id);
+        $full = $this->row($invoice);
+        $row = app(FinanceInvoiceReadModel::class)->withPaymentSummaries([$partial])->first();
+
+        $this->assertNull($row['net_excl_tax']);
+        $this->assertNull($row['discount_total']);
+        $this->assertNull($row['subtotal_excl_tax']);
+        $this->assertNull($row['tax_total']);
+        foreach (['outstanding', 'paid_amount', 'credited_amount', 'net_total_incl_tax', 'status', 'settlement_status', 'total_incl_tax'] as $key) {
+            $this->assertSame($full[$key], $row[$key], $key);
+        }
+        $this->assertSame('50.0000', $full['net_excl_tax'], 'HT brut 124.17 - remise 74.17 = HT net 50.00');
+        $this->assertSame('60.0000', bcadd($full['net_excl_tax'], $full['tax_total'], 4), 'HT net 50.00 + TVA 10.00 = TTC 60.00');
+    }
 }

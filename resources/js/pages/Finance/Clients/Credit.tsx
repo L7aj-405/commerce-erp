@@ -4,6 +4,7 @@ import { Button, ButtonLink } from '@/components/ui/Button';
 import DocBadge from '@/components/ui/DocBadge';
 import { SelectField, TextAreaField, TextField } from '@/components/ui/form';
 import PageHeader from '@/components/ui/PageHeader';
+import { PageNav } from '@/components/finance/PageNav';
 import { TableShell } from '@/components/ui/TableShell';
 import { useI18n } from '@/i18n';
 import type { TranslationKey } from '@/i18n/translations';
@@ -19,7 +20,7 @@ type Row = {
 };
 type Exception = { id: number; customer_id: number; display_name: string; authorized_amount: string; reason: string; expires_on: string | null; consumed_at: string | null; sales_order_id: number | null };
 type Props = {
-    organization: { id: number; name: string }; enforcement: 'off' | 'warn' | 'block'; deductAdvances: boolean; rows: Row[]; exceptions: Exception[]; customers: { id: number; display_name: string }[];
+    organization: { id: number; name: string }; enforcement: 'off' | 'warn' | 'block'; deductAdvances: boolean; rows: Row[]; filter: Filter; counts: Record<Filter, number>; meta: { total: number; page: number; pages: number }; exceptions: Exception[]; customers: { id: number; display_name: string }[];
     businessDate: string; can: { policy: boolean; override: boolean }; truncated: boolean;
 };
 
@@ -29,36 +30,24 @@ type Filter = (typeof FILTERS)[number];
 const FILTER_LABEL: Record<Filter, TranslationKey> = {
     all: 'p3.credit.f.all', limits: 'p3.credit.f.limits', exposure: 'p3.credit.f.exposure', overruns: 'p3.credit.f.overruns', blocked: 'p3.credit.f.blocked', watch: 'p3.credit.f.watch', overdue: 'p3.credit.f.overdue',
 };
-const positive = (v: string | null) => v !== null && Number(v) > 0;
-const MATCH: Record<Filter, (r: Row) => boolean> = {
-    all: () => true,
-    limits: (r) => r.credit_enabled,
-    exposure: (r) => !r.mixed_currency && positive(r.exposure),
-    overruns: (r) => r.available !== null && Number(r.available) < 0,
-    blocked: (r) => r.financial_status === 'blocked',
-    watch: (r) => r.financial_status === 'watch',
-    overdue: (r) => !r.mixed_currency && positive(r.overdue),
-};
-/** Former `?section=` values still open the matching population, so existing bookmarks keep working. */
-const LEGACY: Record<string, Filter> = { limits: 'limits', exposure: 'exposure', overruns: 'overruns', blocked: 'blocked', terms: 'all' };
-const SECTIONS = ['register', 'authorizations', ...Object.keys(LEGACY)] as const;
+/** Former `?section=` population values are mapped to their filter server-side, so existing bookmarks keep working. */
+const SECTIONS = ['register', 'authorizations', 'limits', 'exposure', 'overruns', 'blocked', 'terms'] as const;
 
 type AlertDef = { key: TranslationKey; tone: 'danger' | 'warning' | 'neutral' };
 
-export default function FinanceClientsCredit({ organization, enforcement, rows, exceptions, customers, businessDate, can, truncated }: Props) {
+export default function FinanceClientsCredit({ organization, enforcement, rows, filter, counts, meta, exceptions, customers, businessDate, can }: Props) {
     const { t } = useI18n();
     const requested = useSection(SECTIONS, 'register');
     const section = requested === 'authorizations' ? 'authorizations' : 'register';
-    const [filter, setFilter] = useState<Filter>(LEGACY[requested] ?? 'all');
     const errors = usePage<{ errors?: Record<string, string> }>().props.errors ?? {};
     const [form, setForm] = useState({ customer_id: '', authorized_amount: '', reason: '', expires_on: '' });
     const money = (v: string | null, c: string | null) => (v === null ? UNAVAILABLE : formatMoney(v, c ?? 'MAD'));
-    const list = rows.filter(MATCH[filter]);
+    const list = rows;
     const alerts = (r: Row): AlertDef[] => [
-        ...(MATCH.overruns(r) ? [{ key: 'p3.credit.alert.overLimit', tone: 'danger' } as AlertDef] : []),
+        ...(r.available !== null && Number(r.available) < 0 ? [{ key: 'p3.credit.alert.overLimit', tone: 'danger' } as AlertDef] : []),
         ...(r.financial_status === 'blocked' ? [{ key: 'p3.credit.alert.blocked', tone: 'danger' } as AlertDef] : []),
         ...(r.financial_status === 'watch' ? [{ key: 'p3.credit.alert.watch', tone: 'warning' } as AlertDef] : []),
-        ...(MATCH.overdue(r) ? [{ key: 'p3.credit.alert.overdue', tone: 'warning' } as AlertDef] : []),
+        ...(!r.mixed_currency && Number(r.overdue) > 0 ? [{ key: 'p3.credit.alert.overdue', tone: 'warning' } as AlertDef] : []),
         ...(r.mixed_currency ? [{ key: 'p3.credit.alert.mixed', tone: 'neutral' } as AlertDef] : []),
     ];
     const grant = (e: FormEvent) => {
@@ -78,15 +67,14 @@ export default function FinanceClientsCredit({ organization, enforcement, rows, 
             />
             <ParentTabs group="receivables" active="credit" />
             <p className="mb-3 text-[13px] text-ink-muted">{t('p3.credit.policyNow')} <strong className="text-ink">{modeLabel}</strong> · {t('p3.credit.policyHelp')}</p>
-            {truncated && <div className="mb-4"><Alert tone="warning">{t('fc2.accounts.tooMany')}</Alert></div>}
             <SectionTabs sections={[{ key: 'register', label: t('p3.credit.register') }, { key: 'authorizations', label: t('p3.credit.exceptions') }]} active={section} label={t('fc.credit.title')} />
 
             {section === 'register' && (
                 <>
                     <div className="mb-3 flex flex-wrap items-end gap-3">
                         <label className="flex flex-col gap-1 text-[13px] text-ink-muted">{t('p3.credit.filter')}
-                            <select className="control-select h-10" value={filter} onChange={(e) => setFilter(e.target.value as Filter)}>
-                                {FILTERS.map((f) => <option key={f} value={f}>{t(FILTER_LABEL[f])} ({rows.filter(MATCH[f]).length})</option>)}
+                            <select className="control-select h-10" value={filter} onChange={(e) => router.get('/finance/clients/credit', { filter: e.target.value }, { preserveScroll: true })}>
+                                {FILTERS.map((f) => <option key={f} value={f}>{t(FILTER_LABEL[f])} ({counts[f]})</option>)}
                             </select>
                         </label>
                     </div>
@@ -113,6 +101,7 @@ export default function FinanceClientsCredit({ organization, enforcement, rows, 
                                 ))}
                             </tbody>
                         </table>
+                        <PageNav page={meta.page} pages={meta.pages} total={meta.total} />
                     </TableShell>
                 </>
             )}
