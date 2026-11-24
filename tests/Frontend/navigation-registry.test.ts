@@ -141,16 +141,13 @@ test('supplier invoices live under Achats & Fournisseurs, not Finance, with the 
 const FINANCE_CLIENTS = [
     ['/finance/clients', 'Vue financière clients'],
     ['/finance/clients/comptes', 'Comptes clients'],
-    ['/finance/clients/facturation', 'Facturation & avoirs'],
-    ['/finance/clients/encaissements', 'Encaissements clients'],
-    ['/finance/clients/creances', 'Créances & échéances'],
-    ['/finance/clients/credit', 'Crédit client'],
-    ['/finance/clients/instruments', 'Chèques & effets à recevoir'],
-    ['/finance/clients/journal', 'Journal clients'],
-    ['/finance/clients/rapports', 'Rapports & exports'],
+    ['/finance/clients/facturation', 'Factures & avoirs'],
+    ['/finance/clients/encaissements', 'Encaissements & instruments'],
+    ['/finance/clients/creances', 'Recouvrement & crédit'],
+    ['/finance/clients/rapports', 'Rapports & journal'],
 ];
 
-test('Finance & Trésorerie has the approved six areas and Finance clients lists exactly nine entries in order', () => {
+test('Finance & Trésorerie has the approved six areas and Finance clients lists exactly six entries in order', () => {
     const finance = full().find((g) => g.key === 'finance')!;
     assert.deepEqual(finance.items.map((e) => e.href ?? e.key), [
         '/finance', 'finance-clients', 'finance-suppliers', 'finance-staff', 'finance-treasury', 'finance-steering',
@@ -159,7 +156,7 @@ test('Finance & Trésorerie has the approved six areas and Finance clients lists
         'Vue d’ensemble', 'Finance clients', 'Finance fournisseurs', 'Finance du personnel', 'Trésorerie générale', 'Pilotage financier',
     ]);
     const clients = finance.items.find((e: any) => e.key === 'finance-clients') as any;
-    // The tenth item (/payments) exists only for users WITHOUT finance.view; with it, exactly the nine approved entries remain.
+    // The tenth item (/payments) exists only for users WITHOUT finance.view; with it, exactly the six approved entries remain.
     assert.deepEqual(clients.items.map((i: Item) => [i.href, i.label]), FINANCE_CLIENTS);
 });
 
@@ -187,7 +184,7 @@ test('Finance clients entries keep the permissions of the pages they front, and 
     const onlyFinance = tenant(['finance.view']);
     const hrefs = flat(nav.visibleNavGroups(build('fr', onlyFinance), onlyFinance)).map((i) => i.href);
     assert.ok(!hrefs.includes('/finance/clients/comptes'), 'finance.view alone must not expose customer accounts');
-    assert.ok(hrefs.includes('/finance/clients/journal'));
+    assert.ok(hrefs.includes('/finance/clients/rapports'));
     const both = tenant(['finance.view', 'customers.view']);
     assert.ok(flat(nav.visibleNavGroups(build('fr', both), both)).some((i) => i.href === '/finance/clients/comptes'));
 });
@@ -227,7 +224,7 @@ test('deep links highlight the right group (longest prefix wins)', () => {
     assert.equal(m('/finance/facturation')?.item.href, '/finance/clients/facturation');
     assert.equal(m('/finance/encaissements')?.item.href, '/finance/clients/encaissements');
     assert.equal(m('/finance/creances')?.item.href, '/finance/clients/creances');
-    assert.equal(m('/finance/journal')?.item.href, '/finance/clients/journal');
+    assert.equal(m('/finance/journal')?.item.href, '/finance/clients/rapports');
     assert.equal(m('/finance/ventes')?.item.href, '/finance/clients/rapports');
     assert.equal(m('/finance/ca-encaisse')?.item.href, '/finance/clients/rapports');
     assert.equal(m('/finance/clients/comptes/42')?.item.href, '/finance/clients/comptes');
@@ -266,9 +263,9 @@ test('breadcrumbs follow the registry, add a terminal crumb on deeper URLs and s
     assert.equal(detail[2]!.href, undefined);
     assert.deepEqual(crumbs('/finance/factures-fournisseurs/nouvelle').map((c) => c.label), ['Achats & Fournisseurs', 'Factures fournisseurs', 'Création']);
     assert.deepEqual(crumbs('/sales/customers/7/edit').map((c) => c.label), ['Ventes & Clients', 'Clients & contacts', 'Clients', 'Modification']);
-    assert.deepEqual(crumbs('/finance/encaissements').map((c) => c.label), ['Finance & Trésorerie', 'Finance clients', 'Encaissements clients']);
-    assert.deepEqual(crumbs('/finance/clients/encaissements').map((c) => c.label), ['Finance & Trésorerie', 'Finance clients', 'Encaissements clients']);
-    assert.deepEqual(crumbs('/payments/7').map((c) => c.label), ['Finance & Trésorerie', 'Finance clients', 'Encaissements clients', 'Détail']);
+    assert.deepEqual(crumbs('/finance/encaissements').map((c) => c.label), ['Finance & Trésorerie', 'Finance clients', 'Encaissements & instruments']);
+    assert.deepEqual(crumbs('/finance/clients/encaissements').map((c) => c.label), ['Finance & Trésorerie', 'Finance clients', 'Encaissements & instruments']);
+    assert.deepEqual(crumbs('/payments/7').map((c) => c.label), ['Finance & Trésorerie', 'Finance clients', 'Encaissements & instruments', 'Détail']);
     assert.deepEqual(crumbs('/finance/clients/comptes/42').map((c) => c.label), ['Finance & Trésorerie', 'Finance clients', 'Comptes clients', 'Détail']);
 });
 

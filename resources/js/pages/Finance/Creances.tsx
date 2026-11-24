@@ -1,4 +1,4 @@
-import { SectionTabs, useCurrentPath, useSection } from '@/components/finance/FinanceClientsKit';
+import { ParentTabs, useCurrentPath, useSection } from '@/components/finance/FinanceClientsKit';
 import { AgingSection, DuesSection, ForecastSection, RemindersSection } from '@/components/finance/ReceivableSections';
 import type { Aging, Forecast, Reminders } from '@/components/finance/ReceivableSections';
 import FinanceFilters, { type FinanceStore } from '@/components/finance/FinanceFilters';
@@ -46,7 +46,6 @@ export default function FinanceCreances({ organization, period, periodLabel, asO
     const { t } = useI18n();
     const path = useCurrentPath();
     const section = useSection(['receivables', 'dues', 'aging', 'reminders', 'forecasts'] as const, 'receivables');
-    const sections = [{ key: 'receivables', label: t('fc.rec.s.receivables') }, { key: 'dues', label: t('fc.rec.s.dues') }, { key: 'aging', label: t('fc.rec.s.aging') }, { key: 'reminders', label: t('fc.rec.s.reminders') }, { key: 'forecasts', label: t('fc.rec.s.forecasts') }];
     return (
         <ApplicationShell wide>
             <Head title={`${t('finance.receivables.title')} — Finance`} />
@@ -58,7 +57,7 @@ export default function FinanceCreances({ organization, period, periodLabel, asO
                 {t('finance.receivables.title')} : <strong className="text-ink" dir="ltr">{formatMoney(total)}</strong>
                 <InfoTip label={t('finance.receivables.totalDefinitionLabel')}>{t('finance.receivables.totalDefinition')}</InfoTip>
             </p>
-            <SectionTabs sections={sections} active={section} label={t('fc.sections')} />
+            <ParentTabs group="receivables" active={section} />
             <FinanceFilters path={path} extra={{ section }} period={period} storeId={storeId} stores={stores} />
 
             {section === 'receivables' && (

@@ -1,4 +1,4 @@
-import { SectionTabs, UNAVAILABLE, useSection } from '@/components/finance/FinanceClientsKit';
+import { ParentTabs, SectionTabs, UNAVAILABLE, useSection } from '@/components/finance/FinanceClientsKit';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import DocBadge from '@/components/ui/DocBadge';
@@ -46,6 +46,7 @@ export default function FinanceClientsCredit({ organization, enforcement, deduct
         <ApplicationShell wide>
             <Head title={`${t('fc.credit.title')} — Finance`} />
             <PageHeader title={t('fc.credit.title')} description={`${organization.name} — ${t('fc.credit.description')}`} />
+            <ParentTabs group="receivables" active="credit" />
             <form onSubmit={savePolicy} className="surface-card mb-4 flex flex-wrap items-end gap-3 p-4" aria-label={t('fc4.policy.title')}>
                 <SelectField label={t('fc4.policy.title')} value={mode} onChange={(e) => setMode(e.target.value as Props['enforcement'])} disabled={!can.policy} className="min-w-64">
                     <option value="off">{t('fc4.policy.off')}</option><option value="warn">{t('fc4.policy.warn')}</option><option value="block">{t('fc4.policy.block')}</option>

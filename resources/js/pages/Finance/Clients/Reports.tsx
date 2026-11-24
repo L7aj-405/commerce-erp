@@ -1,5 +1,5 @@
 import FinanceFilters, { type FinanceStore } from '@/components/finance/FinanceFilters';
-import { SectionTabs, UNAVAILABLE, useSection } from '@/components/finance/FinanceClientsKit';
+import { ParentTabs, UNAVAILABLE, useSection } from '@/components/finance/FinanceClientsKit';
 import { Alert } from '@/components/ui/Alert';
 import DocBadge from '@/components/ui/DocBadge';
 import { ButtonLink, DownloadLink } from '@/components/ui/Button';
@@ -61,7 +61,7 @@ export default function FinanceClientsReports({ organization, period, periodLabe
         <ApplicationShell wide>
             <Head title={`${t('fc.reports.title')} — Finance`} />
             <PageHeader title={t('fc.reports.title')} description={`${organization.name} · ${periodLabel} — ${t('fc.reports.description')}`} />
-            <SectionTabs sections={[{ key: 'catalog', label: t('fc.reports.available') }, { key: 'profitability', label: t('fc.reports.profitability') }]} active={section} label={t('fc.reports.title')} />
+            <ParentTabs group="reports" active={section} />
             <FinanceFilters path="/finance/clients/rapports" extra={{ section }} period={period} storeId={storeId} stores={stores} />
 
             {section === 'catalog' && (

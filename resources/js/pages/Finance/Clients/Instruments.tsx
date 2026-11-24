@@ -1,4 +1,4 @@
-import { SectionTabs, UNAVAILABLE, useSection } from '@/components/finance/FinanceClientsKit';
+import { ParentTabs, SectionTabs, UNAVAILABLE, useSection } from '@/components/finance/FinanceClientsKit';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import DocBadge from '@/components/ui/DocBadge';
@@ -63,6 +63,7 @@ export default function FinanceClientsInstruments({ organization, instruments, t
         <ApplicationShell wide>
             <Head title={`${t('fc.inst.title')} — Finance`} />
             <PageHeader title={t('fc.inst.title')} description={`${organization.name} — ${t('fc.inst.description')}`} />
+            <ParentTabs group="collections" active="instruments" />
             <div className="mb-4"><Alert tone="info">{t('fc.inst.notice')}</Alert></div>
             <div className="mb-4 flex flex-wrap gap-2 text-sm text-ink-muted">
                 {totals.map((x) => <span key={`${x.state}${x.currency_code}`} className="surface-card px-3 py-1.5">{state(x.state)} : <strong dir="ltr">{formatMoney(x.total, x.currency_code)}</strong> ({x.count})</span>)}

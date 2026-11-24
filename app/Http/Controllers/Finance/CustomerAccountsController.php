@@ -23,6 +23,7 @@ use App\Services\DocumentVisibility;
 use App\Services\Finance\CustomerCollectionForecast;
 use App\Services\Finance\CustomerCreditGuard;
 use App\Services\Finance\CustomerFinancialPositionService;
+use App\Services\Finance\CustomerOpenOrders;
 use App\Services\Finance\CustomerStatementService;
 use App\Services\Finance\Export\TabularExport;
 use App\Services\Finance\FinanceAccessGuard;
@@ -404,20 +405,7 @@ class CustomerAccountsController extends Controller
     /** @return list<array<string,mixed>> the customer's open confirmed orders of the viewer's ACTIVE store (settlement targets) */
     private function openOrders(Customer $customer, User $user, SalesOrderPaymentCalculator $calculator): array
     {
-        if ($user->active_store_id === null) {
-            return [];
-        }
-        $out = [];
-        foreach (SalesOrder::query()->where('organization_id', $customer->organization_id)->where('store_id', $user->active_store_id)->where('customer_id', $customer->getKey())
-            ->where('status', 'confirmed')->whereNull('sandbox_id')->orderByRaw('CASE WHEN due_date IS NULL THEN 1 ELSE 0 END')->orderBy('due_date')->orderBy('id')->limit(200)->get() as $order) {
-            $remaining = $calculator->remainingAmount($order);
-            if (Decimal::compare($remaining, '0') > 0) {
-                $out[] = ['id' => $order->id, 'order_number' => $order->order_number, 'sale_date' => $order->sale_date->toDateString(), 'due_date' => $order->due_date?->toDateString(),
-                    'total_incl_tax' => (string) $order->total_incl_tax, 'remaining' => $remaining, 'is_overdue' => $order->due_date !== null && $order->due_date->toDateString() < now()->toDateString()];
-            }
-        }
-
-        return $out;
+        return (new CustomerOpenOrders($calculator))->forCustomer($customer, $user);
     }
 
     /** @return array{0:string,1:string} */

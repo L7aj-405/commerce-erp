@@ -101,15 +101,14 @@ export function buildNavGroups(t: (key: TranslationKey) => string, tenant: Tenan
                     label: t('nav.section.financeClients'),
                     icon: <IconUsers />,
                     items: [
+                        // Phase 3: six destinations. Relocated pages (instruments, credit, journal) stay reachable under
+                        // their legacy URLs; they are aliases of their new parent so the active state and breadcrumbs follow.
                         { href: '/finance/clients', label: t('nav.fc.overview'), permission: 'finance.view', icon: <IconChart /> },
                         { href: '/finance/clients/comptes', label: t('nav.fc.accounts'), permission: 'finance.view', alsoRequires: 'customers.view', icon: <IconUsers /> },
                         { href: '/finance/clients/facturation', aliases: ['/finance/facturation'], label: t('nav.fc.invoicing'), permission: 'finance.view', icon: <IconInvoice /> },
-                        { href: '/finance/clients/encaissements', aliases: ['/finance/encaissements', '/payments'], label: t('nav.fc.collections'), permission: 'finance.view', icon: <IconCoinsIn /> },
-                        { href: '/finance/clients/creances', aliases: ['/finance/creances'], label: t('nav.fc.receivables'), permission: 'finance.view', icon: <IconClockCoins /> },
-                        { href: '/finance/clients/credit', label: t('nav.fc.credit'), permission: 'finance.view', icon: <IconShield /> },
-                        { href: '/finance/clients/instruments', label: t('nav.fc.instruments'), permission: 'finance.view', icon: <IconBanknote /> },
-                        { href: '/finance/clients/journal', aliases: ['/finance/journal'], label: t('nav.fc.journal'), permission: 'finance.view', icon: <IconList /> },
-                        { href: '/finance/clients/rapports', aliases: ['/finance/ventes', '/finance/ca-encaisse'], label: t('nav.fc.reports'), permission: 'finance.view', icon: <IconTrending /> },
+                        { href: '/finance/clients/encaissements', aliases: ['/finance/encaissements', '/payments', '/finance/clients/avances', '/finance/clients/instruments'], label: t('nav.fc.collections'), permission: 'finance.view', icon: <IconCoinsIn /> },
+                        { href: '/finance/clients/creances', aliases: ['/finance/creances', '/finance/clients/credit'], label: t('nav.fc.receivables'), permission: 'finance.view', icon: <IconClockCoins /> },
+                        { href: '/finance/clients/rapports', aliases: ['/finance/ventes', '/finance/ca-encaisse', '/finance/clients/journal', '/finance/journal'], label: t('nav.fc.reports'), permission: 'finance.view', icon: <IconTrending /> },
                         // A cashier-level user (payments.view, no finance.view) keeps their direct entry to the
                         // store-scoped payments list; Finance users reach it from "Encaissements clients" instead.
                         { href: '/payments', label: t('nav.customerPayments'), permission: 'payments.view', hideWith: 'finance.view', needsStore: true, icon: <IconWallet /> },
