@@ -1,4 +1,6 @@
-import { FinancePlaceholder, SectionTabs, useCurrentPath, useSection } from '@/components/finance/FinanceClientsKit';
+import { SectionTabs, useCurrentPath, useSection } from '@/components/finance/FinanceClientsKit';
+import { AgingSection, DuesSection, ForecastSection, RemindersSection } from '@/components/finance/ReceivableSections';
+import type { Aging, Forecast, Reminders } from '@/components/finance/ReceivableSections';
 import FinanceFilters, { type FinanceStore } from '@/components/finance/FinanceFilters';
 import PageHeader from '@/components/ui/PageHeader';
 import EmptyState from '@/components/ui/EmptyState';
@@ -21,6 +23,8 @@ type OrderRow = {
     outstanding: string;
     payment_status: 'unpaid' | 'partially_paid';
     last_payment_date: string | null;
+    due_date?: string | null;
+    is_overdue?: boolean;
 };
 type LinkData = { url: string | null; label: string; active: boolean };
 type Props = {
@@ -32,9 +36,13 @@ type Props = {
     stores: FinanceStore[];
     total: string;
     orders: { data: OrderRow[]; links: LinkData[]; total: number; from?: number | null; to?: number | null };
+    aging?: Aging | null;
+    forecast?: Forecast | null;
+    reminders?: Reminders | null;
+    can?: { export: boolean; monthEnd: boolean };
 };
 
-export default function FinanceCreances({ organization, period, periodLabel, asOf, storeId, stores, total, orders }: Props) {
+export default function FinanceCreances({ organization, period, periodLabel, asOf, storeId, stores, total, orders, aging, forecast, reminders, can }: Props) {
     const { t } = useI18n();
     const path = useCurrentPath();
     const section = useSection(['receivables', 'dues', 'aging', 'reminders', 'forecasts'] as const, 'receivables');
@@ -63,11 +71,12 @@ export default function FinanceCreances({ organization, period, periodLabel, asO
                 className="hidden md:block"
                 footer={orders.data.length === 0 ? undefined : <TablePager links={orders.links} from={orders.from} to={orders.to} total={orders.total} />}
             >
-                <table className="erp-table min-w-[1000px]">
+                <table className="erp-table min-w-[1120px]">
                             <thead>
                                 <tr>
                                     <th className="px-4 py-2.5">{t('finance.sales.orderNumber')}</th>
                                     <th className="px-4 py-2.5">{t('finance.sales.saleDate')}</th>
+                                    <th className="px-4 py-2.5">{t('fc2.due')}</th>
                                     <th className="px-4 py-2.5">{t('common.customer')}</th>
                                     <th className="num px-4 py-2.5">{t('finance.receivables.orderTotal')}</th>
                                     <th className="num px-4 py-2.5">{t('finance.sales.collected')}</th>
@@ -84,6 +93,7 @@ export default function FinanceCreances({ organization, period, periodLabel, asO
                                             <Link href={`/sales/orders/${order.id}`}>{order.order_number}</Link>
                                         </td>
                                         <td className="px-4 py-2.5 text-ink-muted">{order.sale_date}</td>
+                                        <td className={`px-4 py-2.5 ${order.is_overdue ? 'text-danger' : 'text-ink-muted'}`}>{order.due_date ?? t('fc2.undated')}{order.is_overdue && ` · ${t('fc2.col.overdue')}`}</td>
                                         <td className="px-4 py-2.5">{order.customer}</td>
                                         <td className="num px-4 py-2.5" dir="ltr">{formatMoney(order.total_incl_tax)}</td>
                                         <td className="num px-4 py-2.5 text-ink-muted" dir="ltr">{formatMoney(order.paid_amount)}</td>
@@ -148,10 +158,10 @@ export default function FinanceCreances({ organization, period, periodLabel, asO
                 </>
             )}
             {/* Future: due dates (no payment-terms field exists), aged balance, reminders (no automation), customer forecasts. */}
-            {section === 'dues' && <FinancePlaceholder plannedKey="fc.rec.p.dues" />}
-            {section === 'aging' && <FinancePlaceholder plannedKey="fc.rec.p.aging" />}
-            {section === 'reminders' && <FinancePlaceholder plannedKey="fc.rec.p.reminders" />}
-            {section === 'forecasts' && <FinancePlaceholder plannedKey="fc.rec.p.forecasts" />}
+            {section === 'dues' && <DuesSection forecast={forecast ?? null} />}
+            {section === 'aging' && <AgingSection aging={aging ?? null} canExport={Boolean(can?.export)} query={new URLSearchParams({ month: period, ...(storeId ? { store_id: String(storeId) } : {}) }).toString()} />}
+            {section === 'reminders' && <RemindersSection reminders={reminders ?? null} />}
+            {section === 'forecasts' && <ForecastSection forecast={forecast ?? null} monthEnd={Boolean(can?.monthEnd)} />}
         </ApplicationShell>
     );
 }

@@ -17,6 +17,7 @@ use App\Models\SalesOrderLine;
 use App\Models\SalesOrderProcurement;
 use App\Models\User;
 use App\Services\AuditLogger;
+use App\Services\Finance\CustomerCreditGuard;
 use App\Services\InventoryReservationManager;
 use App\Services\Policies\PolicyResolver;
 use App\Services\PosStockAllocator;
@@ -47,6 +48,7 @@ class ConfirmSalesOrderAction
         private readonly SalesOrderProcurementPlanner $procurementPlanner,
         private readonly AuditLogger $audit,
         private readonly PolicyResolver $policies,
+        private readonly CustomerCreditGuard $credit,
     ) {}
 
     /**
@@ -98,6 +100,9 @@ class ConfirmSalesOrderAction
 
         return DB::transaction(function () use ($actor, $order) {
             $order = SalesOrder::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
+            // Credit control: take the per-customer lock BEFORE any consistent read, so the exposure the check later reads is
+            // never an older InnoDB snapshot than the commitments a concurrent confirmation just committed.
+            $this->credit->lockCustomer($order);
             if ($order->status !== SalesOrderStatus::Draft) {
                 throw ValidationException::withMessages(['order' => 'Only a draft order can be confirmed.']);
             }
@@ -301,10 +306,12 @@ class ConfirmSalesOrderAction
             // commitment, after all authoritative line calculations succeed.
             $this->marginSnapshots->execute($order, $lines);
 
+            // Finance clients: customer credit control (off by default; first confirmation only; serialized per customer).
+            $this->credit->assertCanConfirm($actor, $order);
             $order->status = SalesOrderStatus::Confirmed;
             $order->confirmed_at = now();
             // W4.5 payment term, stamped once (a revision re-confirming the order keeps it).
-            $order->due_date ??= $order->sale_date->copy()->addDays($this->policies->salesOrderPaymentTermDays($order->organization));
+            $order->due_date ??= $order->sale_date->copy()->addDays($this->credit->paymentTermDays($order) ?? $this->policies->salesOrderPaymentTermDays($order->organization));
             $order->confirmed_by_user_id = $actor->getKey();
             $order->save();
 

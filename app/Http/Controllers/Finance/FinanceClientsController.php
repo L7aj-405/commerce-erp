@@ -2,24 +2,25 @@
 
 namespace App\Http\Controllers\Finance;
 
-use App\Enums\CustomerStatus;
-use App\Enums\InvoiceStatus;
 use App\Http\Controllers\Controller;
 use App\Models\Customer;
-use App\Models\Invoice;
 use App\Models\Organization;
-use App\Models\Payment;
 use App\Models\Store;
 use App\Services\ActiveTenantContext;
+use App\Services\AuditLogger;
 use App\Services\CustomerFinancialSummary;
 use App\Services\DocumentVisibility;
+use App\Services\Finance\CustomerAgingReport;
+use App\Services\Finance\CustomerFinanceDashboard;
+use App\Services\Finance\CustomerProfitabilityReport;
+use App\Services\Finance\Export\TabularExport;
 use App\Services\Finance\FinanceAccessGuard;
-use App\Services\Finance\FinanceMonthlyReportService;
 use App\Services\Finance\FinancePeriod;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * Finance clients — entry pages (Phase 1: UI/UX organization only).
@@ -40,13 +41,14 @@ use Inertia\Response;
 class FinanceClientsController extends Controller
 {
     /** Pages whose functionality is announced but not built yet (no data, no actions). */
-    private const PLANNED = ['credit', 'instruments', 'personnel'];
+    private const PLANNED = ['personnel'];
 
     /** FC-01 — customer-finance dashboard: authoritative metrics already produced by the monthly situation. */
-    public function overview(Request $request, ActiveTenantContext $context, FinanceAccessGuard $guard, FinanceMonthlyReportService $report): Response
+    public function overview(Request $request, ActiveTenantContext $context, FinanceAccessGuard $guard, CustomerFinanceDashboard $dashboard): Response
     {
         [$organization, $period, $store] = $this->scope($request, $context, $guard);
-        $situation = $report->situation($organization, $period, $store);
+        $data = $dashboard->build($organization, $period, $store);
+        $situation = $data['situation'];
 
         return Inertia::render('Finance/Clients/Overview', $this->base($organization, $period, $store) + [
             'metrics' => [
@@ -60,53 +62,8 @@ class FinanceClientsController extends Controller
                 // on the account page): shown as unavailable, never as zero.
                 'unbilled_orders' => null,
             ],
-            'can' => ['accounts' => $request->user()->hasPermission($organization, 'customers.view')],
-        ]);
-    }
-
-    /** FC-02 — customer accounts index: identity only. No per-row financial figure (those are viewer-scoped, computed on the account). */
-    public function accounts(Request $request, ActiveTenantContext $context, FinanceAccessGuard $guard): Response
-    {
-        $organization = $context->organizationOrFail();
-        $guard->authorizeView($request->user(), $organization);
-        $this->authorize('viewAny', [Customer::class, $organization]);
-        $filters = $request->validate(['search' => ['nullable', 'string', 'max:255'], 'status' => ['nullable', Rule::enum(CustomerStatus::class)]]);
-        $customers = Customer::query()->where('organization_id', $organization->getKey())
-            ->when($filters['search'] ?? null, fn ($query, string $search) => $query->where(fn ($query) => $query
-                ->where('display_name', 'like', "%{$search}%")->orWhere('company_name', 'like', "%{$search}%")
-                ->orWhere('email', 'like', "%{$search}%")->orWhere('phone', 'like', "%{$search}%")))
-            ->when($filters['status'] ?? null, fn ($query, string $status) => $query->where('status', $status))
-            ->orderBy('display_name')
-            ->paginate(20, ['id', 'display_name', 'company_name', 'email', 'phone', 'status'])
-            ->withQueryString();
-
-        return Inertia::render('Finance/Clients/Accounts', ['customers' => $customers, 'filters' => $filters]);
-    }
-
-    /** FC-02 — one customer account: viewer-scoped figures and recent documents, same visibility rules as the commercial profile. */
-    public function accountShow(Request $request, Customer $customer, FinanceAccessGuard $guard, CustomerFinancialSummary $summary, DocumentVisibility $visibility): Response
-    {
-        $organization = $customer->organization;
-        $guard->authorizeView($request->user(), $organization);
-        $this->authorize('view', $customer);
-        $user = $request->user();
-        $customerId = $customer->getKey();
-        $stores = $visibility->storeIds($user, $organization) ?: [0];
-        $limit = 15;
-
-        $invoices = $visibility->visible($user, $organization, Invoice::class)
-            ->where('customer_id', $customerId)->where('status', '!=', InvoiceStatus::Superseded->value);
-        $payments = $visibility->visible($user, $organization, Payment::class)
-            ->whereHas('allocations.salesOrder', fn ($query) => $query->where('customer_id', $customerId)->whereIn('store_id', $stores));
-
-        return Inertia::render('Finance/Clients/AccountShow', [
-            'customer' => $customer->only(['id', 'display_name', 'company_name', 'email', 'phone', 'status']),
-            'summary' => $summary->forCustomer($customer, $user),
-            'invoices' => (clone $invoices)->orderByDesc('invoice_date')->limit($limit)->get(['id', 'invoice_number', 'version', 'invoice_date', 'status', 'total_incl_tax']),
-            'invoicesCount' => (clone $invoices)->count(),
-            'payments' => (clone $payments)->orderByDesc('payment_date')->limit($limit)->get(['id', 'payment_number', 'payment_date', 'method', 'status', 'amount']),
-            'paymentsCount' => (clone $payments)->count(),
-            'can' => ['commercialProfile' => $user->can('view', $customer)],
+            'dashboard' => array_diff_key($data, ['situation' => 1]),
+            'can' => ['accounts' => $request->user()->hasPermission($organization, 'customers.view'), 'credit' => true],
         ]);
     }
 
@@ -121,13 +78,54 @@ class FinanceClientsController extends Controller
     }
 
     /** FC-09 — reports hub: links to the existing reports and exports (their own routes keep their own permissions). */
-    public function reports(Request $request, ActiveTenantContext $context, FinanceAccessGuard $guard): Response
+    public function reports(Request $request, ActiveTenantContext $context, FinanceAccessGuard $guard, CustomerProfitabilityReport $profit): Response
     {
         [$organization, $period, $store] = $this->scope($request, $context, $guard);
+        $profitability = $request->query('section') === 'profitability'
+            ? $profit->build($organization, $period->start->toDateString(), $period->end->toDateString(), $store) : null;
 
         return Inertia::render('Finance/Clients/Reports', $this->base($organization, $period, $store) + [
+            'profitability' => $profitability,
             'can' => ['export' => $request->user()->hasPermission($organization, 'finance.export')],
         ]);
+    }
+
+    /** Customer profitability export (same service and period as the page; finance.export; audited). Incomplete cost data is flagged per row. */
+    public function profitabilityExport(Request $request, string $format, ActiveTenantContext $context, FinanceAccessGuard $guard, CustomerProfitabilityReport $profit, AuditLogger $audit): StreamedResponse
+    {
+        [$organization, $period, $store] = $this->scope($request, $context, $guard);
+        $guard->authorizeExport($request->user(), $organization);
+        abort_unless(in_array($format, ['csv', 'xlsx'], true), 404);
+        $report = $profit->build($organization, $period->start->toDateString(), $period->end->toDateString(), $store);
+        $audit->record('finance_clients.profitability_exported', $request->user(), $organization, $store, null, newValues: ['format' => $format, 'month' => $period->month, 'rows' => count($report['rows'])]);
+        $headers = ['Client', 'CA HT net de retours', 'CA HT couvert par un coût', 'Coût', 'Marge', 'Taux de marge', 'Lignes sans coût', 'Données incomplètes'];
+        $lines = (function () use ($report) {
+            foreach ($report['rows'] as $r) {
+                yield [$r['customer'], $r['revenue'], $r['covered_revenue'], $r['cost'], $r['margin'], $r['margin_rate'], $r['missing_cost_lines'], $r['incomplete'] ? 'oui' : 'non'];
+            }
+        })();
+        $name = 'rentabilite-clients-'.$period->month;
+
+        return $format === 'csv' ? TabularExport::csv($name, $headers, $lines) : TabularExport::xlsx($name, 'Rentabilité clients', $headers, $lines, [1, 2, 3, 4, 5]);
+    }
+
+    /** Receivable aging export (same service and filters as the page): finance.export, audited, safe CSV / XLSX. */
+    public function agingExport(Request $request, string $format, ActiveTenantContext $context, FinanceAccessGuard $guard, CustomerAgingReport $aging, AuditLogger $audit): StreamedResponse
+    {
+        [$organization, $period, $store] = $this->scope($request, $context, $guard);
+        $guard->authorizeExport($request->user(), $organization);
+        abort_unless(in_array($format, ['csv', 'xlsx'], true), 404);
+        $report = $aging->build($organization, $store, $period->end);
+        $audit->record('finance_clients.aging_exported', $request->user(), $organization, $store, null, newValues: ['format' => $format, 'as_of' => $report['as_of'], 'rows' => count($report['rows'])]);
+        $headers = ['Client', 'Devise', 'Créance sur factures', 'Exposition non facturée', 'Total', 'Dont en retard', 'Non échu', '1-30 j', '31-60 j', '61-90 j', '> 90 j', 'Sans échéance'];
+        $lines = (function () use ($report) {
+            foreach ($report['rows'] as $r) {
+                yield [$r['customer'], $r['currency_code'], $r['receivable'], $r['unbilled'], $r['total'], $r['overdue'], ...array_values($r['bands'] ?? array_fill(0, 6, null))];
+            }
+        })();
+        $name = 'balance-agee-'.$report['as_of'];
+
+        return $format === 'csv' ? TabularExport::csv($name, $headers, $lines) : TabularExport::xlsx($name, 'Balance âgée', $headers, $lines, range(2, 11));
     }
 
     /** @return array{0: Organization, 1: FinancePeriod, 2: ?Store} */

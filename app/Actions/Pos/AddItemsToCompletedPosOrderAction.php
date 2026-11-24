@@ -16,6 +16,7 @@ use App\Models\SalesOrderLine;
 use App\Models\User;
 use App\Models\Warehouse;
 use App\Services\AuditLogger;
+use App\Services\Finance\CustomerCreditGuard;
 use App\Services\InventoryReservationManager;
 use App\Services\Pos\PosOrderCompletionEligibility;
 use App\Services\ProductPriceResolver;
@@ -46,6 +47,7 @@ class AddItemsToCompletedPosOrderAction
         private readonly AuditLogger $audit,
         private readonly PosOrderCompletionEligibility $eligibility,
         private readonly SaleLineMarginCalculator $margins,
+        private readonly CustomerCreditGuard $credit,
     ) {}
 
     /** @param list<array{product_variant_id: int, quantity: string}> $items */
@@ -69,6 +71,8 @@ class AddItemsToCompletedPosOrderAction
                     ->lockForUpdate()
                     ->with(['organization', 'store', 'posWarehouse'])
                     ->firstOrFail();
+                // Credit control (off by default): serialize with other commitments of the same customer before any consistent read.
+                $this->credit->lockCustomer($order);
 
                 if ($existing = $this->existing($order, $operationId, $operationHash)) {
                     return $existing;
@@ -182,6 +186,8 @@ class AddItemsToCompletedPosOrderAction
                     ];
                 }
 
+                // A complement GROWS the customer's commitment: same credit check as a confirmation, on the increase only (rolls the whole addendum back).
+                $this->credit->assertCanIncrease($actor, $order, $addedTotal, 'addendum');
                 $this->totals->recalculate($order);
                 $this->payments->recalculate($order->fresh());
                 $order->refresh();

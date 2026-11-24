@@ -61,8 +61,8 @@ class FinanceClientsPagesTest extends PaymentTestCase
             'finance.clients.invoicing' => 'Finance/Facturation',
             'finance.clients.collections' => 'Finance/Encaissements',
             'finance.clients.receivables' => 'Finance/Creances',
-            'finance.clients.credit' => 'Finance/Clients/Planned',
-            'finance.clients.instruments' => 'Finance/Clients/Planned',
+            'finance.clients.credit' => 'Finance/Clients/Credit',
+            'finance.clients.instruments' => 'Finance/Clients/Instruments',
             'finance.clients.journal' => 'Finance/Journal',
             'finance.clients.reports' => 'Finance/Clients/Reports',
         ];
@@ -153,7 +153,7 @@ class FinanceClientsPagesTest extends PaymentTestCase
     {
         $this->recordPayment($this->owner, $this->order, $this->account, '50.0000', ['payment_date' => now()->toDateString()]);
         $this->actingAs($this->owner);
-        foreach (['finance.clients.credit' => 'credit', 'finance.clients.instruments' => 'instruments', 'finance.personnel' => 'personnel'] as $route => $key) {
+        foreach (['finance.personnel' => 'personnel'] as $route => $key) {
             $props = $this->get(route($route))->assertOk()->viewData('page')['props'];
             $this->assertSame($key, $props['page']);
             $business = array_diff(array_keys($props), ['page', 'organization', 'errors', 'auth', 'tenant', 'flash', 'sandbox', 'locale', 'supplierInvoices', 'features', 'ziggy', 'name', 'quote']);
@@ -178,17 +178,17 @@ class FinanceClientsPagesTest extends PaymentTestCase
         $this->recordPayment($this->owner, $order, $this->account, '80.0000', ['payment_date' => now()->toDateString()]);
 
         $this->actingAs($this->owner);
-        $full = $this->get(route('finance.clients.accounts.show', $this->customer))->assertOk()->viewData('page')['props'];
-        $this->assertSame('80.0000', $full['summary']['paid_total']);
+        $full = $this->get(route('finance.clients.accounts.show', [$this->customer, 'section' => 'payments']))->assertOk()->viewData('page')['props'];
+        $this->assertSame('120.0000', $full['position']['unbilled']);
         $this->assertCount(1, $full['payments']);
 
         // finance.view + customers.view but NO payments/orders/invoices permission: figures stay unavailable (null), lists empty.
         $this->actingAs($this->member(['finance.view', 'customers.view']));
-        $limited = $this->get(route('finance.clients.accounts.show', $this->customer))->assertOk()->viewData('page')['props'];
-        $this->assertNull($limited['summary']['paid_total']);
-        $this->assertNull($limited['summary']['outstanding']);
+        $limited = $this->get(route('finance.clients.accounts.show', [$this->customer, 'section' => 'payments']))->assertOk()->viewData('page')['props'];
+        $this->assertNull($limited['position']['paid']);
+        $this->assertNull($limited['position']['receivable']);
+        $this->assertNull($limited['position']['unbilled']);
         $this->assertSame([], $limited['payments']);
-        $this->assertSame([], $limited['invoices']);
     }
 
     public function test_accounts_index_has_constant_query_count_and_no_per_customer_position(): void
@@ -211,7 +211,8 @@ class FinanceClientsPagesTest extends PaymentTestCase
         }
         $this->assertSame($before, $count(), 'query count must not grow with the number of customers');
         $props = $this->get(route('finance.clients.accounts'))->viewData('page')['props']['customers']['data'];
-        $this->assertSame(['id', 'display_name', 'company_name', 'email', 'phone', 'status'], array_keys($props[0]));
+        $this->assertContains('position', array_keys($props[0]));
+        $this->assertSame('0.0000', $props[0]['position']['unbilled'], 'a customer without documents has a real zero, not an unavailable figure');
     }
 
     public function test_new_routes_are_not_available_in_test_mode(): void

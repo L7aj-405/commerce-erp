@@ -7,6 +7,9 @@ use App\Models\Organization;
 use App\Models\Store;
 use App\Services\ActiveTenantContext;
 use App\Services\Dashboards\ExecutiveDashboardService;
+use App\Services\Finance\CustomerAgingReport;
+use App\Services\Finance\CustomerCollectionForecast;
+use App\Services\Finance\CustomerReminderTemplates;
 use App\Services\Finance\FinanceAccessGuard;
 use App\Services\Finance\FinanceCaEncaisseService;
 use App\Services\Finance\FinanceInvoiceReadModel;
@@ -15,6 +18,8 @@ use App\Services\Finance\FinancePeriod;
 use App\Services\Finance\FinanceReceivablesService;
 use App\Support\Decimal;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -86,11 +91,13 @@ class FinanceDashboardController extends Controller
         FinanceAccessGuard $guard,
         FinanceInvoiceReadModel $invoices,
         FinanceMonthlyReportService $report,
+        FinanceReceivablesService $receivables,
     ): Response {
         $organization = $context->organizationOrFail();
         $guard->authorizeView($request->user(), $organization);
         $period = $this->period($request);
         $store = $guard->resolveStore($organization, $request->query('store_id'));
+        $section = in_array($request->query('section'), ['credit_notes', 'unbilled', 'summary'], true) ? $request->query('section') : 'invoices';
 
         return Inertia::render('Finance/Facturation', [
             'organization' => $organization->only(['id', 'name']),
@@ -98,7 +105,10 @@ class FinanceDashboardController extends Controller
             'periodLabel' => $period->label(),
             'storeId' => $store?->id,
             'stores' => $this->stores($organization),
-            'invoices' => $invoices->issuedDuring($organization, $period, $store),
+            // Section data is computed only for the requested tab (invoices stays the default and the original payload).
+            'invoices' => $section === 'invoices' ? $invoices->issuedDuring($organization, $period, $store) : ['data' => [], 'links' => [], 'total' => 0],
+            'creditNotes' => $section === 'credit_notes' ? $invoices->creditNotesDuring($organization, $period, $store) : null,
+            'unbilledOrders' => $section === 'unbilled' ? $receivables->unbilledOrdersAsOf($organization, $period->end, $store) : null,
             // Additive, read-only (Finance clients "Synthèse"): the same two totals the monthly situation already uses.
             'summary' => $this->invoicingSummary($report, $organization, $period, $store),
         ]);
@@ -131,12 +141,16 @@ class FinanceDashboardController extends Controller
         ActiveTenantContext $context,
         FinanceAccessGuard $guard,
         FinanceReceivablesService $receivables,
+        CustomerAgingReport $aging,
+        CustomerCollectionForecast $forecast,
     ): Response {
         $organization = $context->organizationOrFail();
         $guard->authorizeReceivables($request->user(), $organization);
         $period = $this->period($request);
         $store = $guard->resolveStore($organization, $request->query('store_id'));
         $receivableData = $receivables->salesOrderReceivablesAsOf($organization, $period->end, $store);
+        $section = in_array($request->query('section'), ['dues', 'aging', 'reminders', 'forecasts'], true) ? $request->query('section') : 'receivables';
+        $plan = in_array($section, ['dues', 'forecasts'], true) ? $forecast->build($organization, $store, Carbon::now()) : null;
 
         return Inertia::render('Finance/Creances', [
             'organization' => $organization->only(['id', 'name']),
@@ -147,6 +161,11 @@ class FinanceDashboardController extends Controller
             'stores' => $this->stores($organization),
             'total' => $receivableData['total'],
             'orders' => $receivableData['orders'],
+            // Section data is computed only for the requested tab.
+            'aging' => $section === 'aging' ? $aging->build($organization, $store, $period->end, max(1, (int) $request->query('page', 1))) : null,
+            'forecast' => $plan,
+            'reminders' => $section === 'reminders' ? $this->reminders($organization, $aging, $period->end, $request->user()->hasPermission($organization, 'finance.customers.schedules.manage')) : null,
+            'can' => ['export' => $request->user()->hasPermission($organization, 'finance.export'), 'monthEnd' => $request->user()->hasPermission($organization, 'finance.monthly_situation.view')],
         ]);
     }
 
@@ -186,6 +205,30 @@ class FinanceDashboardController extends Controller
         $credits = $report->creditNotesTotal($organization, $period, $store);
 
         return ['gross' => $gross, 'credit_notes' => $credits, 'net' => Decimal::subtract($gross, $credits)];
+    }
+
+    /**
+     * Reminders = the EXISTING follow-up system (open follow-ups attached to a customer) and open payment promises. Read-only here:
+     * follow-ups are created and completed in "Mon travail"; nothing is ever sent to a customer automatically.
+     *
+     * @return array{followUps: list<mixed>, promises: list<mixed>}
+     */
+    private function reminders(Organization $organization, ?CustomerAgingReport $aging = null, ?Carbon $asOf = null, bool $canManage = false): array
+    {
+        // Customers with overdue balances (invoices + unbilled orders): the targets of a manual reminder. The whole report is evaluated.
+        $overdue = $aging ? collect($aging->build($organization, null, $asOf ?? Carbon::now())['rows'])
+            ->filter(fn ($r) => ! $r['mixed_currency'] && Decimal::compare((string) $r['overdue'], '0') > 0)->take(200)
+            ->map(fn ($r) => ['customer_id' => $r['customer_id'], 'customer' => $r['customer'], 'overdue' => $r['overdue'], 'currency_code' => $r['currency_code']])->values()->all() : [];
+
+        return [
+            'templates' => app(CustomerReminderTemplates::class)->forOrganization($organization),
+            'overdueCustomers' => $overdue,
+            'canManageTemplates' => $canManage,
+            'followUps' => DB::table('follow_ups as f')->join('customers as c', 'c.id', '=', 'f.customer_id')->where('f.organization_id', $organization->getKey())
+                ->where('f.status', 'open')->orderBy('f.due_date')->limit(100)->get(['f.id', 'f.title', 'f.due_date', 'f.priority', 'c.display_name as customer', 'f.customer_id'])->all(),
+            'promises' => DB::table('customer_payment_promises as p')->join('customers as c', 'c.id', '=', 'p.customer_id')->where('p.organization_id', $organization->getKey())
+                ->where('p.status', 'open')->orderBy('p.promised_date')->limit(100)->get(['p.id', 'p.promised_date', 'p.amount', 'p.currency_code', 'p.note', 'c.display_name as customer', 'p.customer_id'])->all(),
+        ];
     }
 
     private function period(Request $request): FinancePeriod

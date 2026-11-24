@@ -6,44 +6,16 @@ import type { TranslationKey } from '@/i18n/translations';
 import ApplicationShell from '@/layouts/ApplicationShell';
 import { Head } from '@inertiajs/react';
 
-type PageKey = 'credit' | 'instruments' | 'personnel';
+type PageKey = 'personnel';
 type Props = { page: PageKey; organization: { id: number; name: string } };
 type Config = { title: TranslationKey; description: TranslationKey; notice?: TranslationKey; sections: { key: string; label: TranslationKey; planned: TranslationKey }[] };
 
 /**
- * Complete page shells for functionality that is announced but NOT built (Phase 1: UI/UX only).
- * There is deliberately no data, no form and no action here:
- *  - credit: future credit limits / exposure / payment terms / overruns / blocked customers / authorizations
- *    (no credit validation engine, no new database field).
- *  - instruments: future incoming customer cheques & bills (portfolio, bank deposits, cashed, rejected, due dates).
- *    Posted cheque payments are NOT proof of bank clearance and supplier (outgoing) instruments are never reused.
- *  - personnel: future staff finance (beyond the existing commissions screens).
+ * Placeholder shell for the one Finance clients area that is still announced but NOT built: future staff finance beyond the existing
+ * commissions screens. There is deliberately no data, no form and no action here. (Credit control and incoming instruments, formerly
+ * shells, are implemented in Credit.tsx and Instruments.tsx.)
  */
 const CONFIG: Record<PageKey, Config> = {
-    credit: {
-        title: 'fc.credit.title',
-        description: 'fc.credit.description',
-        sections: [
-            { key: 'limits', label: 'fc.credit.s.limits', planned: 'fc.credit.p.limits' },
-            { key: 'exposure', label: 'fc.credit.s.exposure', planned: 'fc.credit.p.exposure' },
-            { key: 'terms', label: 'fc.credit.s.terms', planned: 'fc.credit.p.terms' },
-            { key: 'overruns', label: 'fc.credit.s.overruns', planned: 'fc.credit.p.overruns' },
-            { key: 'blocked', label: 'fc.credit.s.blocked', planned: 'fc.credit.p.blocked' },
-            { key: 'authorizations', label: 'fc.credit.s.authorizations', planned: 'fc.credit.p.authorizations' },
-        ],
-    },
-    instruments: {
-        title: 'fc.inst.title',
-        description: 'fc.inst.description',
-        notice: 'fc.inst.notice',
-        sections: [
-            { key: 'portfolio', label: 'fc.inst.s.portfolio', planned: 'fc.inst.p.portfolio' },
-            { key: 'deposits', label: 'fc.inst.s.deposits', planned: 'fc.inst.p.deposits' },
-            { key: 'cashed', label: 'fc.inst.s.cashed', planned: 'fc.inst.p.cashed' },
-            { key: 'rejected', label: 'fc.inst.s.rejected', planned: 'fc.inst.p.rejected' },
-            { key: 'dues', label: 'fc.inst.s.dues', planned: 'fc.inst.p.dues' },
-        ],
-    },
     personnel: {
         title: 'fc.staff.title',
         description: 'fc.staff.description',

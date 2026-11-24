@@ -69,7 +69,7 @@ class UsersAccessAuthorizationTest extends PlatformTestCase
         $this->actingAs($owner)->get(route('users-access.index', $organization))
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
-                ->has('permissionGroups.finance', 9)
+                ->has('permissionGroups.finance', 15)
                 ->has('presets', 3));
     }
 }
