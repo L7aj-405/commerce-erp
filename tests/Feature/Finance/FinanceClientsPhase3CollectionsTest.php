@@ -13,6 +13,7 @@ use App\Models\User;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Testing\TestResponse;
 use Tests\Support\PaymentTestCase;
 
 /** Finance clients Phase 3 / Recouvrement: reminders use the CURRENT business date; the historical aging date stays independent (FCUX-07). */
@@ -62,7 +63,7 @@ class FinanceClientsPhase3CollectionsTest extends PaymentTestCase
         return $this->get(route('finance.clients.receivables', ['section' => 'reminders', 'month' => $month]))->assertOk()->viewData('page')['props'];
     }
 
-    private function preview(): \Illuminate\Testing\TestResponse
+    private function preview(): TestResponse
     {
         return $this->getJson(route('finance.clients.reminders.preview', ['customer_id' => $this->customer->id, 'template' => 'overdue', 'language' => 'fr']));
     }
