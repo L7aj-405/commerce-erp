@@ -6018,6 +6018,8 @@ export const fr = {
     "p3.credit.settingsTitle": "Politique de crédit clients",
     "p3.credit.settingsDesc": "Réglage global de l’organisation. Désactivé par défaut ; aucune limite n’est imposée automatiquement aux nouveaux clients et les chèques ou effets en attente ne sont jamais déduits de l’exposition.",
     "p3.credit.backToRisk": "Retour au risque de crédit",
+    "p3.inst.new": "Nouvel instrument",
+    "p3.settle.noCompatibleAccount": "Aucun compte financier actif n’accepte ce mode de règlement.",
 } as const;
 
 export type TranslationKey = keyof typeof fr;
@@ -11889,4 +11891,6 @@ export const ar: Record<TranslationKey, string> = {
     "p3.credit.settingsTitle": "سياسة ائتمان العملاء",
     "p3.credit.settingsDesc": "إعداد عام للمؤسسة. معطّل افتراضياً؛ لا يُفرض أي حد تلقائياً على العملاء الجدد ولا تُخصم الشيكات أو الأوراق التجارية المعلقة من التعرض.",
     "p3.credit.backToRisk": "العودة إلى مخاطر الائتمان",
+    "p3.inst.new": "أداة جديدة",
+    "p3.settle.noCompatibleAccount": "لا يوجد حساب مالي نشط يقبل طريقة الدفع هذه.",
 };

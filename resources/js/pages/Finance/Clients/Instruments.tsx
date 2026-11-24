@@ -46,12 +46,13 @@ export default function FinanceClientsInstruments({ organization, instruments, t
     const [key, setKey] = useState(newOperationId);
     const [form, setForm] = useState({ customer_id: '', type: 'cheque', instrument_number: '', issuing_bank: '', customer_reference: '', amount: '', received_date: today, expected_collection_date: '', maturity_date: '', financial_account_id: '', notes: '' });
     const [busy, setBusy] = useState(false);
+    const [showForm, setShowForm] = useState(false);
     const rows = instruments.data.filter((i) => STATES[section].includes(i.state));
     const state = (s: string) => t(`fc4.inst.state.${s}` as TranslationKey);
     const submit = (e: FormEvent) => {
         e.preventDefault();
         setBusy(true);
-        router.post('/finance/clients/instruments', { ...form, idempotency_key: key }, { preserveScroll: true, onSuccess: () => { setKey(newOperationId()); setForm({ ...form, instrument_number: '', amount: '', customer_reference: '', notes: '' }); }, onFinish: () => setBusy(false) });
+        router.post('/finance/clients/instruments', { ...form, idempotency_key: key }, { preserveScroll: true, onSuccess: () => { setKey(newOperationId()); setShowForm(false); setForm({ ...form, instrument_number: '', amount: '', customer_reference: '', notes: '' }); }, onFinish: () => setBusy(false) });
     };
     const move = (i: Instrument, to: string) => {
         const note = to === 'rejected' || to === 'cancelled' ? window.prompt(t('fc4.inst.reasonPrompt')) : null;
@@ -62,13 +63,13 @@ export default function FinanceClientsInstruments({ organization, instruments, t
     return (
         <ApplicationShell wide>
             <Head title={`${t('fc.inst.title')} — Finance`} />
-            <PageHeader title={t('fc.inst.title')} description={`${organization.name} — ${t('fc.inst.description')}`} />
+            <PageHeader title={t('fc.inst.title')} description={`${organization.name} — ${t('fc.inst.description')}`} actions={can.manage ? <Button size="sm" onClick={() => setShowForm((v) => !v)} aria-expanded={showForm}>{t('p3.inst.new')}</Button> : undefined} />
             <ParentTabs group="collections" active="instruments" />
             <div className="mb-4"><Alert tone="info">{t('fc.inst.notice')}</Alert></div>
             <div className="mb-4 flex flex-wrap gap-2 text-sm text-ink-muted">
                 {totals.map((x) => <span key={`${x.state}${x.currency_code}`} className="surface-card px-3 py-1.5">{state(x.state)} : <strong dir="ltr">{formatMoney(x.total, x.currency_code)}</strong> ({x.count})</span>)}
             </div>
-            {can.manage && (
+            {can.manage && showForm && (
                 <form onSubmit={submit} className="surface-card mb-5 p-4" aria-label={t('fc4.inst.new')}>
                     <h3 className="mb-3 text-base font-semibold text-ink">{t('fc4.inst.new')}</h3>
                     <div className="grid gap-3 md:grid-cols-4">
@@ -84,7 +85,7 @@ export default function FinanceClientsInstruments({ organization, instruments, t
                         <TextField label={t('fc4.inst.customerRef')} value={form.customer_reference} onChange={(e) => setForm({ ...form, customer_reference: e.target.value })} />
                         <TextAreaField label={t('fc2.settle.notes')} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} rows={1} className="md:col-span-2" />
                     </div>
-                    <div className="mt-3"><Button type="submit" loading={busy}>{t('fc4.inst.submit')}</Button></div>
+                    <div className="mt-3 flex gap-2"><Button type="submit" loading={busy}>{t('fc4.inst.submit')}</Button><Button type="button" variant="secondary" onClick={() => setShowForm(false)}>{t('common.cancel')}</Button></div>
                 </form>
             )}
             <SectionTabs sections={SECTIONS.map((k) => ({ key: k, label: t(LABEL[k]) }))} active={section} label={t('fc.inst.title')} />
