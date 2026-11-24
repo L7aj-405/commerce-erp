@@ -6035,6 +6035,13 @@ export const fr = {
     "p3.return.page": "Retour à la page précédente",
     "p3.acct.advances": "Avances du client",
     "p3.acct.risk": "Risque de crédit",
+    "p3.dash.expectedRef": "Prévisions à partir du {date} (date du jour de l’organisation) sur 28 jours ; ce ne sont pas des encaissements réels.",
+    "p3.dash.overdueRef": "Échu au {date}",
+    "p3.dash.trendNote": "Ventes nettes d’avoirs (même définition que l’indicateur de la période) et encaissements nets des remboursements.",
+    "p3.dash.upcoming": "Encaissements attendus (28 jours)",
+    "p3.inv.orderValue": "Valeur de la commande (TTC)",
+    "p3.inv.toCollect": "Reste à encaisser",
+    "p3.inv.unbilledNote": "Commandes confirmées non facturées : la valeur totale de la commande (exposition commerciale) est distincte du reste à encaisser après règlements.",
 } as const;
 
 export type TranslationKey = keyof typeof fr;
@@ -11923,4 +11930,11 @@ export const ar: Record<TranslationKey, string> = {
     "p3.return.page": "العودة إلى الصفحة السابقة",
     "p3.acct.advances": "دفعات العميل المقدمة",
     "p3.acct.risk": "مخاطر الائتمان",
+    "p3.dash.expectedRef": "توقعات اعتباراً من {date} (تاريخ اليوم للمؤسسة) لمدة 28 يوماً؛ وهي ليست مقبوضات فعلية.",
+    "p3.dash.overdueRef": "متأخر بتاريخ {date}",
+    "p3.dash.trendNote": "المبيعات صافية من الإشعارات الدائنة (نفس تعريف مؤشر الفترة) والمقبوضات صافية من المبالغ المستردة.",
+    "p3.dash.upcoming": "المقبوضات المتوقعة (28 يوماً)",
+    "p3.inv.orderValue": "قيمة الطلب (شامل الضريبة)",
+    "p3.inv.toCollect": "المتبقي للتحصيل",
+    "p3.inv.unbilledNote": "طلبات مؤكدة غير مفوترة: القيمة الإجمالية للطلب (التعرض التجاري) مختلفة عن المتبقي للتحصيل بعد الدفعات.",
 };

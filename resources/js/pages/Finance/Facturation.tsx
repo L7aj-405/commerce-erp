@@ -215,6 +215,7 @@ export default function FinanceFacturation({ organization, period, periodLabel, 
                 </>
             )}
             {section === 'unbilled' && (
+                <p className="mb-3 text-[13px] text-ink-muted">{t('p3.inv.unbilledNote')}</p>
                 <TableShell
                     label={t('fc.inv.s.unbilled')}
                     state={!unbilledOrders || unbilledOrders.data.length === 0 ? 'empty' : 'ready'}
@@ -225,7 +226,7 @@ export default function FinanceFacturation({ organization, period, periodLabel, 
                         <thead>
                             <tr>
                                 <th className="px-4 py-2.5">{t('fc2.settle.order')}</th><th className="px-4 py-2.5">{t('common.date')}</th><th className="px-4 py-2.5">{t('fc2.due')}</th><th className="px-4 py-2.5">{t('common.customer')}</th>
-                                <th className="num px-4 py-2.5">{t('fc.acct.ttc')}</th><th className="num px-4 py-2.5">{t('finance.paid')}</th><th className="num px-4 py-2.5">{t('fc2.settle.remaining')}</th>
+                                <th className="num px-4 py-2.5">{t('p3.inv.orderValue')}</th><th className="num px-4 py-2.5">{t('finance.paid')}</th><th className="num px-4 py-2.5">{t('p3.inv.toCollect')}</th>
                             </tr>
                         </thead>
                         <tbody>

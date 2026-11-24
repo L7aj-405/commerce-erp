@@ -8,7 +8,7 @@ import { TableShell } from '@/components/ui/TableShell';
 import { useI18n } from '@/i18n';
 import type { TranslationKey } from '@/i18n/translations';
 import ApplicationShell from '@/layouts/ApplicationShell';
-import { formatMoney } from '@/utils/format';
+import { formatBusinessDate, formatMoney } from '@/utils/format';
 import { Head } from '@inertiajs/react';
 
 type Dashboard = {
@@ -17,7 +17,7 @@ type Dashboard = {
         as_of: string; by_currency: Record<string, { receivable: string; unbilled: string; overdue: string; undated: string; total: string }>;
         refund_obligations: string; advances: Record<string, string>; pending_instruments: Record<string, string>;
     };
-    expected_collections: { by_currency: Record<string, string>; window: string };
+    expected_collections: { by_currency: Record<string, string>; window: string; reference_date: string };
     credit_alerts: { over_limit: number; blocked: number; with_overdue: number };
     trend: { month: string; sales: string; collections: string }[];
     truncated: boolean;
@@ -74,7 +74,8 @@ export default function FinanceClientsOverview({ organization, period, periodLab
 
             <section aria-labelledby="fc-balances" className="mb-6">
                 <h2 id="fc-balances" className="mb-1 text-base font-semibold text-ink">{t('fc5.dash.balances')}</h2>
-                <p className="mb-3 text-[13px] text-ink-muted">{t('fc5.dash.balancesHelp')} {dashboard.balances.as_of}</p>
+                <p className="mb-3 text-[13px] text-ink-muted">{t('fc5.dash.balancesHelp')} {formatBusinessDate(dashboard.balances.as_of)}</p>
+                <p className="mb-3 text-[13px] text-ink-muted">{t('p3.dash.expectedRef').replace('{date}', formatBusinessDate(dashboard.expected_collections.reference_date))}</p>
                 {currencies.length === 0 && <Alert tone="info">{t('fc3.aging.empty')}</Alert>}
                 {currencies.map((currency) => {
                     const b = dashboard.balances.by_currency[currency]!;
@@ -83,7 +84,7 @@ export default function FinanceClientsOverview({ organization, period, periodLab
                             {currencies.length > 1 && <h3 className="mb-2 text-sm font-semibold text-ink">{currency}</h3>}
                             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                                 <MetricCard label={t('fc2.col.receivable')} value={money(b.receivable, currency)} helper={t('fc.m.receivables.help')} tone="warning" />
-                                <MetricCard label={t('fc5.dash.overdue')} value={money(b.overdue, currency)} helper={t('fc5.dash.overdue.help')} tone="negative" />
+                                <MetricCard label={t('fc5.dash.overdue')} value={money(b.overdue, currency)} helper={`${t('p3.dash.overdueRef').replace('{date}', formatBusinessDate(dashboard.balances.as_of))} — ${t('fc5.dash.overdue.help')}`} tone="negative" />
                                 <MetricCard label={t('fc2.col.unbilled')} value={money(b.unbilled, currency)} helper={t('fc2.help.unbilled')} />
                                 <MetricCard label={t('fc5.dash.undated')} value={money(b.undated, currency)} helper={t('fc5.dash.undated.help')} />
                             </div>
@@ -100,15 +101,17 @@ export default function FinanceClientsOverview({ organization, period, periodLab
 
             <section aria-labelledby="fc-alerts" className="mb-6">
                 <h2 id="fc-alerts" className="mb-3 text-base font-semibold text-ink">{t('fc5.dash.alerts')}</h2>
-                <div className="grid gap-3 sm:grid-cols-3">
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                     <MetricCard level="secondary" label={t('fc5.dash.overLimit')} value={String(dashboard.credit_alerts.over_limit)} href="/finance/clients/credit?section=overruns" tone={dashboard.credit_alerts.over_limit > 0 ? 'negative' : 'neutral'} />
                     <MetricCard level="secondary" label={t('fc5.dash.blocked')} value={String(dashboard.credit_alerts.blocked)} href="/finance/clients/credit?section=blocked" tone={dashboard.credit_alerts.blocked > 0 ? 'warning' : 'neutral'} />
                     <MetricCard level="secondary" label={t('fc5.dash.withOverdue')} value={String(dashboard.credit_alerts.with_overdue)} href="/finance/clients/credit?section=exposure" tone={dashboard.credit_alerts.with_overdue > 0 ? 'warning' : 'neutral'} />
+                                    <MetricCard level="secondary" label={t('p3.dash.upcoming')} value={Object.keys(dashboard.expected_collections.by_currency).length ? Object.entries(dashboard.expected_collections.by_currency).map(([c, v]) => money(v, c)).join(' · ') : money('0')} href={`/finance/clients/creances?section=forecasts&${month}`} />
                 </div>
             </section>
 
             <section aria-labelledby="fc-trend" className="mb-6">
-                <h2 id="fc-trend" className="mb-3 text-base font-semibold text-ink">{t('fc5.dash.trend')}</h2>
+                <h2 id="fc-trend" className="mb-1 text-base font-semibold text-ink">{t('fc5.dash.trend')}</h2>
+                <p className="mb-3 text-[13px] text-ink-muted">{t('p3.dash.trendNote')}</p>
                 <TableShell label={t('fc5.dash.trend')} state="ready">
                     <table className="erp-table min-w-[480px]">
                         <thead><tr><th className="px-4 py-2.5">{t('common.period')}</th><th className="num px-4 py-2.5">{t('fc.m.sales')}</th><th className="num px-4 py-2.5">{t('fc5.dash.collectionsNet')}</th></tr></thead>
