@@ -42,6 +42,7 @@ final class AuditLogPresenter
         'payment.reversed' => 'Paiement annulé',
         'financial_account.opening_position_set' => 'Solde d’ouverture configuré',
         'financial_account.opening_position_updated' => 'Solde d’ouverture corrigé',
+        'financial_account.movements_exported' => 'Journal des mouvements exporté',
         'finance_expected_collection.created' => 'Encaissement attendu planifié',
         'finance_expected_collection.updated' => 'Encaissement attendu modifié',
         'finance_expected_collection.cancelled' => 'Encaissement attendu annulé',

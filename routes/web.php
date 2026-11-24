@@ -45,6 +45,7 @@ use App\Http\Controllers\Finance\FinanceMonthReviewController;
 use App\Http\Controllers\Finance\FinancePaymentInstrumentController;
 use App\Http\Controllers\Finance\FinanceRecurringObligationController;
 use App\Http\Controllers\Finance\FinanceSupplierInstallmentController;
+use App\Http\Controllers\Finance\FinancialAccountMovementController;
 use App\Http\Controllers\Finance\SupplierInvoiceAttachmentController;
 use App\Http\Controllers\Finance\SupplierInvoiceController;
 use App\Http\Controllers\Finance\SupplierInvoiceVariantSearchController;
@@ -578,6 +579,9 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
     Route::post('/financial-accounts', [FinancialAccountController::class, 'store'])->name('financial-accounts.store');
     Route::patch('/financial-accounts/{financialAccount}', [FinancialAccountController::class, 'update'])->name('financial-accounts.update');
     Route::put('/financial-accounts/{financialAccount}/opening-position', [FinancialAccountController::class, 'openingPosition'])->name('financial-accounts.opening-position');
+    Route::get('/financial-accounts/{financialAccount}/movements', [FinancialAccountMovementController::class, 'index'])->name('financial-accounts.movements');
+    Route::get('/financial-accounts/{financialAccount}/movements/export/{format}', [FinancialAccountMovementController::class, 'export'])
+        ->whereIn('format', ['csv', 'xlsx'])->middleware('throttle:10,1')->name('financial-accounts.movements.export');
 
     Route::prefix('payments')->name('payments.')->group(function () {
         Route::get('/', [PaymentController::class, 'index'])->name('index');

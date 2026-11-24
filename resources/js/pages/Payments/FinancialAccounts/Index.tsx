@@ -6,7 +6,7 @@ import PageHeader from "@/components/ui/PageHeader";
 import { useI18n } from "@/i18n";
 import { useBusinessToday } from "@/utils/businessDate";
 import PaymentsLayout from "@/layouts/PaymentsLayout";
-import { Head, useForm } from "@inertiajs/react";
+import { Head, Link, useForm } from "@inertiajs/react";
 import type { FormEvent } from "react";
 import { Fragment, useState } from "react";
 
@@ -33,7 +33,7 @@ type Props = {
         unconfigured_count: number;
         accounts: AccountPosition[];
     };
-    can: { create: boolean; update: boolean; manageBalance: boolean };
+    can: { create: boolean; update: boolean; manageBalance: boolean; movements?: boolean };
 };
 type AccountPosition = {
     id: number;
@@ -565,6 +565,14 @@ export default function FinancialAccounts({
                                                         )}
                                                     </td>
                                                     <td className="px-4 py-3 text-end">
+                                                        {can.movements && (
+                                                            <Link
+                                                                href={`/financial-accounts/${account.id}/movements`}
+                                                                className="me-3 text-[13px] font-medium text-ink-muted underline hover:text-ink"
+                                                            >
+                                                                {t("financialAccounts.movements")}
+                                                            </Link>
+                                                        )}
                                                         {can.manageBalance && (
                                                             <button
                                                                 type="button"
