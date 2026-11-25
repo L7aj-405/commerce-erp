@@ -103,6 +103,7 @@ export default function ApplicationShell({
             : undefined;
     const { direction, t } = useI18n();
     const currentPath = page.url.split('?')[0];
+    const currentSearch = page.url.split('?')[1] ?? '';
 
     // Bridge server flash("success", …) redirects into the toast system so every
     // module's "Enregistré" / "Lancé" confirmation is delivered consistently.
@@ -117,9 +118,9 @@ export default function ApplicationShell({
     const sandboxActive = Boolean(page.props.sandbox?.active);
     const supplierInvoicesEnabled = Boolean(page.props.features?.supplier_invoices);
     const groups = useMemo(() => visibleNavGroups(buildNavGroups(t, tenant, sandboxActive, supplierInvoicesEnabled), tenant), [t, tenant, sandboxActive, supplierInvoicesEnabled]);
-    const activeMatch = matchActiveNav(groups, currentPath);
+    const activeMatch = matchActiveNav(groups, currentPath, currentSearch);
     const activeGroup = groups.find((group) => group.key === activeMatch?.groupKey);
-    const breadcrumbs = useMemo(() => buildBreadcrumbs(groups, currentPath, t), [groups, currentPath, t]);
+    const breadcrumbs = useMemo(() => buildBreadcrumbs(groups, currentPath, t, currentSearch), [groups, currentPath, currentSearch, t]);
 
     /* ---------------- Navigation drawer ---------------- */
     // `hover` = opened from the edge strip (closes when the pointer leaves);

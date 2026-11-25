@@ -36,7 +36,7 @@ after(async () => {
     await server?.close();
 });
 
-const GROUP_ORDER = ['dashboard', 'sales', 'purchasing', 'finance', 'inventory', 'catalog', 'administration'];
+const GROUP_ORDER = ['dashboard', 'sales', 'contacts', 'purchasing', 'finance', 'inventory', 'catalog', 'administration'];
 
 /** Every destination of the previous navigation: none may disappear (deep links, authorization unchanged). */
 const LEGACY_HREFS = [
@@ -80,10 +80,10 @@ const full = (locale: 'fr' | 'ar' = 'fr', sandbox = false, supplierInvoices = tr
     return nav.visibleNavGroups(build(locale, t, sandbox, supplierInvoices), t) as Group[];
 };
 
-test('exposes exactly the seven target groups in order', () => {
+test('exposes exactly the eight target groups in order (Contacts is a standalone module)', () => {
     assert.deepEqual(full().map((g) => g.key), GROUP_ORDER);
     assert.deepEqual(full().map((g) => g.label), [
-        'Vue d’ensemble', 'Ventes & Clients', 'Achats & Fournisseurs', 'Finance & Trésorerie', 'Stock & Entrepôts', 'Catalogue', 'Administration',
+        'Vue d’ensemble', 'Ventes', 'Contacts', 'Achats & Fournisseurs', 'Finance & Trésorerie', 'Stock & Entrepôts', 'Catalogue', 'Administration',
     ]);
 });
 
@@ -135,7 +135,9 @@ test('supplier invoices live under Achats & Fournisseurs, not Finance, with the 
     const all = build('fr', tenant([])).flatMap((g) => g.items.flatMap((e: any) => e.items ?? [e])) as any[];
     assert.equal(all.find((i) => i.href === '/finance/factures-fournisseurs').permission, 'supplier_invoices.view');
     // Purchase orders, requirements and suppliers stay clearly reachable.
-    for (const href of ['/procurement/purchase-orders', '/procurement', '/procurement/suppliers']) assert.equal(where(href), 'purchasing');
+    for (const href of ['/procurement/purchase-orders', '/procurement']) assert.equal(where(href), 'purchasing');
+    // The supplier directory moved to Contacts; its URL stays an alias of the Fournisseurs view.
+    assert.equal(nav.matchActiveNav(groups, '/procurement/suppliers/3')?.groupKey, 'contacts');
 });
 
 const FINANCE_CLIENTS = [
@@ -207,16 +209,18 @@ test('moved entries keep their permission', () => {
     assert.ok(items.some((i) => i.href === '/catalog/tax-rates'));
     assert.equal(permissionOf('/catalog/tax-rates'), 'tax_rates.view');
     assert.equal(permissionOf('/catalog/units'), 'units.view');
-    assert.equal(permissionOf('/sales/customers'), 'customers.view');
+    // The customer directory is the Clients view of Contacts: still reachable with customers.view alone.
+    assert.deepEqual(permissionOf('/contacts?role=client'), ['contacts.view', 'customers.view']);
+    assert.deepEqual(permissionOf('/contacts?role=supplier'), ['contacts.view', 'suppliers.view']);
 });
 
 test('deep links highlight the right group (longest prefix wins)', () => {
     const groups = full();
     const m = (p: string) => nav.matchActiveNav(groups, p);
     assert.equal(m('/sales/orders/42')?.groupKey, 'sales');
-    assert.equal(m('/sales/customers/7/edit')?.groupKey, 'sales');
+    assert.equal(m('/sales/customers/7/edit')?.groupKey, 'contacts');
     assert.equal(m('/procurement/purchase-orders/5')?.item.href, '/procurement/purchase-orders');
-    assert.equal(m('/procurement/suppliers/3')?.groupKey, 'purchasing');
+    assert.equal(m('/procurement/suppliers/3')?.groupKey, 'contacts');
     assert.equal(m('/catalog/tax-rates')?.groupKey, 'catalog');
     assert.equal(m('/integrations/woocommerce/stock-tasks')?.groupKey, 'administration');
     assert.equal(m('/finance/commissions/ledger/12')?.groupKey, 'finance');
@@ -262,7 +266,7 @@ test('breadcrumbs follow the registry, add a terminal crumb on deeper URLs and s
     assert.equal(detail[1]!.href, '/procurement/purchase-orders');
     assert.equal(detail[2]!.href, undefined);
     assert.deepEqual(crumbs('/finance/factures-fournisseurs/nouvelle').map((c) => c.label), ['Achats & Fournisseurs', 'Factures fournisseurs', 'Création']);
-    assert.deepEqual(crumbs('/sales/customers/7/edit').map((c) => c.label), ['Ventes & Clients', 'Clients & contacts', 'Clients', 'Modification']);
+    assert.deepEqual(crumbs('/sales/customers/7/edit').map((c) => c.label), ['Contacts', 'Clients', 'Modification']);
     assert.deepEqual(crumbs('/finance/encaissements').map((c) => c.label), ['Finance & Trésorerie', 'Finance clients', 'Encaissements & instruments']);
     assert.deepEqual(crumbs('/finance/clients/encaissements').map((c) => c.label), ['Finance & Trésorerie', 'Finance clients', 'Encaissements & instruments']);
     assert.deepEqual(crumbs('/payments/7').map((c) => c.label), ['Finance & Trésorerie', 'Finance clients', 'Encaissements & instruments', 'Détail']);
@@ -287,4 +291,73 @@ test('quick actions point at genuine creation workflows and respect permission, 
     assert.ok(!hrefs(all, { ...on, sandboxActive: true }).includes('/finance/factures-fournisseurs/nouvelle'), 'Test Mode');
     assert.ok(!hrefs(['pos.access'], on).includes('/finance/factures-fournisseurs/nouvelle'), 'permission');
     assert.deepEqual(hrefs([], on), []);
+});
+
+// ---------------------------------------------------------------- Unified Contacts (Phase 2)
+
+const CONTACT_VIEWS = [
+    ['/contacts', 'Tous les contacts'],
+    ['/contacts?role=client', 'Clients'],
+    ['/contacts?role=supplier', 'Fournisseurs'],
+    ['/contacts?role=internal', 'Contacts internes'],
+    ['/contacts?scope=external', 'Contacts externes'],
+    ['/contacts?group=partners', 'Partenaires & prestataires'],
+    ['/contacts/settings', 'Paramètres'],
+];
+
+test('Contacts is a standalone module with the approved seven entries; Ventes no longer lists customers; Achats no longer lists suppliers', () => {
+    const groups = full();
+    const contacts = groups.find((g) => g.key === 'contacts')!;
+    assert.deepEqual(contacts.items.map((i) => [i.href, i.label]), CONTACT_VIEWS);
+    const sales = groups.find((g) => g.key === 'sales')!;
+    assert.equal(sales.label, 'Ventes');
+    assert.ok(!flat([sales]).some((i) => i.href === '/sales/customers' || i.href === '/contacts'), 'no customer or contact directory under Ventes');
+    assert.ok(!flat([groups.find((g) => g.key === 'purchasing')!]).some((i) => i.href === '/procurement/suppliers'), 'no supplier directory under Achats');
+    // The other sales and purchasing entries are untouched.
+    for (const href of ['/pos', '/sales/orders', '/quotations', '/invoices', '/delivery-notes', '/sales/returns']) assert.ok(flat([sales]).some((i) => i.href === href), href);
+});
+
+test('a query-string entry highlights its own view; the plain directory and detail pages highlight "Tous les contacts"', () => {
+    const groups = full();
+    const at = (p: string, search = '') => nav.matchActiveNav(groups, p, search)?.item.href;
+    assert.equal(at('/contacts'), '/contacts');
+    assert.equal(at('/contacts', 'role=client'), '/contacts?role=client');
+    assert.equal(at('/contacts', 'role=client&search=ac'), '/contacts?role=client');
+    assert.equal(at('/contacts', 'role=supplier'), '/contacts?role=supplier');
+    assert.equal(at('/contacts', 'role=internal'), '/contacts?role=internal');
+    assert.equal(at('/contacts', 'scope=external'), '/contacts?scope=external');
+    assert.equal(at('/contacts', 'group=partners'), '/contacts?group=partners');
+    assert.equal(at('/contacts', 'search=acme'), '/contacts', 'an unrelated filter keeps the general directory active');
+    assert.equal(at('/contacts/parties/12'), '/contacts');
+    assert.equal(at('/contacts/create'), '/contacts');
+    assert.equal(at('/contacts/create', 'role%5B%5D=client'), '/contacts?role=client', 'Nouveau client highlights Clients');
+    assert.equal(at('/contacts/settings'), '/contacts/settings');
+    // Legacy URLs highlight the matching view (bookmarks and internal links keep working).
+    assert.equal(at('/sales/customers/25'), '/contacts?role=client');
+    assert.equal(at('/procurement/suppliers/4'), '/contacts?role=supplier');
+});
+
+test('Contacts entries respect permissions: contacts.view sees all, customers.view / suppliers.view keep only their own view', () => {
+    const hrefsFor = (permissions: string[]) => {
+        const t = tenant(permissions);
+        return flat(nav.visibleNavGroups(build('fr', t), t).filter((g: Group) => g.key === 'contacts')).map((i) => i.href);
+    };
+    assert.deepEqual(hrefsFor(['contacts.view']), CONTACT_VIEWS.map(([href]) => href));
+    assert.deepEqual(hrefsFor(['customers.view']), ['/contacts?role=client']);
+    assert.deepEqual(hrefsFor(['suppliers.view']), ['/contacts?role=supplier']);
+    assert.deepEqual(hrefsFor(['sales_orders.view']), [], 'the module is hidden entirely without any contact permission');
+});
+
+test('Contacts labels exist in French and Arabic and breadcrumbs name the module and the view', () => {
+    for (const locale of ['fr', 'ar'] as const) {
+        const contacts = build(locale, tenant(everyPermission(build('fr', tenant([]))))).find((g) => g.key === 'contacts')!;
+        for (const label of [contacts.label, ...contacts.items.map((i) => i.label)]) assert.ok(label && !label.startsWith('MISSING:'), `${locale}: ${label}`);
+    }
+    assert.notEqual(i18n.ar['nav.group.contacts'], i18n.fr['nav.group.contacts']);
+    const groups = full();
+    const t = tFor('fr');
+    assert.deepEqual(nav.buildBreadcrumbs(groups, '/contacts', t, 'role=client').map((c: any) => c.label), ['Contacts', 'Clients']);
+    assert.deepEqual(nav.buildBreadcrumbs(groups, '/contacts', t).map((c: any) => c.label), ['Contacts', 'Tous les contacts']);
+    assert.deepEqual(nav.buildBreadcrumbs(groups, '/contacts/parties/5', t).map((c: any) => c.label), ['Contacts', 'Tous les contacts', 'Détail']);
+    assert.deepEqual(nav.buildBreadcrumbs(groups, '/contacts/create', t).map((c: any) => c.label), ['Contacts', 'Tous les contacts', 'Création']);
 });

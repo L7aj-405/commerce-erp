@@ -135,7 +135,10 @@ class CreateStockTransferAction
             $transfer->unit_count = collect($movements)
                 ->reduce(fn (string $carry, array $line) => InventoryQuantity::add($carry, $line['quantity']), InventoryQuantity::ZERO);
             $transfer->performed_by_user_id = $actor->getKey();
-            $transfer->transferred_at = now();
+            // The ledger is the source of truth: the record takes the instant of its own movements (the earliest out-movement, which
+            // is what RestoreStockTransfersFromLedgerAction rebuilds it from). A separate now() could straddle a second boundary and
+            // give one physical transfer two different timestamps.
+            $transfer->transferred_at = collect($movements)->map(fn (array $line) => $line['out']->created_at)->filter()->min() ?? now();
             $transfer->save();
 
             foreach ($movements as $line) {

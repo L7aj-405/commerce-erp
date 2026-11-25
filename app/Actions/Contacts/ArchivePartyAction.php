@@ -34,8 +34,17 @@ class ArchivePartyAction
             if ($blockers !== []) {
                 $this->refuse('party', 'Archivage refusé : des opérations sont en cours ('.implode(', ', $blockers).').');
             }
+            // Take the commercial profiles out of the pickers, remembering what was switched off so a restore reinstates only that.
+            $snapshot = [];
+            if (DB::table('customers')->where('organization_id', $organization->getKey())->where('party_id', $locked->getKey())->where('status', 'active')->update(['status' => 'inactive', 'updated_at' => now()]) > 0) {
+                $snapshot['customer'] = true;
+            }
+            if (DB::table('suppliers')->where('organization_id', $organization->getKey())->where('party_id', $locked->getKey())->where('active', true)->update(['active' => false, 'updated_at' => now()]) > 0) {
+                $snapshot['supplier'] = true;
+            }
             $locked->status = Party::STATUS_ARCHIVED;
             $locked->archived_at = now();
+            $locked->archive_snapshot = $snapshot;
             $locked->save();
             DB::table('organization_contacts')->where('organization_id', $organization->getKey())->where('party_id', $locked->getKey())
                 ->update(['active' => false, 'archived_at' => now(), 'updated_at' => now()]);
@@ -55,8 +64,16 @@ class ArchivePartyAction
             if (! $locked->isArchived()) {
                 return $locked;
             }
+            $snapshot = (array) ($locked->archive_snapshot ?? []);
+            if (! empty($snapshot['customer'])) {
+                DB::table('customers')->where('organization_id', $organization->getKey())->where('party_id', $locked->getKey())->where('status', 'inactive')->update(['status' => 'active', 'updated_at' => now()]);
+            }
+            if (! empty($snapshot['supplier'])) {
+                DB::table('suppliers')->where('organization_id', $organization->getKey())->where('party_id', $locked->getKey())->where('active', false)->update(['active' => true, 'updated_at' => now()]);
+            }
             $locked->status = Party::STATUS_ACTIVE;
             $locked->archived_at = null;
+            $locked->archive_snapshot = null;
             $locked->save();
             DB::table('organization_contacts')->where('organization_id', $organization->getKey())->where('party_id', $locked->getKey())
                 ->update(['active' => true, 'archived_at' => null, 'updated_at' => now()]);

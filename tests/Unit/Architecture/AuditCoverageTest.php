@@ -81,6 +81,10 @@ final class AuditCoverageTest extends TestCase
             // then attaches through the writer); every other role attaches through the writer; a NEW custom role is audited by ContactRoleRegistry
             // ('contact_role.created'); remove -> writer->detach. No mutation path is unaudited and none is audited twice (no-ops are silent).
             'Contacts/ManagePartyRolesAction' => ['kind' => 'delegate', 'action' => ['writer->attach(', 'writer->detach(', 'profiles->customer(', 'profiles->supplier(', 'roles->findOrCreateCustom('], 'owner' => 'app/Services/Contacts/PartyRoleWriter.php', 'owner_has' => ["'party.role_assigned'", "'party.role_deactivated'"]],
+            // Shared contact form workflow: pure orchestration of the Phase 1 actions inside ONE transaction. Identity creation is audited by
+            // SavePartyAction ('party.created'); roles / profiles by ManagePartyRolesAction -> PartyRoleWriter and ActivateCommercialProfileAction;
+            // terms by ManagePaymentTermsAction; relationships by LinkPartyRelationshipAction. A failing step rolls the whole contact (and its audit rows) back.
+            'Contacts/CreateContactAction' => ['kind' => 'delegate', 'action' => ['parties->execute(', 'roles->add(', 'relationships->execute(', 'terms->assignToCustomer('], 'owner' => 'app/Actions/Contacts/SavePartyAction.php', 'owner_has' => ["'party.created'"]],
             // Custom role administration: creation / deactivation are audited by the registry that performs the write.
             'Contacts/ManageContactRolesCatalogueAction' => ['kind' => 'delegate', 'action' => ['registry->createCustom(', 'registry->deactivateCustom('], 'owner' => 'app/Services/Contacts/ContactRoleRegistry.php', 'owner_has' => ["'contact_role.created'", "'contact_role.deactivated'"]],
             // Retired boundaries: fail closed, mutate nothing.

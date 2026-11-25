@@ -34,7 +34,7 @@ class Party extends Model
 
     protected function casts(): array
     {
-        return ['archived_at' => 'datetime'];
+        return ['archived_at' => 'datetime', 'archive_snapshot' => 'array'];
     }
 
     public function organization(): BelongsTo

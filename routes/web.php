@@ -22,7 +22,9 @@ use App\Http\Controllers\Catalog\ProductVariantController;
 use App\Http\Controllers\Catalog\TaxRateController;
 use App\Http\Controllers\Catalog\UnitOfMeasureController;
 use App\Http\Controllers\Commissions\MyCommissionController;
+use App\Http\Controllers\Contacts\ContactSettingsController;
 use App\Http\Controllers\Contacts\OrganizationContactController;
+use App\Http\Controllers\Contacts\PartyController;
 use App\Http\Controllers\Documents\CreditNoteController;
 use App\Http\Controllers\Documents\DeliveryNoteController;
 use App\Http\Controllers\Documents\DocumentEmailController;
@@ -247,8 +249,29 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
     Route::post('/notifications/read-all', [NotificationController::class, 'markAllRead'])->name('notifications.read-all');
     Route::get('/account/notifications', [NotificationPreferenceController::class, 'edit'])->name('notifications.preferences.edit');
     Route::put('/account/notifications', [NotificationPreferenceController::class, 'update'])->name('notifications.preferences.update');
+    // Unified Contacts (Phase 2). /contacts/parties/{party} is ALWAYS a Party id; the legacy numeric /contacts/{contact} (an
+    // OrganizationContact id) is only resolved through its own party_id and redirected. Static paths first, so they never match {contact}.
+    Route::get('/contacts', [PartyController::class, 'index'])->name('contacts.index');
+    Route::get('/contacts/create', [PartyController::class, 'create'])->name('contacts.create');
+    Route::get('/contacts/settings', [ContactSettingsController::class, 'index'])->name('contacts.settings');
+    Route::post('/contacts/settings/roles', [ContactSettingsController::class, 'storeRole'])->name('contacts.settings.roles.store');
+    Route::post('/contacts/settings/roles/{role}/deactivate', [ContactSettingsController::class, 'deactivateRole'])->whereNumber('role')->name('contacts.settings.roles.deactivate');
+    Route::post('/contacts/settings/payment-terms', [ContactSettingsController::class, 'storeTerm'])->name('contacts.settings.terms.store');
+    Route::get('/contacts/candidates', [PartyController::class, 'candidates'])->name('contacts.candidates');
     Route::get('/contacts/lookup', [OrganizationContactController::class, 'lookup'])->name('contacts.lookup');
-    Route::resource('contacts', OrganizationContactController::class)->except(['destroy']);
+    Route::post('/contacts/parties', [PartyController::class, 'store'])->name('contacts.parties.store');
+    Route::prefix('/contacts/parties/{party}')->whereNumber('party')->group(function () {
+        Route::get('/', [PartyController::class, 'show'])->name('contacts.parties.show');
+        Route::get('/edit', [PartyController::class, 'edit'])->name('contacts.parties.edit');
+        Route::patch('/', [PartyController::class, 'update'])->name('contacts.parties.update');
+        Route::post('/roles', [PartyController::class, 'addRoles'])->name('contacts.parties.roles.add');
+        Route::delete('/roles/{role}', [PartyController::class, 'removeRole'])->whereNumber('role')->name('contacts.parties.roles.remove');
+        Route::post('/relationships', [PartyController::class, 'addRelationship'])->name('contacts.parties.relationships.add');
+        Route::post('/archive', [PartyController::class, 'archive'])->name('contacts.parties.archive');
+        Route::post('/restore', [PartyController::class, 'restore'])->name('contacts.parties.restore');
+        Route::post('/payment-terms', [PartyController::class, 'assignTerm'])->name('contacts.parties.terms.assign');
+    });
+    Route::resource('contacts', OrganizationContactController::class)->only(['store', 'show', 'edit', 'update'])->whereNumber('contact');
     Route::delete('/contacts/{contact}', [OrganizationContactController::class, 'destroy'])->name('contacts.destroy');
     Route::get('/work', [FollowUpController::class, 'index'])->name('follow-ups.index');
     Route::post('/work', [FollowUpController::class, 'store'])->name('follow-ups.store');
