@@ -61,7 +61,7 @@ class PartyBackfillService
                 'address' => $c->billing_address, 'tax_identifier' => $c->tax_identifier, 'notes' => $c->notes,
                 'status' => $c->status === 'active' ? 'active' : 'archived', 'archived_at' => $c->status === 'active' ? null : now(),
             ], $c->created_at);
-            DB::table('customers')->where('id', $c->id)->update(['party_id' => $partyId]);
+            DB::table('customers')->where('organization_id', $org)->where('id', $c->id)->update(['party_id' => $partyId]);
             $this->role($org, $partyId, 'client');
             $report['customers']++;
         }
@@ -84,16 +84,16 @@ class PartyBackfillService
             $digits = $this->digits($s->ice);
             $matches = strlen($digits) === 15 ? ($customerByIce[$digits] ?? []) : [];
             $mergeable = count($matches) === 1 && ($icesOfSuppliers[$digits] ?? 0) === 1
-                && DB::table('parties')->where('id', $matches[0]->party_id)->value('kind') === 'organization'
+                && DB::table('parties')->where('organization_id', $org)->where('id', $matches[0]->party_id)->value('kind') === 'organization'
                 && ! DB::table('suppliers')->where('organization_id', $org)->where('party_id', $matches[0]->party_id)->exists();
 
             if ($mergeable) {
                 $partyId = (int) $matches[0]->party_id;
                 $fill = array_filter(['ice' => $s->ice, 'rc_number' => $s->rc_number, 'email' => $this->lower($s->email), 'phone' => $s->phone, 'address' => $s->address], fn ($v) => filled($v));
                 foreach ($fill as $column => $value) {
-                    DB::table('parties')->where('id', $partyId)->whereNull($column)->update([$column => $value]);
+                    DB::table('parties')->where('organization_id', $org)->where('id', $partyId)->whereNull($column)->update([$column => $value]);
                 }
-                DB::table('parties')->where('id', $partyId)->update(['kind' => 'organization']);
+                DB::table('parties')->where('organization_id', $org)->where('id', $partyId)->update(['kind' => 'organization']);
                 $report['suppliers_merged']++;
             } else {
                 $partyId = $this->insertParty($org, [
@@ -106,7 +106,7 @@ class PartyBackfillService
                     $this->conflict($org, 'ice_shared_by_several_customers', 'supplier', $s->id, 'customer', null, $partyId, 'kept_separate', ['ice' => $s->ice, 'customer_ids' => array_column($matches, 'id')], $report);
                 }
             }
-            DB::table('suppliers')->where('id', $s->id)->update(['party_id' => $partyId]);
+            DB::table('suppliers')->where('organization_id', $org)->where('id', $s->id)->update(['party_id' => $partyId]);
             $this->role($org, $partyId, 'supplier');
             $report['suppliers']++;
         }
@@ -134,8 +134,8 @@ class PartyBackfillService
             if ($adopt) {
                 $partyId = (int) $accounts[0][2]->party_id;
                 $claimed[$partyId] = true;
-                DB::table('organization_contacts')->where('id', $c->id)->update(['party_id' => $partyId]);
-                $this->fillMissing($partyId, ['email' => $this->lower($c->email), 'phone' => $c->phone, 'whatsapp' => $c->whatsapp, 'whatsapp_username' => $c->whatsapp_username ?? null]);
+                DB::table('organization_contacts')->where('organization_id', $org)->where('id', $c->id)->update(['party_id' => $partyId]);
+                $this->fillMissing($org, $partyId, ['email' => $this->lower($c->email), 'phone' => $c->phone, 'whatsapp' => $c->whatsapp, 'whatsapp_username' => $c->whatsapp_username ?? null]);
                 $legacyRole = ContactSystemRole::fromLegacyType($c->contact_type);
                 $legacyRole ? $this->role($org, $partyId, $legacyRole->value) : null;
                 $report['contacts_merged']++;
@@ -150,13 +150,13 @@ class PartyBackfillService
                 'status' => $c->active ? 'active' : 'archived', 'archived_at' => $c->active ? null : ($c->archived_at ?? now()),
                 'legacy_contact_type' => ContactSystemRole::fromLegacyType($c->contact_type) === null ? $c->contact_type : null,
             ], $c->created_at);
-            DB::table('organization_contacts')->where('id', $c->id)->update(['party_id' => $partyId]);
+            DB::table('organization_contacts')->where('organization_id', $org)->where('id', $c->id)->update(['party_id' => $partyId]);
             $legacyRole = ContactSystemRole::fromLegacyType($c->contact_type);
             $legacyRole ? $this->role($org, $partyId, $legacyRole->value) : null;
             $report['contacts']++;
 
             foreach ($accounts as [$type, $accountId, $account]) {
-                $kind = DB::table('parties')->where('id', $account->party_id)->value('kind');
+                $kind = DB::table('parties')->where('organization_id', $org)->where('id', $account->party_id)->value('kind');
                 if ($kind === 'organization') {
                     $inserted = DB::table('party_relationships')->insertOrIgnore([
                         'organization_id' => $org, 'party_id' => $partyId, 'related_party_id' => $account->party_id, 'type' => 'interlocutor',
@@ -220,15 +220,15 @@ class PartyBackfillService
 
     private function role(int $org, int $partyId, string $systemKey): void
     {
-        $roleId = DB::table('contact_roles')->where('organization_scope', 0)->where('system_key', $systemKey)->value('id');
+        $roleId = DB::table('contact_roles')->whereNull('organization_id')->where('organization_scope', 0)->where('system_key', $systemKey)->value('id');
         DB::table('party_roles')->insertOrIgnore(['organization_id' => $org, 'party_id' => $partyId, 'contact_role_id' => $roleId, 'status' => 'active', 'created_at' => now(), 'updated_at' => now()]);
     }
 
     /** @param array<string, mixed> $values */
-    private function fillMissing(int $partyId, array $values): void
+    private function fillMissing(int $org, int $partyId, array $values): void
     {
         foreach (array_filter($values, fn ($v) => filled($v)) as $column => $value) {
-            DB::table('parties')->where('id', $partyId)->whereNull($column)->update([$column => $value]);
+            DB::table('parties')->where('organization_id', $org)->where('id', $partyId)->whereNull($column)->update([$column => $value]);
         }
     }
 

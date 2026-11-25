@@ -111,8 +111,8 @@ class ActivateCommercialProfileAction
     {
         $this->assertPartyInOrganization($party, $organization);
 
-        return DB::transaction(function () use ($party, $profile, $actor, $role) {
-            $locked = Party::query()->whereKey($party->getKey())->lockForUpdate()->firstOrFail();
+        return DB::transaction(function () use ($party, $organization, $profile, $actor, $role) {
+            $locked = Party::query()->where('organization_id', $organization->getKey())->whereKey($party->getKey())->lockForUpdate()->firstOrFail();
             if ($locked->isArchived()) {
                 $this->refuse('party', 'Un contact archivé doit être restauré avant d’activer un rôle commercial.');
             }

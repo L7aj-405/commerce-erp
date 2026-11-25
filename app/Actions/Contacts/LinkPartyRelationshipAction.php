@@ -37,7 +37,7 @@ class LinkPartyRelationshipAction
         }
 
         return DB::transaction(function () use ($actor, $organization, $person, $company, $type, $jobTitle, $primary) {
-            $find = fn () => PartyRelationship::query()->where('party_id', $person->getKey())->where('related_party_id', $company->getKey())->where('type', $type)->first();
+            $find = fn () => PartyRelationship::query()->where('organization_id', $organization->getKey())->where('party_id', $person->getKey())->where('related_party_id', $company->getKey())->where('type', $type)->first();
             $row = $find();
             $created = $row === null;
             if ($created) {
@@ -50,7 +50,7 @@ class LinkPartyRelationshipAction
             $row->job_title = $jobTitle !== null && trim($jobTitle) !== '' ? trim($jobTitle) : $row->job_title;
             $row->active = true;
             if ($primary) {
-                PartyRelationship::query()->where('party_id', $person->getKey())->update(['is_primary' => false]);
+                PartyRelationship::query()->where('organization_id', $organization->getKey())->where('party_id', $person->getKey())->update(['is_primary' => false]);
                 $row->is_primary = true;
             }
             try {

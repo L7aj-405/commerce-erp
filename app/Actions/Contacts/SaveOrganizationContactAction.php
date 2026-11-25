@@ -8,8 +8,8 @@ use App\Models\User;
 use App\Rules\ValidWhatsAppUsername;
 use App\Services\AuditLogger;
 use App\Services\Contacts\PartyIdentitySynchronizer;
-use Illuminate\Support\Facades\DB;
 use App\Support\WhatsAppUsername;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
 class SaveOrganizationContactAction

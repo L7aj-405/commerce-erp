@@ -5,8 +5,8 @@ namespace Tests\Feature\Contacts;
 use App\Models\OrganizationContact;
 use App\Models\Supplier;
 use App\Models\User;
-use Tests\Support\SalesTestCase;
 use Inertia\Testing\AssertableInertia as Assert;
+use Tests\Support\SalesTestCase;
 
 class OrganizationContactTest extends SalesTestCase
 {

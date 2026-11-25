@@ -232,7 +232,7 @@ jobs:
             --display-warnings --display-deprecations --display-notices --display-skipped \
             --log-junit build/phpunit-mysql-junit.xml \
             tests/Feature/Finance tests/Feature/Payments tests/Feature/Documents tests/Feature/Sales \
-            tests/Feature/Pos tests/Feature/Tenancy tests/Feature/Sandbox tests/Feature/Exchanges 2>&1 | tee build/phpunit-mysql-output.txt
+            tests/Feature/Pos tests/Feature/Tenancy tests/Feature/Sandbox tests/Feature/Exchanges tests/Feature/Contacts 2>&1 | tee build/phpunit-mysql-output.txt
 
       - name: Summarise failures as annotations
         if: failure()
@@ -374,6 +374,9 @@ jobs:
 
       - name: Race - exchange settlement, fulfilment and cancellation (Phase 1 Step 5)
         run: php tests/Concurrency/exchange_settlement_race.php --rivals=4 --rounds=1 --database=commerce_erp_race_test
+
+      - name: Race - unified contacts role / profile activation and custom role / payment term creation
+        run: php tests/Concurrency/contacts_activation_race.php --sessions=6 --rounds=3 --database=commerce_erp_race_test
 
   frontend:
     name: Frontend (typecheck and production build)

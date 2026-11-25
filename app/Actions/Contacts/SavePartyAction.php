@@ -54,7 +54,7 @@ class SavePartyAction
         return DB::transaction(function () use ($actor, $organization, $data, $party) {
             if ($party !== null) {
                 $this->assertPartyInOrganization($party, $organization);
-                $party = Party::query()->whereKey($party->getKey())->lockForUpdate()->firstOrFail();
+                $party = Party::query()->where('organization_id', $organization->getKey())->whereKey($party->getKey())->lockForUpdate()->firstOrFail();
                 if ($party->isArchived()) {
                     $this->refuse('party', 'Un contact archivé doit être restauré avant modification.');
                 }

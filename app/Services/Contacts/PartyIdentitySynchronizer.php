@@ -39,7 +39,7 @@ class PartyIdentitySynchronizer
                 if ($companyPartyId === null || (int) $companyPartyId === (int) $party->getKey()) {
                     continue;
                 }
-                if (Party::query()->whereKey($companyPartyId)->value('kind') !== Party::KIND_ORGANIZATION || $party->kind !== Party::KIND_PERSON) {
+                if (Party::query()->where('organization_id', $contact->organization_id)->whereKey($companyPartyId)->value('kind') !== Party::KIND_ORGANIZATION || $party->kind !== Party::KIND_PERSON) {
                     continue;
                 }
                 DB::table('party_relationships')->insertOrIgnore([
@@ -60,13 +60,13 @@ class PartyIdentitySynchronizer
     {
         $role = ContactSystemRole::fromLegacyType($contactType);
         if ($role === null) {
-            if ($contactType !== null && ! DB::table('party_roles')->where('party_id', $party->getKey())->exists()) {
-                DB::table('parties')->where('id', $party->getKey())->update(['legacy_contact_type' => $contactType]);
+            if ($contactType !== null && ! DB::table('party_roles')->where('organization_id', $party->organization_id)->where('party_id', $party->getKey())->exists()) {
+                DB::table('parties')->where('organization_id', $party->organization_id)->where('id', $party->getKey())->update(['legacy_contact_type' => $contactType]);
             }
 
             return;
         }
-        $roleId = DB::table('contact_roles')->where('organization_scope', 0)->where('system_key', $role->value)->value('id');
+        $roleId = DB::table('contact_roles')->whereNull('organization_id')->where('organization_scope', 0)->where('system_key', $role->value)->value('id');
         DB::table('party_roles')->insertOrIgnore([
             'organization_id' => $party->organization_id, 'party_id' => $party->getKey(), 'contact_role_id' => $roleId,
             'status' => 'active', 'created_at' => now(), 'updated_at' => now(),
@@ -87,7 +87,7 @@ class PartyIdentitySynchronizer
     public function syncFromLegacy(Model $legacy): Party
     {
         return DB::transaction(function () use ($legacy) {
-            $party = $legacy->party_id ? Party::query()->whereKey($legacy->party_id)->lockForUpdate()->first() : null;
+            $party = $legacy->party_id ? Party::query()->where('organization_id', $legacy->organization_id)->whereKey($legacy->party_id)->lockForUpdate()->first() : null;
             if ($party === null) {
                 $party = new Party;
                 $party->organization_id = $legacy->organization_id;
@@ -148,12 +148,12 @@ class PartyIdentitySynchronizer
             if ($party->kind === Party::KIND_ORGANIZATION) {
                 $row['company_name'] = $party->legal_name ?? $party->display_name;
             }
-            DB::table('customers')->where('id', $customer->getKey())->update($row);
+            DB::table('customers')->where('organization_id', $org)->where('id', $customer->getKey())->update($row);
         }
 
         $supplier = Supplier::query()->where('organization_id', $org)->where('party_id', $party->getKey())->first();
         if ($supplier && ! $skip($supplier)) {
-            DB::table('suppliers')->where('id', $supplier->getKey())->update([
+            DB::table('suppliers')->where('organization_id', $org)->where('id', $supplier->getKey())->update([
                 'name' => $party->display_name, 'phone' => $party->phone, 'email' => $party->email, 'address' => $party->address,
                 'notes' => $party->notes, 'ice' => $party->ice, 'tax_identifier' => $party->tax_identifier, 'rc_number' => $party->rc_number, 'updated_at' => $now,
             ]);
@@ -161,7 +161,7 @@ class PartyIdentitySynchronizer
 
         OrganizationContact::query()->where('organization_id', $org)->where('party_id', $party->getKey())->get()
             ->reject($skip)
-            ->each(fn (OrganizationContact $contact) => DB::table('organization_contacts')->where('id', $contact->getKey())->update([
+            ->each(fn (OrganizationContact $contact) => DB::table('organization_contacts')->where('organization_id', $org)->where('id', $contact->getKey())->update([
                 'full_name' => $party->display_name, 'email' => $party->email, 'phone' => $party->phone,
                 'whatsapp' => $party->whatsapp, 'whatsapp_username' => $party->whatsapp_username, 'updated_at' => $now,
             ]));
@@ -180,7 +180,7 @@ class PartyIdentitySynchronizer
     private function identityFromLegacy(Model $legacy, Party $party): array
     {
         if ($legacy instanceof Customer) {
-            $hasSupplier = $party->exists && Supplier::query()->where('party_id', $party->getKey())->exists();
+            $hasSupplier = $party->exists && Supplier::query()->where('organization_id', $party->organization_id)->where('party_id', $party->getKey())->exists();
 
             return [
                 'display_name' => $legacy->display_name, 'legal_name' => $legacy->type === CustomerType::Company ? $legacy->company_name : $party->legal_name,

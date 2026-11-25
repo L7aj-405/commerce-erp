@@ -43,7 +43,7 @@ class ManagePartyRolesAction
         $this->assertPartyInOrganization($party, $organization);
 
         return DB::transaction(function () use ($actor, $organization, $party, $roles) {
-            $locked = Party::query()->whereKey($party->getKey())->lockForUpdate()->firstOrFail();
+            $locked = Party::query()->where('organization_id', $organization->getKey())->whereKey($party->getKey())->lockForUpdate()->firstOrFail();
             if ($locked->isArchived()) {
                 $this->refuse('party', 'Un contact archivé doit être restauré avant de modifier ses rôles.');
             }
@@ -70,8 +70,8 @@ class ManagePartyRolesAction
         $this->assertPartyInOrganization($party, $organization);
         $role = $this->roles->findForOrganization($role->getKey(), $organization);
 
-        DB::transaction(function () use ($actor, $party, $role) {
-            $locked = Party::query()->whereKey($party->getKey())->lockForUpdate()->firstOrFail();
+        DB::transaction(function () use ($actor, $organization, $party, $role) {
+            $locked = Party::query()->where('organization_id', $organization->getKey())->whereKey($party->getKey())->lockForUpdate()->firstOrFail();
             if (in_array($role->system_key, [ContactSystemRole::Client->value, ContactSystemRole::Supplier->value], true)) {
                 $blockers = $this->guard->blockers($locked, $role->system_key);
                 if ($blockers !== []) {

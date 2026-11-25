@@ -71,7 +71,10 @@ class PaymentTermCatalogue
         $structure = $this->validatedStructure($structure);
 
         return DB::transaction(function () use ($actor, $organization, $days, $name, $normalized, $structure) {
-            $find = fn () => PaymentTerm::query()->where('organization_id', $organization->getKey())->where('normalized_name', $normalized)->first();
+            // Serialise creators per organization and read with locking (current) reads: a plain read inside a REPEATABLE READ
+            // transaction cannot see a term the winning session just committed (found by tests/Concurrency/contacts_activation_race.php).
+            Organization::query()->whereKey($organization->getKey())->lockForUpdate()->first();
+            $find = fn () => PaymentTerm::query()->where('organization_id', $organization->getKey())->where('normalized_name', $normalized)->lockForUpdate()->first();
             $existing = $find();
             if ($existing !== null) {
                 if ((int) $existing->days !== $days) {

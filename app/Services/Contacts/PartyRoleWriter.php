@@ -17,7 +17,7 @@ class PartyRoleWriter
     /** @return bool whether anything changed */
     public function attach(User $actor, Party $party, ContactRole $role): bool
     {
-        $existing = PartyRole::query()->where('party_id', $party->getKey())->where('contact_role_id', $role->getKey())->first();
+        $existing = PartyRole::query()->where('organization_id', $party->organization_id)->where('party_id', $party->getKey())->where('contact_role_id', $role->getKey())->first();
         if ($existing === null) {
             $row = new PartyRole;
             $row->organization_id = $party->organization_id;
@@ -46,7 +46,7 @@ class PartyRoleWriter
     /** The row is kept (history); the commercial profile is never touched. */
     public function detach(User $actor, Party $party, ContactRole $role): bool
     {
-        $row = PartyRole::query()->where('party_id', $party->getKey())->where('contact_role_id', $role->getKey())->where('status', PartyRole::STATUS_ACTIVE)->first();
+        $row = PartyRole::query()->where('organization_id', $party->organization_id)->where('party_id', $party->getKey())->where('contact_role_id', $role->getKey())->where('status', PartyRole::STATUS_ACTIVE)->first();
         if ($row === null) {
             return false;
         }

@@ -63,7 +63,7 @@ class ManagePaymentTermsAction
         $term = $term === null ? null : $this->catalogue->findForOrganization($term->getKey(), $organization);
 
         DB::transaction(function () use ($actor, $supplier, $organization, $term) {
-            $locked = Supplier::query()->whereKey($supplier->getKey())->lockForUpdate()->firstOrFail();
+            $locked = Supplier::query()->where('organization_id', $organization->getKey())->whereKey($supplier->getKey())->lockForUpdate()->firstOrFail();
             $old = $locked->payment_term_id;
             $locked->payment_term_id = $term?->getKey();
             if ($term !== null) {

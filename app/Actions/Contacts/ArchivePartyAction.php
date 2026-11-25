@@ -26,7 +26,7 @@ class ArchivePartyAction
         $this->assertPartyInOrganization($party, $organization);
 
         return DB::transaction(function () use ($actor, $organization, $party) {
-            $locked = Party::query()->whereKey($party->getKey())->lockForUpdate()->firstOrFail();
+            $locked = Party::query()->where('organization_id', $organization->getKey())->whereKey($party->getKey())->lockForUpdate()->firstOrFail();
             if ($locked->isArchived()) {
                 return $locked;
             }
@@ -51,7 +51,7 @@ class ArchivePartyAction
         $this->assertPartyInOrganization($party, $organization);
 
         return DB::transaction(function () use ($actor, $organization, $party) {
-            $locked = Party::query()->whereKey($party->getKey())->lockForUpdate()->firstOrFail();
+            $locked = Party::query()->where('organization_id', $organization->getKey())->whereKey($party->getKey())->lockForUpdate()->firstOrFail();
             if (! $locked->isArchived()) {
                 return $locked;
             }

@@ -22,20 +22,19 @@ class ContactRoleRegistry
 
     public function system(ContactSystemRole $role): ContactRole
     {
-        return ContactRole::query()->where('organization_scope', 0)->where('system_key', $role->value)->firstOrFail();
+        return ContactRole::query()->whereNull('organization_id')->where('organization_scope', 0)->where('system_key', $role->value)->where('is_system', true)->firstOrFail();
     }
 
     /** A role visible to the organization: a system role or one of its own custom roles; otherwise 404-equivalent. */
     public function findForOrganization(int $roleId, Organization $organization): ContactRole
     {
-        return ContactRole::query()->whereKey($roleId)
-            ->whereIn('organization_scope', [0, (int) $organization->getKey()])->where('active', true)->firstOrFail();
+        return ContactRole::query()->where(fn ($q) => $q->whereNull('organization_id')->orWhere('organization_id', $organization->getKey()))->whereKey($roleId)->where('active', true)->firstOrFail();
     }
 
     /** @return list<ContactRole> active system + organization roles */
     public function available(Organization $organization): array
     {
-        return ContactRole::query()->whereIn('organization_scope', [0, (int) $organization->getKey()])->where('active', true)
+        return ContactRole::query()->where(fn ($q) => $q->whereNull('organization_id')->orWhere('organization_id', $organization->getKey()))->where('active', true)
             ->orderByDesc('is_system')->orderBy('name')->get()->all();
     }
 
@@ -50,7 +49,8 @@ class ContactRoleRegistry
         [$clean, $normalized] = $this->clean($name);
 
         return DB::transaction(function () use ($actor, $organization, $clean, $normalized) {
-            if ($this->existing($organization, $normalized) !== null) {
+            $this->serialiseCreation($organization);
+            if ($this->existing($organization, $normalized, lock: true) !== null) {
                 throw ValidationException::withMessages(['name' => 'Ce rôle existe déjà.']);
             }
 
@@ -64,7 +64,8 @@ class ContactRoleRegistry
         [$clean, $normalized] = $this->clean($name);
 
         return DB::transaction(function () use ($actor, $organization, $clean, $normalized) {
-            $existing = $this->existing($organization, $normalized);
+            $this->serialiseCreation($organization);
+            $existing = $this->existing($organization, $normalized, lock: true);
             if ($existing !== null) {
                 if (! $existing->active) {
                     $existing->active = true;
@@ -77,7 +78,7 @@ class ContactRoleRegistry
             try {
                 return $this->insert($actor, $organization, $clean, $normalized);
             } catch (UniqueConstraintViolationException) {
-                return $this->existing($organization, $normalized) ?? throw new \LogicException('Role vanished after a unique violation.');
+                return $this->existing($organization, $normalized, lock: true) ?? throw new \LogicException('Role vanished after a unique violation.');
             }
         });
     }
@@ -90,9 +91,20 @@ class ContactRoleRegistry
         $this->audit->record('contact_role.deactivated', $actor, $organization, auditable: $role, newValues: ['name' => $role->name]);
     }
 
-    private function existing(Organization $organization, string $normalized): ?ContactRole
+    private function existing(Organization $organization, string $normalized, bool $lock = false): ?ContactRole
     {
-        return ContactRole::query()->whereIn('organization_scope', [0, (int) $organization->getKey()])->where('normalized_name', $normalized)->first();
+        return ContactRole::query()->where(fn ($q) => $q->whereNull('organization_id')->orWhere('organization_id', $organization->getKey()))->where('normalized_name', $normalized)
+            ->when($lock, fn ($q) => $q->lockForUpdate())->first();
+    }
+
+    /**
+     * Custom-role creation is serialised per organization by locking its row (a locking read of a MISSING unique key would
+     * only take gap locks and deadlock two creators). Locking reads see the latest committed rows, which a plain read in a
+     * REPEATABLE READ transaction would not: that is what lets the loser of a race find the winner's role.
+     */
+    private function serialiseCreation(Organization $organization): void
+    {
+        Organization::query()->whereKey($organization->getKey())->lockForUpdate()->first();
     }
 
     private function insert(User $actor, Organization $organization, string $name, string $normalized): ContactRole
