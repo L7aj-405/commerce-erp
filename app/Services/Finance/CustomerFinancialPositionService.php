@@ -2,12 +2,14 @@
 
 namespace App\Services\Finance;
 
+use App\Enums\SalesOrderStatus;
 use App\Models\Invoice;
 use App\Models\Organization;
 use App\Models\Payment;
 use App\Models\SalesOrder;
 use App\Models\User;
 use App\Services\DocumentVisibility;
+use App\Services\SalesOrderPaymentCalculator;
 use App\Support\Decimal;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -82,6 +84,35 @@ final class CustomerFinancialPositionService
             ->selectRaw('ROUND(COALESCE(SUM(p.amount - COALESCE(a.allocated, 0) - COALESCE((SELECT SUM(s.amount) FROM customer_opening_balance_settlements s WHERE s.organization_id = p.organization_id'
                 .' AND s.payment_id = p.id AND s.released_date IS NULL), 0)), 0), 4) as total')->get()->groupBy('customer_id') : collect();
 
+        // OPT-FC-002: net sales (every confirmed order net of received returns, invoiced or not) and net collections.
+        $returns = DB::table('customer_returns')->where('organization_id', $organizationId)->where('status', 'received')
+            ->when($asOf !== null, fn ($q) => $q->where('received_at', '<', SalesOrderPaymentCalculator::endOfLocalDayUtc($organizationId, $asOf)))
+            ->groupBy('sales_order_id')->select('sales_order_id')->selectRaw('SUM(total_incl_tax) as returned');
+        $netSales = $canOrders ? DB::table('sales_orders as o')->leftJoinSub($returns, 'r', 'r.sales_order_id', '=', 'o.id')
+            ->where('o.organization_id', $organizationId)->whereNull('o.sandbox_id')->where('o.status', SalesOrderStatus::Confirmed->value)
+            ->whereIn('o.customer_id', $customerIds)->whereIn('o.store_id', $stores)->whereDate('o.sale_date', '<=', $dateLimit)
+            ->groupBy('o.customer_id', 'o.currency_code')->select('o.customer_id', 'o.currency_code')
+            ->selectRaw('ROUND(COALESCE(SUM(CASE WHEN o.total_incl_tax - COALESCE(r.returned, 0) > 0 THEN o.total_incl_tax - COALESCE(r.returned, 0) ELSE 0 END), 0), 4) as total')
+            ->get()->groupBy('customer_id') : collect();
+        // Net collections = posted cash received (reversed payments excluded) minus executed refunds. A customer advance counts once, when
+        // received (its later allocation to an order is NOT a new collection); an order payment counts through its allocations.
+        $advanceCash = DB::table('payments as p')->where('p.organization_id', $organizationId)->where('p.status', 'posted')->whereNotNull('p.customer_id')
+            ->whereIn('p.customer_id', $customerIds)->whereIn('p.store_id', $stores)->whereDate('p.payment_date', '<=', $dateLimit)
+            ->groupBy('p.customer_id', 'p.currency_code')->select('p.customer_id', 'p.currency_code')->selectRaw('ROUND(COALESCE(SUM(p.amount), 0), 4) as total')->get();
+        $orderCash = DB::table('payment_allocations as pa')->join('payments as p', function ($j) {
+            $j->on('p.id', '=', 'pa.payment_id')->on('p.organization_id', '=', 'pa.organization_id');
+        })->join('sales_orders as o', function ($j) {
+            $j->on('o.id', '=', 'pa.sales_order_id')->on('o.organization_id', '=', 'pa.organization_id');
+        })->where('pa.organization_id', $organizationId)->where('p.status', 'posted')->whereNull('p.customer_id')->whereNull('o.sandbox_id')
+            ->whereIn('o.customer_id', $customerIds)->whereIn('o.store_id', $stores)->whereDate('p.payment_date', '<=', $dateLimit)
+            ->groupBy('o.customer_id', 'o.currency_code')->select('o.customer_id', 'o.currency_code')->selectRaw('ROUND(COALESCE(SUM(pa.amount), 0), 4) as total')->get();
+        $refunded = DB::table('payment_refunds as rf')->join('sales_orders as o', function ($j) {
+            $j->on('o.id', '=', 'rf.sales_order_id')->on('o.organization_id', '=', 'rf.organization_id');
+        })->where('rf.organization_id', $organizationId)->where('rf.status', 'posted')->whereNull('o.sandbox_id')
+            ->whereIn('o.customer_id', $customerIds)->whereIn('o.store_id', $stores)->whereDate('rf.refund_date', '<=', $dateLimit)
+            ->groupBy('o.customer_id', 'o.currency_code')->select('o.customer_id', 'o.currency_code')->selectRaw('ROUND(COALESCE(SUM(rf.amount), 0), 4) as total')->get();
+        $cash = ['advance' => $advanceCash->groupBy('customer_id'), 'order' => $orderCash->groupBy('customer_id'), 'refund' => $refunded->groupBy('customer_id')];
+
         $instruments = DB::table('customer_payment_instruments')->where('organization_id', $organizationId)
             ->whereIn('state', self::PENDING_INSTRUMENT_STATES)->whereIn('customer_id', $customerIds)->whereIn('store_id', $stores)
             ->groupBy('customer_id', 'currency_code')->select('customer_id', 'currency_code')
@@ -103,6 +134,13 @@ final class CustomerFinancialPositionService
             $unbilled = $zeroIfNoDocuments('unbilled', $canOrders && $canPayments);
             $opening = $this->singleCurrencyTotal($openings[$id] ?? collect(), $currency);
             $term = $terms[$id] ?? null;
+            $salesTotal = $canOrders ? $single($netSales) : null;
+            $collected = null;
+            if ($canOrders && $canPayments) {
+                $parts = array_map(fn ($rows) => $this->singleCurrencyTotal($rows[$id] ?? collect(), $currency), $cash);
+                $collected = in_array(false, $parts, true) ? false
+                    : Decimal::subtract(Decimal::add((string) $parts['advance'], (string) $parts['order']), (string) $parts['refund']);
+            }
             $limit = $term && $term->credit_enabled && $term->credit_limit !== null ? Decimal::normalize((string) $term->credit_limit) : null;
             $exposure = ($receivable !== null && $unbilled !== null && $opening !== false)
                 ? Decimal::add(Decimal::add($receivable, $unbilled), Decimal::compare((string) $opening, '0') > 0 ? (string) $opening : '0.0000') : null;
@@ -140,7 +178,11 @@ final class CustomerFinancialPositionService
                 'pending_instruments' => $single($instruments) === false ? null : $single($instruments),
                 'credit_enabled' => (bool) ($term->credit_enabled ?? false),
                 'credit_limit' => $limit,
+                'net_sales' => $salesTotal === false || $salesTotal === null || ($position['mixed_currency'] ?? false) ? null : $salesTotal,
+                'net_collected' => $collected === false || $collected === null || ($position['mixed_currency'] ?? false) ? null : $collected,
                 'credit_exposure' => $exposure,
+                // OPT-FC-001/002: the authoritative "Total à encaisser" (same figure as the credit exposure): invoiced receivable + unbilled exposure + remaining opening-balance debt, no double counting.
+                'total_to_collect' => $exposure,
                 'available_credit' => $available,
                 'payment_term_days' => $term->payment_term_days ?? null,
                 'financial_status' => $this->status($term, $overdue, $available),

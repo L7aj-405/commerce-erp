@@ -16,12 +16,12 @@ use App\Services\AuditLogger;
 use App\Services\DocumentSellerProfile;
 use App\Services\DocumentSnapshotVerifier;
 use App\Services\DocumentTemplateRegistry;
+use App\Services\Finance\CustomerInvoicingPolicyResolver;
 use App\Services\Finance\FinanceClosedPeriodGuard;
 use App\Services\InvoiceNumberGenerator;
 use App\Services\Policies\PolicyResolver;
 use App\Services\SalesOrderPaymentCalculator;
 use App\Services\Sandbox\SandboxDocumentNumberGenerator;
-use App\Support\Decimal;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -46,6 +46,7 @@ class IssueInvoiceAction
         private readonly SandboxDocumentNumberGenerator $testNumbers,
         private readonly FinanceClosedPeriodGuard $periods,
         private readonly PolicyResolver $policies,
+        private readonly CustomerInvoicingPolicyResolver $invoicingPolicy,
     ) {}
 
     public function execute(User $actor, Invoice $invoice): Invoice
@@ -85,7 +86,7 @@ class IssueInvoiceAction
             if (! $test) {
                 $this->lockPaymentState($order);
             }
-            if (! $test && Decimal::compare($this->payments->remainingAmount($order), '0.0000') > 0) {
+            if (! $test && ! $this->invoicingPolicy->allowsIssuance($order, $this->payments->remainingAmount($order))) {
                 throw ValidationException::withMessages([
                     'invoice' => self::FULL_PAYMENT_REQUIRED_MESSAGE,
                 ]);

@@ -8,6 +8,7 @@ use App\Actions\Finance\Customers\ManageCustomerOpeningBalanceAction;
 use App\Actions\Finance\Customers\RecordCustomerSettlementAction;
 use App\Actions\Finance\Customers\SaveCustomerFinancialTermsAction;
 use App\Contracts\PdfGenerator;
+use App\Enums\CustomerInvoicingPolicy;
 use App\Enums\CustomerStatus;
 use App\Enums\InvoiceStatus;
 use App\Http\Controllers\Controller;
@@ -20,9 +21,11 @@ use App\Models\User;
 use App\Services\ActiveTenantContext;
 use App\Services\AuditLogger;
 use App\Services\DocumentVisibility;
+use App\Services\Finance\CustomerAdvanceBalance;
 use App\Services\Finance\CustomerCollectionForecast;
 use App\Services\Finance\CustomerCreditGuard;
 use App\Services\Finance\CustomerFinancialPositionService;
+use App\Services\Finance\CustomerInvoicingPolicyResolver;
 use App\Services\Finance\CustomerOpenOrders;
 use App\Services\Finance\CustomerStatementService;
 use App\Services\Finance\Export\TabularExport;
@@ -50,7 +53,7 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  */
 class CustomerAccountsController extends Controller
 {
-    private const FINANCIAL_SORTS = ['receivable', 'overdue', 'unbilled', 'net_invoiced', 'advances_available', 'available_credit'];
+    private const FINANCIAL_SORTS = ['total_to_collect', 'receivable', 'overdue', 'unbilled', 'net_invoiced', 'advances_available', 'available_credit'];
 
     private const EXPORT_LIMIT = 20000;
 
@@ -82,15 +85,15 @@ class CustomerAccountsController extends Controller
         }
         $audit->record('finance_clients.accounts_exported', $request->user(), $organization, null, null, newValues: ['format' => $format, 'filters' => $filters, 'row_count' => count($rows['items'])]);
         $headers = ['Client', 'Société', 'Type', 'Statut du client', 'Devise', 'Facturé net', 'Réglé (affecté)', 'Créance sur factures', 'Dont en retard (factures)', 'Exposition non facturée', 'Dont en retard (non facturé)',
-            'Solde d’ouverture', 'Avances non affectées', 'Obligation de remboursement', 'Effets en attente', 'Plafond de crédit', 'Crédit disponible', 'Statut financier'];
+            'Solde d’ouverture', 'Avances non affectées', 'Obligation de remboursement', 'Effets en attente', 'Plafond de crédit', 'Crédit disponible', 'Statut financier', 'Total à encaisser', 'En retard (total)'];
         $lines = (function () use ($rows) {
             foreach ($rows['items'] as $r) {
                 $p = $r['position'];
                 yield [$r['display_name'], $r['company_name'], $r['type'], $r['status'], $p['currency_code'], $p['net_invoiced'], $p['paid'], $p['receivable'], $p['overdue_invoices'], $p['unbilled'], $p['overdue_unbilled'],
-                    $p['opening_balance'], $p['advances_available'], $p['refund_obligation'], $p['pending_instruments'], $p['credit_limit'], $p['available_credit'], $p['financial_status']];
+                    $p['opening_balance'], $p['advances_available'], $p['refund_obligation'], $p['pending_instruments'], $p['credit_limit'], $p['available_credit'], $p['financial_status'], $p['total_to_collect'], $p['overdue']];
             }
         })();
-        $money = range(5, 16);
+        $money = [...range(5, 16), 18, 19];
         $name = 'comptes-clients-'.now()->format('Ymd-His');
 
         return $format === 'csv' ? TabularExport::csv($name, $headers, $lines, $money) : TabularExport::xlsx($name, 'Comptes clients', $headers, $lines, $money);
@@ -130,9 +133,10 @@ class CustomerAccountsController extends Controller
                 ->where(fn ($q) => $q->where('customer_id', $customer->getKey())->orWhereHas('allocations.salesOrder', fn ($o) => $o->where('customer_id', $customer->getKey())->whereIn('store_id', $stores)));
             $rows = (clone $payments)->orderByDesc('payment_date')->orderByDesc('id')->limit(50)->get(['id', 'payment_number', 'payment_date', 'method', 'status', 'amount', 'customer_id', 'store_id']);
             $sums = DB::table('payment_allocations')->where('organization_id', $organization->getKey())->whereIn('payment_id', $rows->pluck('id'))->groupBy('payment_id')->select('payment_id')->selectRaw('SUM(amount) as total')->pluck('total', 'payment_id');
+            $openingApplied = CustomerAdvanceBalance::openingAppliedByPayment((int) $organization->getKey(), $rows->pluck('id'));
             $props += [
                 'payments' => $rows->map(fn ($p) => $p->toArray() + ['allocated' => Decimal::normalize((string) ($sums[$p->id] ?? '0')), 'advance_left' => $p->customer_id && $p->status->value === 'posted'
-                    ? Decimal::subtract((string) $p->amount, Decimal::normalize((string) ($sums[$p->id] ?? '0'))) : '0.0000']),
+                    ? Decimal::subtract(Decimal::subtract((string) $p->amount, Decimal::normalize((string) ($sums[$p->id] ?? '0'))), $openingApplied[$p->id] ?? '0.0000') : '0.0000']),
                 'paymentsCount' => (clone $payments)->count(),
                 'openingTargets' => DB::table('customer_opening_balances as o')->where('o.organization_id', $organization->getKey())->where('o.customer_id', $customer->getKey())
                     ->where('o.status', 'posted')->where('o.amount', '>', 0)
@@ -163,6 +167,7 @@ class CustomerAccountsController extends Controller
                 'openings' => DB::table('customer_opening_balances')->where('organization_id', $organization->getKey())->where('customer_id', $customer->getKey())->orderByDesc('effective_date')->orderByDesc('id')->get(),
                 'exceptions' => DB::table('customer_credit_exceptions')->where('organization_id', $organization->getKey())->where('customer_id', $customer->getKey())->orderByDesc('id')->limit(20)->get(),
                 'enforcement' => CustomerCreditGuard::enforcement($organization),
+                'invoicingPolicy' => ['effective' => app(CustomerInvoicingPolicyResolver::class)->forCustomer($customer)->value, 'default' => CustomerInvoicingPolicy::defaultFor($customer->type)->value],
             ];
         }
 
@@ -223,7 +228,8 @@ class CustomerAccountsController extends Controller
         $this->authorize('view', $customer);
         $data = $request->validate(['credit_enabled' => ['boolean'], 'credit_limit' => ['nullable', 'decimal:0,4'], 'payment_term_days' => ['nullable', 'integer', 'min:0', 'max:365'],
             'min_deposit_percent' => ['nullable', 'numeric', 'min:0', 'max:100'], 'overdue_tolerance_days' => ['nullable', 'integer', 'min:0', 'max:365'],
-            'policy' => ['required', Rule::in(SaveCustomerFinancialTermsAction::POLICIES)], 'financial_status' => ['required', Rule::in(SaveCustomerFinancialTermsAction::STATUSES)]]);
+            'policy' => ['required', Rule::in(SaveCustomerFinancialTermsAction::POLICIES)], 'financial_status' => ['required', Rule::in(SaveCustomerFinancialTermsAction::STATUSES)],
+            'invoicing_policy' => ['nullable', Rule::in(array_column(CustomerInvoicingPolicy::cases(), 'value'))]]);
         $action->execute($request->user(), $customer, $data);
 
         return back()->with('success', 'Conditions financières enregistrées.');

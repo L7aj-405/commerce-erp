@@ -2,6 +2,7 @@ import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { SelectField, TextAreaField, TextField } from '@/components/ui/form';
 import { useI18n } from '@/i18n';
+import type { TranslationKey } from '@/i18n/translations';
 import { formatBusinessDate, formatMoney } from '@/utils/format';
 import { useBusinessToday } from '@/utils/businessDate';
 import { newOperationId } from '@/utils/uuid';
@@ -22,7 +23,7 @@ const addDecimal = (a: string, b: string) => (Math.round((Number(a || 0) + Numbe
  * (manual or "oldest due first" preview). Totals shown here are only a hint: the server re-validates everything
  * (amounts, remaining per order, customer, store, account, period) and is the only authority.
  */
-export function SettlementForm({ customerId, accounts, orders }: { customerId: number; accounts: FinAccount[]; orders: OpenOrder[] }) {
+export function SettlementForm({ customerId, accounts, orders, embedded = false, onDone, onCancel }: { customerId: number; accounts: FinAccount[]; orders: OpenOrder[]; embedded?: boolean; onDone?: () => void; onCancel?: () => void }) {
     const { t } = useI18n();
     const today = useBusinessToday();
     const errors = usePage<{ errors?: Record<string, string> }>().props.errors ?? {};
@@ -63,14 +64,14 @@ export function SettlementForm({ customerId, accounts, orders }: { customerId: n
                 client_operation_id: operationId, financial_account_id: account, method, amount, payment_date: date, reference, notes,
                 allocations: Object.entries(alloc).filter(([, v]) => v && Number(v) > 0).map(([id, v]) => ({ sales_order_id: Number(id), amount: v })),
             },
-            { preserveScroll: true, onSuccess: () => { setOperationId(newOperationId()); setAmount(''); setAlloc({}); }, onFinish: () => setBusy(false) },
+            { preserveScroll: true, onSuccess: () => { setOperationId(newOperationId()); setAmount(''); setAlloc({}); onDone?.(); }, onFinish: () => setBusy(false) },
         );
     };
 
     return (
-        <form onSubmit={submit} className="surface-card mb-6 p-4" aria-label={t('fc2.settle.title')}>
-            <h3 className="mb-3 text-base font-semibold text-ink">{t('fc2.settle.title')}</h3>
-            <div className="grid gap-3 md:grid-cols-4">
+        <form onSubmit={submit} className={embedded ? '' : 'surface-card mb-6 p-4'} aria-label={t('fc2.settle.title')}>
+            {!embedded && <h3 className="mb-3 text-base font-semibold text-ink">{t('fc2.settle.title')}</h3>}
+            <div className={embedded ? 'grid gap-3 sm:grid-cols-2' : 'grid gap-3 md:grid-cols-4'}>
                 <SelectField label={t('fc2.settle.method')} value={method} onChange={(e) => changeMethod(e.target.value)}>
                     {METHODS.map((m) => <option key={m} value={m}>{METHOD_LABEL[m]}</option>)}
                 </SelectField>
@@ -81,7 +82,7 @@ export function SettlementForm({ customerId, accounts, orders }: { customerId: n
                 <TextField label={t('common.amount')} inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} error={errors.amount} required />
                 <TextField type="date" label={t('common.date')} value={date} onChange={(e) => setDate(e.target.value)} error={errors.payment_date} required />
                 <TextField label={t('fc2.settle.reference')} value={reference} onChange={(e) => setReference(e.target.value)} />
-                <TextAreaField label={t('fc2.settle.notes')} value={notes} onChange={(e) => setNotes(e.target.value)} rows={1} className="md:col-span-3" />
+                <TextAreaField label={t('fc2.settle.notes')} value={notes} onChange={(e) => setNotes(e.target.value)} rows={1} className={embedded ? 'sm:col-span-2' : 'md:col-span-3'} />
             </div>
             {errors.allocations && <div className="mt-3"><Alert tone="danger">{errors.allocations}</Alert></div>}
             {errors.client_operation_id && <div className="mt-3"><Alert tone="danger">{errors.client_operation_id}</Alert></div>}
@@ -104,6 +105,7 @@ export function SettlementForm({ customerId, accounts, orders }: { customerId: n
             <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
                 <p className="text-sm text-ink-muted" aria-live="polite">{t('fc2.settle.allocated')} <strong dir="ltr">{formatMoney(allocated, chosen?.currency_code ?? 'MAD')}</strong> · {t('fc2.settle.advanceLeft')} <strong dir="ltr">{formatMoney(Number(advance) < 0 ? '0' : advance, chosen?.currency_code ?? 'MAD')}</strong></p>
                 <div className="flex gap-2">
+                    {onCancel && <Button type="button" variant="ghost" size="sm" onClick={onCancel}>{t('common.cancel')}</Button>}
                     <Button type="button" variant="outline" size="sm" onClick={preview} disabled={!amount}>{t('fc2.settle.oldestFirst')}</Button>
                     <Button type="submit" loading={busy} disabled={!amount || !account || !compatible.some((a) => String(a.id) === account)}>{t('fc2.settle.submit')}</Button>
                 </div>
@@ -156,13 +158,13 @@ export function AdvanceAllocator({ customerId, paymentId, left, orders, currency
     );
 }
 
-export function TermsForm({ customerId, terms }: { customerId: number; terms: Record<string, string | number | boolean | null> | null }) {
+export function TermsForm({ customerId, terms, invoicingPolicy }: { customerId: number; terms: Record<string, string | number | boolean | null> | null; invoicingPolicy?: { effective: string; default: string } }) {
     const { t } = useI18n();
     const errors = usePage<{ errors?: Record<string, string> }>().props.errors ?? {};
     const [v, setV] = useState({
         credit_enabled: Boolean(terms?.credit_enabled), credit_limit: String(terms?.credit_limit ?? ''), payment_term_days: String(terms?.payment_term_days ?? ''),
         min_deposit_percent: String(terms?.min_deposit_percent ?? ''), overdue_tolerance_days: String(terms?.overdue_tolerance_days ?? '0'),
-        policy: String(terms?.policy ?? 'warn'), financial_status: String(terms?.financial_status ?? 'normal'),
+        policy: String(terms?.policy ?? 'warn'), invoicing_policy: String(terms?.invoicing_policy ?? ''), financial_status: String(terms?.financial_status ?? 'normal'),
     });
     const submit = (event: FormEvent) => { event.preventDefault(); router.post(`/finance/clients/comptes/${customerId}/conditions`, v, { preserveScroll: true }); };
     return (
@@ -177,11 +179,16 @@ export function TermsForm({ customerId, terms }: { customerId: number; terms: Re
                 <SelectField label={t('fc2.terms.policy')} value={v.policy} onChange={(e) => setV({ ...v, policy: e.target.value })}>
                     <option value="warn">{t('fc2.terms.policy.warn')}</option><option value="block">{t('fc2.terms.policy.block')}</option>
                 </SelectField>
+                <SelectField label={t('fc2.terms.invoicing')} value={v.invoicing_policy} onChange={(e) => setV({ ...v, invoicing_policy: e.target.value })} error={errors.invoicing_policy}>
+                    <option value="">{t('fc2.terms.invoicing.default')}{invoicingPolicy ? ` — ${t(`fc2.terms.invoicing.${invoicingPolicy.default}` as TranslationKey)}` : ''}</option>
+                    <option value="after_full_payment">{t('fc2.terms.invoicing.after_full_payment')}</option><option value="before_payment_allowed">{t('fc2.terms.invoicing.before_payment_allowed')}</option>
+                </SelectField>
                 <SelectField label={t('fc2.col.financialStatus')} value={v.financial_status} onChange={(e) => setV({ ...v, financial_status: e.target.value })}>
                     <option value="normal">{t('fc2.status.normal')}</option><option value="watch">{t('fc2.status.watch')}</option><option value="blocked">{t('fc2.status.blocked')}</option>
                 </SelectField>
             </div>
             <p className="mt-2 text-[13px] text-ink-muted">{t('fc2.terms.help')}</p>
+            <p className="mt-1 text-[13px] text-ink-muted">{t('fc2.terms.invoicing.help')}</p>
             <div className="mt-3"><Button type="submit">{t('common.save')}</Button></div>
         </form>
     );
