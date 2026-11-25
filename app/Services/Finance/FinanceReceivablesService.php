@@ -478,6 +478,35 @@ class FinanceReceivablesService
     }
 
     /**
+     * Per-invoice detail of refundObligationAsOf(): the SAME query and the SAME operands, one row per invoice whose net collected
+     * amount exceeds its net billed amount. Strictly per source document: an obligation is never offset against another order's
+     * receivable. The page total always equals refundObligationAsOf() for the same date and store.
+     *
+     * @return LengthAwarePaginator<int, array<string, mixed>>
+     */
+    public function refundObligationsBreakdownAsOf(Organization $organization, Carbon $asOf, ?Store $store, int $perPage = 30): LengthAwarePaginator
+    {
+        $netBilled = '(invoices.total_incl_tax - COALESCE(credits.credited_amount, 0))';
+        $netCollected = '(COALESCE(paid.paid_amount, 0))';
+
+        return $this->obligationsQuery($organization, $asOf, $store)
+            ->join('sales_orders', fn ($j) => $j->on('sales_orders.id', '=', 'invoices.sales_order_id')->on('sales_orders.organization_id', '=', 'invoices.organization_id'))
+            ->whereRaw("{$netCollected} > {$netBilled}")
+            ->select([
+                'invoices.id', 'invoices.invoice_number', 'invoices.customer_name', 'invoices.customer_company', 'invoices.sales_order_id', 'invoices.store_id',
+                'sales_orders.order_number', 'sales_orders.customer_id', 'sales_orders.currency_code',
+                DB::raw("{$netCollected} - {$netBilled} as obligation"),
+            ])
+            ->orderByDesc('obligation')->orderBy('invoices.id')
+            ->paginate($perPage)->withQueryString()
+            ->through(fn ($row) => [
+                'invoice_id' => (int) $row->id, 'invoice_number' => $row->invoice_number, 'sales_order_id' => (int) $row->sales_order_id, 'order_number' => $row->order_number,
+                'customer_id' => $row->customer_id !== null ? (int) $row->customer_id : null, 'customer' => trim((string) ($row->customer_company ?: $row->customer_name)) ?: '—',
+                'currency_code' => $row->currency_code, 'amount' => Decimal::normalize((string) $row->obligation), 'store_id' => (int) $row->store_id,
+            ]);
+    }
+
+    /**
      * Paginated per-invoice breakdown as of a date, for the "Créances"
      * drill-down. Two DB round trips total regardless of page size — the
      * aggregate join for amounts, plus the page's own row fetch.

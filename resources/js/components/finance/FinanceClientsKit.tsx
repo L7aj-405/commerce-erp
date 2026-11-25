@@ -70,3 +70,47 @@ export function FinancePlaceholder({ title, plannedKey }: { title?: string; plan
 
 /** Unavailable figures are an em dash, never a fabricated zero. */
 export const UNAVAILABLE = '—';
+
+/**
+ * Phase 3: one tab strip per consolidated destination. Each tab is a real link to an existing authorized page
+ * (legacy URLs are preserved), so relocating a page never changes what its route authorizes. Month and store filters carry over.
+ */
+export type ParentGroup = 'collections' | 'receivables' | 'reports';
+
+const PARENT_TABS: Record<ParentGroup, { key: string; label: TranslationKey; path: string; section?: string }[]> = {
+    collections: [
+        { key: 'settlements', label: 'p3.tab.settlements', path: '/finance/clients/encaissements', section: 'settlements' },
+        { key: 'advances', label: 'p3.tab.advances', path: '/finance/clients/avances' },
+        { key: 'refunds', label: 'p3.tab.refunds', path: '/finance/clients/encaissements', section: 'refunds' },
+        { key: 'instruments', label: 'p3.tab.instruments', path: '/finance/clients/instruments' },
+    ],
+    receivables: [
+        { key: 'receivables', label: 'p3.tab.receivables', path: '/finance/clients/creances', section: 'receivables' },
+        { key: 'dues', label: 'p3.tab.schedules', path: '/finance/clients/creances', section: 'dues' },
+        { key: 'aging', label: 'p3.tab.aging', path: '/finance/clients/creances', section: 'aging' },
+        { key: 'reminders', label: 'p3.tab.reminders', path: '/finance/clients/creances', section: 'reminders' },
+        { key: 'forecasts', label: 'p3.tab.forecasts', path: '/finance/clients/creances', section: 'forecasts' },
+        { key: 'credit', label: 'p3.tab.credit', path: '/finance/clients/credit' },
+    ],
+    reports: [
+        { key: 'catalog', label: 'p3.tab.reports', path: '/finance/clients/rapports', section: 'catalog' },
+        { key: 'profitability', label: 'p3.tab.profitability', path: '/finance/clients/rapports', section: 'profitability' },
+        { key: 'journal', label: 'p3.tab.journal', path: '/finance/clients/journal' },
+    ],
+};
+
+export function ParentTabs({ group, active }: { group: ParentGroup; active: string }) {
+    const { t } = useI18n();
+    const params = useQueryParams();
+    const sections: SectionDef[] = PARENT_TABS[group].map((tab) => {
+        const next = new URLSearchParams();
+        for (const carried of ['month', 'store_id']) {
+            const value = params.get(carried);
+            if (value) next.set(carried, value);
+        }
+        if (tab.section) next.set('section', tab.section);
+        const query = next.toString();
+        return { key: tab.key, label: t(tab.label), href: query ? `${tab.path}?${query}` : tab.path };
+    });
+    return <SectionTabs sections={sections} active={active} label={t('p3.tabs.label')} />;
+}

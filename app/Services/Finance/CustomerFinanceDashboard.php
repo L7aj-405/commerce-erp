@@ -5,6 +5,7 @@ namespace App\Services\Finance;
 use App\Models\Organization;
 use App\Models\Store;
 use App\Services\SalesMarginReportService;
+use App\Support\BusinessTime;
 use App\Support\Decimal;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -43,7 +44,9 @@ final class CustomerFinanceDashboard
         $orgId = $organization->getKey();
         $situation = $this->report->situation($organization, $period, $store);
         $aging = $this->aging->build($organization, $store, $period->end);
-        $forecast = $this->forecast->build($organization, $store, Carbon::now());
+        // Operational forecast: anchored on the organization's current business date (shown on the page), never on a reporting month.
+        $today = BusinessTime::today($organization);
+        $forecast = $this->forecast->build($organization, $store, Carbon::parse($today));
 
         $balances = [];
         foreach ($aging['totals'] as $currency => $t) {
@@ -76,7 +79,7 @@ final class CustomerFinanceDashboard
         $trend = [];
         for ($i = 5; $i >= 0; $i--) {
             $p = FinancePeriod::fromMonth($period->start->copy()->subMonthsNoOverflow($i)->format('Y-m'));
-            $trend[] = ['month' => $p->month, 'sales' => $this->report->ventesTotal($organization, $p, $store), 'collections' => Decimal::subtract($this->report->encaissementsTotal($organization, $p, $store), $this->report->refundsTotal($organization, $p, $store))];
+            $trend[] = ['month' => $p->month, 'sales' => $this->report->ventesNettesTotal($organization, $p, $store), 'collections' => Decimal::subtract($this->report->encaissementsTotal($organization, $p, $store), $this->report->refundsTotal($organization, $p, $store))];
         }
 
         return [
@@ -87,7 +90,7 @@ final class CustomerFinanceDashboard
                 'refunds' => $situation['remboursements'], 'collections_net' => $situation['net_encaisse'],
             ],
             'balances' => ['as_of' => $period->end->toDateString(), 'by_currency' => $balances, 'refund_obligations' => $situation['obligations_remboursement'], 'advances' => $advances, 'pending_instruments' => $instruments],
-            'expected_collections' => ['by_currency' => $expected, 'window' => '28 jours'],
+            'expected_collections' => ['by_currency' => $expected, 'window' => '28 jours', 'reference_date' => $today],
             'credit_alerts' => ['over_limit' => $over, 'blocked' => $blocked, 'with_overdue' => $withOverdue],
             'trend' => $trend,
             'truncated' => $aging['truncated'] || $forecast['truncated'],

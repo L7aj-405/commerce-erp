@@ -1,4 +1,4 @@
-import { useCurrentPath } from '@/components/finance/FinanceClientsKit';
+import { ParentTabs, SectionTabs, useCurrentPath, useSection } from '@/components/finance/FinanceClientsKit';
 import { PageNav } from '@/components/finance/PageNav';
 import FinanceFilters, { type FinanceStore } from '@/components/finance/FinanceFilters';
 import SoldLines, { type SoldLine } from '@/components/finance/SoldLines';
@@ -40,14 +40,19 @@ type Props = {
 export default function FinanceJournal({ organization, period, periodLabel, storeId, stores, rows, events, eventsMeta, filters, eventTypes, can }: Props) {
     const { t } = useI18n();
     const path = useCurrentPath();
+    const view = useSection(['events', 'invoices'] as const, 'events');
     const go = (next: { type?: string; search?: string }) => router.get(path, { month: period, store_id: storeId ?? '', ...filters, ...next }, { preserveState: true, preserveScroll: true });
     const exportQuery = new URLSearchParams({ month: period, ...(storeId ? { store_id: String(storeId) } : {}), ...(filters?.type ? { type: filters.type } : {}), ...(filters?.search ? { search: filters.search } : {}) }).toString();
     return (
         <ApplicationShell wide>
             <Head title={`${t('finance.journal.title')} — Finance`} />
             <PageHeader title={t('finance.journal.title')} description={`${organization.name} · ${periodLabel} · ${rows.total} ${t('finance.journal.invoiceCount')}`} />
-            <FinanceFilters path={path} period={period} storeId={storeId} stores={stores} />
+            <ParentTabs group="reports" active="journal" />
+            <p className="mb-3 text-[13px] text-ink-muted">{t('p3.journal.distinct')}</p>
+            <SectionTabs sections={[{ key: 'events', label: t('p3.journal.events') }, { key: 'invoices', label: t('p3.journal.invoices') }]} active={view} label={t('finance.journal.title')} />
+            <FinanceFilters path={path} extra={{ section: view }} period={period} storeId={storeId} stores={stores} />
 
+            {view === 'events' && (
             <section className="mb-6" aria-labelledby="journal-events">
                 <div className="mb-3">
                     <h2 id="journal-events" className="text-base font-semibold text-ink">{t('finance.journal.events')}</h2>
@@ -95,8 +100,11 @@ export default function FinanceJournal({ organization, period, periodLabel, stor
                     {eventsMeta && <PageNav page={eventsMeta.page} pages={eventsMeta.pages} total={eventsMeta.total} param="events_page" />}
                 </TableShell>
             </section>
+            )}
 
-            <h2 className="mb-3 text-base font-semibold text-ink">{t('finance.journal.title')}</h2>
+            {view === 'invoices' && (
+            <>
+            <h2 className="mb-3 text-base font-semibold text-ink">{t('p3.journal.invoices')}</h2>
 
             {/* Desktop/tablet: table */}
             <TableShell
@@ -178,6 +186,8 @@ export default function FinanceJournal({ organization, period, periodLabel, stor
                     </>
                 )}
             </div>
+            </>
+            )}
         </ApplicationShell>
     );
 }

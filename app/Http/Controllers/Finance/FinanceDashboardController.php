@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Finance;
 
 use App\Http\Controllers\Controller;
+use App\Models\Customer;
 use App\Models\Organization;
 use App\Models\Store;
 use App\Services\ActiveTenantContext;
@@ -16,7 +17,9 @@ use App\Services\Finance\FinanceInvoiceReadModel;
 use App\Services\Finance\FinanceMonthlyReportService;
 use App\Services\Finance\FinancePeriod;
 use App\Services\Finance\FinanceReceivablesService;
+use App\Support\BusinessTime;
 use App\Support\Decimal;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -111,6 +114,8 @@ class FinanceDashboardController extends Controller
             'unbilledOrders' => $section === 'unbilled' ? $receivables->unbilledOrdersAsOf($organization, $period->end, $store) : null,
             // Additive, read-only (Finance clients "Synthèse"): the same two totals the monthly situation already uses.
             'summary' => $this->invoicingSummary($report, $organization, $period, $store),
+            // Global period counts, independent of the active tab (the tab only loads its own rows).
+            'counts' => ['invoices' => $invoices->countIssuedDuring($organization, $period, $store), 'credit_notes' => $invoices->countCreditNotesDuring($organization, $period, $store)],
         ]);
     }
 
@@ -119,11 +124,23 @@ class FinanceDashboardController extends Controller
         ActiveTenantContext $context,
         FinanceAccessGuard $guard,
         FinanceMonthlyReportService $report,
-    ): Response {
+        FinanceReceivablesService $receivables,
+    ): Response|RedirectResponse {
         $organization = $context->organizationOrFail();
         $guard->authorizeView($request->user(), $organization);
         $period = $this->period($request);
         $store = $guard->resolveStore($organization, $request->query('store_id'));
+
+        // Phase 3: the advances register is its own page (ex "Acomptes" placeholder); old section links keep working.
+        if ($request->query('section') === 'advances') {
+            return redirect()->route('finance.clients.advances', array_filter($request->only(['month', 'store_id'])));
+        }
+        $user = $request->user();
+        $payments = $report->encaissementsBreakdown($organization, $period, $store);
+        $gross = $report->encaissementsTotal($organization, $period, $store);
+        $refunded = $report->refundsTotal($organization, $period, $store);
+        $canSettle = $user->hasPermission($organization, 'finance.customers.settlements.manage') && $user->hasPermission($organization, 'payments.create')
+            && $user->hasPermission($organization, 'customers.view') && $user->active_store_id !== null;
 
         return Inertia::render('Finance/Encaissements', [
             'organization' => $organization->only(['id', 'name']),
@@ -131,8 +148,17 @@ class FinanceDashboardController extends Controller
             'periodLabel' => $period->label(),
             'storeId' => $store?->id,
             'stores' => $this->stores($organization),
-            'payments' => $report->encaissementsBreakdown($organization, $period, $store),
+            'payments' => $payments,
             'refunds' => $report->refundsBreakdown($organization, $period, $store),
+            // Outstanding refund obligations (as of the period end, same service as the dashboard figure); loaded only for that view.
+            'obligations' => $request->query('section') === 'refunds' && $request->query('view') === 'obligations'
+                ? $receivables->refundObligationsBreakdownAsOf($organization, $period->end, $store) : null,
+            'obligationsTotal' => $request->query('section') === 'refunds' ? $receivables->refundObligationAsOf($organization, $period->end, $store) : null,
+            'asOf' => $period->end->toDateString(),
+            // Same period and store scope as the register below (one authoritative payment register + its summary).
+            'summary' => ['gross' => $gross, 'refunds' => $refunded, 'net' => Decimal::subtract($gross, $refunded), 'count' => $payments->total()],
+            'settlementCustomers' => $canSettle ? Customer::query()->where('organization_id', $organization->getKey())->orderBy('display_name')->limit(300)->get(['id', 'display_name']) : [],
+            'can' => ['newSettlement' => $canSettle, 'accounts' => $user->hasPermission($organization, 'customers.view')],
         ]);
     }
 
@@ -164,7 +190,7 @@ class FinanceDashboardController extends Controller
             // Section data is computed only for the requested tab.
             'aging' => $section === 'aging' ? $aging->build($organization, $store, $period->end, max(1, (int) $request->query('page', 1))) : null,
             'forecast' => $plan,
-            'reminders' => $section === 'reminders' ? $this->reminders($organization, $aging, $period->end, $request->user()->hasPermission($organization, 'finance.customers.schedules.manage')) : null,
+            'reminders' => $section === 'reminders' ? $this->reminders($organization, $aging, Carbon::parse(BusinessTime::today($organization)), $request->user()->hasPermission($organization, 'finance.customers.schedules.manage')) : null,
             'can' => ['export' => $request->user()->hasPermission($organization, 'finance.export'), 'monthEnd' => $request->user()->hasPermission($organization, 'finance.monthly_situation.view')],
         ]);
     }
@@ -221,6 +247,7 @@ class FinanceDashboardController extends Controller
             ->map(fn ($r) => ['customer_id' => $r['customer_id'], 'customer' => $r['customer'], 'overdue' => $r['overdue'], 'currency_code' => $r['currency_code']])->values()->all() : [];
 
         return [
+            'businessDate' => ($asOf ?? Carbon::now())->toDateString(),
             'templates' => app(CustomerReminderTemplates::class)->forOrganization($organization),
             'overdueCustomers' => $overdue,
             'canManageTemplates' => $canManage,

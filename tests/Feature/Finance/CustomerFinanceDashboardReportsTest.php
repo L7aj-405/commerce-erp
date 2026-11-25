@@ -152,6 +152,14 @@ class CustomerFinanceDashboardReportsTest extends PaymentTestCase
         $this->assertSame('0.0000', $rows['Bravo']['covered_revenue']);
         $this->assertNull($rows['Bravo']['margin_rate'], 'no rate is invented without a cost');
         $this->assertSame(1, $report['totals']['incomplete']);
+        // Phase 3 (FCUX-12): no costed line = unavailable (null), never a confirmed zero profit; coverage is explicit.
+        $this->assertSame('unavailable', $rows['Bravo']['status']);
+        $this->assertNull($rows['Bravo']['margin']);
+        $this->assertNull($rows['Bravo']['cost']);
+        $this->assertSame('0.0000', $rows['Bravo']['coverage_rate']);
+        $this->assertSame('complete', $rows['Atlas']['status']);
+        $this->assertSame('1.0000', $rows['Atlas']['coverage_rate']);
+        $this->assertSame('partial', $report['totals']['status']);
 
         $csv = $this->get(route('finance.clients.profitability.export', ['format' => 'csv', 'month' => $costed->sale_date->format('Y-m')]))->assertOk();
         $this->assertStringContainsString('Atlas', $csv->streamedContent());

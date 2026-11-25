@@ -2,7 +2,7 @@ import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { SelectField, TextAreaField, TextField } from '@/components/ui/form';
 import { useI18n } from '@/i18n';
-import { formatMoney } from '@/utils/format';
+import { formatBusinessDate, formatMoney } from '@/utils/format';
 import { useBusinessToday } from '@/utils/businessDate';
 import { newOperationId } from '@/utils/uuid';
 import { router, usePage } from '@inertiajs/react';
@@ -40,6 +40,12 @@ export function SettlementForm({ customerId, accounts, orders }: { customerId: n
     const advance = amount ? (Math.round((Number(amount) - Number(allocated)) * 10000) / 10000).toFixed(4) : '0.0000';
     const chosen = accounts.find((a) => String(a.id) === account);
     const compatible = accounts.filter((a) => a.accepted_methods.includes(method));
+    // FCUX-15: an account that does not accept the chosen method is never kept selected (the server still validates the pair).
+    const changeMethod = (next: string) => {
+        setMethod(next);
+        const stillValid = accounts.find((a) => String(a.id) === account)?.accepted_methods.includes(next);
+        if (!stillValid) setAccount(String(accounts.find((a) => a.accepted_methods.includes(next))?.id ?? ''));
+    };
 
     const preview = async () => {
         if (!amount) return;
@@ -65,11 +71,12 @@ export function SettlementForm({ customerId, accounts, orders }: { customerId: n
         <form onSubmit={submit} className="surface-card mb-6 p-4" aria-label={t('fc2.settle.title')}>
             <h3 className="mb-3 text-base font-semibold text-ink">{t('fc2.settle.title')}</h3>
             <div className="grid gap-3 md:grid-cols-4">
-                <SelectField label={t('fc2.settle.method')} value={method} onChange={(e) => setMethod(e.target.value)}>
+                <SelectField label={t('fc2.settle.method')} value={method} onChange={(e) => changeMethod(e.target.value)}>
                     {METHODS.map((m) => <option key={m} value={m}>{METHOD_LABEL[m]}</option>)}
                 </SelectField>
-                <SelectField label={t('fc2.settle.account')} value={account} onChange={(e) => setAccount(e.target.value)} error={errors.financial_account_id}>
-                    {(compatible.length ? compatible : accounts).map((a) => <option key={a.id} value={a.id}>{a.name} ({a.currency_code})</option>)}
+                <SelectField label={t('fc2.settle.account')} value={account} onChange={(e) => setAccount(e.target.value)} error={errors.financial_account_id ?? (compatible.length === 0 ? t('p3.settle.noCompatibleAccount') : undefined)}>
+                    {compatible.length === 0 && <option value="">—</option>}
+                    {compatible.map((a) => <option key={a.id} value={a.id}>{a.name} ({a.currency_code})</option>)}
                 </SelectField>
                 <TextField label={t('common.amount')} inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} error={errors.amount} required />
                 <TextField type="date" label={t('common.date')} value={date} onChange={(e) => setDate(e.target.value)} error={errors.payment_date} required />
@@ -86,7 +93,7 @@ export function SettlementForm({ customerId, accounts, orders }: { customerId: n
                         {orders.map((o) => (
                             <tr key={o.id}>
                                 <td className="px-3 py-2 font-medium">{o.order_number}</td>
-                                <td className={`px-3 py-2 ${o.is_overdue ? 'text-danger' : 'text-ink-muted'}`}>{o.due_date ?? '—'}</td>
+                                <td className={`px-3 py-2 ${o.is_overdue ? 'text-danger' : 'text-ink-muted'}`}>{formatBusinessDate(o.due_date)}</td>
                                 <td className="num px-3 py-2" dir="ltr">{formatMoney(o.remaining, chosen?.currency_code ?? 'MAD')}</td>
                                 <td className="num px-3 py-2"><input aria-label={`${t('fc2.settle.allocate')} ${o.order_number}`} className="control-input h-9 w-32 px-2 text-end" inputMode="decimal" dir="ltr" value={alloc[o.id] ?? ''} onChange={(e) => setAlloc({ ...alloc, [o.id]: e.target.value })} /></td>
                             </tr>
@@ -98,7 +105,7 @@ export function SettlementForm({ customerId, accounts, orders }: { customerId: n
                 <p className="text-sm text-ink-muted" aria-live="polite">{t('fc2.settle.allocated')} <strong dir="ltr">{formatMoney(allocated, chosen?.currency_code ?? 'MAD')}</strong> · {t('fc2.settle.advanceLeft')} <strong dir="ltr">{formatMoney(Number(advance) < 0 ? '0' : advance, chosen?.currency_code ?? 'MAD')}</strong></p>
                 <div className="flex gap-2">
                     <Button type="button" variant="outline" size="sm" onClick={preview} disabled={!amount}>{t('fc2.settle.oldestFirst')}</Button>
-                    <Button type="submit" loading={busy} disabled={!amount || !account}>{t('fc2.settle.submit')}</Button>
+                    <Button type="submit" loading={busy} disabled={!amount || !account || !compatible.some((a) => String(a.id) === account)}>{t('fc2.settle.submit')}</Button>
                 </div>
             </div>
         </form>

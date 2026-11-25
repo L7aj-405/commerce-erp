@@ -37,6 +37,7 @@ use App\Http\Controllers\Finance\CommissionDashboardController;
 use App\Http\Controllers\Finance\CommissionLedgerController;
 use App\Http\Controllers\Finance\CommissionRuleController;
 use App\Http\Controllers\Finance\CustomerAccountsController;
+use App\Http\Controllers\Finance\CustomerAdvancesController;
 use App\Http\Controllers\Finance\CustomerCreditController;
 use App\Http\Controllers\Finance\CustomerInstrumentsController;
 use App\Http\Controllers\Finance\CustomerRemindersController;
@@ -287,6 +288,7 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
         ->name('document-profile.studio.preview');
     Route::put('/document-profile/studio', [DocumentTemplateStudioController::class, 'update'])->name('document-profile.studio.update');
     Route::delete('/document-profile/studio', [DocumentTemplateStudioController::class, 'reset'])->name('document-profile.studio.reset');
+    Route::get('/customer-credit-settings', [CustomerCreditController::class, 'policy'])->name('customer-credit-settings.edit');
     Route::get('/quotation-settings', [QuotationSettingsController::class, 'edit'])->name('quotation-settings.edit');
     Route::put('/quotation-settings', [QuotationSettingsController::class, 'update'])->name('quotation-settings.update');
     Route::get('/email-settings', [OrganizationMailSettingController::class, 'edit'])->name('email-settings.edit');
@@ -810,7 +812,10 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
             Route::get('/credit', [CustomerCreditController::class, 'index'])->name('credit');
             Route::post('/credit/politique', [CustomerCreditController::class, 'savePolicy'])->middleware('throttle:20,1')->name('credit.policy');
             Route::post('/credit/exceptions', [CustomerCreditController::class, 'grantException'])->middleware('throttle:20,1')->name('credit.exception');
+            Route::get('/avances', [CustomerAdvancesController::class, 'index'])->name('advances');
+            Route::get('/avances/export/{format}', [CustomerAdvancesController::class, 'export'])->whereIn('format', ['csv', 'xlsx'])->middleware('throttle:10,1')->name('advances.export');
             Route::get('/instruments', [CustomerInstrumentsController::class, 'index'])->name('instruments');
+            Route::get('/instruments/export/{format}', [CustomerInstrumentsController::class, 'export'])->whereIn('format', ['csv', 'xlsx'])->middleware('throttle:10,1')->name('instruments.export');
             Route::post('/instruments', [CustomerInstrumentsController::class, 'store'])->middleware('throttle:30,1')->name('instruments.store');
             Route::post('/instruments/{instrument}/etat', [CustomerInstrumentsController::class, 'transition'])->whereNumber('instrument')->middleware('throttle:30,1')->name('instruments.transition');
             Route::get('/creances/relances/apercu', [CustomerRemindersController::class, 'preview'])->middleware('throttle:60,1')->name('reminders.preview');
