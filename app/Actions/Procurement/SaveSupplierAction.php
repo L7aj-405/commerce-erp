@@ -7,6 +7,7 @@ use App\Models\Organization;
 use App\Models\Supplier;
 use App\Models\User;
 use App\Services\AuditLogger;
+use App\Services\Contacts\PartyIdentitySynchronizer;
 use App\Services\Procurement\SupplierFiscalAdvisor;
 use Illuminate\Support\Facades\DB;
 
@@ -77,6 +78,7 @@ class SaveSupplierAction
                 }
             }
             $supplier->save();
+            app(PartyIdentitySynchronizer::class)->syncFromLegacy($supplier);
 
             $newFiscal = $this->auditFiscal($supplier);
             $this->audit->record($event, $actor, $organization, auditable: $supplier,

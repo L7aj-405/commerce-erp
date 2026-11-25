@@ -42,6 +42,10 @@ class SaveCustomerFinancialTermsAction
         ];
         DB::transaction(function () use ($actor, $customer, $row) {
             $old = DB::table('customer_financial_terms')->where('organization_id', $customer->organization_id)->where('customer_id', $customer->getKey())->lockForUpdate()->first();
+            // A manual delay that no longer matches the assigned catalogue term detaches it (the term never lies about the days).
+            if ($old && $old->payment_term_id !== null && $row['payment_term_days'] !== (int) DB::table('payment_terms')->where('id', $old->payment_term_id)->value('days')) {
+                $row['payment_term_id'] = null;
+            }
             DB::table('customer_financial_terms')->updateOrInsert(
                 ['organization_id' => $customer->organization_id, 'customer_id' => $customer->getKey()],
                 $row + ['updated_by_user_id' => $actor->getKey(), 'updated_at' => now()] + ($old ? [] : ['created_at' => now()]),

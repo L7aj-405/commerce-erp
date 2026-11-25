@@ -25,6 +25,11 @@ class Customer extends Model
         return $this->belongsTo(Organization::class);
     }
 
+    public function party(): BelongsTo
+    {
+        return $this->belongsTo(Party::class);
+    }
+
     public function salesOrders(): HasMany
     {
         return $this->hasMany(SalesOrder::class);

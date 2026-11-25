@@ -8,6 +8,7 @@ use App\Models\Customer;
 use App\Models\Organization;
 use App\Models\User;
 use App\Rules\ValidWhatsAppUsername;
+use App\Services\Contacts\PartyIdentitySynchronizer;
 use App\Support\WhatsAppUsername;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
@@ -41,6 +42,7 @@ class CustomerManager
             $customer->organization_id = $organization->getKey();
             $this->apply($customer, $data);
             $customer->save();
+            app(PartyIdentitySynchronizer::class)->syncFromLegacy($customer);
             $this->audit->record('customer.created', $actor, $organization, auditable: $customer, newValues: $customer->only(['type', 'display_name', 'company_name', 'whatsapp_username', 'status']));
 
             return $customer;
@@ -54,6 +56,7 @@ class CustomerManager
             $old = $customer->only(['type', 'display_name', 'company_name', 'whatsapp_username', 'status']);
             $this->apply($customer, $data);
             $customer->save();
+            app(PartyIdentitySynchronizer::class)->syncFromLegacy($customer);
             $this->audit->record('customer.updated', $actor, $customer->organization, auditable: $customer, oldValues: $old, newValues: $customer->only(['type', 'display_name', 'company_name', 'whatsapp_username', 'status']));
 
             return $customer;

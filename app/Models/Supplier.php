@@ -31,6 +31,11 @@ class Supplier extends Model
         return $this->belongsTo(Organization::class);
     }
 
+    public function party(): BelongsTo
+    {
+        return $this->belongsTo(Party::class);
+    }
+
     public function procurements(): HasMany
     {
         return $this->hasMany(SalesOrderProcurement::class);
