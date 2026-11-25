@@ -2,6 +2,7 @@
 
 namespace App\Actions\Finance\Customers;
 
+use App\Enums\CustomerInvoicingPolicy;
 use App\Models\Customer;
 use App\Models\User;
 use App\Services\AuditLogger;
@@ -36,6 +37,7 @@ class SaveCustomerFinancialTermsAction
             'min_deposit_percent' => ($data['min_deposit_percent'] ?? '') === '' ? null : $data['min_deposit_percent'],
             'overdue_tolerance_days' => (int) ($data['overdue_tolerance_days'] ?? 0),
             'policy' => in_array($data['policy'] ?? 'warn', self::POLICIES, true) ? ($data['policy'] ?? 'warn') : 'warn',
+            'invoicing_policy' => CustomerInvoicingPolicy::tryFrom((string) ($data['invoicing_policy'] ?? ''))?->value,
             'financial_status' => in_array($data['financial_status'] ?? 'normal', self::STATUSES, true) ? ($data['financial_status'] ?? 'normal') : 'normal',
         ];
         DB::transaction(function () use ($actor, $customer, $row) {

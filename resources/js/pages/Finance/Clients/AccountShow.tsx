@@ -5,6 +5,7 @@ import type { PlanInstallment, Promise_ } from '@/components/finance/CustomerCol
 import { SectionTabs, UNAVAILABLE, useQueryParams, useSection } from '@/components/finance/FinanceClientsKit';
 import { Alert } from '@/components/ui/Alert';
 import { Button, ButtonLink, DownloadLink } from '@/components/ui/Button';
+import { Sheet } from '@/components/ui/Sheet';
 import DocBadge from '@/components/ui/DocBadge';
 import { MetricCard } from '@/components/ui/MetricCard';
 import PageHeader from '@/components/ui/PageHeader';
@@ -21,7 +22,7 @@ import { useState } from 'react';
 type Position = {
     currency_code: string | null; mixed_currency: boolean;
     invoiced_gross: string | null; credited: string | null; net_invoiced: string | null; paid: string | null;
-    receivable: string | null; overdue: string | null; overdue_invoices: string | null; overdue_unbilled: string | null; unbilled: string | null; refund_obligation: string | null;
+    receivable: string | null; total_to_collect?: string | null; net_sales?: string | null; net_collected?: string | null; overdue: string | null; overdue_invoices: string | null; overdue_unbilled: string | null; unbilled: string | null; refund_obligation: string | null;
     opening_balance: string | null; advances_available: string | null; pending_instruments: string | null;
     credit_enabled: boolean; credit_limit: string | null; credit_exposure: string | null; available_credit: string | null; payment_term_days: number | null;
     financial_status: string;
@@ -46,6 +47,7 @@ type Props = {
     payments?: PaymentRow[]; paymentsCount?: number; openOrders?: OpenOrder[]; accounts?: FinAccount[];
     statement?: Statement; period?: { from: string; to: string };
     terms?: Record<string, string | number | boolean | null> | null;
+    invoicingPolicy?: { effective: string; default: string };
     openings?: { id: number; effective_date: string; amount: string; currency_code: string; reference: string; reason: string; status: string }[];
     exceptions?: { id: number; authorized_amount: string; reason: string; consumed_at: string | null; expires_on: string | null }[];
     enforcement?: string;
@@ -95,7 +97,7 @@ export default function FinanceClientsAccountShow(props: Props) {
             {section === 'statement' && <StatementTab customerId={customer.id} statement={props.statement ?? null} period={props.period} canExport={can.export} />}
             {section === 'terms' && (
                 <div className="space-y-4">
-                    {can.terms ? <TermsForm customerId={customer.id} terms={props.terms ?? null} /> : <Alert tone="info">{t('fc2.readOnly')}</Alert>}
+                    {can.terms ? <TermsForm customerId={customer.id} terms={props.terms ?? null} invoicingPolicy={props.invoicingPolicy} /> : <Alert tone="info">{t('fc2.readOnly')}</Alert>}
                     <p className="text-[13px] text-ink-muted">{t('fc2.terms.enforcement')} : <strong>{props.enforcement ?? 'off'}</strong></p>
                     {can.openingBalance && <OpeningBalanceForm customerId={customer.id} currency={cur} />}
                     <Openings customerId={customer.id} rows={props.openings ?? []} canManage={can.openingBalance} />
@@ -110,12 +112,15 @@ function Summary({ position, money }: { position: Position; money: (v: string | 
     return (
         <>
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                <MetricCard label={t('fc2.summary.netSales')} value={money(position.net_sales)} helper={t('fc2.help.netSales')} unconfigured={position.net_sales == null} />
+                <MetricCard label={t('fc2.summary.netCollected')} value={money(position.net_collected)} helper={t('fc2.help.netCollected')} tone="positive" unconfigured={position.net_collected == null} />
                 <MetricCard label={t('fc2.col.netInvoiced')} value={money(position.net_invoiced)} helper={t('fc2.help.netInvoiced')} unconfigured={position.net_invoiced === null} />
-                <MetricCard label={t('fc.acct.m.paid')} value={money(position.paid)} helper={t('fc2.help.paid')} tone="positive" unconfigured={position.paid === null} />
-                <MetricCard label={t('fc2.col.receivable')} value={money(position.receivable)} helper={t('fc.acct.m.outstanding.help')} tone="warning" unconfigured={position.receivable === null} />
-                <MetricCard label={t('fc2.col.unbilled')} value={money(position.unbilled)} helper={t('fc2.help.unbilled')} unconfigured={position.unbilled === null} />
+                <MetricCard label={t('fc2.col.totalToCollect')} value={money(position.total_to_collect)} helper={t('fc2.help.totalToCollect')} tone="warning" unconfigured={position.total_to_collect == null} />
             </div>
             <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <MetricCard level="secondary" label={t('fc.acct.m.paid')} value={money(position.paid)} helper={t('fc2.help.paid')} unconfigured={position.paid === null} />
+                <MetricCard level="secondary" label={t('fc2.col.receivable')} value={money(position.receivable)} helper={t('fc.acct.m.outstanding.help')} unconfigured={position.receivable === null} />
+                <MetricCard level="secondary" label={t('fc2.col.unbilled')} value={money(position.unbilled)} helper={t('fc2.help.unbilled')} unconfigured={position.unbilled === null} />
                 <MetricCard level="secondary" label={t('fc2.col.overdue')} value={money(position.overdue)} tone="negative" unconfigured={position.overdue === null} />
                 <MetricCard level="secondary" label={t('fc2.col.advances')} value={money(position.advances_available)} helper={t('fc2.help.advances')} unconfigured={position.advances_available === null} />
                 <MetricCard level="secondary" label={t('fc2.col.refundObligation')} value={money(position.refund_obligation)} unconfigured={position.refund_obligation === null} />
@@ -167,9 +172,20 @@ function Payments(props: Props & { currency: string }) {
     const { customer, can, currency } = props;
     const rows = props.payments ?? [];
     const orders = props.openOrders ?? [];
+    const [drawer, setDrawer] = useState(false);
+    // A server-side validation error keeps the drawer open (it is only closed on success), so the user can correct and resubmit.
     return (
         <>
-            {can.settlements && (props.accounts?.length ?? 0) > 0 && <SettlementForm customerId={customer.id} accounts={props.accounts ?? []} orders={orders} />}
+            {can.settlements && (props.accounts?.length ?? 0) > 0 && (
+                <>
+                    <div className="mb-4 flex justify-end">
+                        <Button type="button" onClick={() => setDrawer(true)}>{t('fc2.settle.new')}</Button>
+                    </div>
+                    <Sheet open={drawer} onClose={() => setDrawer(false)} title={t('fc2.settle.title')} widthClassName="max-w-3xl">
+                        <SettlementForm customerId={customer.id} accounts={props.accounts ?? []} orders={orders} embedded onDone={() => setDrawer(false)} onCancel={() => setDrawer(false)} />
+                    </Sheet>
+                </>
+            )}
             {can.settlements && (props.accounts?.length ?? 0) === 0 && <div className="mb-4"><Alert tone="info">{t('fc2.settle.noAccount')}</Alert></div>}
             <TableShell label={t('fc.acct.tab.payments')} state={rows.length === 0 ? 'empty' : 'ready'} emptyTitle={t('fc.acct.noPayments')}>
                 <table className="erp-table min-w-[820px]">

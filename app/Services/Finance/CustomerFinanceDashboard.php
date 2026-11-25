@@ -59,7 +59,7 @@ final class CustomerFinanceDashboard
         $advances = $this->perCurrency(DB::table('payments as p')->leftJoinSub(
             DB::table('payment_allocations')->where('organization_id', $orgId)->groupBy('payment_id')->select('payment_id')->selectRaw('SUM(amount) as allocated'), 'a', 'a.payment_id', '=', 'p.id')
             ->where('p.organization_id', $orgId)->where('p.status', 'posted')->whereNotNull('p.customer_id')->when($store, fn ($q) => $q->where('p.store_id', $store->getKey()))
-            ->groupBy('p.currency_code')->select('p.currency_code')->selectRaw('ROUND(SUM(p.amount - COALESCE(a.allocated, 0)), 4) as total')->get());
+            ->groupBy('p.currency_code')->select('p.currency_code')->selectRaw('ROUND(SUM(p.amount - COALESCE(a.allocated, 0) - '.CustomerAdvanceBalance::openingAppliedSql('p').'), 4) as total')->get());
         $instruments = $this->perCurrency(DB::table('customer_payment_instruments')->where('organization_id', $orgId)->whereIn('state', ['received', 'in_portfolio', 'submitted'])
             ->when($store, fn ($q) => $q->where('store_id', $store->getKey()))->groupBy('currency_code')->select('currency_code')->selectRaw('ROUND(SUM(amount), 4) as total')->get());
 

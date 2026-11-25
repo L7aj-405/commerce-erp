@@ -2,10 +2,13 @@ import { UNAVAILABLE } from '@/components/finance/FinanceClientsKit';
 import { AdvancedFilterBar, ChoiceFilter, FilterSearch } from '@/components/ui/AdvancedFilterBar';
 import type { FilterChip } from '@/components/ui/AdvancedFilterBar';
 import { Alert } from '@/components/ui/Alert';
+import { ColumnVisibilityMenu } from '@/components/ui/ColumnVisibilityMenu';
 import { ButtonLink, DownloadLink } from '@/components/ui/Button';
 import DocBadge from '@/components/ui/DocBadge';
 import PageHeader from '@/components/ui/PageHeader';
 import { TablePager, TableShell } from '@/components/ui/TableShell';
+import { useColumnVisibility } from '@/hooks/useColumnVisibility';
+import type { ColumnDef } from '@/hooks/useColumnVisibility';
 import { useQueryFilters } from '@/hooks/useQueryFilters';
 import { useI18n } from '@/i18n';
 import type { TranslationKey } from '@/i18n/translations';
@@ -22,6 +25,8 @@ type Position = {
     overdue_invoices: string | null;
     unbilled: string | null;
     overdue_unbilled: string | null;
+    overdue: string | null;
+    total_to_collect: string | null;
     opening_balance: string | null;
     advances_available: string | null;
     refund_obligation: string | null;
@@ -42,7 +47,7 @@ type Props = {
 
 const FILTER_KEYS = ['search', 'status', 'financial_status', 'sort', 'dir'] as const;
 const STATUSES = ['normal', 'watch', 'overdue', 'over_limit', 'blocked'] as const;
-const SORTS = ['name', 'receivable', 'overdue', 'unbilled', 'net_invoiced', 'advances_available', 'available_credit'] as const;
+const SORTS = ['name', 'total_to_collect', 'receivable', 'overdue', 'unbilled', 'net_invoiced', 'advances_available', 'available_credit'] as const;
 const STATUS_TONE: Record<string, 'positive' | 'neutral' | 'warning' | 'danger'> = { normal: 'positive', watch: 'warning', overdue: 'warning', over_limit: 'danger', blocked: 'danger' };
 
 /**
@@ -53,6 +58,22 @@ const STATUS_TONE: Record<string, 'positive' | 'neutral' | 'warning' | 'danger'>
 export default function FinanceClientsAccounts({ customers, filters, can, financialSortLimited }: Props) {
     const { t } = useI18n();
     const errors = usePage<{ errors?: Record<string, string> }>().props.errors;
+    const columns: ColumnDef[] = [
+        { key: 'client', label: t('customers.name'), defaultVisible: true, locked: true },
+        { key: 'total', label: t('fc2.col.totalToCollect'), defaultVisible: true },
+        { key: 'overdue', label: t('fc2.col.overdueTotal'), defaultVisible: true },
+        { key: 'advances', label: t('fc2.col.advancesShort'), defaultVisible: true },
+        { key: 'refund', label: t('fc2.col.toRefund'), defaultVisible: true },
+        { key: 'status', label: t('fc2.col.financialStatus'), defaultVisible: true },
+        { key: 'netInvoiced', label: t('fc2.col.netInvoiced'), defaultVisible: false },
+        { key: 'receivable', label: t('fc2.col.receivable'), defaultVisible: false },
+        { key: 'unbilled', label: t('fc2.col.unbilled'), defaultVisible: false },
+        { key: 'instruments', label: t('fc2.col.instruments'), defaultVisible: false },
+        { key: 'credit', label: t('fc2.col.credit'), defaultVisible: false },
+        { key: 'actions', label: t('common.actions'), defaultVisible: true, locked: true },
+    ];
+    const cols = useColumnVisibility('finance.clients.accounts', columns);
+    const show = cols.isVisible;
     const f = useQueryFilters('/finance/clients/comptes', filters, { keys: [...FILTER_KEYS] });
     const statusLabel = (status: string) => t(status === 'active' ? 'status.active' : 'status.inactive');
     const fin = (status: string) => t(`fc2.status.${status}` as TranslationKey);
@@ -108,6 +129,9 @@ export default function FinanceClientsAccounts({ customers, filters, can, financ
                 </AdvancedFilterBar>
             </div>
 
+            <div className="mb-2 flex justify-end">
+                <ColumnVisibilityMenu columns={columns} isVisible={show} onToggle={cols.toggle} onReset={cols.reset} isDefault={cols.isDefault} />
+            </div>
             <TableShell
                 label={t('fc.accounts.title')}
                 state={customers.data.length === 0 ? 'empty' : 'ready'}
@@ -115,18 +139,20 @@ export default function FinanceClientsAccounts({ customers, filters, can, financ
                 emptyTitle={t('customers.empty')}
                 footer={customers.data.length === 0 ? undefined : <TablePager links={customers.links} from={customers.from} to={customers.to} total={customers.total} />}
             >
-                <table className="erp-table min-w-[1180px] text-sm">
+                <table className="erp-table text-sm" style={{ minWidth: `${420 + 150 * columns.filter((c) => show(c.key) && !c.locked).length}px` }}>
                     <thead>
                         <tr>
                             <th className="px-4 py-2.5">{t('customers.name')}</th>
-                            <th className="num px-4 py-2.5">{t('fc2.col.netInvoiced')}</th>
-                            <th className="num px-4 py-2.5">{t('fc2.col.receivable')}</th>
-                            <th className="num px-4 py-2.5">{t('fc2.col.unbilled')}</th>
-                            <th className="num px-4 py-2.5">{t('fc2.col.advances')}</th>
-                            <th className="num px-4 py-2.5">{t('fc2.col.refundObligation')}</th>
-                            <th className="num px-4 py-2.5">{t('fc2.col.instruments')}</th>
-                            <th className="num px-4 py-2.5">{t('fc2.col.credit')}</th>
-                            <th className="px-4 py-2.5">{t('fc2.col.financialStatus')}</th>
+                            {show('total') && <th className="num px-4 py-2.5">{t('fc2.col.totalToCollect')}</th>}
+                            {show('overdue') && <th className="num px-4 py-2.5">{t('fc2.col.overdueTotal')}</th>}
+                            {show('advances') && <th className="num px-4 py-2.5">{t('fc2.col.advancesShort')}</th>}
+                            {show('refund') && <th className="num px-4 py-2.5">{t('fc2.col.toRefund')}</th>}
+                            {show('status') && <th className="px-4 py-2.5">{t('fc2.col.financialStatus')}</th>}
+                            {show('netInvoiced') && <th className="num px-4 py-2.5">{t('fc2.col.netInvoiced')}</th>}
+                            {show('receivable') && <th className="num px-4 py-2.5">{t('fc2.col.receivable')}</th>}
+                            {show('unbilled') && <th className="num px-4 py-2.5">{t('fc2.col.unbilled')}</th>}
+                            {show('instruments') && <th className="num px-4 py-2.5">{t('fc2.col.instruments')}</th>}
+                            {show('credit') && <th className="num px-4 py-2.5">{t('fc2.col.credit')}</th>}
                             <th className="px-4 py-2.5">
                                 <span className="sr-only">{t('common.actions')}</span>
                             </th>
@@ -135,6 +161,7 @@ export default function FinanceClientsAccounts({ customers, filters, can, financ
                     <tbody>
                         {customers.data.map((customer) => {
                             const p = customer.position;
+                            const cur = p.currency_code ?? 'MAD';
                             return (
                                 <tr key={customer.id}>
                                     <td className="max-w-72 px-4 py-3">
@@ -147,25 +174,29 @@ export default function FinanceClientsAccounts({ customers, filters, can, financ
                                                 .join(' · ')}
                                         </span>
                                     </td>
-                                    <td className="num px-4 py-3" dir="ltr">{money(p.net_invoiced, p.currency_code)}</td>
-                                    <td className="num px-4 py-3" dir="ltr">
-                                        {money(p.receivable, p.currency_code)}
-                                        {p.overdue_invoices !== null && Number(p.overdue_invoices) > 0 && <span className="block text-[12px] text-danger">{t('fc2.col.overdue')} {formatMoney(p.overdue_invoices, p.currency_code ?? 'MAD')}</span>}
-                                    </td>
-                                    <td className="num px-4 py-3" dir="ltr">
-                                        {money(p.unbilled, p.currency_code)}
-                                        {p.overdue_unbilled !== null && Number(p.overdue_unbilled) > 0 && <span className="block text-[12px] text-danger">{t('fc2.col.overdue')} {formatMoney(p.overdue_unbilled, p.currency_code ?? 'MAD')}</span>}
-                                    </td>
-                                    <td className="num px-4 py-3" dir="ltr">{money(p.advances_available, p.currency_code)}</td>
-                                    <td className="num px-4 py-3" dir="ltr">{money(p.refund_obligation, p.currency_code)}</td>
-                                    <td className="num px-4 py-3" dir="ltr">{money(p.pending_instruments, p.currency_code)}</td>
-                                    <td className="num px-4 py-3" dir="ltr">
-                                        {p.credit_limit === null ? UNAVAILABLE : money(p.credit_limit, p.currency_code)}
-                                        {p.available_credit !== null && <span className="block text-[12px] text-ink-muted">{t('fc2.col.available')} {formatMoney(p.available_credit, p.currency_code ?? 'MAD')}</span>}
-                                    </td>
-                                    <td className="px-4 py-3">
-                                        <DocBadge tone={STATUS_TONE[p.financial_status] ?? 'neutral'}>{fin(p.financial_status)}</DocBadge>
-                                    </td>
+                                    {show('total') && <td className="num px-4 py-3 font-semibold" dir="ltr">{money(p.total_to_collect, p.currency_code)}</td>}
+                                    {show('overdue') && (
+                                        <td className={`num px-4 py-3 ${p.overdue !== null && Number(p.overdue) > 0 ? 'text-danger' : ''}`} dir="ltr">
+                                            {money(p.overdue, p.currency_code)}
+                                        </td>
+                                    )}
+                                    {show('advances') && <td className="num px-4 py-3" dir="ltr">{money(p.advances_available, p.currency_code)}</td>}
+                                    {show('refund') && <td className="num px-4 py-3" dir="ltr">{money(p.refund_obligation, p.currency_code)}</td>}
+                                    {show('status') && (
+                                        <td className="px-4 py-3">
+                                            <DocBadge tone={STATUS_TONE[p.financial_status] ?? 'neutral'}>{fin(p.financial_status)}</DocBadge>
+                                        </td>
+                                    )}
+                                    {show('netInvoiced') && <td className="num px-4 py-3" dir="ltr">{money(p.net_invoiced, p.currency_code)}</td>}
+                                    {show('receivable') && <td className="num px-4 py-3" dir="ltr">{money(p.receivable, p.currency_code)}</td>}
+                                    {show('unbilled') && <td className="num px-4 py-3" dir="ltr">{money(p.unbilled, p.currency_code)}</td>}
+                                    {show('instruments') && <td className="num px-4 py-3" dir="ltr">{money(p.pending_instruments, p.currency_code)}</td>}
+                                    {show('credit') && (
+                                        <td className="num px-4 py-3" dir="ltr">
+                                            {p.credit_limit === null ? UNAVAILABLE : money(p.credit_limit, p.currency_code)}
+                                            {p.available_credit !== null && <span className="block text-[12px] text-ink-muted">{t('fc2.col.available')} {formatMoney(p.available_credit, cur)}</span>}
+                                        </td>
+                                    )}
                                     <td className="px-4 py-3 text-end">
                                         <ButtonLink href={`/finance/clients/comptes/${customer.id}`} size="sm" variant="outline">
                                             {t('fc.accounts.open')}
@@ -179,6 +210,7 @@ export default function FinanceClientsAccounts({ customers, filters, can, financ
                 </table>
             </TableShell>
             <p className="mt-3 text-[13px] text-ink-muted">{t('fc2.accounts.legend')}</p>
+            <p className="mt-1 text-[13px] text-ink-muted">{t('fc2.accounts.legend2')}</p>
         </ApplicationShell>
     );
 }
