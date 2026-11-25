@@ -36,7 +36,7 @@ final class AuditCoverageTest extends TestCase
             'Inventory/Concerns/AuthorizesInventoryAction', 'Inventory/Concerns/SnapshotsTransferDriver', 'Inventory/Concerns/ValidatesTransferRequestLines',
             'Payments/Concerns/AuthorizesPaymentAction', 'Pos/Concerns/MutatesPosCart', 'Procurement/Concerns/AuthorizesProcurementAction',
             'Quotations/Concerns/AuthorizesQuotationAction', 'Quotations/Concerns/MutatesQuotation', 'Sales/Concerns/AuthorizesSalesAction',
-            'SupplierInvoices/Concerns/AuthorizesSupplierInvoiceAction',
+            'SupplierInvoices/Concerns/AuthorizesSupplierInvoiceAction', 'Contacts/Concerns/AuthorizesContactAction',
         ];
         $entries = [];
         foreach ($traits as $trait) {
@@ -76,6 +76,13 @@ final class AuditCoverageTest extends TestCase
             'Sales/SnapshotSalesOrderLineMarginsAction' => ['kind' => 'derived', 'action' => [], 'owner' => $confirm, 'owner_has' => ['SnapshotSalesOrderLineMarginsAction', "'sales_order.confirmed'"]],
             // WooCommerce stock outbox row: idempotent queue entry created inside the audited fulfillment.
             'WooCommerce/RecordWooCommerceStockTaskAction' => ['kind' => 'derived', 'action' => [], 'owner' => $engine, 'owner_has' => ['RecordWooCommerceStockTaskAction', "'sales_order.fulfilled'"]],
+            // Unified contacts: role assignment is audited by PartyRoleWriter ('party.role_assigned' / 'party.role_deactivated'). Reviewed paths of
+            // ManagePartyRolesAction: add -> Client/Fournisseur goes through ActivateCommercialProfileAction (audits profile creation directly,
+            // then attaches through the writer); every other role attaches through the writer; a NEW custom role is audited by ContactRoleRegistry
+            // ('contact_role.created'); remove -> writer->detach. No mutation path is unaudited and none is audited twice (no-ops are silent).
+            'Contacts/ManagePartyRolesAction' => ['kind' => 'delegate', 'action' => ['writer->attach(', 'writer->detach(', 'profiles->customer(', 'profiles->supplier(', 'roles->findOrCreateCustom('], 'owner' => 'app/Services/Contacts/PartyRoleWriter.php', 'owner_has' => ["'party.role_assigned'", "'party.role_deactivated'"]],
+            // Custom role administration: creation / deactivation are audited by the registry that performs the write.
+            'Contacts/ManageContactRolesCatalogueAction' => ['kind' => 'delegate', 'action' => ['registry->createCustom(', 'registry->deactivateCustom('], 'owner' => 'app/Services/Contacts/ContactRoleRegistry.php', 'owner_has' => ["'contact_role.created'", "'contact_role.deactivated'"]],
             // Retired boundaries: fail closed, mutate nothing.
             'Documents/StartInvoiceCorrectionAction' => ['kind' => 'retired'],
             'Procurement/RecordSupplierAvailabilityAction' => ['kind' => 'retired'],

@@ -7,7 +7,9 @@ use App\Models\OrganizationContact;
 use App\Models\User;
 use App\Rules\ValidWhatsAppUsername;
 use App\Services\AuditLogger;
+use App\Services\Contacts\PartyIdentitySynchronizer;
 use App\Support\WhatsAppUsername;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
 class SaveOrganizationContactAction
@@ -60,7 +62,10 @@ class SaveOrganizationContactAction
         if ($contact->active) {
             $contact->archived_at = null;
         }
-        $contact->save();
+        DB::transaction(function () use ($contact) {
+            $contact->save();
+            app(PartyIdentitySynchronizer::class)->syncContact($contact);
+        });
 
         $this->audit->record(
             $isNew ? 'contact.created' : 'contact.updated',

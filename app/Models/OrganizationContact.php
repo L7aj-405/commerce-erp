@@ -11,9 +11,13 @@ class OrganizationContact extends Model
     use ScopesToActiveOrganization;
 
     public const TYPE_CLIENT = 'client';
+
     public const TYPE_SUPPLIER = 'supplier';
+
     public const TYPE_INTERNAL = 'internal';
+
     public const TYPE_OTHER = 'other';
+
     /** A carrier / transport company or driver (F1.1 shipments). */
     public const TYPE_TRANSPORT = 'transport';
 
@@ -32,6 +36,11 @@ class OrganizationContact extends Model
     public function organization(): BelongsTo
     {
         return $this->belongsTo(Organization::class);
+    }
+
+    public function party(): BelongsTo
+    {
+        return $this->belongsTo(Party::class);
     }
 
     public function customer(): BelongsTo
