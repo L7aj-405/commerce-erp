@@ -118,8 +118,12 @@ class OrganizationContactTest extends SalesTestCase
 
         $contact = OrganizationContact::query()->where('organization_id', $organization->id)->firstOrFail();
         $this->assertSame('client.test', $contact->whatsapp_username);
-        $this->actingAs($owner)->get(route('contacts.show', $contact))->assertInertia(fn (Assert $page) => $page
-            ->where('contact.whatsapp_username', 'client.test')
+        // The legacy id is resolved to its canonical party (never reinterpreted); the WhatsApp destination is unchanged.
+        $partyId = $contact->fresh()->party_id;
+        $this->assertNotNull($partyId);
+        $this->actingAs($owner)->get(route('contacts.show', $contact))->assertRedirect(route('contacts.parties.show', $partyId));
+        $this->actingAs($owner)->get(route('contacts.parties.show', $partyId))->assertInertia(fn (Assert $page) => $page
+            ->where('party.whatsapp_username', 'client.test')
             ->where('whatsappDestination.type', 'username')
             ->where('whatsappDestination.link', 'https://wa.me/client.test'));
 

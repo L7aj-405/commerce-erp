@@ -181,8 +181,14 @@ class SupplierFiscalIdentityTest extends SalesTestCase
         [$owner, $organization] = $this->fixture();
         $supplier = app(SaveSupplierAction::class)->execute($owner, $organization, $this->payload());
 
+        // The supplier directory is the Fournisseurs view of Contacts; the legacy list page remains for users without contacts access.
+        $this->actingAs($owner)->get('/procurement/suppliers')->assertRedirect(route('contacts.index', ['role' => 'supplier']));
+        $lister = User::factory()->create();
+        $this->addOrganizationMember($organization, $lister, ['suppliers.view', 'suppliers.manage']);
+        $this->activate($lister, $organization, $organization->stores()->first() ?? $this->createStore($organization, $owner));
+
         // Index: fiscal identity yes, IBAN never (only a boolean).
-        $this->actingAs($owner)->get('/procurement/suppliers')->assertOk()->assertInertia(fn ($page) => $page
+        $this->actingAs($lister)->get('/procurement/suppliers')->assertOk()->assertInertia(fn ($page) => $page
             ->where('suppliers.data.0.ice', self::ICE)
             ->where('suppliers.data.0.tax_identifier', '12345678')
             ->where('suppliers.data.0.rc_number', 'RC 4521')

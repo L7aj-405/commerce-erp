@@ -12,6 +12,7 @@ use App\Models\Payment;
 use App\Models\Quotation;
 use App\Models\SalesOrder;
 use App\Services\ActiveTenantContext;
+use App\Services\Contacts\LegacyPartyResolver;
 use App\Services\CustomerFinancialSummary;
 use App\Services\CustomerManager;
 use App\Services\DocumentVisibility;
@@ -25,10 +26,14 @@ use Inertia\Response;
 
 class CustomerController extends Controller
 {
-    public function index(Request $request, ActiveTenantContext $context): Response
+    public function index(Request $request, ActiveTenantContext $context): Response|RedirectResponse
     {
         $organization = $context->organizationOrFail();
         $this->authorize('viewAny', [Customer::class, $organization]);
+        // The customer directory is the Clients view of the unified Contacts module. Users without contacts access keep this page.
+        if ($request->user()->hasPermission($organization, 'contacts.view')) {
+            return redirect()->route('contacts.index', array_filter(['role' => 'client', 'search' => $request->query('search')]));
+        }
         $filters = $request->validate(['search' => ['nullable', 'string', 'max:255'], 'status' => ['nullable', Rule::enum(CustomerStatus::class)]]);
         $customers = Customer::query()->where('organization_id', $organization->getKey())
             ->when($filters['search'] ?? null, fn ($query, string $search) => $query->where(fn ($query) => $query
@@ -98,10 +103,13 @@ class CustomerController extends Controller
         ]);
     }
 
-    public function create(ActiveTenantContext $context): Response
+    public function create(ActiveTenantContext $context): Response|RedirectResponse
     {
         $organization = $context->organizationOrFail();
         $this->authorize('create', [Customer::class, $organization]);
+        if (request()->user()->hasPermission($organization, 'contacts.create')) {
+            return redirect()->route('contacts.create', ['role' => ['client']]);
+        }
 
         return Inertia::render('Sales/Customers/Form', ['customer' => null]);
     }
@@ -115,9 +123,12 @@ class CustomerController extends Controller
         return redirect()->route('sales.customers.show', $customer);
     }
 
-    public function edit(Customer $customer): Response
+    public function edit(Customer $customer, LegacyPartyResolver $resolver): Response|RedirectResponse
     {
         $this->authorize('update', $customer);
+        if (request()->user()->hasPermission($customer->organization_id, 'contacts.update')) {
+            return redirect()->route('contacts.parties.edit', $resolver->for($customer));
+        }
 
         return Inertia::render('Sales/Customers/Form', ['customer' => $customer]);
     }

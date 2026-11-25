@@ -1,18 +1,18 @@
-import { SegmentedControl } from '@/components/pos/primitives';
+import ContactForm from '@/components/contacts/ContactForm';
+import { toCommercialPayload } from '@/components/contacts/contactValues';
+import type { ContactCan, ContactResult, ContactValues } from '@/components/contacts/types';
 import { useDebouncedValue } from '@/components/pos/useDebouncedValue';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
-import { TextField } from '@/components/ui/form';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { Badge } from '@/components/ui/StatusBadge';
 import { Spinner } from '@/components/ui/Spinner';
 import { useToast } from '@/components/ui/toast';
 import { useI18n } from '@/i18n';
 import { useEffect, useRef, useState } from 'react';
-import type { FormEvent, KeyboardEvent } from 'react';
+import type { KeyboardEvent } from 'react';
 import { posJson } from './api';
-import { type CustomerForm, blankCustomerForm, customerFormFrom, customerTypeFor } from './pos-shared';
 import type { Customer } from './types';
 
 type View = 'search' | 'create' | 'edit';
@@ -61,10 +61,8 @@ export default function PosCustomerDialog({
     const [choosingId, setChoosingId] = useState<number | null>(null);
     const listRef = useRef<HTMLUListElement>(null);
 
-    const [customerType, setCustomerType] = useState<'individual' | 'company'>('individual');
-    const [form, setForm] = useState<CustomerForm>(blankCustomerForm());
-    const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-    const [formError, setFormError] = useState('');
+     // The create / edit view is the shared ContactForm (quick mode). The cart, payments and every other POS state live in the POS page and are untouched.
+    const [prefill, setPrefill] = useState('');
     const [saving, setSaving] = useState(false);
 
     // Reset each time the dialog opens.
@@ -72,8 +70,6 @@ export default function PosCustomerDialog({
         if (!open) return;
         setQuery('');
         setResults([]);
-        setFieldErrors({});
-        setFormError('');
         setChoosingId(null);
         if (initialView === 'edit' && current) startEdit(current);
         else setView(initialView === 'create' ? 'create' : 'search');
@@ -125,19 +121,12 @@ export default function PosCustomerDialog({
         return () => controller.abort();
     }, [open, view, debounced, reloadKey]);
 
-    function startCreate(prefill: string) {
-        setCustomerType('individual');
-        setForm({ ...blankCustomerForm(), display_name: prefill });
-        setFieldErrors({});
-        setFormError('');
+     function startCreate(name: string) {
+        setPrefill(name);
         setView('create');
     }
 
-    function startEdit(customer: Customer) {
-        setCustomerType(customerTypeFor(customer));
-        setForm(customerFormFrom(customer));
-        setFieldErrors({});
-        setFormError('');
+    function startEdit(_customer: Customer) {
         setView('edit');
     }
 
@@ -158,48 +147,29 @@ export default function PosCustomerDialog({
         }
     }
 
-    function validateLocally(): boolean {
-        const errors: Record<string, string> = {};
-        if (customerType === 'individual' && !form.display_name.trim()) errors.display_name = t('pos.fullName');
-        if (customerType === 'company' && !form.company_name.trim()) errors.company_name = t('pos.companyName');
-        if (Object.keys(errors).length > 0) {
-            const required = t('common.required');
-            setFieldErrors(Object.fromEntries(Object.entries(errors).map(([key, label]) => [key, `${label} : ${required}`])));
-            return false;
-        }
-        return true;
+     /** POS transport of the shared form: the existing backward-compatible customer endpoints (no second creation path). */
+    async function transport(values: ContactValues): Promise<ContactResult> {
+        const body = toCommercialPayload(values);
+        const editing = view === 'edit' && current;
+        const payload = await posJson<{ data: Customer }>(editing ? `/pos/customers/${current.id}` : '/pos/customers', { method: editing ? 'PATCH' : 'POST', body });
+        return { party_id: 0, display_name: payload.data.display_name, reused: false, customer: payload.data as ContactResult['customer'], supplier: null };
     }
 
-    async function submit(event: FormEvent) {
-        event.preventDefault();
-        if (saving) return;
-        setFormError('');
-        if (!validateLocally()) return;
-        setSaving(true);
-        setFieldErrors({});
-        try {
-            if (view === 'create') {
-                const payload = await posJson<{ data: Customer }>('/pos/customers', { method: 'POST', body: { type: customerType, ...form } });
-                toast.success(t('pos.customerSaved'));
-                if (!(await onSelect(payload.data))) {
-                    // Created but not attached: keep it findable instead of losing it.
-                    setView('search');
-                    setQuery(payload.data.display_name);
-                    return;
-                }
-            } else if (current) {
-                const payload = await posJson<{ data: Customer }>(`/pos/customers/${current.id}`, { method: 'PATCH', body: { type: customerType, ...form } });
-                await onUpdated(payload.data);
-                toast.success(t('pos.customerUpdated'));
+    async function saved(result: ContactResult) {
+        const customer = result.customer as unknown as Customer;
+        if (view === 'create') {
+            toast.success(t('pos.customerSaved'));
+            if (!(await onSelect(customer))) {
+                // Created but not attached: keep it findable instead of losing it.
+                setView('search');
+                setQuery(customer.display_name);
+                return;
             }
-            onClose();
-        } catch (reason) {
-            const errors = (reason as Error & { errors?: Record<string, string[]> }).errors;
-            if (errors) setFieldErrors(Object.fromEntries(Object.entries(errors).map(([key, messages]) => [key, messages[0] ?? ''])));
-            setFormError(reason instanceof Error && !errors ? reason.message : view === 'create' ? t('pos.customerCreateFailed') : t('pos.customerUpdateFailed'));
-        } finally {
-            setSaving(false);
+        } else {
+            await onUpdated(customer);
+            toast.success(t('pos.customerUpdated'));
         }
+        onClose();
     }
 
     // Arrow-key movement between the search field and result rows.
@@ -218,7 +188,6 @@ export default function PosCustomerDialog({
         else items[next]?.focus();
     }
 
-    const set = <K extends keyof CustomerForm>(field: K, value: CustomerForm[K]) => setForm((previous) => ({ ...previous, [field]: value }));
     const busy = saving || attaching;
 
     const searchFooter = (
@@ -382,56 +351,58 @@ export default function PosCustomerDialog({
                     </div>
                 </div>
             ) : (
-                <form id="pos-customer-form" onSubmit={(event) => void submit(event)} noValidate className="space-y-4 p-4 sm:p-6">
-                    {formError && <Alert tone="danger">{formError}</Alert>}
-                    <SegmentedControl
-                        ariaLabel={t('pos.customerType')}
-                        value={customerType}
-                        onChange={(next) => {
-                            setCustomerType(next);
-                            setFieldErrors({});
-                        }}
-                        options={[
-                            { value: 'individual', label: t('pos.individual') },
-                            { value: 'company', label: t('pos.companyCustomerType') },
-                        ]}
+                 <div className="p-4 sm:p-6">
+                    {!canUpdate && view === 'edit' && <Alert tone="neutral" className="mb-4">{t('ui.forbidden')}</Alert>}
+                    <ContactForm
+                        key={view}
+                        mode="quick"
+                        layout="overlay"
+                        natureLabels="commercial"
+                        legacyFiscal
+                        allowedRoles={['client']}
+                        presetRoles={['client']}
+                        catalogue={{ roles: [], paymentTerms: [] }}
+                        can={QUICK_CAN}
+                        formId="pos-customer-form"
+                        hideActions
+                        initialValues={view === 'edit' && current ? valuesFromCustomer(current) : { display_name: prefill }}
+                        transport={transport}
+                        onBusyChange={setSaving}
+                        onSuccess={(result) => void saved(result)}
                     />
-                    {customerType === 'individual' ? (
-                        <TextField
-                            label={t('pos.fullName')}
-                            required
-                            data-autofocus
-                            autoComplete="off"
-                            value={form.display_name}
-                            onChange={(event) => set('display_name', event.target.value)}
-                            error={fieldErrors.display_name}
-                        />
-                    ) : (
-                        <div className="grid gap-4 sm:grid-cols-2">
-                            <TextField
-                                label={t('pos.companyName')}
-                                required
-                                data-autofocus
-                                autoComplete="off"
-                                value={form.company_name}
-                                onChange={(event) => set('company_name', event.target.value)}
-                                error={fieldErrors.company_name}
-                            />
-                            <TextField label={t('pos.contact')} autoComplete="off" value={form.contact_name} onChange={(event) => set('contact_name', event.target.value)} error={fieldErrors.contact_name} />
-                        </div>
-                    )}
-                    <div className="grid gap-4 sm:grid-cols-2">
-                        <TextField label={t('pos.phone')} type="tel" inputMode="tel" autoComplete="off" value={form.phone} onChange={(event) => set('phone', event.target.value)} error={fieldErrors.phone} />
-                        <TextField label={t('pos.email')} type="email" autoComplete="off" value={form.email} onChange={(event) => set('email', event.target.value)} error={fieldErrors.email} />
-                    </div>
-                    {customerType === 'company' && (
-                        <TextField label={t('pos.taxIdentifiers')} autoComplete="off" value={form.tax_identifier} onChange={(event) => set('tax_identifier', event.target.value)} error={fieldErrors.tax_identifier} />
-                    )}
-                    {!canUpdate && view === 'edit' && <Alert tone="neutral">{t('ui.forbidden')}</Alert>}
-                </form>
+                </div>
             )}
         </Dialog>
     );
+}
+
+/** The quick form never offers roles or commercial conditions: nothing but identity, so no permission beyond the customer endpoints is implied. */
+const QUICK_CAN: ContactCan = {
+    create: false,
+    update: false,
+    archive: false,
+    manageRoles: false,
+    createCustomer: false,
+    createSupplier: false,
+    manageTerms: false,
+    assignCustomerTerms: false,
+    assignSupplierTerms: false,
+    viewCustomers: false,
+    viewSuppliers: false,
+};
+
+/** Existing POS customer -> shared form values (Entreprise: the company name is the display name, the contact person its own field). */
+function valuesFromCustomer(customer: Customer): Partial<ContactValues> {
+    const company = customer.type === 'company';
+    return {
+        kind: company ? 'organization' : 'person',
+        display_name: company ? (customer.company_name ?? customer.display_name) : customer.display_name,
+        contact_person: company && customer.company_name && customer.company_name !== customer.display_name ? customer.display_name : '',
+        phone: customer.phone ?? '',
+        email: customer.email ?? '',
+        tax_identifier: customer.tax_identifier ?? '',
+        address: customer.billing_address ?? '',
+    };
 }
 
 function SearchIcon() {

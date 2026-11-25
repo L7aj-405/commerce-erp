@@ -18,10 +18,14 @@ class SupplierController extends Controller
     /** Non-sensitive fiscal identity fields exposed in lists and detail. */
     private const FISCAL_LIST_FIELDS = ['ice', 'tax_identifier', 'rc_number', 'default_payment_term_days', 'default_currency_code'];
 
-    public function index(Request $request, ActiveTenantContext $context): InertiaResponse
+    public function index(Request $request, ActiveTenantContext $context): InertiaResponse|RedirectResponse
     {
         $organization = $context->organizationOrFail();
         $this->authorize('viewAny', [Supplier::class, $organization]);
+        // The supplier directory is the Fournisseurs view of the unified Contacts module. Users without contacts access keep this page.
+        if ($request->user()->hasPermission($organization, 'contacts.view')) {
+            return redirect()->route('contacts.index', array_filter(['role' => 'supplier', 'search' => $request->query('search')]));
+        }
 
         $filters = $request->validate([
             'search' => ['nullable', 'string', 'max:255'],

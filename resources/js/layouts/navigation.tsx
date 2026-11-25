@@ -54,16 +54,23 @@ export function buildNavGroups(t: (key: TranslationKey) => string, tenant: Tenan
                 { href: '/invoices', label: t('nav.customerInvoices'), permission: 'invoices.view', needsStore: true, icon: <IconInvoice /> },
                 { href: '/delivery-notes', label: t('nav.deliveryNotes'), permission: 'delivery_notes.view', needsStore: true, icon: <IconTruck /> },
                 { href: '/sales/returns', label: t('nav.returns'), permission: 'sales_returns.view', needsStore: true, icon: <IconRotateBack /> },
-                {
-                    key: 'sales-customers',
-                    label: t('nav.section.customers'),
-                    icon: <IconUsers />,
-                    items: [
-                        { href: '/sales/customers', label: t('nav.customers'), permission: 'customers.view', icon: <IconUsers /> },
-                        { href: '/contacts', label: t('nav.contacts'), permission: 'contacts.view', icon: <IconContact /> },
-                    ],
-                },
                 { href: '/my-commissions', label: t('nav.myCommissions'), permission: 'commissions.own.view', icon: <IconPercent /> },
+            ],
+        },
+        {
+            // Unified Contacts: ONE directory, queried by role. Every entry opens the same page with a different server-side filter.
+            // The legacy customer / supplier URLs stay valid as aliases (bookmarks, links, breadcrumbs) of the matching view.
+            key: 'contacts',
+            label: t('nav.group.contacts'),
+            icon: <IconContact />,
+            items: [
+                { href: '/contacts', label: t('nav.contacts.all'), permission: 'contacts.view', icon: <IconContact /> },
+                { href: '/contacts?role=client', label: t('nav.contacts.clients'), permission: ['contacts.view', 'customers.view'], aliases: ['/sales/customers'], icon: <IconUsers /> },
+                { href: '/contacts?role=supplier', label: t('nav.contacts.suppliers'), permission: ['contacts.view', 'suppliers.view'], aliases: ['/procurement/suppliers'], icon: <IconBuilding /> },
+                { href: '/contacts?role=internal', label: t('nav.contacts.internal'), permission: 'contacts.view', icon: <IconShield /> },
+                { href: '/contacts?scope=external', label: t('nav.contacts.external'), permission: 'contacts.view', icon: <IconUsers /> },
+                { href: '/contacts?group=partners', label: t('nav.contacts.partners'), permission: 'contacts.view', icon: <IconRoute /> },
+                { href: '/contacts/settings', label: t('nav.contacts.settings'), permission: 'contacts.view', icon: <IconSettings /> },
             ],
         },
         {
@@ -73,7 +80,6 @@ export function buildNavGroups(t: (key: TranslationKey) => string, tenant: Tenan
             items: [
                 { href: '/procurement/purchase-orders', label: t('nav.purchaseOrders'), permission: 'procurement.view', icon: <IconClipboard /> },
                 { href: '/procurement', label: t('nav.procurement'), permission: 'procurement.view', icon: <IconCart /> },
-                { href: '/procurement/suppliers', label: t('nav.suppliers'), permission: 'suppliers.view', icon: <IconBuilding /> },
                 { href: '/finance/factures-fournisseurs', label: t('nav.supplierInvoices'), permission: 'supplier_invoices.view', icon: <IconInvoice /> },
                 {
                     key: 'purchasing-followup',
@@ -297,8 +303,18 @@ export const firstNavItem = (group: NavGroup): NavItem => {
     return isNavSection(entry) ? entry.items[0]! : entry;
 };
 
-/** Longest-prefix match so deep links (e.g. /sales/orders/42) highlight their parent. */
-export function matchActiveNav(groups: NavGroup[], currentPath: string): NavMatch | undefined {
+/** Path part of a registry href (an href may carry a query string that selects a filtered view of the same page). */
+export const hrefPath = (href: string) => href.split('?')[0]!;
+const hrefParams = (href: string) => new URLSearchParams(href.split('?')[1] ?? '');
+
+/**
+ * Longest-prefix match so deep links (e.g. /sales/orders/42) highlight their parent.
+ *
+ * An entry whose href carries a query string (e.g. `/contacts?role=client`) matches only when the current URL has the same
+ * parameters, and ranks above its plain sibling (`/contacts`) when it does: that is how several entries of ONE directory
+ * page highlight the right view. Aliases are path prefixes only.
+ */
+export function matchActiveNav(groups: NavGroup[], currentPath: string, currentSearch = ''): NavMatch | undefined {
     const candidates: NavMatch[] = [];
     groups.forEach((group) =>
         group.items.forEach((entry) => {
@@ -306,10 +322,22 @@ export function matchActiveNav(groups: NavGroup[], currentPath: string): NavMatc
             else candidates.push({ groupKey: group.key, sectionKey: null, item: entry });
         }),
     );
-    const prefixes = (item: NavItem) => [item.href, ...(item.aliases ?? [])];
-    const matched = (item: NavItem) => prefixes(item).filter((href) => currentPath === href || currentPath.startsWith(`${href}/`));
-    const best = (item: NavItem) => Math.max(...matched(item).map((href) => href.length));
-    return candidates.filter(({ item }) => matched(item).length > 0).sort((a, b) => best(b.item) - best(a.item))[0];
+    const current = new URLSearchParams(currentSearch);
+    const onPath = (href: string) => currentPath === href || currentPath.startsWith(`${href}/`);
+    /** Score of an item for the current URL: 0 = no match. Longer matched path wins; each matched query parameter breaks ties. */
+    const score = (item: NavItem): number => {
+        let best = 0;
+        const own = hrefPath(item.href);
+        if (onPath(own)) {
+            const wanted = [...hrefParams(item.href).entries()];
+            const satisfied = wanted.every(([key, value]) => current.getAll(key).includes(value) || current.getAll(`${key}[]`).includes(value));
+            if (satisfied) best = own.length * 100 + wanted.length;
+        }
+        for (const alias of item.aliases ?? []) if (onPath(alias)) best = Math.max(best, alias.length * 100);
+
+        return best;
+    };
+    return candidates.filter(({ item }) => score(item) > 0).sort((a, b) => score(b.item) - score(a.item))[0];
 }
 
 export type Crumb = { label: string; href?: string };
@@ -319,13 +347,13 @@ export type Crumb = { label: string; href?: string };
  * Group › [Section] › Page, plus a terminal "Détail / Création / Modification" crumb on deeper URLs.
  * Empty on the dashboard root and on routes that are not in the (permission-filtered) navigation.
  */
-export function buildBreadcrumbs(groups: NavGroup[], currentPath: string, t: (key: TranslationKey) => string): Crumb[] {
-    const match = matchActiveNav(groups, currentPath);
+export function buildBreadcrumbs(groups: NavGroup[], currentPath: string, t: (key: TranslationKey) => string, currentSearch = ''): Crumb[] {
+    const match = matchActiveNav(groups, currentPath, currentSearch);
     if (!match || currentPath === '/platform') return [];
     const group = groups.find((candidate) => candidate.key === match.groupKey);
     if (!group) return [];
 
-    const deeper = currentPath !== match.item.href && !(match.item.aliases ?? []).includes(currentPath);
+    const deeper = currentPath !== hrefPath(match.item.href) && !(match.item.aliases ?? []).includes(currentPath);
     const crumbs: Crumb[] = [{ label: group.label, href: firstNavItem(group).href }];
     if (match.sectionKey) {
         const section = group.items.find((entry): entry is NavSection => isNavSection(entry) && entry.key === match.sectionKey);
@@ -369,12 +397,10 @@ export function buildQuickActions(
 export const SEARCHABLE_INDEX_HREFS = [
     '/catalog/products',
     '/sales/orders',
-    '/sales/customers',
     '/quotations',
     '/invoices',
     '/payments',
     '/procurement/purchase-orders',
-    '/procurement/suppliers',
     '/contacts',
 ] as const;
 
