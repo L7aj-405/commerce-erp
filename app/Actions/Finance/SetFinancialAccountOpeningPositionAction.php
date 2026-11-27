@@ -6,12 +6,13 @@ use App\Models\FinancialAccount;
 use App\Models\FinancialAccountOpeningPosition;
 use App\Models\User;
 use App\Services\AuditLogger;
+use App\Services\Finance\FinanceClosedPeriodGuard;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 class SetFinancialAccountOpeningPositionAction
 {
-    public function __construct(private readonly AuditLogger $audit) {}
+    public function __construct(private readonly AuditLogger $audit, private readonly FinanceClosedPeriodGuard $periods) {}
 
     /** @param array<string,mixed> $data */
     public function execute(User $actor, FinancialAccount $account, array $data): FinancialAccountOpeningPosition
@@ -26,6 +27,9 @@ class SetFinancialAccountOpeningPositionAction
             }
             $position = FinancialAccountOpeningPosition::query()->withoutGlobalScopes()
                 ->where('organization_id', $locked->organization_id)->where('financial_account_id', $locked->id)->lockForUpdate()->first();
+            // F-03: an opening position moves the treasury figures of the month of its effective date; refuse
+            // both the new date and (when editing) the date it currently sits on.
+            $this->periods->assertOpen($locked->organization_id, [$data['effective_date'], $position?->effective_date], 'effective_date');
             $old = $position?->only(['effective_date', 'amount', 'currency_code', 'reference', 'notes']) ?? [];
             $position ??= new FinancialAccountOpeningPosition;
             $position->organization_id = $locked->organization_id;
@@ -38,7 +42,8 @@ class SetFinancialAccountOpeningPositionAction
             $position->created_by_user_id ??= $actor->id;
             $position->save();
             $this->audit->record($old ? 'financial_account.opening_position_updated' : 'financial_account.opening_position_set', $actor,
-                $locked->organization, auditable: $position, oldValues: $old, newValues: $position->only(['financial_account_id','effective_date','amount','currency_code','reference']));
+                $locked->organization, auditable: $position, oldValues: $old, newValues: $position->only(['financial_account_id', 'effective_date', 'amount', 'currency_code', 'reference']));
+
             return $position;
         });
     }

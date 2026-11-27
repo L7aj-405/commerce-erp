@@ -87,6 +87,8 @@ Settings > Branches > Branch protection rule (or a Ruleset) for `main`:
 
 1. **Require a pull request before merging**: at least 1 approving review; dismiss stale approvals on new commits; require review from code owners if a `CODEOWNERS` file is added.
 2. **Require status checks to pass before merging**: select `CI gate` (and, if you prefer the granular view, `PHP tests (full suite)`, `Frontend (typecheck and production build)`, `Code style (Laravel Pint, check only)`). **Require branches to be up to date before merging.**
+
+> The `Frontend (typecheck and production build)` job also runs `npm run test:frontend` (`node --test tests/Frontend/*.test.ts`). These are unit and **SSR render tests** (Vite's SSR loader + `react-dom/server`), not real-browser E2E: they do not cover clicks, focus, or server round-trips. The job name is unchanged so existing required-check settings keep working.
 3. **Block direct pushes** to `main` (restrict who can push; include administrators if policy allows). Block force pushes and deletions.
 4. **Require linear history** (optional) and **require conversation resolution**.
 5. Allow only the merge method the team uses; keep `staging` as the integration branch and promote to `main` by reviewed PR.

@@ -25,11 +25,13 @@ class FinanceMonthlySituationService
         $query = FinanceObligation::query()
             ->where('finance_obligations.organization_id', $organization->getKey())
             ->when($store, fn (Builder $query) => $query->where('finance_obligations.store_id', $store->getKey()))
-            ->where(function (Builder $query) use ($period, $cutoff) {
+            ->where(function (Builder $query) use ($period) {
+                // FIN-001: every unsettled obligation due before the period is carried forward, not only the already
+                // overdue ones. The treasury forecast counts them all, so the list must show them (status stays
+                // "À venir" when not yet due).
                 $query->whereBetween('finance_obligations.due_date', [$period->start->toDateString(), $period->end->toDateString()])
-                    ->orWhere(function (Builder $query) use ($period, $cutoff) {
+                    ->orWhere(function (Builder $query) use ($period) {
                         $query->whereDate('finance_obligations.due_date', '<', $period->start->toDateString())
-                            ->whereDate('finance_obligations.due_date', '<', $cutoff->toDateString())
                             ->whereNull('finance_obligations.cancelled_at')
                             ->whereRaw(self::PAID_SQL.' < finance_obligations.planned_amount');
                     });
@@ -51,7 +53,7 @@ class FinanceMonthlySituationService
         $paginator = $query
             ->select('finance_obligations.*')
             ->selectRaw(self::PAID_SQL.' as paid_amount')
-            ->with(['store:id,name,code', 'supplier:id,name', 'preferredFinancialAccount:id,name,code', 'createdBy:id,name', 'cancelledBy:id,name', 'paymentInstruments.financialAccount:id,name,code'])
+            ->with(['store:id,name,code', 'supplier:id,name', 'preferredFinancialAccount:id,name,code', 'createdBy:id,name', 'cancelledBy:id,name', 'paymentInstruments.financialAccount:id,name,code', 'supplierInvoiceInstallment:id,supplier_invoice_id', 'supplierInvoiceInstallment.supplierInvoice:id,internal_number,invoice_number'])
             ->orderByRaw('CASE WHEN due_date < ? AND cancelled_at IS NULL AND '.self::PAID_SQL.' < planned_amount THEN 0 ELSE 1 END', [$period->start->toDateString()])
             ->orderBy('due_date')->orderBy('id')
             ->paginate($perPage)->withQueryString();
@@ -60,7 +62,7 @@ class FinanceMonthlySituationService
         $payments = FinanceOutgoingPaymentAllocation::query()
             ->where('organization_id', $organization->getKey())
             ->whereIn('obligation_id', $ids)
-            ->with(['outgoingPayment:id,organization_id,store_id,payment_number,financial_account_id,payment_method,amount,currency_code,payment_date,reference,status,reversed_at,reversal_reason', 'outgoingPayment.financialAccount:id,name,code'])
+            ->with(['outgoingPayment:id,organization_id,store_id,payment_number,financial_account_id,payment_method,amount,currency_code,payment_date,reference,status,recorded_by_user_id,reversed_at,reversed_by_user_id,reversal_reason,created_at', 'outgoingPayment.financialAccount:id,name,code', 'outgoingPayment.recordedBy:id,name', 'outgoingPayment.reversedBy:id,name'])
             ->orderBy('id')->get()->groupBy('obligation_id');
 
         return $paginator->through(fn (FinanceObligation $obligation) => $this->present($obligation, $cutoff, $period, $payments->get($obligation->id, collect())));
@@ -73,10 +75,10 @@ class FinanceMonthlySituationService
         $query = FinanceObligation::query()->withoutGlobalScopes()
             ->where('finance_obligations.organization_id', $organization->id)
             ->when($store, fn (Builder $query) => $query->where('finance_obligations.store_id', $store->id))
-            ->where(function (Builder $query) use ($period, $cutoff) {
+            ->where(function (Builder $query) use ($period) {
                 $query->whereBetween('finance_obligations.due_date', [$period->start->toDateString(), $period->end->toDateString()])
                     ->orWhere(fn (Builder $query) => $query->whereDate('finance_obligations.due_date', '<', $period->start->toDateString())
-                        ->whereDate('finance_obligations.due_date', '<', $cutoff->toDateString())->whereNull('finance_obligations.cancelled_at')
+                        ->whereNull('finance_obligations.cancelled_at')
                         ->whereRaw(self::PAID_SQL.' < finance_obligations.planned_amount'));
             })
             ->when($filters['category'] ?? null, fn (Builder $query, string $value) => $query->where('finance_obligations.category', $value))
@@ -100,7 +102,7 @@ class FinanceMonthlySituationService
         $query = FinanceObligation::query()->where('organization_id', $organization->id)
             ->whereNull('cancelled_at')->whereDate('due_date', '>', $period->end->toDateString())
             ->when($store, fn (Builder $query) => $query->where('store_id', $store->id))
-            ->whereRaw(self::PAID_SQL.' < planned_amount')->with(['supplier:id,name', 'procurement:id,procurement_number'])
+            ->whereRaw(self::PAID_SQL.' < planned_amount')->with(['supplier:id,name', 'procurement:id,procurement_number', 'supplierInvoiceInstallment:id,supplier_invoice_id', 'supplierInvoiceInstallment.supplierInvoice:id,internal_number,invoice_number'])
             ->select('finance_obligations.*')->selectRaw(self::PAID_SQL.' as paid_amount')->orderBy('due_date');
         if ($limit !== null) {
             $query->limit($limit);
@@ -111,7 +113,56 @@ class FinanceMonthlySituationService
                 'due_date' => $row->due_date->toDateString(), 'supplier' => $row->supplier?->name ?: $row->beneficiary_name ?: '—',
                 'reference' => $row->reference, 'amount' => (string) $row->planned_amount, 'currency_code' => $row->currency_code,
                 'category' => $row->category->label(), 'status' => 'À venir',
-                'source' => $row->procurement?->procurement_number ?: ($row->supplier_installment_plan_id ? 'Échéancier fournisseur' : ($row->recurring_template_id ? 'Charge récurrente' : 'Obligation manuelle'))])->all();
+                'source' => $row->procurement?->procurement_number ?: ($row->supplierInvoiceInstallment?->supplierInvoice ? 'Facture fournisseur '.$row->supplierInvoiceInstallment->supplierInvoice->internal_number : null) ?: ($row->supplier_installment_plan_id ? 'Échéancier fournisseur' : ($row->recurring_template_id ? 'Charge récurrente' : 'Obligation manuelle'))])->all();
+    }
+
+    /**
+     * Single source of the three reporting buckets shown by the month-end page AND its Excel export (FIN-EXPORT-003).
+     *
+     * Definitions for a selected month M (cancelled obligations are always excluded):
+     *  - current_month   : due_date inside M (fully paid ones included, so planned = paid + remaining reconciles).
+     *  - carried_forward : due_date before M AND still unsettled (posted paid < planned). Fully paid past obligations
+     *                      are not carried forward, exactly like the obligation list and the treasury forecast.
+     *  - inclusive       : current_month + carried_forward. Future-dated obligations (after M) are never included;
+     *                      remaining equals the forecast's remaining_outflows (due_date <= end of M).
+     * "paid" is the sum of POSTED payment allocations as of now (PAID_SQL): reversed payments never count and the
+     * payment date is intentionally not used as a cutoff, the same semantics as every other obligation figure.
+     *
+     * @return array{current_month: array<string,string|int>, carried_forward: array<string,string|int>, inclusive: array<string,string|int>}
+     */
+    public function breakdown(Organization $organization, FinancePeriod $period, ?Store $store): array
+    {
+        $start = $period->start->toDateString();
+        $end = $period->end->toDateString();
+        $bucket = fn (string $condition, array $bindings): object => FinanceObligation::query()->withoutGlobalScopes()
+            ->where('organization_id', $organization->getKey())
+            ->whereNull('cancelled_at')
+            ->when($store, fn (Builder $query) => $query->where('store_id', $store->getKey()))
+            ->whereRaw($condition, $bindings)
+            ->selectRaw('COALESCE(SUM(planned_amount), 0) as planned')
+            ->selectRaw('COALESCE(SUM('.self::PAID_SQL.'), 0) as paid')
+            ->selectRaw('COUNT(*) as aggregate_count')
+            ->first();
+        $current = $this->bucketTotals($bucket('due_date BETWEEN ? AND ?', [$start, $end]));
+        $carried = $this->bucketTotals($bucket('due_date < ? AND '.self::PAID_SQL.' < planned_amount', [$start]));
+
+        $planned = Decimal::add($current['planned'], $carried['planned']);
+        $paid = Decimal::add($current['paid'], $carried['paid']);
+
+        return [
+            'current_month' => $current,
+            'carried_forward' => $carried,
+            'inclusive' => ['planned' => $planned, 'paid' => $paid, 'remaining' => Decimal::subtract($planned, $paid), 'count' => $current['count'] + $carried['count']],
+        ];
+    }
+
+    /** @return array<string,string|int> */
+    private function bucketTotals(object $row): array
+    {
+        $planned = Decimal::normalize((string) $row->planned);
+        $paid = Decimal::normalize((string) $row->paid);
+
+        return ['planned' => $planned, 'paid' => $paid, 'remaining' => Decimal::subtract($planned, $paid), 'count' => (int) $row->aggregate_count];
     }
 
     /** @return array<string, string|int> */
@@ -176,10 +227,10 @@ class FinanceMonthlySituationService
             })
             ->where('finance_obligations.organization_id', $organization->id)
             ->when($store, fn (Builder $query) => $query->where('finance_obligations.store_id', $store->id))
-            ->where(function (Builder $query) use ($period, $cutoff) {
+            ->where(function (Builder $query) use ($period) {
                 $query->whereBetween('finance_obligations.due_date', [$period->start->toDateString(), $period->end->toDateString()])
                     ->orWhere(fn (Builder $query) => $query->whereDate('finance_obligations.due_date', '<', $period->start->toDateString())
-                        ->whereDate('finance_obligations.due_date', '<', $cutoff->toDateString())->whereNull('finance_obligations.cancelled_at')
+                        ->whereNull('finance_obligations.cancelled_at')
                         ->whereRaw(self::PAID_SQL.' < finance_obligations.planned_amount'));
             })
             ->groupBy(['finance_obligations.supplier_id', 'finance_obligations.beneficiary_name', 'suppliers.name'])
@@ -255,6 +306,8 @@ class FinanceMonthlySituationService
             'beneficiary' => $obligation->supplier?->name ?: $obligation->beneficiary_name ?: '—',
             'reference' => $obligation->reference,
             'recurring_template_id' => $obligation->recurring_template_id,
+            'supplier_invoice' => ($invoice = $obligation->supplierInvoiceInstallment?->supplierInvoice) ? ['id' => $invoice->id, 'internal_number' => $invoice->internal_number, 'invoice_number' => $invoice->invoice_number] : null,
+            'locked_by_invoice' => $obligation->supplier_invoice_installment_id !== null,
             'recurring_period' => $obligation->recurring_period?->format('Y-m'),
             'due_date' => $obligation->due_date->toDateString(),
             'planned_amount' => $planned,
@@ -284,6 +337,11 @@ class FinanceMonthlySituationService
                 'account' => $allocation->outgoingPayment->financialAccount?->only(['id', 'name', 'code']),
                 'payment_id' => $allocation->outgoingPayment->id,
                 'reversal_reason' => $allocation->outgoingPayment->reversal_reason,
+                // The user who posted the payment (never the obligation creator); null for legacy rows without an author.
+                'recorded_by' => $allocation->outgoingPayment->recordedBy?->name,
+                'recorded_at' => $allocation->outgoingPayment->created_at?->toIso8601String(),
+                'reversed_at' => $allocation->outgoingPayment->reversed_at?->toIso8601String(),
+                'reversed_by' => $allocation->outgoingPayment->reversedBy?->name,
             ])->values()->all(),
             'committed_amount' => $obligation->paymentInstruments->whereIn('state', [FinancePaymentInstrumentState::Issued, FinancePaymentInstrumentState::Presented])->reduce(fn (string $sum, $row) => Decimal::add($sum, (string) $row->amount), '0.0000'),
             'instruments' => $obligation->paymentInstruments->map(function ($instrument) use ($cutoff) {

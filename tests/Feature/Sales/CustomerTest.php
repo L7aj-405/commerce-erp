@@ -3,6 +3,7 @@
 namespace Tests\Feature\Sales;
 
 use App\Models\User;
+use App\Services\CustomerManager;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\Support\SalesTestCase;
 
@@ -65,10 +66,12 @@ class CustomerTest extends SalesTestCase
         $ownerB = User::factory()->create();
         $organizationA = $this->createOrganization($ownerA, 'A');
         $organizationB = $this->createOrganization($ownerB, 'B');
-        $this->createCustomer($organizationA, 'Visible Match');
-        $this->createCustomer($organizationB, 'Foreign Match');
-        $this->actingAs($ownerA)->get(route('sales.customers.index', ['search' => 'Match']))->assertInertia(fn (Assert $page) => $page
-            ->has('customers.data', 1)->where('customers.data.0.display_name', 'Visible Match')->where('customers.total', 1));
+        app(CustomerManager::class)->create($ownerA, $organizationA, ['type' => 'individual', 'display_name' => 'Visible Match', 'status' => 'active']);
+        app(CustomerManager::class)->create($ownerB, $organizationB, ['type' => 'individual', 'display_name' => 'Foreign Match', 'status' => 'active']);
+        // The customer directory is the Clients view of the unified Contacts module: the old URL redirects, the search stays tenant scoped.
+        $this->actingAs($ownerA)->get(route('sales.customers.index', ['search' => 'Match']))->assertRedirect(route('contacts.index', ['role' => 'client', 'search' => 'Match']));
+        $this->actingAs($ownerA)->get(route('contacts.index', ['role' => 'client', 'search' => 'Match']))->assertInertia(fn (Assert $page) => $page
+            ->has('parties.data', 1)->where('parties.data.0.display_name', 'Visible Match')->where('parties.total', 1));
     }
 
     public function test_inactive_customer_remains_visible_but_is_not_available_for_new_orders(): void
@@ -76,8 +79,9 @@ class CustomerTest extends SalesTestCase
         $owner = User::factory()->create();
         $organization = $this->createOrganization($owner);
         $store = $this->createStore($organization, $owner);
-        $customer = $this->createCustomer($organization, 'Inactive', ['status' => 'inactive']);
-        $this->actingAs($owner)->get(route('sales.customers.index'))->assertOk()->assertSee('Inactive');
+        $customer = app(CustomerManager::class)->create($owner, $organization, ['type' => 'individual', 'display_name' => 'Inactive', 'status' => 'inactive']);
+        // Still listed (the Clients view shows every active contact, whatever its customer status) ...
+        $this->actingAs($owner)->get(route('contacts.index', ['role' => 'client']))->assertOk()->assertSee('Inactive');
         $this->actingAs($owner)->postJson(route('sales.orders.store'), ['customer_id' => $customer->id, 'sale_date' => '2026-08-24', 'currency_code' => 'MAD'])
             ->assertUnprocessable()->assertJsonValidationErrors('customer_id');
         $this->assertDatabaseCount('sales_orders', 0);

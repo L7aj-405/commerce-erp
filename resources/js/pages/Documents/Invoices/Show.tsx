@@ -132,6 +132,7 @@ type Props = {
         configureMail: boolean;
         stamp: boolean;
         viewOrder: boolean;
+        recordPayment: boolean;
     };
 };
 
@@ -505,10 +506,16 @@ export default function InvoiceShow({
                                                     <p className="font-medium">
                                                         {t('invoices.fullPaymentRequired')}
                                                     </p>
+                                                    <p className="mt-1 font-normal">{t('invoices.fullPaymentReason')}</p>
                                                     <p className="mt-1">
                                                         {t('invoices.paid')} : {formatMoney(relatedOrderPaymentSummary.net, currency)} · {t('invoices.remaining')} :{' '}
                                                         {formatMoney(relatedOrderPaymentSummary.remaining, currency)}
                                                     </p>
+                                                    {can.viewOrder && can.recordPayment && (
+                                                        <Link href={`/sales/orders/${invoice.sales_order.id}`} className="mt-2 inline-block font-medium underline">
+                                                            {t('invoices.recordPaymentCta')}
+                                                        </Link>
+                                                    )}
                                                 </div>
                                             )}
                                         </>

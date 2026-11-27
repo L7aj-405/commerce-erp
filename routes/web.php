@@ -22,7 +22,9 @@ use App\Http\Controllers\Catalog\ProductVariantController;
 use App\Http\Controllers\Catalog\TaxRateController;
 use App\Http\Controllers\Catalog\UnitOfMeasureController;
 use App\Http\Controllers\Commissions\MyCommissionController;
+use App\Http\Controllers\Contacts\ContactSettingsController;
 use App\Http\Controllers\Contacts\OrganizationContactController;
+use App\Http\Controllers\Contacts\PartyController;
 use App\Http\Controllers\Documents\CreditNoteController;
 use App\Http\Controllers\Documents\DeliveryNoteController;
 use App\Http\Controllers\Documents\DocumentEmailController;
@@ -36,6 +38,12 @@ use App\Http\Controllers\Documents\InvoiceCorrectionLineController;
 use App\Http\Controllers\Finance\CommissionDashboardController;
 use App\Http\Controllers\Finance\CommissionLedgerController;
 use App\Http\Controllers\Finance\CommissionRuleController;
+use App\Http\Controllers\Finance\CustomerAccountsController;
+use App\Http\Controllers\Finance\CustomerAdvancesController;
+use App\Http\Controllers\Finance\CustomerCreditController;
+use App\Http\Controllers\Finance\CustomerInstrumentsController;
+use App\Http\Controllers\Finance\CustomerRemindersController;
+use App\Http\Controllers\Finance\FinanceClientsController;
 use App\Http\Controllers\Finance\FinanceDashboardController;
 use App\Http\Controllers\Finance\FinanceExpectedCollectionController;
 use App\Http\Controllers\Finance\FinanceExportController;
@@ -45,6 +53,10 @@ use App\Http\Controllers\Finance\FinanceMonthReviewController;
 use App\Http\Controllers\Finance\FinancePaymentInstrumentController;
 use App\Http\Controllers\Finance\FinanceRecurringObligationController;
 use App\Http\Controllers\Finance\FinanceSupplierInstallmentController;
+use App\Http\Controllers\Finance\FinancialAccountMovementController;
+use App\Http\Controllers\Finance\SupplierInvoiceAttachmentController;
+use App\Http\Controllers\Finance\SupplierInvoiceController;
+use App\Http\Controllers\Finance\SupplierInvoiceVariantSearchController;
 use App\Http\Controllers\FollowUps\AttentionController;
 use App\Http\Controllers\FollowUps\FollowUpController;
 use App\Http\Controllers\FollowUps\FollowUpRecurringController;
@@ -237,8 +249,29 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
     Route::post('/notifications/read-all', [NotificationController::class, 'markAllRead'])->name('notifications.read-all');
     Route::get('/account/notifications', [NotificationPreferenceController::class, 'edit'])->name('notifications.preferences.edit');
     Route::put('/account/notifications', [NotificationPreferenceController::class, 'update'])->name('notifications.preferences.update');
+    // Unified Contacts (Phase 2). /contacts/parties/{party} is ALWAYS a Party id; the legacy numeric /contacts/{contact} (an
+    // OrganizationContact id) is only resolved through its own party_id and redirected. Static paths first, so they never match {contact}.
+    Route::get('/contacts', [PartyController::class, 'index'])->name('contacts.index');
+    Route::get('/contacts/create', [PartyController::class, 'create'])->name('contacts.create');
+    Route::get('/contacts/settings', [ContactSettingsController::class, 'index'])->name('contacts.settings');
+    Route::post('/contacts/settings/roles', [ContactSettingsController::class, 'storeRole'])->name('contacts.settings.roles.store');
+    Route::post('/contacts/settings/roles/{role}/deactivate', [ContactSettingsController::class, 'deactivateRole'])->whereNumber('role')->name('contacts.settings.roles.deactivate');
+    Route::post('/contacts/settings/payment-terms', [ContactSettingsController::class, 'storeTerm'])->name('contacts.settings.terms.store');
+    Route::get('/contacts/candidates', [PartyController::class, 'candidates'])->name('contacts.candidates');
     Route::get('/contacts/lookup', [OrganizationContactController::class, 'lookup'])->name('contacts.lookup');
-    Route::resource('contacts', OrganizationContactController::class)->except(['destroy']);
+    Route::post('/contacts/parties', [PartyController::class, 'store'])->name('contacts.parties.store');
+    Route::prefix('/contacts/parties/{party}')->whereNumber('party')->group(function () {
+        Route::get('/', [PartyController::class, 'show'])->name('contacts.parties.show');
+        Route::get('/edit', [PartyController::class, 'edit'])->name('contacts.parties.edit');
+        Route::patch('/', [PartyController::class, 'update'])->name('contacts.parties.update');
+        Route::post('/roles', [PartyController::class, 'addRoles'])->name('contacts.parties.roles.add');
+        Route::delete('/roles/{role}', [PartyController::class, 'removeRole'])->whereNumber('role')->name('contacts.parties.roles.remove');
+        Route::post('/relationships', [PartyController::class, 'addRelationship'])->name('contacts.parties.relationships.add');
+        Route::post('/archive', [PartyController::class, 'archive'])->name('contacts.parties.archive');
+        Route::post('/restore', [PartyController::class, 'restore'])->name('contacts.parties.restore');
+        Route::post('/payment-terms', [PartyController::class, 'assignTerm'])->name('contacts.parties.terms.assign');
+    });
+    Route::resource('contacts', OrganizationContactController::class)->only(['store', 'show', 'edit', 'update'])->whereNumber('contact');
     Route::delete('/contacts/{contact}', [OrganizationContactController::class, 'destroy'])->name('contacts.destroy');
     Route::get('/work', [FollowUpController::class, 'index'])->name('follow-ups.index');
     Route::post('/work', [FollowUpController::class, 'store'])->name('follow-ups.store');
@@ -278,6 +311,7 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
         ->name('document-profile.studio.preview');
     Route::put('/document-profile/studio', [DocumentTemplateStudioController::class, 'update'])->name('document-profile.studio.update');
     Route::delete('/document-profile/studio', [DocumentTemplateStudioController::class, 'reset'])->name('document-profile.studio.reset');
+    Route::get('/customer-credit-settings', [CustomerCreditController::class, 'policy'])->name('customer-credit-settings.edit');
     Route::get('/quotation-settings', [QuotationSettingsController::class, 'edit'])->name('quotation-settings.edit');
     Route::put('/quotation-settings', [QuotationSettingsController::class, 'update'])->name('quotation-settings.update');
     Route::get('/email-settings', [OrganizationMailSettingController::class, 'edit'])->name('email-settings.edit');
@@ -575,6 +609,9 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
     Route::post('/financial-accounts', [FinancialAccountController::class, 'store'])->name('financial-accounts.store');
     Route::patch('/financial-accounts/{financialAccount}', [FinancialAccountController::class, 'update'])->name('financial-accounts.update');
     Route::put('/financial-accounts/{financialAccount}/opening-position', [FinancialAccountController::class, 'openingPosition'])->name('financial-accounts.opening-position');
+    Route::get('/financial-accounts/{financialAccount}/movements', [FinancialAccountMovementController::class, 'index'])->name('financial-accounts.movements');
+    Route::get('/financial-accounts/{financialAccount}/movements/export/{format}', [FinancialAccountMovementController::class, 'export'])
+        ->whereIn('format', ['csv', 'xlsx'])->middleware('throttle:10,1')->name('financial-accounts.movements.export');
 
     Route::prefix('payments')->name('payments.')->group(function () {
         Route::get('/', [PaymentController::class, 'index'])->name('index');
@@ -777,6 +814,50 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
         Route::get('/encaissements', [FinanceDashboardController::class, 'encaissements'])->name('encaissements');
         Route::get('/creances', [FinanceDashboardController::class, 'creances'])->name('creances');
         Route::get('/journal', [FinanceJournalController::class, 'index'])->name('journal');
+
+        // Finance clients (Phase 1 UI/UX): entry routes. The four aliases below run the EXISTING controllers
+        // unchanged (same authorization, scopes, data); legacy URLs keep working. The others are read-only
+        // composition / placeholder pages, server-authorized by FinanceAccessGuard.
+        Route::prefix('clients')->name('clients.')->group(function () {
+            Route::get('/', [FinanceClientsController::class, 'overview'])->name('overview');
+            Route::get('/comptes', [CustomerAccountsController::class, 'index'])->name('accounts');
+            Route::get('/comptes/export/{format}', [CustomerAccountsController::class, 'export'])->whereIn('format', ['csv', 'xlsx'])->middleware('throttle:10,1')->name('accounts.export');
+            Route::get('/comptes/{customer}', [CustomerAccountsController::class, 'show'])->whereNumber('customer')->name('accounts.show');
+            Route::get('/comptes/{customer}/releve/{format}', [CustomerAccountsController::class, 'statementExport'])->whereNumber('customer')->whereIn('format', ['pdf', 'xlsx'])->middleware('throttle:10,1')->name('accounts.statement');
+            Route::post('/comptes/{customer}/solde-ouverture', [CustomerAccountsController::class, 'recordOpeningBalance'])->whereNumber('customer')->middleware('throttle:20,1')->name('accounts.opening.store');
+            Route::post('/comptes/{customer}/solde-ouverture/{openingBalance}/inverser', [CustomerAccountsController::class, 'reverseOpeningBalance'])->whereNumber(['customer', 'openingBalance'])->middleware('throttle:20,1')->name('accounts.opening.reverse');
+            Route::post('/comptes/{customer}/conditions', [CustomerAccountsController::class, 'saveTerms'])->whereNumber('customer')->middleware('throttle:20,1')->name('accounts.terms');
+            Route::post('/comptes/{customer}/reglement/apercu', [CustomerAccountsController::class, 'previewSettlement'])->whereNumber('customer')->name('accounts.settlement.preview');
+            Route::post('/comptes/{customer}/reglement', [CustomerAccountsController::class, 'settle'])->whereNumber('customer')->middleware('throttle:20,1')->name('accounts.settlement.store');
+            Route::post('/comptes/{customer}/echeancier/{order}', [CustomerAccountsController::class, 'saveSchedule'])->whereNumber(['customer', 'order'])->middleware('throttle:20,1')->name('accounts.schedule.save');
+            Route::post('/comptes/{customer}/promesses', [CustomerAccountsController::class, 'createPromise'])->whereNumber('customer')->middleware('throttle:20,1')->name('accounts.promise.store');
+            Route::post('/comptes/{customer}/promesses/{promise}', [CustomerAccountsController::class, 'promiseStatus'])->whereNumber(['customer', 'promise'])->middleware('throttle:20,1')->name('accounts.promise.status');
+            Route::get('/credit', [CustomerCreditController::class, 'index'])->name('credit');
+            Route::post('/credit/politique', [CustomerCreditController::class, 'savePolicy'])->middleware('throttle:20,1')->name('credit.policy');
+            Route::post('/credit/exceptions', [CustomerCreditController::class, 'grantException'])->middleware('throttle:20,1')->name('credit.exception');
+            Route::get('/avances', [CustomerAdvancesController::class, 'index'])->name('advances');
+            Route::get('/avances/export/{format}', [CustomerAdvancesController::class, 'export'])->whereIn('format', ['csv', 'xlsx'])->middleware('throttle:10,1')->name('advances.export');
+            Route::get('/instruments', [CustomerInstrumentsController::class, 'index'])->name('instruments');
+            Route::get('/instruments/export/{format}', [CustomerInstrumentsController::class, 'export'])->whereIn('format', ['csv', 'xlsx'])->middleware('throttle:10,1')->name('instruments.export');
+            Route::post('/instruments', [CustomerInstrumentsController::class, 'store'])->middleware('throttle:30,1')->name('instruments.store');
+            Route::post('/instruments/{instrument}/etat', [CustomerInstrumentsController::class, 'transition'])->whereNumber('instrument')->middleware('throttle:30,1')->name('instruments.transition');
+            Route::get('/creances/relances/apercu', [CustomerRemindersController::class, 'preview'])->middleware('throttle:60,1')->name('reminders.preview');
+            Route::post('/creances/relances/suivi', [CustomerRemindersController::class, 'followUp'])->middleware('throttle:30,1')->name('reminders.follow_up');
+            Route::post('/creances/relances/modele', [CustomerRemindersController::class, 'saveTemplate'])->middleware('throttle:20,1')->name('reminders.template');
+            Route::get('/creances/balance-agee/export/{format}', [FinanceClientsController::class, 'agingExport'])->whereIn('format', ['csv', 'xlsx'])->middleware('throttle:10,1')->name('aging.export');
+            Route::post('/comptes/{customer}/avances/{payment}/affecter', [CustomerAccountsController::class, 'allocateAdvance'])->whereNumber(['customer', 'payment'])->middleware('throttle:20,1')->name('accounts.advance.allocate');
+            Route::post('/comptes/{customer}/avances/{payment}/solde-ouverture/{openingBalance}', [CustomerAccountsController::class, 'settleOpeningBalance'])->whereNumber(['customer', 'payment', 'openingBalance'])->middleware('throttle:20,1')->name('accounts.advance.opening');
+            Route::post('/comptes/{customer}/avances/{payment}/solde-ouverture/{settlement}/retirer', [CustomerAccountsController::class, 'releaseOpeningSettlement'])->whereNumber(['customer', 'payment', 'settlement'])->middleware('throttle:20,1')->name('accounts.advance.opening.release');
+            Route::post('/comptes/{customer}/avances/{payment}/desaffecter/{order}', [CustomerAccountsController::class, 'deallocateAdvance'])->whereNumber(['customer', 'payment', 'order'])->middleware('throttle:20,1')->name('accounts.advance.deallocate');
+            Route::get('/facturation', [FinanceDashboardController::class, 'facturation'])->name('invoicing');
+            Route::get('/encaissements', [FinanceDashboardController::class, 'encaissements'])->name('collections');
+            Route::get('/creances', [FinanceDashboardController::class, 'creances'])->name('receivables');
+            Route::get('/journal/export/{format}', [FinanceJournalController::class, 'export'])->whereIn('format', ['csv', 'xlsx'])->middleware('throttle:10,1')->name('journal.export');
+            Route::get('/journal', [FinanceJournalController::class, 'index'])->name('journal');
+            Route::get('/rapports', [FinanceClientsController::class, 'reports'])->name('reports');
+            Route::get('/rapports/rentabilite/export/{format}', [FinanceClientsController::class, 'profitabilityExport'])->whereIn('format', ['csv', 'xlsx'])->middleware('throttle:10,1')->name('profitability.export');
+        });
+        Route::get('/personnel', [FinanceClientsController::class, 'planned'])->defaults('page', 'personnel')->name('personnel');
         Route::get('/ca-encaisse', [FinanceDashboardController::class, 'caEncaisse'])->name('ca-encaisse');
         Route::get('/situation-fin-de-mois', [FinanceMonthlySituationController::class, 'index'])->name('monthly-situation.index');
         Route::get('/situation-fin-de-mois/export/xlsx', [FinanceMonthReviewController::class, 'export'])
@@ -811,6 +892,20 @@ Route::middleware(['auth', 'verified', 'two-factor.policy'])->group(function () 
             ->middleware('throttle:20,1')->name('monthly-situation.payments.store');
         Route::post('/situation-fin-de-mois/outgoing-payments/{outgoingPayment}/reverse', [FinanceMonthlySituationController::class, 'reverse'])
             ->middleware('throttle:10,1')->name('monthly-situation.payments.reverse');
+        // Supplier invoices (Phase 2 Sprint 1). Kill switch + Test Mode answer 404 in the controller middleware; Test Mode
+        // also denies these routes through the sandbox route allowlist (not listed there).
+        Route::get('/factures-fournisseurs', [SupplierInvoiceController::class, 'index'])->name('supplier-invoices.index');
+        Route::get('/factures-fournisseurs/nouvelle', [SupplierInvoiceController::class, 'create'])->name('supplier-invoices.create');
+        Route::post('/factures-fournisseurs', [SupplierInvoiceController::class, 'store'])->middleware('throttle:30,1')->name('supplier-invoices.store');
+        Route::get('/factures-fournisseurs/variant-search', SupplierInvoiceVariantSearchController::class)->middleware('throttle:60,1')->name('supplier-invoices.variant-search');
+        Route::get('/factures-fournisseurs/{supplierInvoice}', [SupplierInvoiceController::class, 'show'])->whereNumber('supplierInvoice')->name('supplier-invoices.show');
+        Route::get('/factures-fournisseurs/{supplierInvoice}/modifier', [SupplierInvoiceController::class, 'edit'])->whereNumber('supplierInvoice')->name('supplier-invoices.edit');
+        Route::put('/factures-fournisseurs/{supplierInvoice}', [SupplierInvoiceController::class, 'update'])->whereNumber('supplierInvoice')->middleware('throttle:30,1')->name('supplier-invoices.update');
+        Route::post('/factures-fournisseurs/{supplierInvoice}/attachments', [SupplierInvoiceAttachmentController::class, 'store'])->whereNumber('supplierInvoice')->middleware('throttle:20,1')->name('supplier-invoices.attachments.store');
+        Route::get('/factures-fournisseurs/{supplierInvoice}/attachments/{attachment}', [SupplierInvoiceAttachmentController::class, 'show'])->whereNumber(['supplierInvoice', 'attachment'])->name('supplier-invoices.attachments.show');
+        Route::delete('/factures-fournisseurs/{supplierInvoice}/attachments/{attachment}', [SupplierInvoiceAttachmentController::class, 'destroy'])->whereNumber(['supplierInvoice', 'attachment'])->name('supplier-invoices.attachments.destroy');
+        Route::post('/factures-fournisseurs/{supplierInvoice}/approve', [SupplierInvoiceController::class, 'approve'])->whereNumber('supplierInvoice')->middleware('throttle:20,1')->name('supplier-invoices.approve');
+        Route::post('/factures-fournisseurs/{supplierInvoice}/void', [SupplierInvoiceController::class, 'void'])->whereNumber('supplierInvoice')->middleware('throttle:10,1')->name('supplier-invoices.void');
         Route::get('/commissions', [CommissionDashboardController::class, 'index'])->name('commissions.dashboard');
         Route::get('/commissions/salespeople/{salesperson}', [CommissionDashboardController::class, 'salesperson'])
             ->where('salesperson', '[0-9]+|unattributed')->name('commissions.salesperson');

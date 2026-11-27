@@ -5,6 +5,7 @@ namespace App\Services\Mcp\Products;
 use App\Models\McpOperation;
 use App\Models\McpOperationItem;
 use App\Services\Mcp\McpExecutionContext;
+use App\Services\Mcp\McpProductionNotice;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Cache\LockTimeoutException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -82,7 +83,7 @@ final class ProductOperationTools
      * Product import/merge: previews the rows as an operation and returns the
      * first page of per-row results with the counts.
      *
-     * @param list<mixed> $rows
+     * @param  list<mixed>  $rows
      */
     public function previewProductImport(array $rows, string $idempotency_key): CallToolResult
     {
@@ -160,7 +161,7 @@ final class ProductOperationTools
     private function execute(string $tool, callable $callback): CallToolResult
     {
         try {
-            return $this->success($callback());
+            return $this->success(McpProductionNotice::annotate($tool, $callback()));
         } catch (AuthorizationException) {
             return $this->error('MCP_FORBIDDEN', 'The connection is not authorized to use this capability.');
         } catch (ModelNotFoundException) {

@@ -5,6 +5,7 @@ import PageHeader from "@/components/ui/PageHeader";
 import Pagination from "@/components/ui/Pagination";
 import { Sheet } from "@/components/ui/Sheet";
 import { useI18n } from "@/i18n";
+import { useBusinessToday } from "@/utils/businessDate";
 import ApplicationShell from "@/layouts/ApplicationShell";
 import {
     formatDate,
@@ -90,7 +91,7 @@ type Props = {
 
 const inputClass = 'control-input w-full';
 const selectClass = 'control-select w-full';
-const emptyTemplate = (currency: string) => ({
+const emptyTemplate = (currency: string, today: string) => ({
     store_id: "",
     category: "fixed_expense",
     label: "",
@@ -103,7 +104,7 @@ const emptyTemplate = (currency: string) => ({
     preferred_financial_account_id: "",
     due_day_mode: "fixed",
     due_day: "1",
-    start_date: new Date().toISOString().slice(0, 10),
+    start_date: today,
     end_date: "",
     active: true,
     notes: "",
@@ -115,10 +116,12 @@ export default function RecurringObligations(props: Props) {
     const [editing, setEditing] = useState<Template | null>(null);
     const [detail, setDetail] = useState<Template | null>(null);
     const [search, setSearch] = useState(props.filters.search ?? "");
-    const form = useForm(emptyTemplate(props.currencyCode));
+    // The organization's business date (server-computed), never the browser's UTC date.
+    const businessToday = useBusinessToday();
+    const form = useForm(emptyTemplate(props.currencyCode, businessToday));
 
     const openCreate = () => {
-        form.setData(emptyTemplate(props.currencyCode));
+        form.setData(emptyTemplate(props.currencyCode, businessToday));
         form.clearErrors();
         setCreating(true);
     };

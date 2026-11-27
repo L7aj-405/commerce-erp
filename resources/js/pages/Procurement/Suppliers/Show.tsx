@@ -1,5 +1,8 @@
 import SupplierRelationDialog, { type SupplierRelation } from '@/components/procurement/SupplierRelationDialog';
 import SupplierRelationTable from '@/components/procurement/SupplierRelationTable';
+import { SupplierFiscalSummary } from '@/components/procurement/SupplierFiscalFields';
+import { mapFiscalWarnings } from '@/components/procurement/supplierFiscal';
+import type { FiscalWarningItem, SupplierFiscalRaw } from '@/components/procurement/supplierFiscal';
 import { Button } from '@/components/ui/Button';
 import EmptyState from '@/components/ui/EmptyState';
 import PageHeader from '@/components/ui/PageHeader';
@@ -23,17 +26,18 @@ type Supplier = {
     address: string | null;
     notes: string | null;
     active: boolean;
-};
+} & SupplierFiscalRaw;
 type LinkData = { url: string | null; label: string; active: boolean };
 type Props = {
     supplier: Supplier;
+    warnings?: FiscalWarningItem[];
     relations: { data: SupplierRelation[]; links: LinkData[]; from?: number | null; to?: number | null; total: number } | null;
     filters: { search?: string; status?: string };
     can: { manage: boolean; editSupplier: boolean; viewPrices: boolean };
     defaultCurrency: string;
 };
 
-export default function SupplierShow({ supplier, relations, filters, can, defaultCurrency }: Props) {
+export default function SupplierShow({ supplier, warnings, relations, filters, can, defaultCurrency }: Props) {
     const { t } = useI18n();
     const [dialog, setDialog] = useState<{ relation: SupplierRelation | null } | null>(null);
     // SupplierController@show validates `search` and `status` (active|inactive).
@@ -82,6 +86,9 @@ export default function SupplierShow({ supplier, relations, filters, can, defaul
                     </div>
                 )}
             </section>
+
+            {/* Fiscal block only when the server sent fiscal fields (it withholds them from users without access). */}
+            {'ice' in supplier && <SupplierFiscalSummary supplier={supplier} warnings={mapFiscalWarnings(warnings)} />}
 
             {relations !== null && (
                 <section>

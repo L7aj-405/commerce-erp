@@ -31,7 +31,11 @@ env:
   PHP_VERSION: '8.4'
   NODE_VERSION: '22'
   # composer.json requires these (plus the framework / PDF / spreadsheet needs); pcntl is used by queue timeouts.
-  PHP_EXTENSIONS: bcmath, ctype, dom, fileinfo, filter, gd, hash, iconv, json, libxml, mbstring, openssl, pcntl, pdo_mysql, pdo_sqlite, phar, session, sqlite3, tokenizer, xml, xmlreader, xmlwriter, zip, timezonedb
+  # Morocco returned to GMT on 2026-09-20 (Decree 2.26.530; IANA tz 2026c+). `timezonedb` is installed by .github/actions/install-timezonedb (pinned version + SHA-256, fatal on any failure; setup-php would only warn). The unpinned extension
+  # resolved to 2025.2 on the runner and silently OVERRODE the newer system tzdata, shifting Moroccan business dates by an hour
+  # (observed: tzdb=2025.2, Casablanca 2026-11-05 00:30 +01:00). scripts/check-timezone-runtime.php blocks the build if the
+  # runtime is wrong; bump this pin (and that script's table) only after reading a new legal decree.
+  PHP_EXTENSIONS: bcmath, ctype, dom, fileinfo, filter, gd, hash, iconv, json, libxml, mbstring, openssl, pcntl, pdo_mysql, pdo_sqlite, phar, session, sqlite3, tokenizer, xml, xmlreader, xmlwriter, zip
 
 jobs:
   php-tests:
@@ -51,6 +55,12 @@ jobs:
           extensions: ${{ env.PHP_EXTENSIONS }}
           coverage: none
           tools: composer:v2
+
+      - name: Install pinned timezonedb (verified, no fallback)
+        uses: ./.github/actions/install-timezonedb
+
+      - name: Verify Morocco's legal time in this PHP runtime (blocking)
+        run: php scripts/check-timezone-runtime.php
 
       - name: Locate the Composer cache
         id: composer-cache
@@ -168,6 +178,12 @@ jobs:
           coverage: none
           tools: composer:v2
 
+      - name: Install pinned timezonedb (verified, no fallback)
+        uses: ./.github/actions/install-timezonedb
+
+      - name: Verify Morocco's legal time in this PHP runtime (blocking)
+        run: php scripts/check-timezone-runtime.php
+
       - name: Locate the Composer cache
         id: composer-cache
         run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
@@ -216,7 +232,7 @@ jobs:
             --display-warnings --display-deprecations --display-notices --display-skipped \
             --log-junit build/phpunit-mysql-junit.xml \
             tests/Feature/Finance tests/Feature/Payments tests/Feature/Documents tests/Feature/Sales \
-            tests/Feature/Pos tests/Feature/Tenancy tests/Feature/Sandbox 2>&1 | tee build/phpunit-mysql-output.txt
+            tests/Feature/Pos tests/Feature/Tenancy tests/Feature/Sandbox tests/Feature/Exchanges tests/Feature/Contacts 2>&1 | tee build/phpunit-mysql-output.txt
 
       - name: Summarise failures as annotations
         if: failure()
@@ -267,6 +283,9 @@ jobs:
           extensions: ${{ env.PHP_EXTENSIONS }}
           coverage: none
           tools: composer:v2
+
+      - name: Install pinned timezonedb (verified, no fallback)
+        uses: ./.github/actions/install-timezonedb
 
       - name: Locate the Composer cache
         id: composer-cache
@@ -328,6 +347,37 @@ jobs:
       - name: Race - selective data reset
         run: php tests/Concurrency/selective_reset_race.php --rounds=2 --database=commerce_erp_race_test
 
+      - name: Race - fiscal numbering around the calendar-year boundary (F-02)
+        run: php tests/Concurrency/fiscal_year_boundary_race.php --sessions=4 --database=commerce_erp_race_test
+
+      - name: Race - invoice issuance against month closing (F-03)
+        run: php tests/Concurrency/closed_period_race.php --invoices=6 --database=commerce_erp_race_test
+
+
+      - name: Race - concurrent outgoing payments must not over-allocate an obligation
+        run: php tests/Concurrency/finance_outgoing_overpayment_race.php --payers=4 --rounds=4 --database=commerce_erp_race_test
+
+      - name: Race - customer settlements must not over-allocate an order and credit limits cannot be bypassed
+        run: php tests/Concurrency/customer_settlement_credit_race.php --sessions=4 --rounds=3 --database=commerce_erp_race_test
+
+      - name: Race - supplier invoice approval (same draft, and against month closing)
+        run: php tests/Concurrency/supplier_invoice_approval_race.php --sessions=6 --database=commerce_erp_race_test
+
+      - name: Race - supplier invoice void against payments on its obligation
+        run: php tests/Concurrency/supplier_invoice_void_vs_payment_race.php --payers=4 --rounds=12 --database=commerce_erp_race_test
+
+      - name: Race - supplier invoice duplicate number and client operation id
+        run: php tests/Concurrency/supplier_invoice_duplicate_race.php --sessions=6 --database=commerce_erp_race_test
+
+      - name: Race - order correction against competing reservations
+        run: php tests/Concurrency/order_correction_race.php --rivals=4 --rounds=3 --database=commerce_erp_race_test
+
+      - name: Race - exchange settlement, fulfilment and cancellation (Phase 1 Step 5)
+        run: php tests/Concurrency/exchange_settlement_race.php --rivals=4 --rounds=1 --database=commerce_erp_race_test
+
+      - name: Race - unified contacts role / profile activation and custom role / payment term creation
+        run: php tests/Concurrency/contacts_activation_race.php --sessions=6 --rounds=3 --database=commerce_erp_race_test
+
   frontend:
     name: Frontend (typecheck and production build)
     runs-on: ubuntu-24.04
@@ -351,6 +401,11 @@ jobs:
       - name: Typecheck
         run: npx tsc --noEmit
 
+      - name: Frontend unit and SSR render tests (not browser E2E)
+        # node:test over tests/Frontend/*.test.ts: pure-logic tests plus server-side renders via Vite's SSR loader.
+        # Offline and deterministic; no DOM or real browser, so interaction and server round-trips are not covered.
+        run: npm run test:frontend
+
       - name: Production build
         run: npm run build
 
@@ -372,6 +427,9 @@ jobs:
           extensions: ${{ env.PHP_EXTENSIONS }}
           coverage: none
           tools: composer:v2
+
+      - name: Install pinned timezonedb (verified, no fallback)
+        uses: ./.github/actions/install-timezonedb
 
       - name: Locate the Composer cache
         id: composer-cache
@@ -430,6 +488,9 @@ jobs:
           extensions: ${{ env.PHP_EXTENSIONS }}
           coverage: none
           tools: composer:v2
+
+      - name: Install pinned timezonedb (verified, no fallback)
+        uses: ./.github/actions/install-timezonedb
 
       - name: Locate the Composer cache
         id: composer-cache

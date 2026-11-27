@@ -4,7 +4,9 @@ namespace App\Services\OrganizationBackups;
 
 use App\Models\Organization;
 use App\Models\User;
+use App\Services\Finance\FiscalDocumentProtection;
 use App\Services\FollowUps\FollowUpAssignmentReleaser;
+use App\Support\Decimal;
 use Illuminate\Database\Connection;
 use Illuminate\Database\Query\JoinClause;
 use Illuminate\Support\Facades\DB;
@@ -18,7 +20,22 @@ class OrganizationBackupRestorer
         private readonly OrganizationBackupExporter $exporter,
         private readonly OrganizationBackupSchema $schema,
         private readonly FollowUpAssignmentReleaser $followUps,
+        private ?FiscalDocumentProtection $fiscal = null,
     ) {}
+
+    /**
+     * Fiscal documents the restore compares (id => immutable identity) per table:
+     * [document number column, status column, amount column].
+     *
+     * @var array<string, array{string, string, string}>
+     */
+    private const FISCAL_FINGERPRINT = [
+        'invoices' => ['invoice_number', 'status', 'total_incl_tax'],
+        'credit_notes' => ['credit_note_number', 'status', 'total_incl_tax'],
+        'payments' => ['payment_number', 'status', 'amount'],
+        'payment_refunds' => ['refund_number', 'status', 'amount'],
+        'finance_outgoing_payments' => ['payment_number', 'status', 'amount'],
+    ];
 
     /** @return array{pre_restore_path:string, manifest:array<string, mixed>} */
     public function restore(string $path, Organization $organization, User $actor): array
@@ -197,6 +214,8 @@ class OrganizationBackupRestorer
             throw new OrganizationBackupException('Manifeste de sauvegarde malformé.');
         }
 
+        $this->assertFiscalStatePreserved($zip, $tables, $organization);
+
         if (in_array('stores', $tables, true)) {
             $archiveStoreIds = $this->archiveIds($zip, 'stores', 'id');
             $currentStoreIds = DB::table('stores')->where('organization_id', $organization->getKey())->pluck('id')->map(fn ($id) => (int) $id)->all();
@@ -232,6 +251,109 @@ class OrganizationBackupRestorer
                 'La sauvegarde contient un état WooCommerce dont l’intégration parente n’existe plus.',
             );
         }
+    }
+
+    /**
+     * Phase 1 Step 10 (S-08). A restore REPLACES every restorable table of the organization, so restoring an
+     * older archive would silently delete or roll back fiscal documents (and re-open closed months) that exist
+     * today. For an organization under fiscal protection (FiscalDocumentProtection, the same definition the data
+     * resets use), refuse before any snapshot or mutation unless every protected document (issued invoice,
+     * issued credit note, payment, refund, outgoing payment) exists in the archive with the SAME id, number,
+     * status and amount, and every currently closed month is still closed in the archive. Test-mode
+     * organizations are exempt (nothing is protected there).
+     *
+     * @param  list<string>  $tables
+     */
+    private function assertFiscalStatePreserved(ZipArchive $zip, array $tables, Organization $organization): void
+    {
+        $this->fiscal ??= app(FiscalDocumentProtection::class);
+        $problems = [];
+
+        foreach (self::FISCAL_FINGERPRINT as $table => [$numberColumn, $statusColumn, $amountColumn]) {
+            $query = in_array($table, $tables, true) ? $this->fiscal->protectedQuery($organization, $table) : null;
+            if ($query === null) {
+                continue;
+            }
+            $archive = $this->archiveRows($zip, $table, ['id', $numberColumn, $statusColumn, $amountColumn]);
+            $missing = 0;
+            $changed = 0;
+            $samples = [];
+            $current = $query->select([$table.'.id', $table.'.'.$numberColumn.' as doc_number', $table.'.'.$statusColumn.' as doc_status', $table.'.'.$amountColumn.' as doc_amount'])
+                ->orderBy($table.'.id')->cursor();
+            foreach ($current as $document) {
+                $row = $archive[(int) $document->id] ?? null;
+                if ($row === null || (string) $row[$numberColumn] !== (string) $document->doc_number) {
+                    $missing++;
+                } elseif ((string) $row[$statusColumn] !== (string) $document->doc_status
+                    || Decimal::compare((string) $row[$amountColumn], (string) $document->doc_amount) !== 0) {
+                    $changed++;
+                } else {
+                    continue;
+                }
+                if (count($samples) < 5) {
+                    $samples[] = (string) $document->doc_number;
+                }
+            }
+            if ($missing + $changed > 0) {
+                $problems[] = "{$table}: {$missing} supprimé(s), {$changed} modifié(s) (ex. ".implode(', ', $samples).')';
+            }
+        }
+
+        if (in_array('finance_month_reviews', $tables, true) && $this->fiscal->isProtecting($organization)) {
+            $archive = $this->archiveRows($zip, 'finance_month_reviews', ['id', 'status']);
+            $reopened = [];
+            $closed = DB::table('finance_month_reviews')->where('organization_id', $organization->getKey())
+                ->where('status', 'closed')->orderBy('id')->get(['id', 'period']);
+            foreach ($closed as $review) {
+                if (($archive[(int) $review->id]['status'] ?? null) !== 'closed') {
+                    $reopened[] = substr((string) $review->period, 0, 7);
+                }
+            }
+            if ($reopened !== []) {
+                $problems[] = 'mois clôturés qui seraient rouverts : '.implode(', ', array_slice($reopened, 0, 5));
+            }
+        }
+
+        if ($problems !== []) {
+            throw new OrganizationBackupException(
+                'Restauration refusée : elle supprimerait ou modifierait des documents fiscaux protégés ('.implode(' ; ', $problems).'). '
+                .'Aucune donnée n’a été modifiée. Restaurez une sauvegarde plus récente ou traitez les données de test via le mode données de test.',
+            );
+        }
+    }
+
+    /**
+     * Streams one archive table into id => selected columns (only the requested keys are kept).
+     *
+     * @param  list<string>  $columns  must include 'id'
+     * @return array<int, array<string, mixed>>
+     */
+    private function archiveRows(ZipArchive $zip, string $table, array $columns): array
+    {
+        $stream = $zip->getStream("data/{$table}.jsonl");
+        if (! is_resource($stream)) {
+            throw new OrganizationBackupException('La sauvegarde est incomplète.');
+        }
+
+        $rows = [];
+        $lineLimit = max(1, (int) config('organization-backups.limits.jsonl_line_bytes'));
+        try {
+            while (($line = fgets($stream, $lineLimit + 2)) !== false) {
+                try {
+                    $row = json_decode($line, true, flags: JSON_THROW_ON_ERROR);
+                } catch (JsonException) {
+                    throw new OrganizationBackupException('Jeu de données de sauvegarde malformé.');
+                }
+                if (! is_array($row) || ! is_numeric($row['id'] ?? null)) {
+                    throw new OrganizationBackupException('Jeu de données de sauvegarde malformé.');
+                }
+                $rows[(int) $row['id']] = array_intersect_key($row + array_fill_keys($columns, null), array_flip($columns));
+            }
+        } finally {
+            fclose($stream);
+        }
+
+        return $rows;
     }
 
     /** @param list<int> $required @param list<int> $available */
@@ -391,11 +513,13 @@ class OrganizationBackupRestorer
 
             if ($table === 'organizations') {
                 $this->restoreOrganization($row, $organization);
+
                 continue;
             }
 
             if ($preserveExisting) {
                 DB::table($table)->updateOrInsert(['id' => $row['id']], $row);
+
                 continue;
             }
 

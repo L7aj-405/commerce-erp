@@ -1,14 +1,31 @@
+import { Alert } from '@/components/ui/Alert';
 import { useConfirm } from '@/components/ui/ConfirmDialog';
 import { Button } from '@/components/ui/Button';
 import { useFreshAuth } from '@/components/auth/FreshAuthProvider';
 import { FormBanner, TextField } from '@/components/ui/form';
 import { useI18n } from '@/i18n';
+import type { TranslationKey } from '@/i18n/translations';
 import { router } from '@inertiajs/react';
 import { useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 
 export type PermissionRow = { id: number; key: string; name: string };
 export type PermissionGroups = Record<string, PermissionRow[]>;
+/** U-5: server-owned presentation mapping (App\Support\Roles\RoleCapabilitySummary). */
+export type RoleCapabilityDefinition = { capabilities: Record<string, string[]>; conflicts: Record<string, string[]> };
+
+/** Same rules as RoleCapabilitySummary::summarize(): a capability = any of its permission keys; a conflict = all of its capabilities. */
+export function summarizeRole(definition: RoleCapabilityDefinition, keys: Iterable<string>) {
+    const held = new Set(keys);
+    const capabilities = Object.entries(definition.capabilities)
+        .filter(([, permissionKeys]) => permissionKeys.some((key) => held.has(key)))
+        .map(([id]) => id);
+    const conflicts = Object.entries(definition.conflicts)
+        .filter(([, required]) => required.every((id) => capabilities.includes(id)))
+        .map(([id]) => id);
+    return { capabilities, conflicts };
+}
+
 export type Preset = { slug: string; name: string; permissions: string[] };
 export type RoleSummary = {
     id: number;
@@ -23,6 +40,7 @@ export type RoleSummary = {
 type Props = {
     permissionGroups: PermissionGroups;
     presets: Preset[];
+    capabilityDefinition: RoleCapabilityDefinition;
     actorPermissions: string[];
     /** null = create mode */
     role: RoleSummary | null;
@@ -30,7 +48,7 @@ type Props = {
     onClose: () => void;
 };
 
-export default function RoleEditor({ permissionGroups, presets, actorPermissions, role, canAssignPermissions, onClose }: Props) {
+export default function RoleEditor({ permissionGroups, presets, capabilityDefinition, actorPermissions, role, canAssignPermissions, onClose }: Props) {
     const { t } = useI18n();
     const confirm = useConfirm();
     const { submit: submitProtected } = useFreshAuth();
@@ -51,6 +69,7 @@ export default function RoleEditor({ permissionGroups, presets, actorPermissions
     const [processing, setProcessing] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
+    const summary = useMemo(() => summarizeRole(capabilityDefinition, checked), [capabilityDefinition, checked]);
     const actorSet = useMemo(() => new Set(actorPermissions), [actorPermissions]);
     // Permissions the role already carries that the current admin does not
     // hold themselves. RolePermissionService::sync rejects a permission sync
@@ -215,6 +234,27 @@ export default function RoleEditor({ permissionGroups, presets, actorPermissions
                         </div>
                     </div>
                 )}
+
+                <div aria-live="polite">
+                    <span className="mb-1 block text-[13px] font-medium text-ink">{t('roles.summary.title')}</span>
+                    <p className="mb-2 text-[12px] text-ink-muted">{t('roles.summary.hint')}</p>
+                    {summary.capabilities.length === 0 ? (
+                        <p className="rounded-field border border-line bg-raised px-3 py-2 text-[13px] text-ink-muted">{t('roles.summary.empty')}</p>
+                    ) : (
+                        <ul className="list-disc space-y-0.5 ps-5 text-[13px] text-ink">
+                            {summary.capabilities.map((id) => (
+                                <li key={id}>{t(`roles.cap.${id}` as TranslationKey)}</li>
+                            ))}
+                        </ul>
+                    )}
+                    {summary.conflicts.map((id) => (
+                        <div key={id} className="mt-3">
+                            <Alert tone="warning" title={t(`roles.conflict.${id}.title` as TranslationKey)}>
+                                {t(`roles.conflict.${id}.body` as TranslationKey)}
+                            </Alert>
+                        </div>
+                    ))}
+                </div>
 
                 <div>
                     <span className="mb-2 block text-[13px] font-medium text-ink">

@@ -14,6 +14,7 @@ use App\Services\AuditLogger;
 use App\Services\Catalog\CatalogProductDataValidator;
 use App\Services\Mcp\McpExecutionContext;
 use App\Services\Mcp\McpIdempotencyService;
+use App\Services\Mcp\McpProductionNotice;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Cache\LockTimeoutException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -63,10 +64,14 @@ final class ProductWriteTools
         return $this->execute('create_product', function () use ($data, $idempotency_key) {
             $this->context->authorize('products.create');
             $this->assertFields($data, [...McpProductChangeService::PRODUCT_FIELDS, 'variant']);
-            if (! is_array($data['variant'] ?? null)) throw new InvalidArgumentException('variant_required');
+            if (! is_array($data['variant'] ?? null)) {
+                throw new InvalidArgumentException('variant_required');
+            }
             $this->assertFields($data['variant'], McpProductChangeService::CREATE_VARIANT_FIELDS);
             $withCost = array_key_exists('purchase_price', $data['variant']);
-            if ($withCost) $this->context->authorize('product_cost.manage');
+            if ($withCost) {
+                $this->context->authorize('product_cost.manage');
+            }
             // Canonical request without the unique rules: a replay must not fail on the SKU its own first call created.
             $request = $this->validator->product($data, $this->organizationId(), true, $withCost, checkUniqueness: false);
 
@@ -91,7 +96,9 @@ final class ProductWriteTools
             $this->context->authorize('products.create');
             $this->assertFields($data, McpProductChangeService::CREATE_VARIANT_FIELDS);
             $withCost = array_key_exists('purchase_price', $data);
-            if ($withCost) $this->context->authorize('product_cost.manage');
+            if ($withCost) {
+                $this->context->authorize('product_cost.manage');
+            }
             $product = $this->product($product_id);
             $request = $this->validator->variant($data, $this->organizationId(), null, $withCost, checkUniqueness: false);
 
@@ -181,7 +188,7 @@ final class ProductWriteTools
     private function execute(string $tool, callable $callback): CallToolResult
     {
         try {
-            return $this->success($callback());
+            return $this->success(McpProductionNotice::annotate($tool, $callback()));
         } catch (AuthorizationException) {
             return $this->error('MCP_FORBIDDEN', 'The connection is not authorized to use this capability.');
         } catch (ModelNotFoundException) {
@@ -227,7 +234,9 @@ final class ProductWriteTools
     private function error(string $code, string $message, array $details = []): CallToolResult
     {
         $error = ['code' => $code, 'message' => $message];
-        if ($details !== []) $error['details'] = $details;
+        if ($details !== []) {
+            $error['details'] = $details;
+        }
         $payload = ['ok' => false, 'error' => $error];
 
         return new CallToolResult([new TextContent($payload)], isError: true, structuredContent: $payload);
@@ -236,15 +245,21 @@ final class ProductWriteTools
     /** @param array<string, mixed> $data @param list<string> $allowed */
     private function assertFields(array $data, array $allowed): void
     {
-        if (array_diff(array_keys($data), $allowed) !== []) throw new InvalidArgumentException('forbidden_fields');
+        if (array_diff(array_keys($data), $allowed) !== []) {
+            throw new InvalidArgumentException('forbidden_fields');
+        }
     }
 
     private function product(int $id, bool $lock = false): Product
     {
         $query = Product::query()->where('organization_id', $this->organizationId())->whereKey($id);
-        if ($lock) $query->lockForUpdate();
+        if ($lock) {
+            $query->lockForUpdate();
+        }
         $product = $query->first();
-        if (! $product) throw (new ModelNotFoundException)->setModel(Product::class, [$id]);
+        if (! $product) {
+            throw (new ModelNotFoundException)->setModel(Product::class, [$id]);
+        }
 
         return $product;
     }
@@ -252,9 +267,13 @@ final class ProductWriteTools
     private function variant(int $id, bool $lock = false): ProductVariant
     {
         $query = ProductVariant::query()->where('organization_id', $this->organizationId())->whereKey($id);
-        if ($lock) $query->lockForUpdate();
+        if ($lock) {
+            $query->lockForUpdate();
+        }
         $variant = $query->first();
-        if (! $variant) throw (new ModelNotFoundException)->setModel(ProductVariant::class, [$id]);
+        if (! $variant) {
+            throw (new ModelNotFoundException)->setModel(ProductVariant::class, [$id]);
+        }
 
         return $variant;
     }

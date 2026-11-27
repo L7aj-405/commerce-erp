@@ -2,6 +2,8 @@
 
 namespace Tests\Feature\Fulfillment;
 
+use App\Actions\Documents\CreateFullDeliveryNoteFromSalesOrderAction;
+use App\Actions\Documents\IssueDeliveryNoteAction;
 use App\Actions\Fulfillment\AttachFulfillmentProofAction;
 use App\Actions\Fulfillment\CancelFulfillmentAction;
 use App\Actions\Fulfillment\CloseFulfillmentAction;
@@ -34,6 +36,7 @@ use App\Models\SalesOrderLine;
 use App\Models\Store;
 use App\Models\User;
 use App\Models\Warehouse;
+use App\Services\Fulfillment\FulfillmentQuery;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Arr;
@@ -196,6 +199,8 @@ class FulfillmentTest extends SalesTestCase
         app(CancelFulfillmentAction::class)->execute($this->owner, $this->order, $cancelled, 'Client a changé d’avis');
         $this->assertSame(FulfillmentStatus::Cancelled, $cancelled->fresh()->status);
         $this->assertStock(onHand: '10.0000', reserved: '5.0000');
+        // INV-15 / S-09: the status change is audited through FulfillmentEngine::record (the action has no audit call itself).
+        $this->assertDatabaseHas('audit_logs', ['event' => 'fulfillment.cancelled', 'auditable_id' => (string) $cancelled->getKey(), 'organization_id' => $this->order->organization_id]);
 
         $fulfillment = app(StartFulfillmentPreparationAction::class)->execute($this->owner, $this->order, [$this->line->id => '5']);
         app(MarkFulfillmentReadyAction::class)->execute($this->owner, $this->order, $fulfillment);
@@ -239,8 +244,8 @@ class FulfillmentTest extends SalesTestCase
     {
         // A Bon de livraison is only a document: no shipment, stock untouched.
         $this->activate($this->owner, $this->organization, $this->store);
-        $note = app(\App\Actions\Documents\CreateFullDeliveryNoteFromSalesOrderAction::class)->execute($this->owner, $this->order->fresh(), ['delivery_date' => '2026-10-29']);
-        app(\App\Actions\Documents\IssueDeliveryNoteAction::class)->execute($this->owner, $note);
+        $note = app(CreateFullDeliveryNoteFromSalesOrderAction::class)->execute($this->owner, $this->order->fresh(), ['delivery_date' => '2026-10-29']);
+        app(IssueDeliveryNoteAction::class)->execute($this->owner, $note);
         $this->assertSame(0, Fulfillment::query()->count());
         $this->assertSame(SalesOrderFulfillmentStatus::Unfulfilled, $this->order->fresh()->fulfillment_status);
         $this->assertStock(onHand: '10.0000', reserved: '5.0000');
@@ -375,7 +380,7 @@ class FulfillmentTest extends SalesTestCase
     /** @return array<string, mixed> */
     private function page(): array
     {
-        return app(\App\Services\Fulfillment\FulfillmentQuery::class)->forOrder($this->order->fresh(), $this->owner);
+        return app(FulfillmentQuery::class)->forOrder($this->order->fresh(), $this->owner);
     }
 
     private function setMode(string $mode): void

@@ -286,7 +286,7 @@ class PosDraftAbandonmentTest extends PosTestCase
         // A cancelled order that was once confirmed keeps its record (shown under « Annulées »).
         $this->actingAs($this->owner)->post("/sales/orders/{$draft}/cancel", ['reason' => 'x'])->assertSessionHasNoErrors();
         DB::table('sales_orders')->where('id', $draft)->update(['confirmed_at' => now()->subDay()]);
-        $this->actingAs($this->owner)->delete("/sales/orders/{$draft}")->assertSessionHasErrors('order');
+        $this->actingAs($this->owner)->delete("/sales/orders/{$draft}")->assertForbidden();
 
         $this->assertNotNull(SalesOrder::query()->find($draft));
         $this->actingAs($this->owner)->get('/sales/orders?status=cancelled')->assertInertia(fn (Assert $page) => $page

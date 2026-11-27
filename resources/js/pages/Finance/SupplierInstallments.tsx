@@ -6,6 +6,7 @@ import Pagination from "@/components/ui/Pagination";
 import { Sheet } from "@/components/ui/Sheet";
 import ApplicationShell from "@/layouts/ApplicationShell";
 import { useI18n } from "@/i18n";
+import { useBusinessToday } from "@/utils/businessDate";
 import { formatDate, formatMoney } from "@/utils/format";
 import { Head, router, useForm } from "@inertiajs/react";
 import { type FormEvent, useMemo, useState } from "react";
@@ -51,7 +52,7 @@ type Props = {
 };
 const input = 'control-input w-full';
 const selectClass = 'control-select w-full';
-const blank = (currency: string) => ({
+const blank = (currency: string, today: string) => ({
     supplier_id: "",
     sales_order_procurement_id: "",
     store_id: "",
@@ -63,7 +64,7 @@ const blank = (currency: string) => ({
     preferred_financial_account_id: "",
     notes: "",
     installments: [
-        { due_date: new Date().toISOString().slice(0, 10), amount: "" },
+        { due_date: today, amount: "" },
     ],
 });
 const scaled = (value: string) => {
@@ -77,7 +78,9 @@ export default function SupplierInstallments(props: Props) {
     const { t } = useI18n();
     const [creating, setCreating] = useState(false);
     const [search, setSearch] = useState(props.filters.search ?? "");
-    const form = useForm(blank(props.currencyCode));
+    // The organization's business date (server-computed), never the browser's UTC date.
+    const businessToday = useBusinessToday();
+    const form = useForm(blank(props.currencyCode, businessToday));
     const rowsTotal = useMemo(() => {
         try {
             return decimal(
@@ -123,7 +126,7 @@ export default function SupplierInstallments(props: Props) {
                         {props.canManage && (
                             <Button
                                 onClick={() => {
-                                    form.setData(blank(props.currencyCode));
+                                    form.setData(blank(props.currencyCode, businessToday));
                                     setCreating(true);
                                 }}
                             >

@@ -32,7 +32,7 @@ class RefundCustomerReturnAction
         app(SandboxContext::class)->assertSameEnvironment($customerReturn->sandbox_id);
         abort_unless($actor->active_organization_id === $customerReturn->organization_id && $actor->active_store_id === $customerReturn->store_id, 404);
         abort_unless($customerReturn->store()->whereHas('memberships', fn ($query) => $query->where('user_id', $actor->id))->exists(), 404);
-        abort_unless($actor->hasPermission($customerReturn->organization_id, 'payments.reverse'), 403);
+        abort_unless($actor->hasPermission($customerReturn->organization_id, 'payments.refund'), 403);
         // The payment must live in the same ledger as the return (Test payments only refund Test returns).
         abort_unless($payment->isSandboxInventory() === app(SandboxContext::class)->isSandbox(), 404);
         $amount = Decimal::positive($amount);

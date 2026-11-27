@@ -8,6 +8,7 @@ use App\Models\Quotation;
 use App\Models\User;
 use App\Services\AuditLogger;
 use App\Services\QuotationDocumentSettings;
+use App\Support\BusinessTime;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -33,7 +34,7 @@ class DuplicateQuotationAction
         return DB::transaction(function () use ($actor, $source) {
             $source->loadMissing('lines');
             $devisSettings = $this->settings->settings($source->organization);
-            $today = now()->toDateString();
+            $today = BusinessTime::today($source->organization);
 
             $copy = $source->replicate([
                 'quotation_number', 'status', 'seller_snapshot', 'issued_at', 'issued_by_user_id',

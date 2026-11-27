@@ -2,22 +2,24 @@
 
 namespace App\Actions\Sales;
 
-use App\Actions\Inventory\CreateOrderTransferRequestsAction;
 use App\Actions\Commissions\GenerateSalesOrderCommissionEntriesAction;
+use App\Actions\Inventory\CreateOrderTransferRequestsAction;
 use App\Actions\Sales\Concerns\AuthorizesSalesAction;
+use App\Enums\InventoryReservationStatus;
 use App\Enums\SalesOrderLineType;
 use App\Enums\SalesOrderSource;
 use App\Enums\SalesOrderStatus;
-use App\Enums\InventoryReservationStatus;
-use App\Models\SalesOrder;
 use App\Models\InventoryReservation;
 use App\Models\ProcurementReceipt;
+use App\Models\SalesOrder;
 use App\Models\SalesOrderInventoryAllocation;
 use App\Models\SalesOrderLine;
 use App\Models\SalesOrderProcurement;
 use App\Models\User;
 use App\Services\AuditLogger;
+use App\Services\Finance\CustomerCreditGuard;
 use App\Services\InventoryReservationManager;
+use App\Services\Policies\PolicyResolver;
 use App\Services\PosStockAllocator;
 use App\Services\Procurement\SalesOrderProcurementPlanner;
 use App\Services\SalesOrderPaymentCalculator;
@@ -25,6 +27,7 @@ use App\Services\SalesOrderRevisionSnapshot;
 use App\Services\SalesOrderTotalsCalculator;
 use App\Services\SalespersonEligibilityService;
 use App\Support\Decimal;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -44,6 +47,8 @@ class ConfirmSalesOrderAction
         private readonly GenerateSalesOrderCommissionEntriesAction $commissions,
         private readonly SalesOrderProcurementPlanner $procurementPlanner,
         private readonly AuditLogger $audit,
+        private readonly PolicyResolver $policies,
+        private readonly CustomerCreditGuard $credit,
     ) {}
 
     /**
@@ -56,9 +61,9 @@ class ConfirmSalesOrderAction
      * the oldest one (release + increase under the balance lock — the reserved
      * quantity never changes) so the line adopts exactly one per warehouse.
      *
-     * @return \Illuminate\Support\Collection<int, InventoryReservation>
+     * @return Collection<int, InventoryReservation>
      */
-    private function receiptHoldings(User $actor, SalesOrder $order, SalesOrderLine $line): \Illuminate\Support\Collection
+    private function receiptHoldings(User $actor, SalesOrder $order, SalesOrderLine $line): Collection
     {
         $procurements = $line->procurements->filter(fn (SalesOrderProcurement $p) => Decimal::compare((string) $p->received_quantity, '0') > 0);
         if ($procurements->isEmpty()) {
@@ -95,6 +100,9 @@ class ConfirmSalesOrderAction
 
         return DB::transaction(function () use ($actor, $order) {
             $order = SalesOrder::query()->whereKey($order->getKey())->lockForUpdate()->firstOrFail();
+            // Credit control: take the per-customer lock BEFORE any consistent read, so the exposure the check later reads is
+            // never an older InnoDB snapshot than the commitments a concurrent confirmation just committed.
+            $this->credit->lockCustomer($order);
             if ($order->status !== SalesOrderStatus::Draft) {
                 throw ValidationException::withMessages(['order' => 'Only a draft order can be confirmed.']);
             }
@@ -130,6 +138,7 @@ class ConfirmSalesOrderAction
             // A POS cart converted to a Sales Order Draft left the instant-sale
             // path: its company portion is re-derived like any manual order.
             $isManual = $order->source !== SalesOrderSource::Pos || $order->pos_converted_at !== null;
+            $correcting = $revision && $revision->status === 'in_progress';
             $allocations = collect();
             $increases = [];
             foreach ($lines as $line) {
@@ -197,7 +206,11 @@ class ConfirmSalesOrderAction
                 // partly supplier-sourced the company portion must be re-derived
                 // authoritatively — company stock may have moved since the cart
                 // was opened.
-                if ($isManual || Decimal::compare($supplierCovered, '0') > 0 || $held->isNotEmpty()) {
+                // A line re-confirmed at the end of a commercial correction is always
+                // re-derived: StartSalesOrderCorrectionAction released its reservations,
+                // and a surviving allocation row would collide with that released
+                // reservation (reference unique key) instead of reserving stock again.
+                if ($isManual || $correcting || Decimal::compare($supplierCovered, '0') > 0 || $held->isNotEmpty()) {
                     // A draft allocation never carries a reservation: one that does
                     // belongs to something else and is never silently discarded.
                     if ($line->allocations->contains(fn (SalesOrderInventoryAllocation $allocation) => $allocation->inventory_reservation_id !== null)) {
@@ -293,10 +306,12 @@ class ConfirmSalesOrderAction
             // commitment, after all authoritative line calculations succeed.
             $this->marginSnapshots->execute($order, $lines);
 
+            // Finance clients: customer credit control (off by default; first confirmation only; serialized per customer).
+            $this->credit->assertCanConfirm($actor, $order);
             $order->status = SalesOrderStatus::Confirmed;
             $order->confirmed_at = now();
             // W4.5 payment term, stamped once (a revision re-confirming the order keeps it).
-            $order->due_date ??= $order->sale_date->copy()->addDays(max(0, (int) config('payments.sales_order_payment_term_days', 7)));
+            $order->due_date ??= $order->sale_date->copy()->addDays($this->credit->paymentTermDays($order) ?? $this->policies->salesOrderPaymentTermDays($order->organization));
             $order->confirmed_by_user_id = $actor->getKey();
             $order->save();
 

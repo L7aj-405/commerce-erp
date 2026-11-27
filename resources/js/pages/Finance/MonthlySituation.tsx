@@ -2,6 +2,8 @@ import DatePicker from "@/components/ui/DatePicker";
 import FinanceFilters, {
     type FinanceStore,
 } from "@/components/finance/FinanceFilters";
+import { summarizePaymentAmount } from "@/components/finance/paymentAmount";
+import { isReasonBlank } from "@/components/finance/reasonValidation";
 import { useFreshAuth } from "@/components/auth/FreshAuthProvider";
 import { Button, ButtonLink, DownloadLink } from "@/components/ui/Button";
 import EmptyState from "@/components/ui/EmptyState";
@@ -51,6 +53,10 @@ type PaymentHistory = {
     reference: string | null;
     account: Entity | null;
     reversal_reason: string | null;
+    recorded_by: string | null;
+    recorded_at: string | null;
+    reversed_at: string | null;
+    reversed_by: string | null;
 };
 type Instrument = {
     id: number;
@@ -170,6 +176,9 @@ type Obligation = {
     recurring_template_id: number | null;
     recurring_period: string | null;
     committed_amount: string;
+    /** From the supplier-invoice integration (absent for legacy/manual obligations). */
+    supplier_invoice?: { id: number; internal_number: string; invoice_number: string } | null;
+    locked_by_invoice?: boolean;
     instruments: Instrument[];
 };
 type Paginator = {
@@ -204,6 +213,10 @@ type Props = {
         count: number;
         overdue_count: number;
     };
+    breakdown: Record<
+        "current_month" | "carried_forward" | "inclusive",
+        { planned: string; paid: string; remaining: string; count: number }
+    >;
     obligations: Paginator;
     futureObligations: FutureObligation[];
     recurringTemplatesCount: number;
@@ -476,8 +489,12 @@ export default function MonthlySituation(props: Props) {
                 onSuccess: () => setCreating(false),
             });
     };
+    const paymentSummary = paying
+        ? summarizePaymentAmount(paying, paymentForm.data.amount)
+        : null;
     const submitPayment = (event: FormEvent) => {
         event.preventDefault();
+        if (paymentSummary?.problem) return;
         paymentForm.clearErrors();
         void submitProtected({
             method: "post", url: "/finance/situation-fin-de-mois/outgoing-payments", data: paymentForm.data,
@@ -784,6 +801,61 @@ export default function MonthlySituation(props: Props) {
                     }
                 />
             </div>
+
+            <section
+                className="surface-card mb-6 overflow-hidden p-0"
+                aria-labelledby="fin-breakdown-title"
+            >
+                <div className="px-4 pt-4">
+                    <h2 id="fin-breakdown-title" className="text-sm font-semibold">
+                        {t("finance.monthEnd.breakdown.title")} · {props.periodLabel}
+                    </h2>
+                </div>
+                <div className="overflow-x-auto">
+                    <table className="erp-table min-w-[520px]">
+                        <thead>
+                            <tr>
+                                <th className="px-4 py-3 font-semibold" />
+                                <th className="num px-4 py-3 font-semibold">
+                                    {t("finance.monthEnd.planned")}
+                                </th>
+                                <th className="num px-4 py-3 font-semibold">
+                                    {t("orders.show.paid")}
+                                </th>
+                                <th className="num px-4 py-3 font-semibold">
+                                    {t("orders.show.remaining")}
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {(
+                                [
+                                    ["current_month", "currentMonth"],
+                                    ["carried_forward", "carriedForward"],
+                                    ["inclusive", "inclusive"],
+                                ] as const
+                            ).map(([key, label]) => (
+                                <tr
+                                    key={key}
+                                    className={key === "inclusive" ? "font-semibold" : ""}
+                                >
+                                    <th scope="row" className="px-4 py-3 text-start font-medium">
+                                        {t(`finance.monthEnd.breakdown.${label}`)}
+                                    </th>
+                                    {(["planned", "paid", "remaining"] as const).map((field) => (
+                                        <td key={field} className="num px-4 py-3">
+                                            {formatMoney(props.breakdown[key][field], currencyCode)}
+                                        </td>
+                                    ))}
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+                <p className="px-4 pb-4 pt-2 text-xs text-ink-muted">
+                    {t("finance.monthEnd.breakdown.hint")}
+                </p>
+            </section>
 
             {props.treasury.mode !== "historical" && (
                 <div className="surface-card mb-6 p-4 text-sm">
@@ -1410,6 +1482,26 @@ export default function MonthlySituation(props: Props) {
                                                                 p.method,
                                                         )?.label ?? p.method}
                                                     </p>
+                                                    <p className="text-xs text-ink-muted">
+                                                        {t("common.reference")}
+                                                        {" : "}
+                                                        {p.reference ?? "—"}
+                                                    </p>
+                                                    <p className="text-xs text-ink-muted">
+                                                        {t("finance.monthEnd.recordedBy")}
+                                                        {" : "}
+                                                        {p.recorded_by ?? "—"}
+                                                        {p.recorded_at ? ` · ${formatDateTime(p.recorded_at)}` : ""}
+                                                    </p>
+                                                    {p.status !== "posted" && (
+                                                        <p className="text-xs text-ink-muted">
+                                                            {t("finance.monthEnd.reversedBy")}
+                                                            {" : "}
+                                                            {p.reversed_by ?? "—"}
+                                                            {p.reversed_at ? ` · ${formatDateTime(p.reversed_at)}` : ""}
+                                                            {p.reversal_reason ? ` · ${p.reversal_reason}` : ""}
+                                                        </p>
+                                                    )}
                                                 </div>
                                                 <div className="text-end">
                                                     <p className="font-semibold">
@@ -1593,14 +1685,44 @@ export default function MonthlySituation(props: Props) {
                             )}
                         </section>
                         <div className="flex flex-wrap gap-2">
+                            {detail.locked_by_invoice && (
+                                <div
+                                    role="status"
+                                    className="w-full rounded-card border border-line bg-raised px-4 py-3 text-sm"
+                                >
+                                    <p className="font-semibold text-ink">
+                                        <span aria-hidden="true">🔒 </span>
+                                        {t("supplierInvoice.lock.title")}
+                                    </p>
+                                    <p className="mt-1 text-ink-muted">
+                                        {t("supplierInvoice.lock.body")}
+                                    </p>
+                                    {detail.supplier_invoice && (
+                                        <ButtonLink
+                                            href={`/finance/factures-fournisseurs/${detail.supplier_invoice.id}`}
+                                            variant="secondary"
+                                            size="sm"
+                                            className="mt-2"
+                                        >
+                                            {t("supplierInvoice.lock.open").replace(
+                                                "{number}",
+                                                detail.supplier_invoice.internal_number,
+                                            )}
+                                        </ButtonLink>
+                                    )}
+                                </div>
+                            )}
                             {can.manage && !detail.cancelled_at && (
                                 <Button
                                     variant="secondary"
+                                    disabled={detail.locked_by_invoice}
+                                    title={detail.locked_by_invoice ? t("supplierInvoice.lock.body") : undefined}
                                     onClick={() => {
                                         setDetail(null);
                                         openEdit(detail);
                                     }}
                                 >
+                                    {detail.locked_by_invoice && <span aria-hidden="true">🔒</span>}
                                     {t("common.edit")}
                                 </Button>
                             )}
@@ -1648,11 +1770,14 @@ export default function MonthlySituation(props: Props) {
                                 Number(detail.paid_amount) === 0 && (
                                     <Button
                                         variant="danger"
+                                        disabled={detail.locked_by_invoice}
+                                        title={detail.locked_by_invoice ? t("supplierInvoice.lock.body") : undefined}
                                         onClick={() => {
                                             setCancelling(detail);
                                             cancelForm.setData("reason", "");
                                         }}
                                     >
+                                        {detail.locked_by_invoice && <span aria-hidden="true">🔒</span>}
                                         {t("finance.monthEnd.cancelObligation")}
                                     </Button>
                                 )}
@@ -1683,6 +1808,7 @@ export default function MonthlySituation(props: Props) {
                             form="payment-form"
                             type="submit"
                             loading={protectedProcessing === "payment"}
+                            disabled={!!paymentSummary?.problem}
                         >
                             Comptabiliser
                         </Button>
@@ -1747,10 +1873,44 @@ export default function MonthlySituation(props: Props) {
                         value={paymentForm.data.amount}
                         onChange={syncPaymentAmount}
                         error={
+                            (paymentSummary?.problem
+                                ? t(`payment.amount.error.${paymentSummary.problem}`)
+                                : undefined) ||
                             paymentForm.errors.amount ||
                             paymentForm.errors.allocations
                         }
                     />
+                    {paymentSummary && paying && (
+                        <dl
+                            className="grid gap-1 rounded-lg border border-line p-3 text-sm"
+                            data-testid="payment-summary"
+                            aria-live="polite"
+                        >
+                            {(
+                                [
+                                    ["payment.amount.initial", paymentSummary.planned],
+                                    ["payment.amount.paid", paymentSummary.paid],
+                                    ["payment.amount.remaining", paymentSummary.available],
+                                    ["payment.amount.toPost", paymentSummary.amount ?? "0.0000"],
+                                ] as const
+                            ).map(([key, value]) => (
+                                <div key={key} className="flex justify-between gap-3">
+                                    <dt className="text-ink-muted">{t(key)}</dt>
+                                    <dd className="tabular-nums">{formatMoney(value, paying.currency_code)}</dd>
+                                </div>
+                            ))}
+                            <div className="flex justify-between gap-3 border-t border-line pt-1 font-semibold">
+                                <dt>{t("payment.amount.after")}</dt>
+                                <dd
+                                    className={`tabular-nums ${paymentSummary.problem === "exceeds" ? "text-danger" : ""}`}
+                                >
+                                    {paymentSummary.after === null
+                                        ? "—"
+                                        : formatMoney(paymentSummary.after, paying.currency_code)}
+                                </dd>
+                            </div>
+                        </dl>
+                    )}
                     <Field
                         label={t("common.reference")}
                         value={paymentForm.data.reference}
@@ -2659,6 +2819,15 @@ function Detail({ row }: { row: Obligation }) {
 }
 function ReasonSheet({ title, open, onClose, form, onSubmit }: any) {
     const { t } = useI18n();
+    const reasonMissing = isReasonBlank(form.data.reason);
+    // Guards every submit path (button click and Enter key); the server still validates.
+    const guardedSubmit = (e: FormEvent) => {
+        if (reasonMissing) {
+            e.preventDefault();
+            return;
+        }
+        onSubmit(e);
+    };
     return (
         <Sheet
             open={open}
@@ -2675,13 +2844,14 @@ function ReasonSheet({ title, open, onClose, form, onSubmit }: any) {
                         type="submit"
                         variant="danger"
                         loading={form.processing}
+                        disabled={reasonMissing || form.processing}
                     >
                         {t("common.confirm")}
                     </Button>
                 </div>
             }
         >
-            <form id="reason-form" onSubmit={onSubmit} className="p-5">
+            <form id="reason-form" onSubmit={guardedSubmit} className="p-5">
                 <TextArea
                     label={t("finance.monthEnd.reasonRequired")}
                     value={form.data.reason}

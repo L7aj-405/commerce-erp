@@ -46,7 +46,7 @@ class FinanceMonthlyReportService
         $ventes = $this->ventesTotal($organization, $period, $store);
         $facturationBrute = $this->facturationTotal($organization, $period, $store);
         $avoirs = $this->creditNotesTotal($organization, $period, $store);
-        $ventesNettes = Decimal::subtract($ventes, $avoirs);
+        $ventesNettes = $this->ventesNettesTotal($organization, $period, $store);
         $facturation = Decimal::subtract($facturationBrute, $avoirs);
         $encaissements = $this->encaissementsTotal($organization, $period, $store);
         $remboursements = $this->refundsTotal($organization, $period, $store);
@@ -96,6 +96,15 @@ class FinanceMonthlyReportService
                 'variance' => Decimal::subtract($positionFin, $expectedPositionFin),
             ],
         ];
+    }
+
+    /**
+     * THE authoritative "ventes nettes" definition (TTC sales minus issued credit notes of the period). The monthly situation KPI and the
+     * customer-finance trend both call it, so identical period / store filters always reconcile.
+     */
+    public function ventesNettesTotal(Organization $organization, FinancePeriod $period, ?Store $store): string
+    {
+        return Decimal::subtract($this->ventesTotal($organization, $period, $store), $this->creditNotesTotal($organization, $period, $store));
     }
 
     public function ventesTotal(
@@ -258,7 +267,7 @@ class FinanceMonthlyReportService
     {
         $orders = SalesOrder::query()
             ->where('organization_id', $organization->getKey())
-            ->when($store, fn($query) => $query->where('store_id', $store->getKey()))
+            ->when($store, fn ($query) => $query->where('store_id', $store->getKey()))
             ->where('status', SalesOrderStatus::Confirmed->value)
             ->whereBetween('sale_date', [$period->start->toDateString(), $period->end->toDateString()])
             ->orderBy('sale_date')->orderBy('id')
@@ -289,14 +298,14 @@ class FinanceMonthlyReportService
     {
         return Payment::query()
             ->where('organization_id', $organization->getKey())
-            ->when($store, fn($query) => $query->where('store_id', $store->getKey()))
+            ->when($store, fn ($query) => $query->where('store_id', $store->getKey()))
             ->where('status', PaymentStatus::Posted->value)
             ->whereDate('payment_date', '>=', $period->start->toDateString())
             ->whereDate('payment_date', '<=', $period->end->toDateString())
             ->with(['financialAccount:id,name,code,type', 'allocations.salesOrder:id,order_number,customer_name,customer_company'])
             ->orderBy('payment_date')->orderBy('id')
             ->paginate($perPage)->withQueryString()
-            ->through(fn(Payment $payment) => [
+            ->through(fn (Payment $payment) => [
                 'id' => $payment->id,
                 'payment_number' => $payment->payment_number,
                 'payment_date' => $payment->payment_date->toDateString(),
@@ -313,7 +322,7 @@ class FinanceMonthlyReportService
     {
         return PaymentRefund::query()
             ->where('organization_id', $organization->getKey())
-            ->when($store, fn($query) => $query->where('store_id', $store->getKey()))
+            ->when($store, fn ($query) => $query->where('store_id', $store->getKey()))
             ->where('status', 'posted')
             ->whereDate('refund_date', '>=', $period->start->toDateString())
             ->whereDate('refund_date', '<=', $period->end->toDateString())
@@ -321,7 +330,7 @@ class FinanceMonthlyReportService
             ->orderByDesc('refund_date')->orderByDesc('id')
             ->paginate($perPage, ['*'], 'refund_page')
             ->withQueryString()
-            ->through(fn(PaymentRefund $refund) => [
+            ->through(fn (PaymentRefund $refund) => [
                 'id' => $refund->id,
                 'refund_number' => $refund->refund_number,
                 'refund_date' => $refund->refund_date->toDateString(),
@@ -344,13 +353,13 @@ class FinanceMonthlyReportService
     {
         return SalesOrder::query()
             ->where('organization_id', $organization->getKey())
-            ->when($store, fn($query) => $query->where('store_id', $store->getKey()))
+            ->when($store, fn ($query) => $query->where('store_id', $store->getKey()))
             ->where('status', SalesOrderStatus::Confirmed->value)
             ->whereDate('sale_date', '>=', $period->start->toDateString())
             ->whereDate('sale_date', '<=', $period->end->toDateString())
             ->orderBy('sale_date')->orderBy('id')
             ->cursor()
-            ->map(fn(SalesOrder $order) => [
+            ->map(fn (SalesOrder $order) => [
                 'order_number' => $order->order_number,
                 'sale_date' => $order->sale_date->toDateString(),
                 'customer' => trim($order->customer_company ?: $order->customer_name ?: '') ?: '—',
@@ -376,7 +385,7 @@ class FinanceMonthlyReportService
             ->leftJoin('payment_allocations', 'payment_allocations.payment_id', '=', 'payments.id')
             ->leftJoin('sales_orders', 'sales_orders.id', '=', 'payment_allocations.sales_order_id')
             ->where('payments.organization_id', $organization->getKey())
-            ->when($store, fn($query) => $query->where('payments.store_id', $store->getKey()))
+            ->when($store, fn ($query) => $query->where('payments.store_id', $store->getKey()))
             ->where('payments.status', PaymentStatus::Posted->value)
             ->whereDate('payments.payment_date', '>=', $period->start->toDateString())
             ->whereDate('payments.payment_date', '<=', $period->end->toDateString())
@@ -392,7 +401,7 @@ class FinanceMonthlyReportService
                 'sales_orders.customer_company',
             ])
             ->cursor()
-            ->map(fn($row) => [
+            ->map(fn ($row) => [
                 'payment_number' => $row->payment_number,
                 'payment_date' => $row->payment_date,
                 'method' => PaymentMethod::from($row->method)->documentLabel(),
@@ -412,7 +421,7 @@ class FinanceMonthlyReportService
             ->whereNull('sales_orders.sandbox_id')->join('sales_orders', 'sales_orders.id', '=', 'credit_notes.sales_order_id')
             ->leftJoin('customer_return_lines', 'customer_return_lines.id', '=', 'credit_note_lines.customer_return_line_id')
             ->where('credit_notes.organization_id', $organization->getKey())
-            ->when($store, fn($query) => $query->where('credit_notes.store_id', $store->getKey()))
+            ->when($store, fn ($query) => $query->where('credit_notes.store_id', $store->getKey()))
             ->where('credit_notes.status', 'issued')
             ->whereDate('credit_notes.credit_note_date', '>=', $period->start->toDateString())
             ->whereDate('credit_notes.credit_note_date', '<=', $period->end->toDateString())
@@ -440,7 +449,7 @@ class FinanceMonthlyReportService
                 'credit_note_lines.tax_rate',
                 'credit_note_lines.tax_amount',
                 'credit_note_lines.total_incl_tax',
-            ])->cursor()->map(fn($row) => [
+            ])->cursor()->map(fn ($row) => [
                 'credit_note_id' => (int) $row->credit_note_id,
                 'credit_note_number' => $row->credit_note_number,
                 'credit_note_date' => (string) $row->credit_note_date,
@@ -470,7 +479,7 @@ class FinanceMonthlyReportService
         $invoices = DB::table('invoices')->whereNull('invoices.sandbox_id')
             ->whereNull('sales_orders.sandbox_id')->join('sales_orders', 'sales_orders.id', '=', 'invoices.sales_order_id')
             ->where('invoices.organization_id', $organization->getKey())
-            ->when($store, fn($query) => $query->where('invoices.store_id', $store->getKey()))
+            ->when($store, fn ($query) => $query->where('invoices.store_id', $store->getKey()))
             ->where('invoices.status', InvoiceStatus::Issued->value)
             ->whereDate('invoices.invoice_date', '>=', $period->start->toDateString())
             ->whereDate('invoices.invoice_date', '<=', $period->end->toDateString())
@@ -491,7 +500,7 @@ class FinanceMonthlyReportService
             ->join('invoices', 'invoices.id', '=', 'credit_notes.invoice_id')
             ->whereNull('sales_orders.sandbox_id')->join('sales_orders', 'sales_orders.id', '=', 'credit_notes.sales_order_id')
             ->where('credit_notes.organization_id', $organization->getKey())
-            ->when($store, fn($query) => $query->where('credit_notes.store_id', $store->getKey()))
+            ->when($store, fn ($query) => $query->where('credit_notes.store_id', $store->getKey()))
             ->where('credit_notes.status', 'issued')
             ->whereDate('credit_notes.credit_note_date', '>=', $period->start->toDateString())
             ->whereDate('credit_notes.credit_note_date', '<=', $period->end->toDateString())
@@ -540,7 +549,7 @@ class FinanceMonthlyReportService
             ->whereNull('sales_orders.sandbox_id')->join('sales_orders', 'sales_orders.id', '=', 'payment_refunds.sales_order_id')
             ->leftJoin('customer_returns', 'customer_returns.id', '=', 'payment_refunds.customer_return_id')
             ->where('payment_refunds.organization_id', $organization->getKey())
-            ->when($store, fn($query) => $query->where('payment_refunds.store_id', $store->getKey()))
+            ->when($store, fn ($query) => $query->where('payment_refunds.store_id', $store->getKey()))
             ->where('payment_refunds.status', 'posted')
             ->whereDate('payment_refunds.refund_date', '>=', $period->start->toDateString())
             ->whereDate('payment_refunds.refund_date', '<=', $period->end->toDateString())
@@ -558,14 +567,14 @@ class FinanceMonthlyReportService
                 'sales_orders.customer_name',
                 'sales_orders.customer_company',
                 'customer_returns.return_number',
-            ])->cursor()->map(fn($row) => [
+            ])->cursor()->map(fn ($row) => [
                 'refund_number' => $row->refund_number,
                 'refund_date' => (string) $row->refund_date,
                 'method' => PaymentMethod::from($row->method)->documentLabel(),
                 'amount' => Decimal::normalize((string) $row->amount),
                 'reason' => $row->reason,
                 'payment_number' => $row->payment_number,
-                'financial_account' => trim($row->financial_account_code . ' ' . $row->financial_account_name),
+                'financial_account' => trim($row->financial_account_code.' '.$row->financial_account_name),
                 'order_number' => $row->order_number,
                 'customer' => $row->customer_company ?: $row->customer_name,
                 'return_number' => $row->return_number,
@@ -576,6 +585,6 @@ class FinanceMonthlyReportService
     {
         return DB::table($table)
             ->where('organization_id', $organization->getKey())
-            ->when($store, fn($query) => $query->where('store_id', $store->getKey()));
+            ->when($store, fn ($query) => $query->where('store_id', $store->getKey()));
     }
 }

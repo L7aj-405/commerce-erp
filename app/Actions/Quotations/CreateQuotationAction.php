@@ -14,6 +14,7 @@ use App\Services\AuditLogger;
 use App\Services\DocumentTemplateRegistry;
 use App\Services\QuotationDocumentSettings;
 use App\Services\Sandbox\SandboxContext;
+use App\Support\BusinessTime;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -38,7 +39,7 @@ class CreateQuotationAction
             $customer = $this->customer($organization, $data['customer_id'] ?? null);
             $devisSettings = $this->settings->settings($organization);
 
-            $quotationDate = $data['quotation_date'] ?? now()->toDateString();
+            $quotationDate = $data['quotation_date'] ?? BusinessTime::today($organization);
             $validUntil = $data['valid_until']
                 ?? Carbon::parse($quotationDate)->addDays($devisSettings['default_validity_days'])->toDateString();
 

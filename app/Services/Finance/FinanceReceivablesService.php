@@ -96,6 +96,26 @@ class FinanceReceivablesService
     }
 
     /**
+     * Confirmed orders with a payable balance and NO issued/superseded invoice (the commercial exposure, disjoint from the
+     * invoice receivable), paginated, oldest due date first (undated last).
+     *
+     * @return LengthAwarePaginator<int, array<string,mixed>>
+     */
+    public function unbilledOrdersAsOf(Organization $organization, Carbon $asOf, ?Store $store, int $perPage = 30): LengthAwarePaginator
+    {
+        $organizationId = (int) $organization->getKey();
+        $page = $this->orderExposureQuery($organization, $asOf, $store)
+            ->whereNotExists(fn ($bill) => $bill->selectRaw('1')->from('invoices as bill')
+                ->whereColumn('bill.sales_order_id', 'sales_orders.id')->where('bill.organization_id', $organizationId)
+                ->whereIn('bill.status', [InvoiceStatus::Issued->value, InvoiceStatus::Superseded->value]))
+            ->orderByRaw('CASE WHEN sales_orders.due_date IS NULL THEN 1 ELSE 0 END')->orderBy('sales_orders.due_date')->orderBy('sales_orders.id')
+            ->paginate($perPage)->withQueryString();
+        $page->setCollection($page->getCollection()->map(fn (SalesOrder $order) => $this->exposureRow($order)));
+
+        return $page;
+    }
+
+    /**
      * Order exposure totals only (dashboards): one aggregate query.
      *
      * @return array{total: string, status_counts: array{unpaid:int,partially_paid:int}, status_amounts: array{unpaid:string,partially_paid:string}}
@@ -133,18 +153,17 @@ class FinanceReceivablesService
         $organizationId = (int) $organization->getKey();
         $date = $asOf->toDateString();
 
-        $collections = DB::table('payment_allocations')
+        $collections = $this->allocationLedger($date)
             ->join('payments', function ($join) {
                 $join->on('payments.id', '=', 'payment_allocations.payment_id')
                     ->on('payments.organization_id', '=', 'payment_allocations.organization_id');
             })
             ->where('payment_allocations.organization_id', $organizationId)
             ->where('payments.status', PaymentStatus::Posted->value)
-            ->whereDate('payments.payment_date', '<=', $date)
             ->groupBy('payment_allocations.sales_order_id')
             ->select('payment_allocations.sales_order_id')
             ->selectRaw('SUM(payment_allocations.amount) as collected_amount')
-            ->selectRaw('MAX(payments.payment_date) as last_payment_date');
+            ->selectRaw('MAX(payment_allocations.effective_date) as last_payment_date');
         $refunds = DB::table('payment_refunds')
             ->where('organization_id', $organizationId)
             ->where('status', 'posted')
@@ -177,7 +196,7 @@ class FinanceReceivablesService
             ->select([
                 'sales_orders.id', 'sales_orders.organization_id', 'sales_orders.store_id', 'sales_orders.order_number',
                 'sales_orders.sale_date', 'sales_orders.customer_name', 'sales_orders.customer_company',
-                'sales_orders.customer_id', 'sales_orders.total_incl_tax', 'sales_orders.currency_code', 'sales_orders.status',
+                'sales_orders.customer_id', 'sales_orders.total_incl_tax', 'sales_orders.currency_code', 'sales_orders.status', 'sales_orders.due_date',
             ])
             ->selectRaw('COALESCE(exp_collections.collected_amount, 0) as collected_amount')
             ->selectRaw('COALESCE(exp_refunds.refunded_amount, 0) as refunded_amount')
@@ -230,6 +249,10 @@ class FinanceReceivablesService
             'outstanding' => $summary['remaining'],
             'payment_status' => $summary['status'],
             'last_payment_date' => $summary['last_payment_date'],
+            // Additive (Finance clients): the order due date stamped at confirmation (null when none) and overdue flag.
+            'due_date' => $order->due_date?->toDateString(),
+            'is_overdue' => $order->due_date !== null && Decimal::compare($summary['remaining'], '0') > 0 && $order->due_date->toDateString() < Carbon::now()->toDateString(),
+            'customer_id' => $order->customer_id,
         ];
     }
 
@@ -326,6 +349,117 @@ class FinanceReceivablesService
     }
 
     /**
+     * BULK customer positions (Finance clients accounts index / aging): the same operands as customerPositionAsOf()
+     * (order-specific credits and net collections, settlement-precision threshold, Test Mode excluded) but grouped by
+     * customer and currency in TWO bounded aggregate queries, whatever the number of customers. Never one query per
+     * customer and never pooled across orders.
+     *
+     * Per (customer, currency): invoiced_gross, credited, net_invoiced, paid (net collections of the invoiced orders),
+     * receivable (sum per invoice of max(net - paid, 0)), overdue (receivable whose due_date < $today), undated (receivable
+     * with NO due date - never silently dated), not_due, bands 1-30 / 31-60 / 61-90 / 90+ (days past due as of $today),
+     * overcollected (refund obligation) and unbilled (confirmed orders without an issued/superseded invoice).
+     * `$asOf = null` means every document whatever its date (current position); `$today` is the overdue basis date.
+     *
+     * @param  list<int>  $customerIds
+     * @param  list<int>  $storeIds
+     * @return array<int, array<string, mixed>> keyed by customer id; `mixed_currency` is true when several currencies exist (figures then null)
+     */
+    public function customerPositionsAsOf(Organization $organization, array $customerIds, array $storeIds, ?Carbon $asOf = null, ?Carbon $today = null): array
+    {
+        $customerIds = array_values(array_unique(array_map('intval', $customerIds)));
+        $storeIds = array_values(array_unique(array_map('intval', $storeIds)));
+        if ($customerIds === [] || $storeIds === []) {
+            return [];
+        }
+        $asOf ??= Carbon::parse(self::OPEN_ENDED_AS_OF);
+        $today ??= $asOf->copy();
+        if ($today->year >= 2999) {
+            $today = Carbon::now();
+        }
+        $day = $today->toDateString();
+        $b1a = $today->copy()->subDays(30)->toDateString();
+        $b1b = $today->copy()->subDays(1)->toDateString();
+        $b2a = $today->copy()->subDays(60)->toDateString();
+        $b2b = $today->copy()->subDays(31)->toDateString();
+        $b3a = $today->copy()->subDays(90)->toDateString();
+        $b3b = $today->copy()->subDays(61)->toDateString();
+        $b4 = $today->copy()->subDays(91)->toDateString();
+        $organizationId = (int) $organization->getKey();
+
+        $netBilled = '(invoices.total_incl_tax - COALESCE(credits.credited_amount, 0))';
+        $netCollected = '(COALESCE(paid.paid_amount, 0))';
+        $threshold = Money::payableThresholdSql('invoices.currency_code');
+        $due = "ROUND({$netBilled} - {$netCollected}, 4)";
+        $over = "ROUND({$netCollected} - {$netBilled}, 4)";
+        $open = "{$due} >= ({$threshold})";
+        $sum = fn (string $condition) => "ROUND(COALESCE(SUM(CASE WHEN {$condition} THEN {$due} ELSE 0 END), 0), 4)";
+
+        $invoiceRows = $this->obligationsQuery($organization, $asOf, null)
+            ->whereIn('invoices.customer_id', $customerIds)->whereIn('invoices.store_id', $storeIds)
+            ->groupBy('invoices.customer_id', 'invoices.currency_code')
+            ->select('invoices.customer_id', 'invoices.currency_code')
+            ->selectRaw('ROUND(COALESCE(SUM(invoices.total_incl_tax), 0), 4) as invoiced_gross')
+            ->selectRaw('ROUND(COALESCE(SUM(COALESCE(credits.credited_amount, 0)), 0), 4) as credited')
+            ->selectRaw('ROUND(COALESCE(SUM(COALESCE(paid.paid_amount, 0)), 0), 4) as paid')
+            ->selectRaw($sum($open).' as receivable')
+            ->selectRaw($sum("{$open} AND invoices.due_date IS NOT NULL AND invoices.due_date < ?").' as overdue', [$day])
+            ->selectRaw($sum("{$open} AND invoices.due_date IS NULL").' as undated')
+            ->selectRaw($sum("{$open} AND invoices.due_date >= ?").' as not_due', [$day])
+            ->selectRaw($sum("{$open} AND invoices.due_date >= ? AND invoices.due_date <= ?").' as band_1_30', [$b1a, $b1b])
+            ->selectRaw($sum("{$open} AND invoices.due_date >= ? AND invoices.due_date <= ?").' as band_31_60', [$b2a, $b2b])
+            ->selectRaw($sum("{$open} AND invoices.due_date >= ? AND invoices.due_date <= ?").' as band_61_90', [$b3a, $b3b])
+            ->selectRaw($sum("{$open} AND invoices.due_date < ?").' as band_90_plus', [$b4])
+            ->selectRaw("ROUND(COALESCE(SUM(CASE WHEN {$over} >= ({$threshold}) THEN {$over} ELSE 0 END), 0), 4) as overcollected")
+            ->get();
+
+        $exposure = $this->orderExposureQuery($organization, $asOf, null)
+            ->whereIn('sales_orders.customer_id', $customerIds)->whereIn('sales_orders.store_id', $storeIds)
+            ->whereNotExists(fn ($bill) => $bill->selectRaw('1')->from('invoices as bill')
+                ->whereColumn('bill.sales_order_id', 'sales_orders.id')->where('bill.organization_id', $organizationId)
+                ->whereIn('bill.status', [InvoiceStatus::Issued->value, InvoiceStatus::Superseded->value]));
+        $unbilledRows = DB::query()->fromSub($exposure->toBase(), 'exposure')
+            ->groupBy('customer_id', 'currency_code')->select('customer_id', 'currency_code')
+            ->selectRaw('ROUND(COALESCE(SUM(ROUND(outstanding_raw, 4)), 0), 4) as unbilled')
+            ->selectRaw('ROUND(COALESCE(SUM(CASE WHEN due_date IS NOT NULL AND due_date < ? THEN ROUND(outstanding_raw, 4) ELSE 0 END), 0), 4) as unbilled_overdue', [$day])
+            ->selectRaw('ROUND(COALESCE(SUM(CASE WHEN due_date IS NULL THEN ROUND(outstanding_raw, 4) ELSE 0 END), 0), 4) as unbilled_undated')
+            ->selectRaw('ROUND(COALESCE(SUM(CASE WHEN due_date >= ? THEN ROUND(outstanding_raw, 4) ELSE 0 END), 0), 4) as unbilled_not_due', [$day])
+            ->selectRaw('ROUND(COALESCE(SUM(CASE WHEN due_date >= ? AND due_date <= ? THEN ROUND(outstanding_raw, 4) ELSE 0 END), 0), 4) as unbilled_band_1_30', [$b1a, $b1b])
+            ->selectRaw('ROUND(COALESCE(SUM(CASE WHEN due_date >= ? AND due_date <= ? THEN ROUND(outstanding_raw, 4) ELSE 0 END), 0), 4) as unbilled_band_31_60', [$b2a, $b2b])
+            ->selectRaw('ROUND(COALESCE(SUM(CASE WHEN due_date >= ? AND due_date <= ? THEN ROUND(outstanding_raw, 4) ELSE 0 END), 0), 4) as unbilled_band_61_90', [$b3a, $b3b])
+            ->selectRaw('ROUND(COALESCE(SUM(CASE WHEN due_date < ? THEN ROUND(outstanding_raw, 4) ELSE 0 END), 0), 4) as unbilled_band_90_plus', [$b4])
+            ->get();
+
+        $zero = ['invoiced_gross', 'credited', 'paid', 'receivable', 'overdue', 'undated', 'not_due', 'band_1_30', 'band_31_60', 'band_61_90', 'band_90_plus', 'overcollected', 'unbilled',
+            'unbilled_overdue', 'unbilled_undated', 'unbilled_not_due', 'unbilled_band_1_30', 'unbilled_band_31_60', 'unbilled_band_61_90', 'unbilled_band_90_plus'];
+        $out = [];
+        $merge = function (object $row) use (&$out, $zero) {
+            $id = (int) $row->customer_id;
+            $out[$id]['by_currency'][(string) $row->currency_code] ??= array_fill_keys($zero, '0.0000');
+            foreach ($zero as $column) {
+                if (property_exists($row, $column)) {
+                    $out[$id]['by_currency'][(string) $row->currency_code][$column] = Decimal::normalize((string) $row->{$column});
+                }
+            }
+        };
+        foreach ($invoiceRows as $row) {
+            $merge($row);
+        }
+        foreach ($unbilledRows as $row) {
+            $merge($row);
+        }
+        $result = [];
+        foreach ($out as $id => $data) {
+            $currencies = array_keys($data['by_currency']);
+            $mixed = count($currencies) > 1;
+            $figures = $mixed ? array_fill_keys($zero, null) : $data['by_currency'][$currencies[0]];
+            $figures['net_invoiced'] = $mixed ? null : Decimal::subtract($figures['invoiced_gross'], $figures['credited']);
+            $result[$id] = $figures + ['currency_code' => $mixed ? null : $currencies[0], 'mixed_currency' => $mixed];
+        }
+
+        return $result;
+    }
+
+    /**
      * Customer money retained above the net issued-document obligation.
      * This is not a negative receivable: it is a distinct refund obligation.
      */
@@ -341,6 +475,35 @@ class FinanceReceivablesService
             ->value('obligation');
 
         return $this->nonNegative(Decimal::normalize((string) $result));
+    }
+
+    /**
+     * Per-invoice detail of refundObligationAsOf(): the SAME query and the SAME operands, one row per invoice whose net collected
+     * amount exceeds its net billed amount. Strictly per source document: an obligation is never offset against another order's
+     * receivable. The page total always equals refundObligationAsOf() for the same date and store.
+     *
+     * @return LengthAwarePaginator<int, array<string, mixed>>
+     */
+    public function refundObligationsBreakdownAsOf(Organization $organization, Carbon $asOf, ?Store $store, int $perPage = 30): LengthAwarePaginator
+    {
+        $netBilled = '(invoices.total_incl_tax - COALESCE(credits.credited_amount, 0))';
+        $netCollected = '(COALESCE(paid.paid_amount, 0))';
+
+        return $this->obligationsQuery($organization, $asOf, $store)
+            ->join('sales_orders', fn ($j) => $j->on('sales_orders.id', '=', 'invoices.sales_order_id')->on('sales_orders.organization_id', '=', 'invoices.organization_id'))
+            ->whereRaw("{$netCollected} > {$netBilled}")
+            ->select([
+                'invoices.id', 'invoices.invoice_number', 'invoices.customer_name', 'invoices.customer_company', 'invoices.sales_order_id', 'invoices.store_id',
+                'sales_orders.order_number', 'sales_orders.customer_id', 'sales_orders.currency_code',
+                DB::raw("{$netCollected} - {$netBilled} as obligation"),
+            ])
+            ->orderByDesc('obligation')->orderBy('invoices.id')
+            ->paginate($perPage)->withQueryString()
+            ->through(fn ($row) => [
+                'invoice_id' => (int) $row->id, 'invoice_number' => $row->invoice_number, 'sales_order_id' => (int) $row->sales_order_id, 'order_number' => $row->order_number,
+                'customer_id' => $row->customer_id !== null ? (int) $row->customer_id : null, 'customer' => trim((string) ($row->customer_company ?: $row->customer_name)) ?: '—',
+                'currency_code' => $row->currency_code, 'amount' => Decimal::normalize((string) $row->obligation), 'store_id' => (int) $row->store_id,
+            ]);
     }
 
     /**
@@ -446,12 +609,11 @@ class FinanceReceivablesService
             ->groupBy('sales_order_id')
             ->select('sales_order_id', DB::raw('SUM(amount) as refunded_amount'));
 
-        return DB::table('payment_allocations')
+        return $this->allocationLedger($asOf->toDateString())
             ->join('payments', 'payments.id', '=', 'payment_allocations.payment_id')
             ->leftJoinSub($refunds, 'refunds', 'refunds.sales_order_id', '=', 'payment_allocations.sales_order_id')
             ->whereIn('payment_allocations.sales_order_id', $salesOrderIds)
             ->where('payments.status', PaymentStatus::Posted->value)
-            ->whereDate('payments.payment_date', '<=', $asOf->toDateString())
             ->groupBy('payment_allocations.sales_order_id')
             ->select('payment_allocations.sales_order_id', DB::raw('SUM(payment_allocations.amount) - COALESCE(MAX(refunds.refunded_amount), 0) as amount'))
             ->pluck('amount', 'payment_allocations.sales_order_id')
@@ -477,14 +639,13 @@ class FinanceReceivablesService
             return [];
         }
 
-        return DB::table('payment_allocations')
+        return $this->allocationLedger($asOf?->toDateString() ?? '9999-12-31')
             ->join('payments', 'payments.id', '=', 'payment_allocations.payment_id')
             ->whereIn('payment_allocations.sales_order_id', $salesOrderIds)
             ->where('payments.status', PaymentStatus::Posted->value)
-            ->when($asOf, fn ($query) => $query->whereDate('payments.payment_date', '<=', $asOf->toDateString()))
-            ->orderBy('payments.payment_date')
+            ->orderBy('payment_allocations.effective_date')
             ->orderBy('payments.id')
-            ->get(['payment_allocations.sales_order_id', 'payments.id as payment_id', 'payments.payment_date', 'payment_allocations.amount'])
+            ->get(['payment_allocations.sales_order_id', 'payments.id as payment_id', 'payment_allocations.effective_date as payment_date', 'payment_allocations.amount'])
             ->groupBy('sales_order_id')
             ->map(fn ($rows) => $rows->map(fn ($row) => [
                 'payment_id' => (int) $row->payment_id,
@@ -515,13 +676,35 @@ class FinanceReceivablesService
             ->map(fn ($row) => $this->toOutstandingRow($row));
     }
 
+    /**
+     * Allocation ledger as of a date, exposed under the alias `payment_allocations` so existing joins keep working.
+     * An allocation counts from its effective date (NULL = the payment's own date: legacy rows and allocations made at receipt),
+     * and a de-allocated one (payment_allocation_releases) still counts until the day it was released. Treasury (payment_date)
+     * is never read here: a late allocation of an old advance moves the receivable, not the cash.
+     */
+    public function allocationLedger(string $date): \Illuminate\Database\Query\Builder
+    {
+        $live = DB::table('payment_allocations as pa')
+            ->join('payments as pay', function ($join) {
+                $join->on('pay.id', '=', 'pa.payment_id')->on('pay.organization_id', '=', 'pa.organization_id');
+            })
+            ->whereRaw('DATE(COALESCE(pa.effective_date, pay.payment_date)) <= ?', [$date])
+            ->select('pa.organization_id', 'pa.payment_id', 'pa.sales_order_id', 'pa.amount')
+            ->selectRaw('DATE(COALESCE(pa.effective_date, pay.payment_date)) as effective_date');
+        $released = DB::table('payment_allocation_releases as rel')
+            ->whereRaw('DATE(rel.effective_date) <= ?', [$date])->whereRaw('DATE(rel.released_date) > ?', [$date])
+            ->select('rel.organization_id', 'rel.payment_id', 'rel.sales_order_id', 'rel.amount')
+            ->selectRaw('DATE(rel.effective_date) as effective_date');
+
+        return DB::query()->fromSub($live->unionAll($released), 'payment_allocations');
+    }
+
     private function obligationsQuery(Organization $organization, Carbon $asOf, ?Store $store)
     {
-        $collectionsSubquery = DB::table('payment_allocations')
+        $collectionsSubquery = $this->allocationLedger($asOf->toDateString())
             ->join('payments', 'payments.id', '=', 'payment_allocations.payment_id')
             ->where('payments.organization_id', $organization->getKey())
             ->where('payments.status', PaymentStatus::Posted->value)
-            ->whereDate('payments.payment_date', '<=', $asOf->toDateString())
             ->groupBy('payment_allocations.sales_order_id')
             ->select('payment_allocations.sales_order_id', DB::raw('SUM(payment_allocations.amount) as collected_amount'));
 

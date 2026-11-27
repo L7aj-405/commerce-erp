@@ -7,7 +7,19 @@ import type { ReactNode } from 'react';
  * and the contextual header tabs are all derived from `buildNavGroups()`;
  * never maintain a second route list elsewhere.
  */
-export type NavItem = { href: string; label: string; permission?: string | string[]; needsStore?: boolean; icon: ReactNode };
+export type NavItem = {
+    href: string;
+    label: string;
+    permission?: string | string[];
+    /** Extra permission that must ALSO be held (the server enforces the same AND). */
+    alsoRequires?: string;
+    /** Hidden when the user holds this permission (a narrower entry superseded by a richer one). */
+    hideWith?: string;
+    /** Legacy / sibling URLs that belong to this entry: active-state, breadcrumbs and deep links only (never listed twice). */
+    aliases?: string[];
+    needsStore?: boolean;
+    icon: ReactNode;
+};
 export type NavSection = { key: string; label: string; icon: ReactNode; items: NavItem[] };
 export type NavEntry = NavItem | NavSection;
 export type NavGroup = { key: string; label: string; icon: ReactNode; items: NavEntry[] };
@@ -20,11 +32,11 @@ export const isNavSection = (entry: NavEntry): entry is NavSection => 'items' in
 export const hasPermission = (tenant: Tenant, permission?: string | string[]) =>
     !permission || (Array.isArray(permission) ? permission.some((p) => tenant.permissions.includes(p)) : tenant.permissions.includes(permission));
 
-export function buildNavGroups(t: (key: TranslationKey) => string, tenant: Tenant): NavGroup[] {
-    return [
+export function buildNavGroups(t: (key: TranslationKey) => string, tenant: Tenant, sandboxActive = false, supplierInvoicesEnabled = false): NavGroup[] {
+    const groups: NavGroup[] = [
         {
             key: 'dashboard',
-            label: t('nav.dashboard'),
+            label: t('nav.group.overview'),
             icon: <IconDashboard />,
             items: [
                 { href: '/platform', label: t('nav.dashboard'), icon: <IconHome /> },
@@ -33,34 +45,122 @@ export function buildNavGroups(t: (key: TranslationKey) => string, tenant: Tenan
         },
         {
             key: 'sales',
-            label: t('nav.sales'),
+            label: t('nav.group.sales'),
             icon: <IconShoppingBag />,
             items: [
                 { href: '/pos', label: t('nav.pos'), permission: 'pos.access', needsStore: true, icon: <IconRegister /> },
                 { href: '/sales/orders', label: t('nav.orders'), permission: 'sales_orders.view', needsStore: true, icon: <IconClipboard /> },
                 { href: '/quotations', label: t('nav.quotations'), permission: 'quotations.view', needsStore: true, icon: <IconFileText /> },
-                { href: '/invoices', label: t('nav.invoices'), permission: 'invoices.view', needsStore: true, icon: <IconInvoice /> },
+                { href: '/invoices', label: t('nav.customerInvoices'), permission: 'invoices.view', needsStore: true, icon: <IconInvoice /> },
                 { href: '/delivery-notes', label: t('nav.deliveryNotes'), permission: 'delivery_notes.view', needsStore: true, icon: <IconTruck /> },
                 { href: '/sales/returns', label: t('nav.returns'), permission: 'sales_returns.view', needsStore: true, icon: <IconRotateBack /> },
                 { href: '/my-commissions', label: t('nav.myCommissions'), permission: 'commissions.own.view', icon: <IconPercent /> },
             ],
         },
         {
-            key: 'catalog-stock',
-            label: t('nav.catalog'),
-            icon: <IconPackage />,
+            // Unified Contacts: ONE directory, queried by role. Every entry opens the same page with a different server-side filter.
+            // The legacy customer / supplier URLs stay valid as aliases (bookmarks, links, breadcrumbs) of the matching view.
+            key: 'contacts',
+            label: t('nav.group.contacts'),
+            icon: <IconContact />,
             items: [
-                { href: '/catalog/products', label: t('nav.products'), permission: 'products.view', icon: <IconPackage /> },
-                { href: '/catalog/categories', label: t('nav.categories'), permission: 'categories.manage', icon: <IconFolder /> },
-                { href: '/catalog/brands', label: t('nav.brands'), permission: 'brands.manage', icon: <IconTag /> },
-                { href: '/catalog/products/import', label: t('nav.productImport'), permission: 'products.import', icon: <IconImport /> },
-                { href: '/catalog/purchase-prices', label: t('nav.purchasePrices'), permission: 'product_cost.view', icon: <IconBanknote /> },
-                { href: '/catalog/non-stock-items', label: t('nav.nonStockItems'), permission: 'quotations.view', icon: <IconAlertBox /> },
+                { href: '/contacts', label: t('nav.contacts.all'), permission: 'contacts.view', icon: <IconContact /> },
+                { href: '/contacts?role=client', label: t('nav.contacts.clients'), permission: ['contacts.view', 'customers.view'], aliases: ['/sales/customers'], icon: <IconUsers /> },
+                { href: '/contacts?role=supplier', label: t('nav.contacts.suppliers'), permission: ['contacts.view', 'suppliers.view'], aliases: ['/procurement/suppliers'], icon: <IconBuilding /> },
+                { href: '/contacts?role=internal', label: t('nav.contacts.internal'), permission: 'contacts.view', icon: <IconShield /> },
+                { href: '/contacts?scope=external', label: t('nav.contacts.external'), permission: 'contacts.view', icon: <IconUsers /> },
+                { href: '/contacts?group=partners', label: t('nav.contacts.partners'), permission: 'contacts.view', icon: <IconRoute /> },
+                { href: '/contacts/settings', label: t('nav.contacts.settings'), permission: 'contacts.view', icon: <IconSettings /> },
+            ],
+        },
+        {
+            key: 'purchasing',
+            label: t('nav.group.purchasing'),
+            icon: <IconCart />,
+            items: [
+                { href: '/procurement/purchase-orders', label: t('nav.purchaseOrders'), permission: 'procurement.view', icon: <IconClipboard /> },
+                { href: '/procurement', label: t('nav.procurement'), permission: 'procurement.view', icon: <IconCart /> },
+                { href: '/finance/factures-fournisseurs', label: t('nav.supplierInvoices'), permission: 'supplier_invoices.view', icon: <IconInvoice /> },
+                {
+                    key: 'purchasing-followup',
+                    label: t('nav.section.sourcingFollowUp'),
+                    icon: <IconChecklist />,
+                    items: [
+                        { href: '/procurement/supplier-requests', label: t('nav.supplierRequests'), permission: 'procurement.view', needsStore: true, icon: <IconChecklist /> },
+                        { href: '/procurement/out-of-stock-articles', label: t('nav.catalogTasks'), permission: 'procurement.view', icon: <IconAlertBox /> },
+                    ],
+                },
+            ],
+        },
+        {
+            key: 'finance',
+            label: t('nav.group.finance'),
+            icon: <IconChart />,
+            // Deliberately no `needsStore`: Finance reporting works across the
+            // whole organization without the viewer's active store switcher.
+            // Finance clients (incoming customer money) is kept apart from supplier money:
+            // customer payments never appear under supplier payments and vice versa.
+            items: [
+                { href: '/finance', label: t('nav.financeOverview'), permission: 'finance.view', icon: <IconChart /> },
+                {
+                    key: 'finance-clients',
+                    label: t('nav.section.financeClients'),
+                    icon: <IconUsers />,
+                    items: [
+                        // Phase 3: six destinations. Relocated pages (instruments, credit, journal) stay reachable under
+                        // their legacy URLs; they are aliases of their new parent so the active state and breadcrumbs follow.
+                        { href: '/finance/clients', label: t('nav.fc.overview'), permission: 'finance.view', icon: <IconChart /> },
+                        { href: '/finance/clients/comptes', label: t('nav.fc.accounts'), permission: 'finance.view', alsoRequires: 'customers.view', icon: <IconUsers /> },
+                        { href: '/finance/clients/facturation', aliases: ['/finance/facturation'], label: t('nav.fc.invoicing'), permission: 'finance.view', icon: <IconInvoice /> },
+                        { href: '/finance/clients/encaissements', aliases: ['/finance/encaissements', '/payments', '/finance/clients/avances', '/finance/clients/instruments'], label: t('nav.fc.collections'), permission: 'finance.view', icon: <IconCoinsIn /> },
+                        { href: '/finance/clients/creances', aliases: ['/finance/creances', '/finance/clients/credit'], label: t('nav.fc.receivables'), permission: 'finance.view', icon: <IconClockCoins /> },
+                        { href: '/finance/clients/rapports', aliases: ['/finance/ventes', '/finance/ca-encaisse', '/finance/clients/journal', '/finance/journal'], label: t('nav.fc.reports'), permission: 'finance.view', icon: <IconTrending /> },
+                        // A cashier-level user (payments.view, no finance.view) keeps their direct entry to the
+                        // store-scoped payments list; Finance users reach it from "Encaissements clients" instead.
+                        { href: '/payments', label: t('nav.customerPayments'), permission: 'payments.view', hideWith: 'finance.view', needsStore: true, icon: <IconWallet /> },
+                    ],
+                },
+                {
+                    key: 'finance-suppliers',
+                    label: t('nav.section.financeSuppliers'),
+                    icon: <IconBuilding />,
+                    items: [
+                        { href: '/finance/situation-fin-de-mois/echeanciers-fournisseurs', label: t('nav.supplierInstallments'), permission: 'finance.monthly_situation.view', icon: <IconList /> },
+                    ],
+                },
+                {
+                    key: 'finance-staff',
+                    label: t('nav.section.financeStaff'),
+                    icon: <IconPercent />,
+                    items: [
+                        { href: '/finance/commissions', label: t('nav.commissionDashboard'), permission: 'commissions.ledger.view', icon: <IconChart /> },
+                        { href: '/finance/commissions/ledger', label: t('nav.ledger'), permission: 'commissions.ledger.view', icon: <IconList /> },
+                        { href: '/finance/commissions/rules', label: t('nav.rules'), permission: 'commissions.rules.view', icon: <IconSettings /> },
+                        { href: '/finance/personnel', label: t('nav.staffFuture'), permission: 'finance.view', icon: <IconUsers /> },
+                    ],
+                },
+                {
+                    key: 'finance-treasury',
+                    label: t('nav.section.financeTreasury'),
+                    icon: <IconBank />,
+                    items: [{ href: '/financial-accounts', label: t('nav.financialAccounts'), permission: 'financial_accounts.view', icon: <IconBank /> }],
+                },
+                {
+                    key: 'finance-steering',
+                    label: t('nav.section.financeSteering'),
+                    icon: <IconCalendarChart />,
+                    items: [
+                        // The only existing entry point for outgoing supplier payments (and month closing): there is
+                        // no dedicated list of supplier payments, so the label names the page honestly.
+                        { href: '/finance/situation-fin-de-mois', label: t('nav.supplierPaymentsMonthEnd'), permission: 'finance.monthly_situation.view', icon: <IconCalendarChart /> },
+                        { href: '/finance/situation-fin-de-mois/charges-recurrentes', label: t('nav.recurringCharges'), permission: 'finance.monthly_situation.view', icon: <IconSync /> },
+                    ],
+                },
             ],
         },
         {
             key: 'inventory',
-            label: t('nav.inventory'),
+            label: t('nav.group.stock'),
             icon: <IconWarehouse />,
             items: [
                 { href: '/inventory/stock', label: t('nav.stockState'), permission: 'inventory.view', icon: <IconWarehouse /> },
@@ -71,85 +171,24 @@ export function buildNavGroups(t: (key: TranslationKey) => string, tenant: Tenan
             ],
         },
         {
-            key: 'purchasing',
-            label: t('nav.purchasing'),
-            icon: <IconCart />,
+            key: 'catalog',
+            label: t('nav.catalog'),
+            icon: <IconPackage />,
             items: [
-                { href: '/procurement', label: t('nav.procurement'), permission: 'procurement.view', icon: <IconCart /> },
-                { href: '/procurement/purchase-orders', label: t('nav.purchaseOrders'), permission: 'procurement.view', icon: <IconClipboard /> },
-                { href: '/procurement/supplier-requests', label: t('nav.supplierRequests'), permission: 'procurement.view', needsStore: true, icon: <IconChecklist /> },
-                { href: '/procurement/out-of-stock-articles', label: t('nav.catalogTasks'), permission: 'procurement.view', icon: <IconAlertBox /> },
-                { href: '/procurement/suppliers', label: t('nav.suppliers'), permission: 'suppliers.view', icon: <IconBuilding /> },
-            ],
-        },
-        {
-            key: 'finance',
-            label: t('nav.finance'),
-            icon: <IconChart />,
-            // Deliberately no `needsStore`: Finance reporting works across the
-            // whole organization without the viewer's active store switcher.
-            items: [
-                { href: '/finance', label: t('nav.overview'), permission: 'finance.view', icon: <IconChart /> },
+                { href: '/catalog/products', label: t('nav.products'), permission: 'products.view', icon: <IconPackage /> },
+                { href: '/catalog/categories', label: t('nav.categories'), permission: 'categories.manage', icon: <IconFolder /> },
+                { href: '/catalog/brands', label: t('nav.brands'), permission: 'brands.manage', icon: <IconTag /> },
+                { href: '/catalog/products/import', label: t('nav.productImport'), permission: 'products.import', icon: <IconImport /> },
+                { href: '/catalog/purchase-prices', label: t('nav.purchasePrices'), permission: 'product_cost.view', icon: <IconBanknote /> },
+                { href: '/catalog/non-stock-items', label: t('nav.nonStockItems'), permission: 'quotations.view', icon: <IconAlertBox /> },
                 {
-                    key: 'finance-sales-cash',
-                    label: t('nav.salesCollections'),
-                    icon: <IconTrending />,
+                    key: 'catalog-reference',
+                    label: t('nav.section.references'),
+                    icon: <IconList />,
                     items: [
-                        { href: '/finance/ventes', label: t('nav.sales'), permission: 'finance.view', icon: <IconShoppingBag /> },
-                        { href: '/finance/ca-encaisse', label: t('nav.cashRevenue'), permission: 'finance.view', icon: <IconBanknote /> },
-                        { href: '/finance/creances', label: t('nav.receivables'), permission: 'finance.view', icon: <IconClockCoins /> },
+                        { href: '/catalog/units', label: t('nav.units'), permission: 'units.view', icon: <IconBoxes /> },
+                        { href: '/catalog/tax-rates', label: t('nav.taxes'), permission: 'tax_rates.view', icon: <IconPercent /> },
                     ],
-                },
-                {
-                    href: '/finance/situation-fin-de-mois',
-                    label: t('nav.monthEnd'),
-                    permission: 'finance.monthly_situation.view',
-                    icon: <IconCalendarChart />,
-                },
-                {
-                    key: 'finance-commissions',
-                    label: t('nav.commissions'),
-                    icon: <IconPercent />,
-                    items: [
-                        { href: '/finance/commissions', label: t('nav.commissionDashboard'), permission: 'commissions.ledger.view', icon: <IconChart /> },
-                        { href: '/finance/commissions/ledger', label: t('nav.ledger'), permission: 'commissions.ledger.view', icon: <IconList /> },
-                        { href: '/finance/commissions/rules', label: t('nav.rules'), permission: 'commissions.rules.view', icon: <IconSettings /> },
-                    ],
-                },
-                { href: '/finance/facturation', label: t('nav.invoices'), permission: 'finance.view', icon: <IconInvoice /> },
-                {
-                    key: 'finance-treasury',
-                    label: t('nav.treasury'),
-                    icon: <IconWallet />,
-                    items: [
-                        { href: '/finance/encaissements', label: t('nav.collections'), permission: 'finance.view', icon: <IconCoinsIn /> },
-                        { href: '/payments', label: t('nav.payments'), permission: 'payments.view', needsStore: true, icon: <IconWallet /> },
-                        { href: '/financial-accounts', label: t('nav.financialAccounts'), permission: 'financial_accounts.view', icon: <IconBank /> },
-                        { href: '/finance/journal', label: t('nav.journal'), permission: 'finance.view', icon: <IconList /> },
-                    ],
-                },
-            ],
-        },
-        {
-            key: 'customers',
-            label: t('nav.customers'),
-            icon: <IconUsers />,
-            items: [
-                { href: '/sales/customers', label: t('nav.customers'), permission: 'customers.view', icon: <IconUsers /> },
-                { href: '/contacts', label: t('nav.contacts'), permission: 'contacts.view', icon: <IconContact /> },
-            ],
-        },
-        {
-            key: 'integrations',
-            label: t('nav.integrations'),
-            icon: <IconPlug />,
-            items: [
-                { href: '/integrations/woocommerce', label: 'WooCommerce', permission: 'integrations.view', icon: <IconPlug /> },
-                {
-                    href: '/integrations/woocommerce/stock-tasks',
-                    label: t('nav.wooStock'),
-                    permission: 'integrations.woocommerce.stock_tasks.view',
-                    icon: <IconSync />,
                 },
             ],
         },
@@ -158,8 +197,6 @@ export function buildNavGroups(t: (key: TranslationKey) => string, tenant: Tenan
             label: t('nav.administration'),
             icon: <IconShield />,
             items: [
-                { href: '/activity', label: t('nav.activity'), permission: 'audit.view', icon: <IconList /> },
-                { href: '/system-health', label: t('nav.systemOperations'), permission: 'system.health.view', icon: <IconShield /> },
                 ...(tenant.organization
                     ? [
                           {
@@ -170,47 +207,81 @@ export function buildNavGroups(t: (key: TranslationKey) => string, tenant: Tenan
                           },
                       ]
                     : []),
-            ],
-        },
-        {
-            key: 'settings',
-            label: t('nav.settings'),
-            icon: <IconSettings />,
-            items: [
-                ...(tenant.organization
-                    ? [
-                          {
-                              href: '/document-profile',
-                              label: t('nav.company'),
-                              permission: ['settings.view', 'settings.update'],
-                              icon: <IconBuilding />,
-                          },
-                          {
-                              href: '/document-profile/studio',
-                              label: t('nav.pdfStudio'),
-                              permission: ['settings.view', 'settings.update'],
-                              icon: <IconFileText />,
-                          },
-                      ]
-                    : []),
-                { href: '/settings/stores', label: t('nav.stores'), permission: 'stores.view', icon: <IconPin /> },
-                { href: '/quotation-settings', label: t('nav.quotationSettings'), permission: ['settings.view', 'settings.update'], icon: <IconFileText /> },
-                { href: '/document-stamp', label: t('nav.companyStamp'), permission: ['settings.view', 'settings.update'], icon: <IconStamp /> },
-                { href: '/return-policy', label: t('nav.returnPolicy'), permission: ['settings.view', 'settings.update'], icon: <IconRotateBack /> },
-                { href: '/email-settings', label: t('nav.email'), permission: ['settings.view', 'settings.update'], icon: <IconMail /> },
-                { href: '/organization-backups', label: t('nav.backups'), permission: 'organization_backups.view', icon: <IconShield /> },
-                { href: '/settings/data-reset', label: t('nav.dataReset'), permission: 'system.data_reset', icon: <IconTrash /> },
-                { href: '/settings/ai-mcp', label: t('nav.aiMcp'), icon: <IconPlug /> },
-                { href: '/account/notifications', label: t('common.notifications'), icon: <IconBell /> },
-                { href: '/catalog/tax-rates', label: t('nav.taxes'), permission: 'tax_rates.view', icon: <IconPercent /> },
+                { href: '/activity', label: t('nav.activity'), permission: 'audit.view', icon: <IconList /> },
+                { href: '/system-health', label: t('nav.systemOperations'), permission: 'system.health.view', icon: <IconShield /> },
+                {
+                    key: 'admin-settings',
+                    label: t('nav.settings'),
+                    icon: <IconSettings />,
+                    items: [
+                        ...(tenant.organization
+                            ? [
+                                  {
+                                      href: '/document-profile',
+                                      label: t('nav.company'),
+                                      permission: ['settings.view', 'settings.update'],
+                                      icon: <IconBuilding />,
+                                  },
+                                  {
+                                      href: '/document-profile/studio',
+                                      label: t('nav.pdfStudio'),
+                                      permission: ['settings.view', 'settings.update'],
+                                      icon: <IconFileText />,
+                                  },
+                              ]
+                            : []),
+                        { href: '/settings/stores', label: t('nav.stores'), permission: 'stores.view', icon: <IconPin /> },
+                        { href: '/quotation-settings', label: t('nav.quotationSettings'), permission: ['settings.view', 'settings.update'], icon: <IconFileText /> },
+                        { href: '/document-stamp', label: t('nav.companyStamp'), permission: ['settings.view', 'settings.update'], icon: <IconStamp /> },
+                        { href: '/customer-credit-settings', label: t('nav.customerCreditPolicy'), permission: 'finance.customers.terms.manage', icon: <IconShield /> },
+                        { href: '/return-policy', label: t('nav.returnPolicy'), permission: ['settings.view', 'settings.update'], icon: <IconRotateBack /> },
+                        { href: '/email-settings', label: t('nav.email'), permission: ['settings.view', 'settings.update'], icon: <IconMail /> },
+                        { href: '/account/notifications', label: t('common.notifications'), icon: <IconBell /> },
+                    ],
+                },
+                {
+                    key: 'admin-data',
+                    label: t('nav.section.dataSecurity'),
+                    icon: <IconShield />,
+                    items: [
+                        { href: '/organization-backups', label: t('nav.backups'), permission: 'organization_backups.view', icon: <IconShield /> },
+                        { href: '/settings/data-reset', label: t('nav.dataReset'), permission: 'system.data_reset', icon: <IconTrash /> },
+                        { href: '/settings/ai-mcp', label: t('nav.aiMcp'), icon: <IconPlug /> },
+                    ],
+                },
+                {
+                    key: 'admin-integrations',
+                    label: t('nav.integrations'),
+                    icon: <IconPlug />,
+                    items: [
+                        { href: '/integrations/woocommerce', label: 'WooCommerce', permission: 'integrations.view', icon: <IconPlug /> },
+                        {
+                            href: '/integrations/woocommerce/stock-tasks',
+                            label: t('nav.wooStock'),
+                            permission: 'integrations.woocommerce.stock_tasks.view',
+                            icon: <IconSync />,
+                        },
+                    ],
+                },
             ],
         },
     ];
+
+    // Supplier invoices are behind a kill switch (off by default: the routes are 404) and are Production-only:
+    // hide the entry unless the feature is enabled, and in Test Mode (routes are also denied server-side).
+    if (supplierInvoicesEnabled && !sandboxActive) return groups;
+    const keep = (item: NavItem) => !item.href.startsWith('/finance/factures-fournisseurs');
+    const hide = (entry: NavEntry): NavEntry[] => (isNavSection(entry) ? [{ ...entry, items: entry.items.filter(keep) }] : keep(entry) ? [entry] : []);
+    return groups.map((group) => ({ ...group, items: group.items.flatMap(hide) }));
 }
 
 /** Filters by permission + store context and drops empty sections/groups. */
 export function visibleNavGroups(groups: NavGroup[], tenant: Tenant): NavGroup[] {
-    const allowed = (item: NavItem) => hasPermission(tenant, item.permission) && (!item.needsStore || tenant.store !== null);
+    const allowed = (item: NavItem) =>
+        hasPermission(tenant, item.permission) &&
+        (!item.alsoRequires || tenant.permissions.includes(item.alsoRequires)) &&
+        (!item.hideWith || !tenant.permissions.includes(item.hideWith)) &&
+        (!item.needsStore || tenant.store !== null);
     return groups
         .map((group): NavGroup => {
             const items: NavEntry[] = [];
@@ -232,8 +303,18 @@ export const firstNavItem = (group: NavGroup): NavItem => {
     return isNavSection(entry) ? entry.items[0]! : entry;
 };
 
-/** Longest-prefix match so deep links (e.g. /sales/orders/42) highlight their parent. */
-export function matchActiveNav(groups: NavGroup[], currentPath: string): NavMatch | undefined {
+/** Path part of a registry href (an href may carry a query string that selects a filtered view of the same page). */
+export const hrefPath = (href: string) => href.split('?')[0]!;
+const hrefParams = (href: string) => new URLSearchParams(href.split('?')[1] ?? '');
+
+/**
+ * Longest-prefix match so deep links (e.g. /sales/orders/42) highlight their parent.
+ *
+ * An entry whose href carries a query string (e.g. `/contacts?role=client`) matches only when the current URL has the same
+ * parameters, and ranks above its plain sibling (`/contacts`) when it does: that is how several entries of ONE directory
+ * page highlight the right view. Aliases are path prefixes only.
+ */
+export function matchActiveNav(groups: NavGroup[], currentPath: string, currentSearch = ''): NavMatch | undefined {
     const candidates: NavMatch[] = [];
     groups.forEach((group) =>
         group.items.forEach((entry) => {
@@ -241,22 +322,70 @@ export function matchActiveNav(groups: NavGroup[], currentPath: string): NavMatc
             else candidates.push({ groupKey: group.key, sectionKey: null, item: entry });
         }),
     );
-    return candidates
-        .filter(({ item }) => currentPath === item.href || currentPath.startsWith(`${item.href}/`))
-        .sort((a, b) => b.item.href.length - a.item.href.length)[0];
+    const current = new URLSearchParams(currentSearch);
+    const onPath = (href: string) => currentPath === href || currentPath.startsWith(`${href}/`);
+    /** Score of an item for the current URL: 0 = no match. Longer matched path wins; each matched query parameter breaks ties. */
+    const score = (item: NavItem): number => {
+        let best = 0;
+        const own = hrefPath(item.href);
+        if (onPath(own)) {
+            const wanted = [...hrefParams(item.href).entries()];
+            const satisfied = wanted.every(([key, value]) => current.getAll(key).includes(value) || current.getAll(`${key}[]`).includes(value));
+            if (satisfied) best = own.length * 100 + wanted.length;
+        }
+        for (const alias of item.aliases ?? []) if (onPath(alias)) best = Math.max(best, alias.length * 100);
+
+        return best;
+    };
+    return candidates.filter(({ item }) => score(item) > 0).sort((a, b) => score(b.item) - score(a.item))[0];
 }
 
-export type QuickAction = { href: string; label: string; icon: ReactNode };
+export type Crumb = { label: string; href?: string };
+
+/**
+ * Contextual breadcrumb derived from the registry (never a second route list):
+ * Group › [Section] › Page, plus a terminal "Détail / Création / Modification" crumb on deeper URLs.
+ * Empty on the dashboard root and on routes that are not in the (permission-filtered) navigation.
+ */
+export function buildBreadcrumbs(groups: NavGroup[], currentPath: string, t: (key: TranslationKey) => string, currentSearch = ''): Crumb[] {
+    const match = matchActiveNav(groups, currentPath, currentSearch);
+    if (!match || currentPath === '/platform') return [];
+    const group = groups.find((candidate) => candidate.key === match.groupKey);
+    if (!group) return [];
+
+    const deeper = currentPath !== hrefPath(match.item.href) && !(match.item.aliases ?? []).includes(currentPath);
+    const crumbs: Crumb[] = [{ label: group.label, href: firstNavItem(group).href }];
+    if (match.sectionKey) {
+        const section = group.items.find((entry): entry is NavSection => isNavSection(entry) && entry.key === match.sectionKey);
+        if (section) crumbs.push({ label: section.label });
+    }
+    crumbs.push(deeper ? { label: match.item.label, href: match.item.href } : { label: match.item.label });
+    if (deeper) {
+        const last = currentPath.split('/').filter(Boolean).pop() ?? '';
+        crumbs.push({ label: ['create', 'nouvelle'].includes(last) ? t('breadcrumb.create') : ['edit', 'modifier'].includes(last) ? t('breadcrumb.edit') : t('breadcrumb.detail') });
+    }
+    return crumbs;
+}
+
+export type QuickAction ={ href: string; label: string; icon: ReactNode };
 
 /**
  * Create shortcuts shared by the header "Créer" menu and the command palette.
  * Each one routes to an existing workflow and is shown only when permitted.
  */
-export function buildQuickActions(t: (key: TranslationKey) => string, tenant: Tenant): QuickAction[] {
+export function buildQuickActions(
+    t: (key: TranslationKey) => string,
+    tenant: Tenant,
+    options: { supplierInvoicesEnabled?: boolean; sandboxActive?: boolean } = {},
+): QuickAction[] {
     const can = (permission: string) => tenant.permissions.includes(permission);
+    // Supplier invoices are Production-only and behind a kill switch (the route answers 404 otherwise).
+    const canCreateSupplierInvoice = can('supplier_invoices.manage') && !!options.supplierInvoicesEnabled && !options.sandboxActive;
     return [
         { href: '/pos', label: t('platform.newSale'), icon: <IconRegister />, show: can('pos.access') && !!tenant.store },
-        { href: '/procurement', label: t('shell.newPurchase'), icon: <IconCart />, show: can('procurement.manage') },
+        // Standalone purchase-order creation does not exist yet (POs are created from a sales order), so the
+        // purchasing shortcut is the supplier-invoice entry form, a genuine creation workflow.
+        { href: '/finance/factures-fournisseurs/nouvelle', label: t('shell.newSupplierInvoice'), icon: <IconInvoice />, show: canCreateSupplierInvoice },
         { href: '/catalog/products/create', label: t('platform.addProduct'), icon: <IconPackage />, show: can('products.create') },
         { href: '/contacts/create', label: t('shell.addContact'), icon: <IconContact />, show: can('contacts.create') },
     ]
@@ -268,12 +397,10 @@ export function buildQuickActions(t: (key: TranslationKey) => string, tenant: Te
 export const SEARCHABLE_INDEX_HREFS = [
     '/catalog/products',
     '/sales/orders',
-    '/sales/customers',
     '/quotations',
     '/invoices',
     '/payments',
     '/procurement/purchase-orders',
-    '/procurement/suppliers',
     '/contacts',
 ] as const;
 

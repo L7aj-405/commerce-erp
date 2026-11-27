@@ -18,7 +18,7 @@ trait AuthorizesPaymentAction
         // Production order is unreachable from Test Mode (and vice versa).
         abort_unless((string) $order->sandbox_id === (string) app(SandboxContext::class)->id(), 404);
         if ($order->sandbox_id !== null) {
-            abort_unless(in_array($permission, ['payments.view', 'payments.create', 'payments.reverse'], true), 403, 'TEST: transition indisponible.');
+            abort_unless(in_array($permission, ['payments.view', 'payments.create', 'payments.reverse', 'payments.refund'], true), 403, 'TEST: transition indisponible.');
         }
         // Web: the browser's active organization + store. MCP: the connection's organization and user;
         // store membership below still applies to both.
