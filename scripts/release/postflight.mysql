@@ -1,0 +1,77 @@
+-- =====================================================================================================
+-- 10xScale ERP - production-consolidation-01 - POSTFLIGHT (READ ONLY)
+--
+-- Run AFTER `artisan migrate --force`, before writes are re-opened:
+--   mysql --table --default-character-set=utf8mb4 -h HOST -u USER -p DATABASE < scripts/release/postflight.mysql
+-- Result column: PASS = ok | STOP = keep maintenance mode, follow the recovery plan | REVIEW / INFO = read.
+-- Pair it with integrity-snapshot.mysql (before / after diff) and `php artisan finance:reconcile {org}`.
+-- =====================================================================================================
+SET SESSION TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+SET SESSION time_zone = '+00:00';
+START TRANSACTION WITH CONSISTENT SNAPSHOT, READ ONLY;
+
+SELECT 'V01' AS id, 'All 15 release migrations recorded' AS check_name, IF(COUNT(*) = 15, 'PASS', 'STOP') AS result,
+  CONCAT(COUNT(*), '/15') AS detail
+FROM migrations WHERE migration IN (
+  '2026_11_23_000001_provision_payments_refund_permission', '2026_11_23_000002_repair_payments_refund_catalog',
+  '2026_11_24_000001_add_financial_check_constraints', '2026_11_25_000001_add_typed_policy_columns_to_organizations',
+  '2026_11_25_000002_provision_policy_permissions', '2026_11_26_000001_add_fiscal_identity_to_suppliers',
+  '2026_11_26_000002_create_supplier_invoice_tables', '2026_11_26_000003_link_obligations_to_supplier_invoice_installments',
+  '2026_11_26_000004_provision_supplier_invoice_permissions', '2026_11_28_000001_create_customer_finance_tables',
+  '2026_11_29_000001_add_customer_allocation_effective_dates', '2026_12_01_000001_add_invoicing_policy_to_customer_financial_terms',
+  '2026_12_02_000001_create_unified_contacts_party_tables', '2026_12_02_000002_backfill_parties_and_provision_contact_permissions',
+  '2026_12_03_000001_add_archive_snapshot_to_parties');
+
+SELECT 'V02' AS id, 'CHECK constraints present and enforced (12 financial + 6 supplier invoice + 1 obligation)' AS check_name,
+  IF(COUNT(*) = 19, 'PASS', 'STOP') AS result, CONCAT(COUNT(*), '/19') AS detail
+FROM information_schema.table_constraints
+WHERE constraint_schema = DATABASE() AND constraint_type = 'CHECK' AND enforced = 'YES' AND constraint_name LIKE 'chk\_%';
+
+SELECT 'V03' AS id, 'Legacy rows without a party (re-run of the backfill needed if non-zero)' AS check_name,
+  IF(SUM(n) = 0, 'PASS', 'STOP') AS result,
+  CONCAT('customers=', SUM(IF(src = 'c', n, 0)), ' suppliers=', SUM(IF(src = 's', n, 0)), ' contacts=', SUM(IF(src = 'k', n, 0))) AS detail
+FROM (SELECT 'c' AS src, COUNT(*) AS n FROM customers WHERE party_id IS NULL
+      UNION ALL SELECT 's', COUNT(*) FROM suppliers WHERE party_id IS NULL
+      UNION ALL SELECT 'k', COUNT(*) FROM organization_contacts WHERE party_id IS NULL) x;
+
+SELECT 'V04' AS id, 'Links to a party of another organization or to a missing party (tenant isolation)' AS check_name,
+  IF(SUM(n) = 0, 'PASS', 'STOP') AS result, CONCAT(SUM(n), ' broken link(s)') AS detail
+FROM (SELECT COUNT(*) AS n FROM customers c LEFT JOIN parties p ON p.id = c.party_id AND p.organization_id = c.organization_id WHERE c.party_id IS NOT NULL AND p.id IS NULL
+      UNION ALL SELECT COUNT(*) FROM suppliers s LEFT JOIN parties p ON p.id = s.party_id AND p.organization_id = s.organization_id WHERE s.party_id IS NOT NULL AND p.id IS NULL
+      UNION ALL SELECT COUNT(*) FROM organization_contacts k LEFT JOIN parties p ON p.id = k.party_id AND p.organization_id = k.organization_id WHERE k.party_id IS NOT NULL AND p.id IS NULL) x;
+
+SELECT 'V05' AS id, 'Migrated parties that no legacy row references (expected 0)' AS check_name,
+  IF(COUNT(*) = 0, 'PASS', 'REVIEW') AS result, CONCAT(COUNT(*), ' orphan(s)') AS detail
+FROM parties p WHERE p.origin = 'migrated'
+  AND NOT EXISTS (SELECT 1 FROM customers c WHERE c.party_id = p.id)
+  AND NOT EXISTS (SELECT 1 FROM suppliers s WHERE s.party_id = p.id)
+  AND NOT EXISTS (SELECT 1 FROM organization_contacts k WHERE k.party_id = p.id);
+
+SELECT 'V06' AS id, '8 system contact roles and 5 standard payment terms per organization' AS check_name,
+  IF((SELECT COUNT(*) FROM contact_roles WHERE organization_scope = 0 AND is_system = 1) = 8
+     AND NOT EXISTS (SELECT 1 FROM organizations o WHERE
+       (SELECT COUNT(*) FROM payment_terms t WHERE t.organization_id = o.id AND t.is_system = 1) <> 5), 'PASS', 'STOP') AS result,
+  '-' AS detail;
+
+SELECT 'V07' AS id, 'Backfill conflict report (nothing was auto-merged; review in the application)' AS check_name, 'INFO' AS result,
+  CONCAT('org ', organization_id, ' ', reason, ': ', COUNT(*)) AS detail
+FROM party_migration_conflicts GROUP BY organization_id, reason ORDER BY organization_id, reason;
+
+SELECT 'V08' AS id, 'Parties per organization' AS check_name, 'INFO' AS result,
+  CONCAT('org ', organization_id, ' ', kind, '/', status, ': ', COUNT(*)) AS detail
+FROM parties GROUP BY organization_id, kind, status ORDER BY organization_id, kind, status;
+
+SELECT 'V09' AS id, 'Additive columns left at their neutral value' AS check_name,
+  IF((SELECT COUNT(*) FROM payment_allocations WHERE effective_date IS NOT NULL) = 0
+     AND (SELECT COUNT(*) FROM payments WHERE customer_id IS NOT NULL) = 0
+     AND (SELECT COUNT(*) FROM finance_obligations WHERE supplier_invoice_installment_id IS NOT NULL) = 0
+     AND (SELECT COUNT(*) FROM organizations WHERE invoice_issuance <> 'after_full_payment' OR credit_limit_enforcement <> 'warn'
+            OR sales_order_payment_term_days IS NOT NULL OR invoice_payment_term_days IS NOT NULL) = 0, 'PASS', 'REVIEW') AS result,
+  'valid only before writes are re-opened' AS detail;
+
+SELECT 'V10' AS id, 'Roles holding payments.reverse but not payments.refund (expected 0 right after migration)' AS check_name,
+  IF(COUNT(*) = 0, 'PASS', 'REVIEW') AS result, CONCAT(COUNT(*), ' role(s)') AS detail
+FROM role_permission a JOIN permissions p ON p.id = a.permission_id AND p.`key` = 'payments.reverse'
+WHERE NOT EXISTS (SELECT 1 FROM role_permission b JOIN permissions q ON q.id = b.permission_id AND q.`key` = 'payments.refund' WHERE b.role_id = a.role_id);
+
+COMMIT;

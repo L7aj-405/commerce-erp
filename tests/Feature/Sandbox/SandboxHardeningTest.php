@@ -95,10 +95,11 @@ class SandboxHardeningTest extends QuotationTestCase
         $this->assertFalse($home['stale']);
         $this->get('/sales/orders')->assertOk();
         $entered = json_decode(DB::table('audit_logs')->where('event', 'sandbox.entered')->orderByDesc('id')->value('new_values'), true);
-        $this->assertSame(['sandbox_id' => $sandbox->id, 'generation' => 2], $entered);
+        // MySQL normalises JSON object key order (shorter/alphabetical first): compare as a map, not as an ordered list.
+        $this->assertEquals(['sandbox_id' => $sandbox->id, 'generation' => 2], $entered);
         $this->leaveTest();
         $left = json_decode(DB::table('audit_logs')->where('event', 'sandbox.left')->orderByDesc('id')->value('old_values'), true);
-        $this->assertSame(['sandbox_id' => $sandbox->id, 'generation' => 2], $left);
+        $this->assertEquals(['sandbox_id' => $sandbox->id, 'generation' => 2], $left);
     }
 
     public function test_production_reset_is_blocked_while_test_data_exists_and_proceeds_after_the_test_reset(): void

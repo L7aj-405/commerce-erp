@@ -5,6 +5,7 @@ namespace App\Services\Pos;
 use App\Enums\InventoryReservationStatus;
 use App\Enums\SalesOrderSource;
 use App\Enums\SalesOrderStatus;
+use App\Models\AuditLog;
 use App\Models\InventoryReservation;
 use App\Models\Organization;
 use App\Models\SalesOrder;
@@ -128,6 +129,37 @@ class PosDraftLifecycle
         }
         if (! $allowReservationRelease && $this->activeReservationIds($order) !== []) {
             $reasons[] = 'active_reservations';
+        }
+
+        return array_values(array_unique($reasons));
+    }
+
+    /**
+     * True when the order was EVER confirmed: the confirmation timestamp, or the immutable audit trail
+     * (confirmation / correction events), which survives a missing or cleared timestamp.
+     */
+    public function hasConfirmationEvidence(SalesOrder $order): bool
+    {
+        return $order->confirmed_at !== null
+            || AuditLog::query()
+                ->where('organization_id', $order->organization_id)
+                ->where('auditable_type', $order->getMorphClass())
+                ->where('auditable_id', $order->getKey())
+                ->whereIn('event', ['sales_order.confirmed', 'sales_order.correction_completed'])
+                ->exists();
+    }
+
+    /**
+     * THE single eligibility rule for hard-deleting a cancelled POS order, shared by the policy
+     * (UI flag + HTTP authorization) and discard(): never confirmed, never converted, no history.
+     *
+     * @return list<string> blocking reason codes; empty means disposable.
+     */
+    public function cancelledDeleteBlockers(SalesOrder $order): array
+    {
+        $reasons = $this->blockers($order);
+        if ($order->pos_converted_at !== null || $this->hasConfirmationEvidence($order)) {
+            array_unshift($reasons, 'confirmed');
         }
 
         return array_values(array_unique($reasons));
@@ -267,8 +299,12 @@ class PosDraftLifecycle
                 return ['outcome' => self::OUTCOME_SKIPPED_ACTIVE];
             }
         } elseif ($reason === self::REASON_CANCELLED_DELETE) {
-            if ($actor === null || $locked->confirmed_at !== null) {
+            if ($actor === null) {
                 return ['outcome' => self::OUTCOME_BLOCKED, 'reasons' => ['confirmed']];
+            }
+            $history = $this->cancelledDeleteBlockers($locked);
+            if ($history !== []) {
+                return ['outcome' => self::OUTCOME_BLOCKED, 'reasons' => $history];
             }
         } elseif ($lineCount > 0 && ! $confirmed) {
             return ['outcome' => self::OUTCOME_CONFIRMATION_REQUIRED, 'lines' => $lineCount];

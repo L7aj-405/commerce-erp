@@ -56,6 +56,8 @@ class FiscalDocumentProtection
         'payments' => ['since' => 'created_at', 'issued_only' => false, 'number' => 'payment_number'],
         'payment_refunds' => ['since' => 'created_at', 'issued_only' => false, 'number' => 'refund_number'],
         'finance_outgoing_payments' => ['since' => 'created_at', 'issued_only' => false, 'number' => 'payment_number'],
+        // Supplier invoices: protected from approval on (a draft carries no official existence; voided ones keep approved_at).
+        'supplier_invoices' => ['since' => 'approved_at', 'issued_only' => true, 'number' => 'internal_number'],
     ];
 
     /** @return list<string> */

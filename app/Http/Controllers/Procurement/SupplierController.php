@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Supplier;
 use App\Services\ActiveTenantContext;
 use App\Services\Procurement\SupplierCatalogQuery;
+use App\Services\Procurement\SupplierFiscalAdvisor;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -14,10 +15,17 @@ use Inertia\Response as InertiaResponse;
 
 class SupplierController extends Controller
 {
-    public function index(Request $request, ActiveTenantContext $context): InertiaResponse
+    /** Non-sensitive fiscal identity fields exposed in lists and detail. */
+    private const FISCAL_LIST_FIELDS = ['ice', 'tax_identifier', 'rc_number', 'default_payment_term_days', 'default_currency_code'];
+
+    public function index(Request $request, ActiveTenantContext $context): InertiaResponse|RedirectResponse
     {
         $organization = $context->organizationOrFail();
         $this->authorize('viewAny', [Supplier::class, $organization]);
+        // The supplier directory is the Fournisseurs view of the unified Contacts module. Users without contacts access keep this page.
+        if ($request->user()->hasPermission($organization, 'contacts.view')) {
+            return redirect()->route('contacts.index', array_filter(['role' => 'supplier', 'search' => $request->query('search')]));
+        }
 
         $filters = $request->validate([
             'search' => ['nullable', 'string', 'max:255'],
@@ -35,9 +43,11 @@ class SupplierController extends Controller
             ->orderBy('name')
             ->paginate(20)
             ->withQueryString()
-            ->through(fn (Supplier $supplier) => $supplier->only([
-                'id', 'name', 'contact_person', 'phone', 'email', 'address', 'notes', 'active',
-            ]));
+            ->through(fn (Supplier $supplier) => [
+                ...$supplier->only(['id', 'name', 'contact_person', 'phone', 'email', 'address', 'notes', 'active', ...self::FISCAL_LIST_FIELDS]),
+                // The IBAN itself is never listed.
+                'has_bank_iban' => filled($supplier->bank_iban),
+            ]);
 
         return Inertia::render('Procurement/Suppliers/Index', [
             'suppliers' => $suppliers,
@@ -59,7 +69,14 @@ class SupplierController extends Controller
         $canViewProducts = $user->hasPermission($organizationId, 'products.view');
 
         return Inertia::render('Procurement/Suppliers/Show', [
-            'supplier' => $supplier->only(['id', 'name', 'contact_person', 'phone', 'email', 'address', 'notes', 'active']),
+            'supplier' => [
+                ...$supplier->only(['id', 'name', 'contact_person', 'phone', 'email', 'address', 'notes', 'active', ...self::FISCAL_LIST_FIELDS]),
+                'has_bank_iban' => filled($supplier->bank_iban),
+                // Full IBAN only for users who can edit the supplier; read-only users see it masked.
+                'bank_iban' => $user->hasPermission($organizationId, 'suppliers.manage') ? $supplier->bank_iban : null,
+                'bank_iban_masked' => SupplierFiscalAdvisor::maskIban($supplier->bank_iban),
+            ],
+            'warnings' => app(SupplierFiscalAdvisor::class)->advise($supplier),
             'relations' => $canViewProducts
                 ? $catalog->forSupplier($organizationId, (int) $supplier->getKey(), $filters, SupplierCatalogQuery::canViewPrices($user, $organizationId), 25, (int) $request->integer('page', 1))->withQueryString()
                 : null,
@@ -77,17 +94,26 @@ class SupplierController extends Controller
     {
         $organization = $context->organizationOrFail();
         $this->authorize('create', [Supplier::class, $organization]);
-        $action->execute($request->user(), $organization, $request->validate($this->rules()));
+        $supplier = $action->execute($request->user(), $organization, $request->validate($this->rules()));
 
-        return back()->with('success', 'Fournisseur enregistré.');
+        return $this->saved($supplier, 'Fournisseur enregistré.');
     }
 
     public function update(Request $request, Supplier $supplier, SaveSupplierAction $action): RedirectResponse
     {
         $this->authorize('update', $supplier);
-        $action->execute($request->user(), $supplier->organization, $request->validate($this->rules()), $supplier);
+        $supplier = $action->execute($request->user(), $supplier->organization, $request->validate($this->rules()), $supplier);
 
-        return back()->with('success', 'Fournisseur mis à jour.');
+        return $this->saved($supplier, 'Fournisseur mis à jour.');
+    }
+
+    /** The supplier is always saved; fiscal-identity hints are advisory and ride along with the confirmation. */
+    private function saved(Supplier $supplier, string $message): RedirectResponse
+    {
+        $warnings = app(SupplierFiscalAdvisor::class)->advise($supplier);
+        $flash = $warnings === [] ? $message : $message.' Attention : '.implode(' ', array_column($warnings, 'message'));
+
+        return back()->with('success', $flash)->with('supplier_warnings', $warnings);
     }
 
     /** @return array<string, mixed> */

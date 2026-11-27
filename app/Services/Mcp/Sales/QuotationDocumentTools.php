@@ -5,6 +5,7 @@ namespace App\Services\Mcp\Sales;
 use App\Services\AuditLogger;
 use App\Services\Mcp\McpExecutionContext;
 use App\Services\Mcp\McpIdempotencyService;
+use App\Services\Mcp\McpProductionNotice;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Cache\LockTimeoutException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -30,7 +31,9 @@ final class QuotationDocumentTools
     {
         return $this->execute('get_quotation_document', function () use ($quotation_id, $format, $include_company_stamp) {
             $this->context->authorize('quotations.view');
-            if ($format !== 'pdf' || $quotation_id < 1) throw new InvalidArgumentException('invalid_arguments');
+            if ($format !== 'pdf' || $quotation_id < 1) {
+                throw new InvalidArgumentException('invalid_arguments');
+            }
             $result = $this->documents->document($quotation_id, $include_company_stamp);
             $this->audit->record(event: 'mcp.quotation_document.generated', actor: $this->context->user(), organization: $this->context->organization(), newValues: [
                 'quotation_id' => $quotation_id, 'status' => $result['status'], 'filename' => $result['filename'],
@@ -54,7 +57,9 @@ final class QuotationDocumentTools
     ): CallToolResult {
         return $this->execute('preview_quotation_email', function () use ($quotation_id, $to, $cc, $bcc, $recipient_mode, $recipient_email, $subject, $message, $include_company_stamp) {
             $this->context->authorize(McpQuotationDocumentService::EMAIL_SCOPE);
-            if ($quotation_id < 1) throw new InvalidArgumentException('invalid_id');
+            if ($quotation_id < 1) {
+                throw new InvalidArgumentException('invalid_id');
+            }
             $preview = $this->documents->previewEmail($quotation_id, [
                 'to' => $to, 'cc' => $cc, 'bcc' => $bcc, 'recipient_mode' => $recipient_mode, 'recipient_email' => $recipient_email,
             ], $subject, $message, $include_company_stamp);
@@ -76,7 +81,9 @@ final class QuotationDocumentTools
     {
         return $this->execute('send_quotation_email', function () use ($quotation_id, $preview_fingerprint, $idempotency_key) {
             $this->context->authorize(McpQuotationDocumentService::EMAIL_SCOPE);
-            if ($quotation_id < 1) throw new InvalidArgumentException('invalid_id');
+            if ($quotation_id < 1) {
+                throw new InvalidArgumentException('invalid_id');
+            }
 
             // Not transactional: the ERP's sent/failed delivery + audit must persist.
             // The outcome (sent or failed) is stored, so a retry never re-sends.
@@ -97,7 +104,7 @@ final class QuotationDocumentTools
     private function execute(string $tool, callable $callback): CallToolResult
     {
         try {
-            return $this->success($callback());
+            return $this->success(McpProductionNotice::annotate($tool, $callback()));
         } catch (AuthorizationException) {
             return $this->error('MCP_FORBIDDEN', 'The connection is not authorized to use this capability.');
         } catch (HttpExceptionInterface $exception) {
@@ -145,7 +152,9 @@ final class QuotationDocumentTools
     private function error(string $code, string $message, array $details = []): CallToolResult
     {
         $error = ['code' => $code, 'message' => $message];
-        if ($details !== []) $error['details'] = $details;
+        if ($details !== []) {
+            $error['details'] = $details;
+        }
         $payload = ['ok' => false, 'error' => $error];
 
         return new CallToolResult([new TextContent($payload)], isError: true, structuredContent: $payload);

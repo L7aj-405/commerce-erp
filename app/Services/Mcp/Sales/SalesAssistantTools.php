@@ -6,6 +6,7 @@ use App\Models\Quotation;
 use App\Services\AuditLogger;
 use App\Services\Mcp\McpExecutionContext;
 use App\Services\Mcp\McpIdempotencyService;
+use App\Services\Mcp\McpProductionNotice;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Cache\LockTimeoutException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -174,7 +175,7 @@ final class SalesAssistantTools
      * Compact supplier-sourcing state, so the agent knows at a glance whether a
      * draft can be issued. Full request history: get_quotation_sourcing.
      *
-     * @param array<string, mixed> $presented
+     * @param  array<string, mixed>  $presented
      * @return array<string, mixed>
      */
     private function withSourcing(array $presented, Quotation $quotation): array
@@ -202,7 +203,7 @@ final class SalesAssistantTools
     private function execute(string $tool, callable $callback, string $notFoundCode = 'MCP_ENTITY_NOT_FOUND'): CallToolResult
     {
         try {
-            return $this->success($callback());
+            return $this->success(McpProductionNotice::annotate($tool, $callback()));
         } catch (AuthorizationException) {
             return $this->forbidden();
         } catch (HttpExceptionInterface $exception) {
@@ -254,7 +255,9 @@ final class SalesAssistantTools
     private function error(string $code, string $message, array $details = []): CallToolResult
     {
         $error = ['code' => $code, 'message' => $message];
-        if ($details !== []) $error['details'] = $details;
+        if ($details !== []) {
+            $error['details'] = $details;
+        }
         $payload = ['ok' => false, 'error' => $error];
 
         return new CallToolResult([new TextContent($payload)], isError: true, structuredContent: $payload);
@@ -278,7 +281,7 @@ final class SalesAssistantTools
      * Compact attribution on top of the quotation actions' own audit entries:
      * which tool, which Devis, what changed — never the full payload.
      *
-     * @param array<string, mixed> $evaluation
+     * @param  array<string, mixed>  $evaluation
      */
     private function auditMutation(string $tool, Quotation $quotation, array $evaluation): void
     {

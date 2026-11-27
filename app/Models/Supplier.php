@@ -18,6 +18,9 @@ class Supplier extends Model
 
     protected $guarded = ['*'];
 
+    /** Sensitive: never serialized by accident (lists, JSON, Inertia). Read explicitly where authorized. */
+    protected $hidden = ['bank_iban'];
+
     protected function casts(): array
     {
         return ['active' => 'boolean'];
@@ -26,6 +29,11 @@ class Supplier extends Model
     public function organization(): BelongsTo
     {
         return $this->belongsTo(Organization::class);
+    }
+
+    public function party(): BelongsTo
+    {
+        return $this->belongsTo(Party::class);
     }
 
     public function procurements(): HasMany
@@ -48,6 +56,18 @@ class Supplier extends Model
         return $this->hasMany(FinanceRecurringObligationTemplate::class);
     }
 
-    public function financeSupplierInstallmentPlans(): HasMany { return $this->hasMany(FinanceSupplierInstallmentPlan::class); }
-    public function financePaymentInstruments(): HasMany { return $this->hasMany(FinancePaymentInstrument::class); }
+    public function financeSupplierInstallmentPlans(): HasMany
+    {
+        return $this->hasMany(FinanceSupplierInstallmentPlan::class);
+    }
+
+    public function financePaymentInstruments(): HasMany
+    {
+        return $this->hasMany(FinancePaymentInstrument::class);
+    }
+
+    public function supplierInvoices(): HasMany
+    {
+        return $this->hasMany(SupplierInvoice::class);
+    }
 }

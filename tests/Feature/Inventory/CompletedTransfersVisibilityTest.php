@@ -6,11 +6,12 @@ use App\Actions\Inventory\CreateStockTransferAction;
 use App\Actions\Inventory\PlanShowroomReplenishmentAction;
 use App\Actions\Inventory\PrepareTransferRequestAction;
 use App\Actions\Inventory\ReceiveTransferRequestAction;
+use App\Actions\Inventory\RestoreStockTransfersFromLedgerAction;
 use App\Actions\Inventory\ShipTransferRequestAction;
 use App\Actions\Sales\ConfirmSalesOrderAction;
+use App\Enums\InventoryMovementType;
 use App\Models\Organization;
 use App\Models\ProductVariant;
-use App\Models\SalesOrder;
 use App\Models\StockTransfer;
 use App\Models\Store;
 use App\Models\TransferRequest;
@@ -21,6 +22,7 @@ use App\Services\OrganizationDataReset\Selective\SelectiveResetCategoryRegistry;
 use App\Services\OrganizationDataReset\Selective\SelectiveResetExecutor;
 use App\Services\OrganizationDataReset\Selective\SelectiveResetPlanner;
 use App\Services\OrganizationDataReset\Selective\SelectiveResetSelection;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Inertia\Testing\AssertableInertia;
 use Tests\Support\PosTestCase;
@@ -251,7 +253,7 @@ class CompletedTransfersVisibilityTest extends PosTestCase
         DB::table('inventory_movements')->where('reference', $corrupt->transfer_number)->where('movement_type', 'transfer_in')->delete();
         $movementsBefore = DB::table('inventory_movements')->where('organization_id', $this->org->id)->count();
 
-        $preview = app(\App\Actions\Inventory\RestoreStockTransfersFromLedgerAction::class)->execute($this->owner, $this->org, false);
+        $preview = app(RestoreStockTransfersFromLedgerAction::class)->execute($this->owner, $this->org, false);
         $this->assertEqualsCanonicalizing(array_keys($expected), array_column($preview['restorable'], 'number'));
         $this->assertSame([$corrupt->transfer_number], array_column($preview['refused'], 'number'));
         $this->assertSame(0, StockTransfer::query()->where('organization_id', $this->org->id)->count(), 'Preview writes nothing.');
@@ -268,5 +270,37 @@ class CompletedTransfersVisibilityTest extends PosTestCase
         $this->assertDatabaseMissing('stock_transfers', ['transfer_number' => $corrupt->transfer_number]);
         $this->assertSame($movementsBefore, DB::table('inventory_movements')->where('organization_id', $this->org->id)->count());
         $this->assertSame(1, (int) TransferRequest::query()->whereNotNull('stock_transfer_id')->count(), 'The order request is re-linked.');
+    }
+
+    public function test_a_transfer_carries_one_timestamp_even_when_the_clock_ticks_while_it_is_created(): void
+    {
+        $this->world();
+        Carbon::setTestNow('2026-11-25 17:16:46');
+        // The clock moves on right after the first ledger movement is written, exactly what happens when a real transfer
+        // straddles a second boundary. Before the fix the record was stamped with a later, independent now().
+        $ticked = false;
+        DB::listen(function ($query) use (&$ticked) {
+            if (! $ticked && str_starts_with(strtolower($query->sql), 'insert into "inventory_movements"')) {
+                $ticked = true;
+                Carbon::setTestNow(Carbon::now()->addSecond());
+            }
+        });
+
+        $transfer = app(CreateStockTransferAction::class)->execute($this->owner, $this->org, $this->sp, $this->showroom,
+            [['variant' => $this->beta, 'quantity' => '1']], 'Transfert manuel');
+
+        $this->assertTrue($ticked, 'the scenario really advanced the clock mid-transfer');
+        $firstOut = DB::table('inventory_movements')->where('organization_id', $this->org->id)->where('reference', $transfer->transfer_number)
+            ->where('movement_type', InventoryMovementType::TransferOut->value)->orderBy('id')->value('created_at');
+        $this->assertSame('2026-11-25 17:16:46', $firstOut, 'the first ledger movement was written before the tick');
+        $this->assertSame($firstOut, $transfer->fresh()->transferred_at->toDateTimeString(), 'the record takes the instant of its ledger movements, not a later independent clock read');
+
+        // And the restoration reproduces that instant exactly.
+        $at = $transfer->fresh()->transferred_at->toDateTimeString();
+        DB::table('stock_transfer_lines')->where('stock_transfer_id', $transfer->id)->delete();
+        DB::table('stock_transfers')->where('id', $transfer->id)->delete();
+        $this->artisan('inventory:restore-stock-transfers', ['--organization' => $this->org->id, '--actor' => $this->owner->email, '--apply' => true])->assertSuccessful();
+        $this->assertSame($at, StockTransfer::query()->where('transfer_number', $transfer->transfer_number)->firstOrFail()->transferred_at->toDateTimeString());
+        Carbon::setTestNow();
     }
 }

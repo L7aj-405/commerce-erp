@@ -7,11 +7,16 @@ use App\Models\Organization;
 use App\Models\Supplier;
 use App\Models\User;
 use App\Services\AuditLogger;
+use App\Services\Contacts\PartyIdentitySynchronizer;
+use App\Services\Procurement\SupplierFiscalAdvisor;
 use Illuminate\Support\Facades\DB;
 
 class SaveSupplierAction
 {
     use AuthorizesProcurementAction;
+
+    /** Optional fiscal / payment identity; only written when the key is present in the payload. */
+    private const FISCAL_FIELDS = ['ice', 'tax_identifier', 'rc_number', 'default_payment_term_days', 'default_currency_code', 'bank_iban'];
 
     public function __construct(private readonly AuditLogger $audit) {}
 
@@ -30,6 +35,13 @@ class SaveSupplierAction
             'address' => ['nullable', 'string', 'max:2000'],
             'notes' => ['nullable', 'string', 'max:2000'],
             'active' => ['sometimes', 'boolean'],
+            // Fiscal identity: length / charset only. Format hints are advisory (SupplierFiscalAdvisor), never blocking.
+            'ice' => ['nullable', 'string', 'max:32', 'regex:/^[A-Za-z0-9][A-Za-z0-9 .\-\/]*$/'],
+            'tax_identifier' => ['nullable', 'string', 'max:32', 'regex:/^[A-Za-z0-9][A-Za-z0-9 .\-\/]*$/'],
+            'rc_number' => ['nullable', 'string', 'max:32', 'regex:/^[A-Za-z0-9][A-Za-z0-9 .\-\/]*$/'],
+            'default_payment_term_days' => ['nullable', 'integer', 'min:0', 'max:365'],
+            'default_currency_code' => ['nullable', 'string', 'size:3', 'regex:/^[A-Za-z]{3}$/'],
+            'bank_iban' => ['nullable', 'string', 'max:40', 'regex:/^[A-Za-z0-9 ]+$/'],
         ];
     }
 
@@ -57,13 +69,51 @@ class SaveSupplierAction
             $supplier->address = $data['address'] ?? null;
             $supplier->notes = $data['notes'] ?? null;
             $supplier->active = (bool) ($data['active'] ?? true);
-            $supplier->save();
 
-            $this->audit->record($event, $actor, $organization, auditable: $supplier, newValues: [
-                'name' => $supplier->name, 'active' => $supplier->active,
-            ]);
+            $oldFiscal = $supplier->exists ? $this->auditFiscal($supplier) : [];
+            foreach (self::FISCAL_FIELDS as $field) {
+                // A payload that omits a field (MCP, older clients) keeps the stored value.
+                if (array_key_exists($field, $data)) {
+                    $supplier->{$field} = $this->normalizeFiscal($field, $data[$field]);
+                }
+            }
+            $supplier->save();
+            app(PartyIdentitySynchronizer::class)->syncFromLegacy($supplier);
+
+            $newFiscal = $this->auditFiscal($supplier);
+            $this->audit->record($event, $actor, $organization, auditable: $supplier,
+                oldValues: $event === 'supplier.updated' ? array_diff_assoc($oldFiscal, $newFiscal) : [],
+                newValues: [
+                    'name' => $supplier->name, 'active' => $supplier->active,
+                    ...($event === 'supplier.updated' ? array_diff_assoc($newFiscal, $oldFiscal) : array_filter($newFiscal, fn ($value) => $value !== null)),
+                ]);
 
             return $supplier;
         });
+    }
+
+    private function normalizeFiscal(string $field, mixed $value): int|string|null
+    {
+        if ($value === null || (is_string($value) && trim($value) === '')) {
+            return null;
+        }
+
+        return match ($field) {
+            'default_payment_term_days' => (int) $value,
+            'default_currency_code' => strtoupper(trim((string) $value)),
+            'bank_iban' => strtoupper((string) preg_replace('/\s+/', '', (string) $value)),
+            default => (string) preg_replace('/\s+/', ' ', trim((string) $value)),
+        };
+    }
+
+    /** Fiscal values as written to the audit trail: the IBAN is always masked. @return array<string, int|string|null> */
+    private function auditFiscal(Supplier $supplier): array
+    {
+        $values = [];
+        foreach (self::FISCAL_FIELDS as $field) {
+            $values[$field] = $field === 'bank_iban' ? SupplierFiscalAdvisor::maskIban($supplier->bank_iban) : $supplier->{$field};
+        }
+
+        return $values;
     }
 }

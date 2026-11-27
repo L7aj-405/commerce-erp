@@ -12,8 +12,10 @@ use App\Enums\SalesOrderLineType;
 use App\Enums\SalesOrderStatus;
 use App\Models\Fulfillment;
 use App\Models\FulfillmentItem;
+use App\Models\InventoryReservation;
 use App\Models\Organization;
 use App\Models\SalesOrder;
+use App\Models\SalesOrderAddendum;
 use App\Models\SalesOrderInventoryAllocation;
 use App\Models\SalesOrderLine;
 use App\Models\User;
@@ -61,7 +63,9 @@ final class FulfillmentEngine
 
     public function authorize(User $actor, SalesOrder $order, string ...$permissions): void
     {
-        foreach ($permissions as $permission) $this->authorizeOrder($actor, $order, $permission);
+        foreach ($permissions as $permission) {
+            $this->authorizeOrder($actor, $order, $permission);
+        }
     }
 
     /** At least one of the permissions (e.g. proofs may be attached by dispatchers or managers). */
@@ -133,22 +137,46 @@ final class FulfillmentEngine
         $items = FulfillmentItem::query()->from(FulfillmentItem::environmentTable().' as fi')
             ->join(Fulfillment::environmentTable().' as f', function ($join) use ($sandbox) {
                 $join->on('f.id', '=', 'fi.fulfillment_id')->on('f.organization_id', '=', 'fi.organization_id');
-                if ($sandbox) $join->on('f.sandbox_id', '=', 'fi.sandbox_id');
+                if ($sandbox) {
+                    $join->on('f.sandbox_id', '=', 'fi.sandbox_id');
+                }
             })
             ->where('fi.organization_id', $order->organization_id)->where('f.sales_order_id', $order->getKey())
             ->where('f.status', '!=', FulfillmentStatus::Cancelled->value)
             ->get(['fi.sales_order_line_id', 'fi.quantity', 'f.status', 'f.id as fulfillment_id']);
         $reserved = SalesOrderInventoryAllocation::query()->from(SalesOrderInventoryAllocation::environmentTable().' as a')
-            ->join(\App\Models\InventoryReservation::environmentTable().' as r', fn ($join) => $join->on('r.id', '=', 'a.inventory_reservation_id')->on('r.organization_id', '=', 'a.organization_id'))
+            ->join(InventoryReservation::environmentTable().' as r', fn ($join) => $join->on('r.id', '=', 'a.inventory_reservation_id')->on('r.organization_id', '=', 'a.organization_id'))
             ->where('a.organization_id', $order->organization_id)->whereIn('a.sales_order_line_id', $lines->pluck('id'))
             ->where('r.status', InventoryReservationStatus::Active->value)
             ->get(['a.sales_order_line_id', 'r.quantity'])
             ->groupBy('sales_order_line_id')
             ->map(fn ($rows) => $rows->reduce(fn (string $sum, $row) => InventoryQuantity::add($sum, (string) $row->quantity), InventoryQuantity::ZERO));
 
+        // Post-checkout POS addenda (exchange replacements, add-only completions) are handed over at the counter and
+        // their stock is consumed by AddItemsToCompletedPosOrderAction itself, so they never get a Fulfillment row.
+        // `fulfilled_at` on the addendum is the authoritative hand-over fact: such lines count as planned, shipped
+        // and delivered here (read-model only - no historical row is rewritten and no stock moves again).
+        $handedOverAddenda = SalesOrderAddendum::query()->where('organization_id', $order->organization_id)
+            ->where('sales_order_id', $order->getKey())->whereNotNull('fulfilled_at')->pluck('id')->map(fn ($id) => (int) $id)->all();
+
         $state = [];
         foreach ($lines as $line) {
             $lineItems = $items->where('sales_order_line_id', $line->getKey());
+            if ($line->sales_order_addendum_id !== null && in_array((int) $line->sales_order_addendum_id, $handedOverAddenda, true)) {
+                $quantity = InventoryQuantity::normalize((string) $line->quantity);
+                $state[(int) $line->getKey()] = [
+                    'line' => $line,
+                    'catalog' => $line->line_type === SalesOrderLineType::Catalog && $line->product_variant_id !== null,
+                    'quantity' => $quantity,
+                    'planned' => $quantity,
+                    'shipped' => $quantity,
+                    'delivered' => $quantity,
+                    'reserved' => InventoryQuantity::ZERO,
+                    'claimed_unshipped' => InventoryQuantity::ZERO,
+                ];
+
+                continue;
+            }
             $sum = fn ($rows) => $rows->reduce(fn (string $carry, $row) => InventoryQuantity::add($carry, (string) $row->quantity), InventoryQuantity::ZERO);
             $counted = $lineItems->filter(fn ($row) => $row->fulfillment_id !== $excludeFulfillmentId);
             $unshipped = $counted->filter(fn ($row) => ! FulfillmentStatus::from($row->status)->isShipped());
@@ -171,7 +199,7 @@ final class FulfillmentEngine
      * Validates requested quantities (line id => quantity) against what is
      * left to ship and, for stock lines, the reserved stock not yet claimed.
      *
-     * @param array<int|string, mixed> $requested
+     * @param  array<int|string, mixed>  $requested
      * @return array<int, string> line id => normalized quantity
      */
     public function validateItems(SalesOrder $order, array $requested, ?string $excludeFulfillmentId = null): array
@@ -180,35 +208,45 @@ final class FulfillmentEngine
         $items = [];
         $errors = [];
         foreach ($requested as $lineId => $quantity) {
-            if ($quantity === null || $quantity === '' || (is_numeric($quantity) && (float) $quantity === 0.0)) continue;
+            if ($quantity === null || $quantity === '' || (is_numeric($quantity) && (float) $quantity === 0.0)) {
+                continue;
+            }
             $key = "items.{$lineId}";
             $line = $state[(int) $lineId] ?? null;
             if ($line === null) {
                 $errors[$key] = 'Cette ligne n’appartient pas à la commande.';
+
                 continue;
             }
             try {
                 $quantity = InventoryQuantity::positive((string) $quantity, $key);
             } catch (ValidationException) {
                 $errors[$key] = 'La quantité doit être un nombre positif.';
+
                 continue;
             }
             $left = InventoryQuantity::subtract($line['quantity'], $line['planned']);
             if (InventoryQuantity::compare($quantity, $left) > 0) {
                 $errors[$key] = 'Il ne reste que '.$left.' à expédier pour cette ligne.';
+
                 continue;
             }
             if ($line['catalog']) {
                 $free = InventoryQuantity::subtract($line['reserved'], $line['claimed_unshipped']);
                 if (InventoryQuantity::compare($quantity, $free) > 0) {
                     $errors[$key] = 'Stock réservé disponible pour cette ligne : '.$free.'.';
+
                     continue;
                 }
             }
             $items[(int) $lineId] = $quantity;
         }
-        if ($errors !== []) throw ValidationException::withMessages($errors);
-        if ($items === []) throw ValidationException::withMessages(['items' => 'Indiquez au moins une quantité à expédier.']);
+        if ($errors !== []) {
+            throw ValidationException::withMessages($errors);
+        }
+        if ($items === []) {
+            throw ValidationException::withMessages(['items' => 'Indiquez au moins une quantité à expédier.']);
+        }
 
         return $items;
     }
@@ -219,15 +257,17 @@ final class FulfillmentEngine
         $remaining = [];
         foreach ($this->lineState($order) as $lineId => $line) {
             $left = InventoryQuantity::subtract($line['quantity'], $line['planned']);
-            if (InventoryQuantity::compare($left, InventoryQuantity::ZERO) > 0) $remaining[$lineId] = $left;
+            if (InventoryQuantity::compare($left, InventoryQuantity::ZERO) > 0) {
+                $remaining[$lineId] = $left;
+            }
         }
 
         return $remaining;
     }
 
     /**
-     * @param array<int, string> $items line id => quantity (already validated)
-     * @param array<string, mixed> $attributes
+     * @param  array<int, string>  $items  line id => quantity (already validated)
+     * @param  array<string, mixed>  $attributes
      */
     public function create(User $actor, SalesOrder $order, array $items, FulfillmentStatus $status, string $channel, array $attributes = [], ?string $clientOperationId = null): Fulfillment
     {
@@ -270,7 +310,9 @@ final class FulfillmentEngine
      */
     public function consumeStock(User $actor, SalesOrder $order, Fulfillment $fulfillment): array
     {
-        if ($fulfillment->stock_consumed_at !== null) return [];
+        if ($fulfillment->stock_consumed_at !== null) {
+            return [];
+        }
         $consumed = [];
         $items = $fulfillment->items()->orderBy('id')->get();
         // Showroom origin: goods leave from the Showroom only. A reservation still
@@ -279,16 +321,22 @@ final class FulfillmentEngine
         $showroomOnly = $order->fulfillmentOrigin() === PosFulfillmentOrigin::Showroom ? (int) $order->pos_warehouse_id : null;
         foreach ($items as $item) {
             $line = SalesOrderLine::query()->where('organization_id', $order->organization_id)->whereKey($item->sales_order_line_id)->firstOrFail();
-            if ($line->line_type !== SalesOrderLineType::Catalog || $line->product_variant_id === null) continue;
+            if ($line->line_type !== SalesOrderLineType::Catalog || $line->product_variant_id === null) {
+                continue;
+            }
             $remaining = InventoryQuantity::normalize((string) $item->quantity);
             $allocations = SalesOrderInventoryAllocation::query()->where('organization_id', $order->organization_id)
                 ->where('sales_order_line_id', $line->getKey())->whereNotNull('inventory_reservation_id')
                 ->when($showroomOnly !== null, fn ($query) => $query->where('warehouse_id', $showroomOnly))
                 ->orderBy('warehouse_id')->orderBy('id')->lockForUpdate()->with('inventoryReservation.warehouse', 'inventoryReservation.productVariant')->get();
             foreach ($allocations as $allocation) {
-                if (InventoryQuantity::compare($remaining, InventoryQuantity::ZERO) <= 0) break;
+                if (InventoryQuantity::compare($remaining, InventoryQuantity::ZERO) <= 0) {
+                    break;
+                }
                 $reservation = $allocation->inventoryReservation;
-                if ($reservation === null || $reservation->status !== InventoryReservationStatus::Active) continue;
+                if ($reservation === null || $reservation->status !== InventoryReservationStatus::Active) {
+                    continue;
+                }
                 $take = InventoryQuantity::compare($remaining, $reservation->quantity) < 0 ? $remaining : InventoryQuantity::normalize((string) $reservation->quantity);
                 if (InventoryQuantity::compare($take, $reservation->quantity) === 0) {
                     $result = $this->inventory->consume($actor, $order->organization, $reservation);
@@ -326,7 +374,9 @@ final class FulfillmentEngine
         $any = collect($relevant)->contains(fn (array $line) => InventoryQuantity::compare($line['shipped'], InventoryQuantity::ZERO) > 0);
         $status = $complete ? SalesOrderFulfillmentStatus::Fulfilled : ($any ? SalesOrderFulfillmentStatus::PartiallyFulfilled : SalesOrderFulfillmentStatus::Unfulfilled);
         $previous = $order->fulfillment_status;
-        if ($previous === $status) return $order;
+        if ($previous === $status) {
+            return $order;
+        }
 
         $order->fulfillment_status = $status;
         if ($status === SalesOrderFulfillmentStatus::Fulfilled) {

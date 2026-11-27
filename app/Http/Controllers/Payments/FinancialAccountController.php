@@ -2,8 +2,8 @@
 
 namespace App\Http\Controllers\Payments;
 
-use App\Actions\Payments\ManageFinancialAccountAction;
 use App\Actions\Finance\SetFinancialAccountOpeningPositionAction;
+use App\Actions\Payments\ManageFinancialAccountAction;
 use App\Enums\FinancialAccountStatus;
 use App\Enums\FinancialAccountType;
 use App\Enums\PaymentMethod;
@@ -11,6 +11,7 @@ use App\Http\Controllers\Controller;
 use App\Models\FinancialAccount;
 use App\Services\ActiveTenantContext;
 use App\Services\Finance\FinancialAccountBalanceService;
+use App\Services\Sandbox\SandboxContext;
 use App\Services\Security\FreshAuthentication;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -40,6 +41,9 @@ class FinancialAccountController extends Controller
                 'create' => request()->user()->can('create', [FinancialAccount::class, $organization]),
                 'update' => request()->user()->hasPermission($organization, 'financial_accounts.update'),
                 'manageBalance' => request()->user()->hasPermission($organization, 'finance.financial_accounts.manage_balance'),
+                'movements' => ! app(SandboxContext::class)->isRestricted()
+                    && request()->user()->hasPermission($organization, 'financial_accounts.view')
+                    && request()->user()->hasPermission($organization, 'finance.view'),
             ],
         ]);
     }
@@ -48,9 +52,10 @@ class FinancialAccountController extends Controller
     {
         abort_unless($request->user()->hasPermission($financialAccount->organization_id, 'finance.financial_accounts.manage_balance'), 403);
         $fresh->ensure($request, FreshAuthentication::LEVEL_ACCOUNT);
-        $data = $request->validate(['effective_date' => ['required','date'], 'amount' => ['required','decimal:0,4'],
-            'currency_code' => ['required','string','size:3','uppercase'], 'reference' => ['nullable','string','max:255'], 'notes' => ['nullable','string','max:5000']]);
+        $data = $request->validate(['effective_date' => ['required', 'date'], 'amount' => ['required', 'decimal:0,4'],
+            'currency_code' => ['required', 'string', 'size:3', 'uppercase'], 'reference' => ['nullable', 'string', 'max:255'], 'notes' => ['nullable', 'string', 'max:5000']]);
         $action->execute($request->user(), $financialAccount, $data);
+
         return back()->with('success', 'Solde d’ouverture enregistré.');
     }
 

@@ -28,6 +28,7 @@ class OrganizationBackupSchema
         'suppliers', 'product_suppliers', 'product_variant_suppliers', 'quotation_supplier_availability_requests', 'procurement_sequences', 'sales_order_procurements', 'purchase_order_sequences', 'purchase_orders', 'purchase_order_lines', 'procurement_receipts', 'out_of_stock_articles',
         'finance_obligation_sequences', 'finance_outgoing_payment_sequences', 'finance_recurring_template_sequences', 'finance_supplier_plan_sequences', 'finance_instrument_sequences',
         'finance_recurring_obligation_templates', 'finance_supplier_installment_plans', 'finance_obligations', 'finance_outgoing_payments', 'finance_outgoing_payment_allocations', 'finance_payment_instruments',
+        'supplier_invoice_sequences', 'supplier_invoices', 'supplier_invoice_lines', 'supplier_invoice_installments', 'supplier_invoice_attachments',
         'finance_month_reviews',
         'product_imports', 'product_import_rows',
         'woocommerce_sync_runs', 'woocommerce_category_mappings', 'woocommerce_stock_tasks',
@@ -92,5 +93,4 @@ class OrganizationBackupSchema
             || str_contains($column, 'access_key')
             || str_contains($column, 'private_key');
     }
-
 }

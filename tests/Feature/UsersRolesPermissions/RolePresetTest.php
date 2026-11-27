@@ -105,6 +105,11 @@ class RolePresetTest extends PlatformTestCase
             'commissions.simulate',
             'contacts.view',
             'customers.view',
+            'finance.customers.instruments.manage',
+            'finance.customers.opening_balance.manage',
+            'finance.customers.schedules.manage',
+            'finance.customers.settlements.manage',
+            'finance.customers.terms.manage',
             'finance.export',
             'finance.financial_accounts.manage_balance',
             'finance.monthly_situation.export',
@@ -120,6 +125,10 @@ class RolePresetTest extends PlatformTestCase
             'product_cost.manage',
             'product_cost.view',
             'quotations.view',
+            'supplier_invoices.approve',
+            'supplier_invoices.manage',
+            'supplier_invoices.view',
+            'supplier_invoices.void',
         ], $permissions);
 
         $this->assertNotContains('pos.access', $permissions);

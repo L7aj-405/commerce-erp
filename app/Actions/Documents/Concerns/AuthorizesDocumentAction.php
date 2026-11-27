@@ -11,6 +11,7 @@ use App\Models\Store;
 use App\Models\User;
 use App\Services\Sandbox\SandboxContext;
 use App\Services\Sandbox\SandboxDocumentRules;
+use App\Support\BusinessTime;
 
 trait AuthorizesDocumentAction
 {
@@ -64,6 +65,7 @@ trait AuthorizesDocumentAction
 
     private function authorizeBusinessDate(User $actor, Organization $organization, string $date, string $permission): void
     {
-        abort_unless($date === now()->toDateString() || $actor->hasPermission($organization, $permission), 403);
+        // "Today" is the organization's business date, never the server's UTC date.
+        abort_unless($date === BusinessTime::today($organization) || $actor->hasPermission($organization, $permission), 403);
     }
 }

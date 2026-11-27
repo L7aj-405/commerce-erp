@@ -6,6 +6,7 @@ use App\Models\Organization;
 use App\Services\ActiveTenantContext;
 use App\Services\Dashboards\ExecutiveDashboardService;
 use App\Services\Finance\FinancePeriod;
+use App\Support\BusinessTime;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
@@ -47,7 +48,8 @@ class PlatformController extends Controller
             && $user->hasPermission($organization, 'sales_orders.view')
             && $user->hasPermission($organization, 'payments.view')
             && $user->hasPermission($organization, 'finance.view');
-        $period = FinancePeriod::fromMonth((string) $request->query('month', now()->format('Y-m')));
+        // The dashboard's default month and "today" are the organization's business month/date, not UTC.
+        $period = FinancePeriod::fromMonth((string) $request->query('month', ($organization ? BusinessTime::now($organization) : now())->format('Y-m')));
 
         $productCount = $canViewProducts
             ? DB::table('products')->where('organization_id', $organizationId)->count()
@@ -66,7 +68,7 @@ class PlatformController extends Controller
             ? DB::table('sales_orders')->whereNull('sales_orders.sandbox_id')
                 ->where('organization_id', $organizationId)
                 ->where('store_id', $storeId)
-                ->whereDate('sale_date', today())
+                ->whereDate('sale_date', BusinessTime::today($organization))
                 ->where('status', '!=', 'cancelled')
                 ->count()
             : null;

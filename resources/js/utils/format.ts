@@ -109,3 +109,16 @@ export function formatDateTime(value: string | number | null | undefined, fallba
 export function formatInteger(value: number): string {
     return numberFormatter().format(value);
 }
+
+/**
+ * Business (calendar) dates arrive as `YYYY-MM-DD` or as a midnight timestamp of that same day. They are formatted from their
+ * own Y-M-D parts in UTC, so the displayed day never shifts with the viewer's timezone and no time-of-day is ever shown.
+ */
+export function formatBusinessDate(value: string | null | undefined, fallback = '—'): string {
+    if (value === null || value === undefined || value === '') return fallback;
+    const parts = /^(\d{4})-(\d{2})-(\d{2})/u.exec(value);
+    if (parts === null) return fallback;
+    const date = new Date(Date.UTC(Number(parts[1]), Number(parts[2]) - 1, Number(parts[3])));
+
+    return new Intl.DateTimeFormat(uiLocale(), { timeZone: 'UTC' }).format(date);
+}

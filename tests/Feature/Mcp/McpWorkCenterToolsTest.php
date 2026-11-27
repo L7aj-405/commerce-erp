@@ -18,6 +18,7 @@ use App\Services\Mcp\Sales\SalesAssistantTools;
 use App\Services\Mcp\Work\AttentionTools;
 use App\Services\Mcp\Work\TimelineTools;
 use App\Services\Mcp\Work\WorkTools;
+use App\Support\Decimal;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Tests\Support\QuotationTestCase;
@@ -42,7 +43,7 @@ class McpWorkCenterToolsTest extends QuotationTestCase
     /** @return array{Organization, Store, Store, User} organization (Casablanca), Store A, Store B, owner */
     private function fixture(): array
     {
-        Carbon::setTestNow('2026-11-10 10:00:00');
+        Carbon::setTestNow('2026-07-10 10:00:00');
         $owner = User::factory()->create(['name' => 'Owner']);
         $organization = $this->createOrganization($owner);
         $organization->settings = ['timezone' => 'Africa/Casablanca', 'allow_mcp_connections' => true];
@@ -83,7 +84,7 @@ class McpWorkCenterToolsTest extends QuotationTestCase
     {
         return DB::table('follow_ups')->insertGetId([
             'organization_id' => $organization->getKey(), 'store_id' => $store?->getKey(), 'assigned_user_id' => $assignee?->getKey(),
-            'title' => 'Suivi '.(++$this->sequence), 'priority' => 'normal', 'status' => 'open', 'due_date' => '2026-11-10', 'due_at' => null,
+            'title' => 'Suivi '.(++$this->sequence), 'priority' => 'normal', 'status' => 'open', 'due_date' => '2026-07-10', 'due_at' => null,
             'version' => 1, 'created_at' => now(), 'updated_at' => now(), ...$attributes,
         ]);
     }
@@ -104,7 +105,7 @@ class McpWorkCenterToolsTest extends QuotationTestCase
             'subject_type' => 'sales_order', 'subject_id' => $order->getKey(), 'sales_order_id' => $order->getKey(), 'customer_id' => $order->customer_id,
             'episode' => 1, 'active_key' => 'k:'.(++$this->sequence), 'severity' => $severity, 'status' => 'open', 'title' => 'Commande impayée',
             'summary' => 'Échéance dépassée depuis le 01/11/2026 (9 j), aucun paiement.',
-            'metadata' => json_encode(['document_number' => $order->order_number, 'facts' => ['date' => '2026-11-01', 'days' => 9]]),
+            'metadata' => json_encode(['document_number' => $order->order_number, 'facts' => ['date' => '2026-07-01', 'days' => 9]]),
             'assigned_user_id' => $assignee?->getKey(), 'detected_at' => now(), 'last_detected_at' => now(), 'critical_since' => now(),
             'version' => 1, 'created_at' => now(), 'updated_at' => now(),
         ]);
@@ -135,18 +136,18 @@ class McpWorkCenterToolsTest extends QuotationTestCase
     {
         [$organization, $storeA, $storeB, $owner] = $this->fixture();
         $seller = $this->member($organization, [$storeA], self::SELLER);
-        $this->followUp($organization, $storeA, $seller, ['due_date' => '2026-11-09']);                                   // overdue
-        $this->followUp($organization, $storeA, $seller, ['due_date' => '2026-11-10', 'due_at' => '2026-11-10 21:30:00']);  // today (22:30 local)
+        $this->followUp($organization, $storeA, $seller, ['due_date' => '2026-07-09']);                                   // overdue
+        $this->followUp($organization, $storeA, $seller, ['due_date' => '2026-07-10', 'due_at' => '2026-07-10 21:30:00']);  // today (22:30 local)
         for ($i = 0; $i < 3; $i++) {
-            $this->followUp($organization, null, $seller, ['due_date' => '2026-11-12']);                                   // upcoming
+            $this->followUp($organization, null, $seller, ['due_date' => '2026-07-12']);                                   // upcoming
         }
-        $this->followUp($organization, $storeB, $seller, ['due_date' => '2026-11-09']);   // Store B: not a member
-        $this->followUp($organization, $storeA, $owner, ['due_date' => '2026-11-09']);    // someone else's work
+        $this->followUp($organization, $storeB, $seller, ['due_date' => '2026-07-09']);   // Store B: not a member
+        $this->followUp($organization, $storeA, $owner, ['due_date' => '2026-07-09']);    // someone else's work
 
         $this->connect($seller, $organization);
         $today = $this->tool(WorkTools::class, 'getMyWork')['data'];
         $this->assertSame(['today' => 1, 'overdue' => 1, 'upcoming' => 3], $today['counts']);
-        $this->assertSame('2026-11-10', $today['context']['today']);
+        $this->assertSame('2026-07-10', $today['context']['today']);
         $this->assertSame('22:30', $today['items'][0]['due_time'], 'Organization-local time.');
         $page = $this->tool(WorkTools::class, 'getMyWork', ['bucket' => 'upcoming', 'per_page' => 2, 'page' => 2])['data'];
         $this->assertSame([1, 3, false], [count($page['items']), $page['pagination']['total'], $page['pagination']['has_more']]);
@@ -168,7 +169,7 @@ class McpWorkCenterToolsTest extends QuotationTestCase
         $seller = $this->member($organization, [$storeA], self::SELLER);
         $this->connect($seller, $organization);
 
-        $arguments = ['title' => 'Relancer ACME', 'idempotency_key' => 'create-1', 'sales_order_id' => (int) $order->getKey(), 'due_date' => '2026-11-11', 'due_time' => '09:00'];
+        $arguments = ['title' => 'Relancer ACME', 'idempotency_key' => 'create-1', 'sales_order_id' => (int) $order->getKey(), 'due_date' => '2026-07-11', 'due_time' => '09:00'];
         $created = $this->tool(WorkTools::class, 'createFollowUp', $arguments)['data'];
         $replay = $this->tool(WorkTools::class, 'createFollowUp', $arguments)['data'];
         $this->assertFalse($created['idempotent_replay']);
@@ -179,8 +180,8 @@ class McpWorkCenterToolsTest extends QuotationTestCase
         $followUp = $created['follow_up'];
         $this->assertSame([(int) $storeA->getKey(), 'ACME', '09:00'], [$followUp['store_id'], $followUp['customer']['name'], $followUp['due_time']], 'Store and customer derived from the order.');
 
-        $moved = $this->tool(WorkTools::class, 'updateFollowUp', ['follow_up_id' => $followUp['id'], 'expected_version' => 1, 'due_date' => '2026-11-13'])['data']['follow_up'];
-        $this->assertSame(['2026-11-13', 2], [$moved['due_date'], $moved['version']]);
+        $moved = $this->tool(WorkTools::class, 'updateFollowUp', ['follow_up_id' => $followUp['id'], 'expected_version' => 1, 'due_date' => '2026-07-13'])['data']['follow_up'];
+        $this->assertSame(['2026-07-13', 2], [$moved['due_date'], $moved['version']]);
         $this->assertSame('MCP_STALE_VERSION', $this->tool(WorkTools::class, 'updateFollowUp', ['follow_up_id' => $followUp['id'], 'expected_version' => 1, 'title' => 'Écrasé'])['error']['code']);
         $this->assertSame('MCP_FORBIDDEN', $this->tool(WorkTools::class, 'updateFollowUp', ['follow_up_id' => $followUp['id'], 'expected_version' => 2, 'assigned_user_id' => (int) $owner->getKey()])['error']['code'],
             'Reassigning to someone else needs the team scope and manage_all.');
@@ -213,7 +214,7 @@ class McpWorkCenterToolsTest extends QuotationTestCase
         $this->assertSame('MCP_ATTENTION_NOT_FOUND', $this->tool(AttentionTools::class, 'explainAttention', ['attention_item_id' => (int) $hidden->getKey()])['error']['code']);
 
         $why = $this->tool(AttentionTools::class, 'explainAttention', ['attention_item_id' => (int) $critical->getKey()])['data'];
-        $this->assertSame(['date' => '2026-11-01', 'days' => 9], $why['facts']);
+        $this->assertSame(['date' => '2026-07-01', 'days' => 9], $why['facts']);
         $this->assertSame('sales order payment due date', $why['facts_meaning']['date']);
         $this->assertSame(['claim', 'snooze', 'dismiss', 'create_follow_up'], $why['allowed_actions']);
 
@@ -226,7 +227,7 @@ class McpWorkCenterToolsTest extends QuotationTestCase
         $this->assertSame('MCP_FORBIDDEN', $this->tool(AttentionTools::class, 'assignAttention', ['attention_item_id' => (int) $critical->getKey(), 'expected_version' => 3, 'assigned_user_id' => (int) $manager->getKey()])['error']['code']);
 
         // Bridge: the document always comes from the item; idempotent; the item stays open.
-        $bridge = ['attention_item_id' => (int) $critical->getKey(), 'idempotency_key' => 'bridge-1', 'due_date' => '2026-11-11', 'due_time' => '09:00'];
+        $bridge = ['attention_item_id' => (int) $critical->getKey(), 'idempotency_key' => 'bridge-1', 'due_date' => '2026-07-11', 'due_time' => '09:00'];
         $created = $this->tool(AttentionTools::class, 'createFollowUpFromAttention', $bridge)['data'];
         $this->assertSame((int) $orderA->getKey(), $created['follow_up']['sales_order']['id']);
         $this->assertSame((int) $orderA->getKey(), (int) FollowUp::query()->findOrFail($created['target']['id'])->sales_order_id);
@@ -247,8 +248,8 @@ class McpWorkCenterToolsTest extends QuotationTestCase
         $manager = $this->member($organization, [$storeA], self::MANAGER, 'Manager');
         $peer = $this->member($organization, [$storeA], self::SELLER, 'Peer A');
         $onlyB = $this->member($organization, [$storeB], self::SELLER, 'Only B');
-        $this->followUp($organization, $storeA, $peer, ['due_date' => '2026-11-01']);
-        $this->followUp($organization, $storeB, $onlyB, ['due_date' => '2026-11-01']);
+        $this->followUp($organization, $storeA, $peer, ['due_date' => '2026-07-01']);
+        $this->followUp($organization, $storeB, $onlyB, ['due_date' => '2026-07-01']);
 
         $this->connect($manager, $organization);
         $team = $this->tool(WorkTools::class, 'getTeamWork')['data'];
@@ -293,7 +294,7 @@ class McpWorkCenterToolsTest extends QuotationTestCase
         // Balance: only Store A documents; null (unavailable) ≠ "0.0000" (visible zero).
         $balance = $this->tool(SalesAssistantTools::class, 'getCustomerBalanceSummary', ['customer_id' => (int) $customer->getKey()])['data'];
         $this->assertSame([null, null, '0.0000'], [$balance['paid_total'], $balance['outstanding'], $balance['invoiced_total']]);
-        $this->assertSame(\App\Support\Decimal::normalize((string) $orderA->total_incl_tax), $balance['sales_total'], 'Store B order excluded.');
+        $this->assertSame(Decimal::normalize((string) $orderA->total_incl_tax), $balance['sales_total'], 'Store B order excluded.');
         $this->assertArrayHasKey('null_semantics', $balance['definitions']);
     }
 
@@ -301,7 +302,7 @@ class McpWorkCenterToolsTest extends QuotationTestCase
     {
         [$organization, $storeA, $storeB, $owner] = $this->fixture();
         $seller = $this->member($organization, [$storeA, $storeB], self::SELLER);
-        $this->followUp($organization, $storeB, $seller, ['due_date' => '2026-11-10']);
+        $this->followUp($organization, $storeB, $seller, ['due_date' => '2026-07-10']);
         $item = $this->attention($organization, $this->order($owner, $organization, $storeB), null);
         DB::table('stores')->where('id', $storeB->getKey())->update(['status' => 'inactive']);
 
@@ -319,7 +320,7 @@ class McpWorkCenterToolsTest extends QuotationTestCase
         $seed = function (int $count) use ($organization, $storeA, $owner, $manager, $customer) {
             app()->forgetScopedInstances(); // seed as the web owner, not through a bound MCP connection
             for ($i = 0; $i < $count; $i++) {
-                $this->followUp($organization, $storeA, $manager, ['due_date' => '2026-11-09', 'customer_id' => $customer->getKey()]);
+                $this->followUp($organization, $storeA, $manager, ['due_date' => '2026-07-09', 'customer_id' => $customer->getKey()]);
                 $this->attention($organization, $this->order($owner, $organization, $storeA, $customer), $manager);
             }
         };

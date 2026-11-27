@@ -15,9 +15,12 @@ use App\Models\SalesOrder;
 use App\Models\Store;
 use App\Models\User;
 use App\Services\Mcp\Finance\FinanceTools;
+use App\Services\Mcp\Finance\McpInvoiceIssueService;
+use App\Services\Mcp\Finance\McpPaymentService;
 use App\Services\Mcp\McpConnectionCredentials;
 use App\Services\Mcp\McpExecutionContext;
 use App\Services\Mcp\McpIdempotencyService;
+use App\Services\Mcp\McpProductionNotice;
 use App\Services\Mcp\Sales\SalesAssistantTools;
 use App\Services\Mcp\Sales\SalesOrderTools;
 use Carbon\CarbonImmutable;
@@ -87,6 +90,24 @@ class McpFinanceToolsTest extends QuotationTestCase
         $exact = $this->tool('previewPayment', ['payment' => $this->payment($order, '10000')])['data'];
         $this->assertTrue($exact['after']['fully_paid']);
         $this->assertSame('paid', $exact['after']['payment_status']);
+    }
+
+    public function test_write_previews_carry_the_production_warning_without_changing_other_fields(): void
+    {
+        $order = $this->confirmedOrder();
+        $this->connect($this->owner);
+
+        $payment = $this->tool('previewPayment', ['payment' => $this->payment($order, '4000')])['data'];
+        $this->assertSame(McpProductionNotice::MESSAGE, $payment['production_warning']);
+        $this->assertStringContainsString('PRODUCTION', $payment['production_warning']);
+        // Existing keys are untouched (backward compatible: a field is added, none renamed).
+        $this->assertTrue($payment['valid']);
+        $this->assertArrayHasKey('preview_fingerprint', $payment);
+        $this->assertArrayHasKey('before', $payment);
+        $this->assertArrayHasKey('after', $payment);
+
+        $issue = $this->tool('previewInvoiceIssue', ['sales_order_id' => $order->id])['data'];
+        $this->assertSame(McpProductionNotice::MESSAGE, $issue['production_warning']);
     }
 
     public function test_preview_rejects_invalid_amount_state_account_and_overpayment(): void
@@ -440,7 +461,7 @@ class McpFinanceToolsTest extends QuotationTestCase
 
     public function test_idempotency_target_types_fit_the_column(): void
     {
-        foreach ([\App\Services\Mcp\Finance\McpPaymentService::TARGET_TYPE, \App\Services\Mcp\Finance\McpInvoiceIssueService::TARGET_TYPE] as $type) {
+        foreach ([McpPaymentService::TARGET_TYPE, McpInvoiceIssueService::TARGET_TYPE] as $type) {
             $this->assertLessThanOrEqual(McpIdempotencyService::TARGET_TYPE_MAX, mb_strlen($type));
         }
     }

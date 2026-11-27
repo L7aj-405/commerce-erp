@@ -40,6 +40,12 @@ class InventoryReservationManager
                     ->where('product_variant_id', $variant->getKey())->where('reference_type', $referenceType)
                     ->where('reference_id', $referenceId)->lockForUpdate()->first();
                 if ($existing) {
+                    // Only a live reservation is an idempotent hit. A released or
+                    // consumed one must never be handed back as if stock were held:
+                    // the caller would believe it reserved stock the balance does not.
+                    if ($existing->status !== InventoryReservationStatus::Active) {
+                        throw ValidationException::withMessages(['reference_id' => 'This reference already identifies a reservation that is no longer active.']);
+                    }
                     if (InventoryQuantity::compare($existing->quantity, $quantity) !== 0) {
                         throw ValidationException::withMessages(['reference_id' => 'This reference already identifies a reservation with a different quantity.']);
                     }

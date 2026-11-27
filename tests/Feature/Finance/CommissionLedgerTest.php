@@ -8,6 +8,7 @@ use App\Actions\Returns\ReceiveCustomerReturnAction;
 use App\Actions\Sales\CancelSalesOrderAction;
 use App\Actions\Sales\ConfirmSalesOrderAction;
 use App\Actions\Sales\StartSalesOrderCorrectionAction;
+use App\Models\AuditLog;
 use App\Models\CommissionEntry;
 use App\Models\CommissionRuleSet;
 use App\Models\CustomerReturn;
@@ -18,9 +19,10 @@ use App\Services\Commissions\CommissionDashboardService;
 use App\Services\Commissions\CommissionReconciliationService;
 use App\Services\Commissions\CommissionReportFilters;
 use App\Services\Commissions\CommissionRuleManager;
-use App\Services\OrganizationBackups\OrganizationBackupSchema;
 use App\Services\OrganizationBackups\OrganizationBackupExporter;
+use App\Services\OrganizationBackups\OrganizationBackupSchema;
 use App\Services\PermissionProvisioner;
+use App\Support\Decimal;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -51,7 +53,8 @@ class CommissionLedgerTest extends PosTestCase
         $this->assertSame($owner->id, $entry->salesperson_id);
         $this->assertSame($owner->name, $entry->salesperson_name_snapshot);
 
-        $variant->purchase_price = '99'; $variant->save();
+        $variant->purchase_price = '99';
+        $variant->save();
         $v2 = $this->draftRule($owner, $organization, 'V2', '2026-09-01', '50');
         app(CommissionRuleManager::class)->activate($owner, $v2);
         $this->assertSame('12.0000', $entry->fresh()->commission_amount);
@@ -86,7 +89,9 @@ class CommissionLedgerTest extends PosTestCase
         $costed = $this->createProduct($organization, 'Other', null, ['purchase_price' => '40', 'default_sale_price' => '100'])->variants->first();
         $this->openStock($owner, $organization, $warehouse, $costed, '5');
         $missingPerson = $this->createDraftOrder($owner, $organization, $store);
-        $missingPerson->salesperson_id = null; $missingPerson->salesperson_name_snapshot = null; $missingPerson->save();
+        $missingPerson->salesperson_id = null;
+        $missingPerson->salesperson_name_snapshot = null;
+        $missingPerson->save();
         $this->addCatalogLine($owner, $missingPerson, $costed, $warehouse);
         app(ConfirmSalesOrderAction::class)->execute($owner, $missingPerson);
 
@@ -121,8 +126,10 @@ class CommissionLedgerTest extends PosTestCase
 
         $second = $this->makeReturn($order, $source, $warehouse, $variant, '1', 'RET-COM-2');
         app(ReceiveCustomerReturnAction::class)->execute($owner, $second);
-        $this->assertSame('0.0000', CommissionEntry::query()->get()->reduce(fn ($sum, $entry) => \App\Support\Decimal::add($sum, $entry->commission_amount), '0.0000'));
+        $this->assertSame('0.0000', CommissionEntry::query()->get()->reduce(fn ($sum, $entry) => Decimal::add($sum, $entry->commission_amount), '0.0000'));
         $this->assertDatabaseCount('commission_entries', 3);
+        // INV-15 / S-09: each appended reversal is audited by AppendCommissionReversalAction (the callers hold no audit of their own).
+        $this->assertSame(2, AuditLog::query()->where('event', 'commission.entry_reversed')->where('organization_id', $organization->id)->count());
     }
 
     public function test_return_reversal_quantity_cannot_exceed_original_commissioned_quantity(): void
@@ -156,6 +163,8 @@ class CommissionLedgerTest extends PosTestCase
         app(CancelSalesOrderAction::class)->execute($owner, $order, 'Annulation test');
         $this->assertDatabaseHas('commission_entries', ['source_entry_id' => $current->id, 'entry_type' => CommissionEntry::TYPE_CANCELLATION]);
         $this->assertDatabaseHas('commission_entries', ['id' => $originalId, 'entry_type' => CommissionEntry::TYPE_SALE]);
+        // Correction + cancellation reversals: one audit event per appended entry, none for the preserved originals.
+        $this->assertSame(2, AuditLog::query()->where('event', 'commission.entry_reversed')->where('organization_id', $organization->id)->count());
     }
 
     public function test_approval_and_paid_lifecycle_is_authorized_atomic_and_fresh_authenticated(): void
@@ -227,9 +236,12 @@ class CommissionLedgerTest extends PosTestCase
     {
         [$ownerA, $organizationA, $storeA, $warehouseA, $variantA] = $this->stockTenant();
         $this->activateRule($ownerA, $organizationA);
-        $order = $this->createDraftOrder($ownerA, $organizationA, $storeA); $this->addCatalogLine($ownerA, $order, $variantA, $warehouseA); app(ConfirmSalesOrderAction::class)->execute($ownerA, $order);
+        $order = $this->createDraftOrder($ownerA, $organizationA, $storeA);
+        $this->addCatalogLine($ownerA, $order, $variantA, $warehouseA);
+        app(ConfirmSalesOrderAction::class)->execute($ownerA, $order);
         $entry = CommissionEntry::query()->sole();
-        $sales = User::factory()->create(); $this->addDefaultSalesEmployee($organizationA, $storeA, $sales);
+        $sales = User::factory()->create();
+        $this->addDefaultSalesEmployee($organizationA, $storeA, $sales);
         $this->actingAs($sales)->get(route('finance.commissions.ledger.index'))->assertForbidden();
         $this->actingAs($sales)->post(route('finance.commissions.ledger.approve'), ['entry_ids' => [$entry->id]])->assertForbidden();
 
@@ -539,6 +551,7 @@ class CommissionLedgerTest extends PosTestCase
     private function activateRule(User $owner, $organization, string $name = 'Commission', string $from = '2026-01-01', string $topRate = '10'): CommissionRuleSet
     {
         $set = $this->draftRule($owner, $organization, $name, $from, $topRate);
+
         return app(CommissionRuleManager::class)->activate($owner, $set);
     }
 
@@ -557,27 +570,56 @@ class CommissionLedgerTest extends PosTestCase
         $warehouse = $this->createWarehouse($organization);
         $variant = $this->createProduct($organization, 'Commission product', null, ['purchase_price' => $cost, 'default_sale_price' => $price])->variants->first();
         $this->openStock($owner, $organization, $warehouse, $variant, '30');
+
         return [$owner, $organization, $store, $warehouse, $variant];
     }
 
     private function tenant(bool $store = false): array
     {
-        $owner = User::factory()->create(); $organization = $this->createOrganization($owner);
-        $createdStore = $store ? $this->createStore($organization, $owner) : null; $this->activate($owner, $organization, $createdStore);
+        $owner = User::factory()->create();
+        $organization = $this->createOrganization($owner);
+        $createdStore = $store ? $this->createStore($organization, $owner) : null;
+        $this->activate($owner, $organization, $createdStore);
+
         return $store ? [$owner, $organization, $createdStore] : [$owner, $organization];
     }
 
     private function makeReturn($order, $source, $warehouse, $variant, string $quantity, string $number): CustomerReturn
     {
         $return = new CustomerReturn;
-        $return->organization_id = $order->organization_id; $return->store_id = $order->store_id; $return->sales_order_id = $order->id; $return->warehouse_id = $warehouse->id;
-        $return->return_number = $number; $return->client_operation_id = (string) Str::uuid(); $return->status = 'draft'; $return->disposition = 'restock'; $return->reason = 'Test commission';
-        $return->currency_code = 'MAD'; $return->subtotal_excl_tax = \App\Support\Decimal::multiply('100', $quantity); $return->discount_total = '0'; $return->tax_total = '0'; $return->total_incl_tax = $return->subtotal_excl_tax;
-        $return->policy_snapshot = []; $return->save();
+        $return->organization_id = $order->organization_id;
+        $return->store_id = $order->store_id;
+        $return->sales_order_id = $order->id;
+        $return->warehouse_id = $warehouse->id;
+        $return->return_number = $number;
+        $return->client_operation_id = (string) Str::uuid();
+        $return->status = 'draft';
+        $return->disposition = 'restock';
+        $return->reason = 'Test commission';
+        $return->currency_code = 'MAD';
+        $return->subtotal_excl_tax = Decimal::multiply('100', $quantity);
+        $return->discount_total = '0';
+        $return->tax_total = '0';
+        $return->total_incl_tax = $return->subtotal_excl_tax;
+        $return->policy_snapshot = [];
+        $return->save();
         $line = new CustomerReturnLine;
-        $line->organization_id = $order->organization_id; $line->customer_return_id = $return->id; $line->sales_order_line_id = $source->id; $line->product_variant_id = $variant->id; $line->position = 1;
-        foreach (['product_name', 'variant_name', 'sku', 'reference', 'unit_label', 'unit_price_excl_tax', 'unit_price_incl_tax', 'tax_name', 'tax_rate'] as $field) $line->{$field} = $source->{$field};
-        $line->quantity = $quantity; $line->subtotal_excl_tax = $return->subtotal_excl_tax; $line->discount_amount = '0'; $line->taxable_amount = $return->subtotal_excl_tax; $line->tax_amount = '0'; $line->total_incl_tax = $return->subtotal_excl_tax; $line->save();
+        $line->organization_id = $order->organization_id;
+        $line->customer_return_id = $return->id;
+        $line->sales_order_line_id = $source->id;
+        $line->product_variant_id = $variant->id;
+        $line->position = 1;
+        foreach (['product_name', 'variant_name', 'sku', 'reference', 'unit_label', 'unit_price_excl_tax', 'unit_price_incl_tax', 'tax_name', 'tax_rate'] as $field) {
+            $line->{$field} = $source->{$field};
+        }
+        $line->quantity = $quantity;
+        $line->subtotal_excl_tax = $return->subtotal_excl_tax;
+        $line->discount_amount = '0';
+        $line->taxable_amount = $return->subtotal_excl_tax;
+        $line->tax_amount = '0';
+        $line->total_incl_tax = $return->subtotal_excl_tax;
+        $line->save();
+
         return $return;
     }
 }

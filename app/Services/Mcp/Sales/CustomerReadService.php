@@ -108,7 +108,9 @@ final class CustomerReadService
                 'sales_total' => 'Sum of confirmed sales orders (TTC).',
                 'invoiced_total' => 'Sum of issued invoices (TTC).',
                 'paid_total' => 'Sum of posted payment allocations on this customer\'s sales orders.',
-                'outstanding' => 'invoiced_total minus paid_total, floored at zero.',
+                'outstanding' => 'Invoice receivable, computed order by order: for each issued invoice, invoice total minus the credit notes and the net payments (payments minus refunds) of ITS OWN order, floored at zero per invoice, then summed. A payment on another order never reduces it. Same rule as the Finance receivables screens. Test Mode documents are excluded.',
+                'refund_obligation' => 'Money paid above the net of the same invoice (e.g. after a credit note) and therefore owed back to the customer; reported separately, never netted against other invoices.',
+                'unbilled_outstanding' => 'Remaining balance of confirmed orders that have no issued invoice yet (commercial exposure, not a receivable). Disjoint from outstanding: an order is in exactly one of the two.',
                 'last_activity' => 'Most recent sales order date.',
             ],
         ];

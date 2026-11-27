@@ -16,6 +16,7 @@ use App\Enums\SalesOrderFulfillmentStatus;
 use App\Enums\SalesOrderStatus;
 use App\Enums\SupplierProcurementStatus;
 use App\Enums\TransferRequestStatus;
+use App\Models\CommissionEntry;
 use App\Models\InventoryReservation;
 use App\Models\Payment;
 use App\Models\PurchaseOrderLine;
@@ -111,7 +112,7 @@ class CancelSalesOrderAction
                 ->orderBy('id')
                 ->lockForUpdate()
                 ->get();
-            if ($postedPayments->isNotEmpty() && ! $actor->hasPermission($order->organization_id, 'payments.reverse')) {
+            if ($postedPayments->isNotEmpty() && ! $actor->hasPermission($order->organization_id, 'payments.refund')) {
                 abort(403, 'You are not authorized to refund posted Payments.');
             }
 
@@ -229,7 +230,7 @@ class CancelSalesOrderAction
                 $this->commissionReversals->execute(
                     $actor,
                     $order,
-                    \App\Models\CommissionEntry::TYPE_CANCELLATION,
+                    CommissionEntry::TYPE_CANCELLATION,
                     $order->getKey(),
                     'Annulation de commande : '.(string) $reason,
                 );

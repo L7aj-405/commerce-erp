@@ -250,6 +250,15 @@ class FinanceExportTest extends DocumentTestCase
             ->get(route('finance.journal', ['month' => '2026-05']));
 
         $response->assertOk();
-        $this->assertArrayNotHasKey('can', $response->json('props'));
+        // Phase 2 adds a REAL customer-journal export (its own route, finance.export, audited): the only advertised action is that one,
+        // never the unrelated situation export this test originally guarded against.
+        $this->assertSame(['export' => true], $response->json('props.can'));
+    }
+
+    public function test_customer_journal_export_is_a_real_audited_route_gated_by_finance_export(): void
+    {
+        [$owner] = $this->documentFixture(total: '500.0000');
+        $this->actingAs($owner)->get(route('finance.clients.journal.export', ['format' => 'csv', 'month' => '2026-05']))->assertOk();
+        $this->assertDatabaseHas('audit_logs', ['event' => 'finance_clients.journal_exported']);
     }
 }

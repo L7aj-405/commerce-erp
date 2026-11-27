@@ -398,11 +398,13 @@ class PosController extends Controller
                 ? trim((string) ($data['company_name'] ?? $data['contact_name']))
                 : trim((string) $data['display_name']),
             'company_name' => $data['type'] === 'company' ? trim((string) $data['company_name']) : null,
-            'phone' => filled($data['phone'] ?? null) ? trim((string) $data['phone']) : null,
-            'email' => filled($data['email'] ?? null) ? trim((string) $data['email']) : null,
-            'tax_identifier' => filled($data['tax_identifier'] ?? null) ? trim((string) $data['tax_identifier']) : null,
-            'billing_address' => filled($data['billing_address'] ?? null) ? trim((string) $data['billing_address']) : null,
-            'notes' => $data['notes'] ?? null,
+            // A field the client did not send is KEPT (a quick edit never clears advanced identity data it did not show);
+            // a field sent empty is cleared on purpose.
+            'phone' => $request->has('phone') ? (filled($data['phone'] ?? null) ? trim((string) $data['phone']) : null) : $customer->phone,
+            'email' => $request->has('email') ? (filled($data['email'] ?? null) ? trim((string) $data['email']) : null) : $customer->email,
+            'tax_identifier' => $request->has('tax_identifier') ? (filled($data['tax_identifier'] ?? null) ? trim((string) $data['tax_identifier']) : null) : $customer->tax_identifier,
+            'billing_address' => $request->has('billing_address') ? (filled($data['billing_address'] ?? null) ? trim((string) $data['billing_address']) : null) : $customer->billing_address,
+            'notes' => $request->has('notes') ? ($data['notes'] ?? null) : $customer->notes,
             'status' => $customer->status->value,
         ]);
 

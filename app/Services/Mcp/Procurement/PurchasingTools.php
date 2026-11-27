@@ -5,6 +5,7 @@ namespace App\Services\Mcp\Procurement;
 use App\Services\AuditLogger;
 use App\Services\Mcp\McpExecutionContext;
 use App\Services\Mcp\McpIdempotencyService;
+use App\Services\Mcp\McpProductionNotice;
 use App\Services\Mcp\Sales\SalesOrderReadService;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Cache\LockTimeoutException;
@@ -119,7 +120,7 @@ final class PurchasingTools
     private function execute(string $tool, callable $callback, string $notFoundCode = 'MCP_ENTITY_NOT_FOUND'): CallToolResult
     {
         try {
-            return $this->success($callback());
+            return $this->success(McpProductionNotice::annotate($tool, $callback()));
         } catch (AuthorizationException) {
             return $this->error('MCP_FORBIDDEN', 'The connection is not authorized to use this capability.');
         } catch (HttpExceptionInterface $exception) {
@@ -180,7 +181,9 @@ final class PurchasingTools
     private function error(string $code, string $message, array $details = []): CallToolResult
     {
         $error = ['code' => $code, 'message' => $message];
-        if ($details !== []) $error['details'] = $details;
+        if ($details !== []) {
+            $error['details'] = $details;
+        }
         $payload = ['ok' => false, 'error' => $error];
 
         return new CallToolResult([new TextContent($payload)], isError: true, structuredContent: $payload);

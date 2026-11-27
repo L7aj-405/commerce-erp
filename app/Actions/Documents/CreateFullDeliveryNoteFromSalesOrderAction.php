@@ -14,6 +14,7 @@ use App\Services\AuditLogger;
 use App\Services\DocumentSellerProfile;
 use App\Services\DocumentSnapshotVerifier;
 use App\Services\DocumentTemplateRegistry;
+use App\Support\BusinessTime;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -32,7 +33,7 @@ class CreateFullDeliveryNoteFromSalesOrderAction
     public function execute(User $actor, SalesOrder $order, array $data = []): DeliveryNote
     {
         $this->authorizeOrderDocument($actor, $order, 'delivery_notes.create');
-        $deliveryDate = $data['delivery_date'] ?? now()->toDateString();
+        $deliveryDate = $data['delivery_date'] ?? BusinessTime::today($order->organization);
         $this->authorizeBusinessDate($actor, $order->organization, $deliveryDate, 'delivery_notes.backdate');
 
         return DB::transaction(function () use ($actor, $order, $data, $deliveryDate) {

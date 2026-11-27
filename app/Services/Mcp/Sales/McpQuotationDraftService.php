@@ -22,6 +22,7 @@ use App\Services\QuotationDocumentSettings;
 use App\Services\QuotationLinePricing;
 use App\Services\QuotationLineSourceResolver;
 use App\Services\QuotationTotals;
+use App\Support\BusinessTime;
 use App\Support\Decimal;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Carbon;
@@ -40,7 +41,9 @@ use InvalidArgumentException;
 final class McpQuotationDraftService
 {
     public const HEADER_FIELDS = ['customer_id', 'quotation_date', 'valid_until', 'notes', 'terms'];
+
     public const ITEM_FIELDS = ['line_id', 'variant_id', 'non_stock_item_id', 'quantity', 'price_input_mode', 'unit_price', 'discount_type', 'discount_value'];
+
     /** Line inputs compared to decide whether an existing line is untouched. */
     private const LINE_INPUTS = ['quantity', 'price_input_mode', 'unit_price', 'discount_type', 'discount_value'];
 
@@ -67,18 +70,24 @@ final class McpQuotationDraftService
     /**
      * Structural validation and canonical form of the candidate data.
      *
-     * @param array<string, mixed> $data
+     * @param  array<string, mixed>  $data
      * @return array<string, mixed>
      */
     public function normalize(string $mode, array $data, ?int $quotationId = null): array
     {
         $update = $mode === 'update';
         $allowed = $update ? [...self::HEADER_FIELDS, 'items'] : ['store_id', ...self::HEADER_FIELDS, 'items'];
-        if (array_diff(array_keys($data), $allowed) !== []) throw new InvalidArgumentException('forbidden_fields');
-        foreach ((array) ($data['items'] ?? []) as $item) {
-            if (! is_array($item) || array_diff(array_keys($item), self::ITEM_FIELDS) !== []) throw new InvalidArgumentException('forbidden_fields');
+        if (array_diff(array_keys($data), $allowed) !== []) {
+            throw new InvalidArgumentException('forbidden_fields');
         }
-        if ($update && ($quotationId === null || $quotationId < 1)) throw new InvalidArgumentException('invalid_id');
+        foreach ((array) ($data['items'] ?? []) as $item) {
+            if (! is_array($item) || array_diff(array_keys($item), self::ITEM_FIELDS) !== []) {
+                throw new InvalidArgumentException('forbidden_fields');
+            }
+        }
+        if ($update && ($quotationId === null || $quotationId < 1)) {
+            throw new InvalidArgumentException('invalid_id');
+        }
 
         $max = (int) config('mcp.quotations.max_items', 200);
         $header = array_intersect_key(($update ? new UpdateQuotationRequest : new StoreQuotationRequest)->rules(), array_flip(self::HEADER_FIELDS));
@@ -96,7 +105,9 @@ final class McpQuotationDraftService
             'items.*.discount_type' => ['nullable', 'string'],
             'items.*.discount_value' => ['nullable', 'string'],
         ];
-        if (! $update) $rules['store_id'] = ['nullable', 'integer', 'min:1'];
+        if (! $update) {
+            $rules['store_id'] = ['nullable', 'integer', 'min:1'];
+        }
 
         $validator = Validator::make($data, $rules);
         $validator->after(function ($validator) use ($data) {
@@ -113,12 +124,17 @@ final class McpQuotationDraftService
         $validator->validate();
 
         $headerValues = array_intersect_key($data, array_flip(self::HEADER_FIELDS));
-        if ($update && $headerValues === [] && ! array_key_exists('items', $data)) throw new InvalidArgumentException('no_changes');
+        if ($update && $headerValues === [] && ! array_key_exists('items', $data)) {
+            throw new InvalidArgumentException('no_changes');
+        }
         ksort($headerValues);
 
         $payload = ['mode' => $update ? 'update' : 'create', 'header' => $headerValues];
-        if ($update) $payload['quotation_id'] = $quotationId;
-        else $payload['store_id'] = isset($data['store_id']) ? (int) $data['store_id'] : null;
+        if ($update) {
+            $payload['quotation_id'] = $quotationId;
+        } else {
+            $payload['store_id'] = isset($data['store_id']) ? (int) $data['store_id'] : null;
+        }
         if (array_key_exists('items', $data)) {
             $payload['items'] = array_map(function (array $item) {
                 ksort($item);
@@ -133,7 +149,7 @@ final class McpQuotationDraftService
     /**
      * Resolve and price the candidate without persisting anything.
      *
-     * @param array<string, mixed> $payload
+     * @param  array<string, mixed>  $payload
      * @return array<string, mixed>
      */
     public function evaluate(array $payload, ?Quotation $quotation = null): array
@@ -155,7 +171,9 @@ final class McpQuotationDraftService
                 $issues[] = $this->issue('store_id', 'store_unavailable', $this->first($exception));
             }
         }
-        if ($store) $state[] = 's:'.$store->getKey();
+        if ($store) {
+            $state[] = 's:'.$store->getKey();
+        }
 
         $header = $payload['header'];
         $customer = $update ? $quotation->customer : null;
@@ -179,13 +197,17 @@ final class McpQuotationDraftService
         $lines = [];
         $removed = [];
         if (! array_key_exists('items', $payload)) {
-            foreach ($existing as $line) $lines[] = $this->unchangedLine($line);
+            foreach ($existing as $line) {
+                $lines[] = $this->unchangedLine($line);
+            }
         } elseif ($store !== null) {
             $referenced = [];
             foreach ($payload['items'] as $index => $item) {
                 try {
                     $lines[] = $this->evaluateLine($item, $existing, $store, $organizationId, $state);
-                    if (isset($item['line_id'])) $referenced[] = (int) $item['line_id'];
+                    if (isset($item['line_id'])) {
+                        $referenced[] = (int) $item['line_id'];
+                    }
                 } catch (ModelNotFoundException) {
                     $issues[] = $this->issue("items.{$index}", 'article_not_found', 'The product variant or non-stock article was not found.');
                 } catch (ValidationException $exception) {
@@ -210,7 +232,9 @@ final class McpQuotationDraftService
             'removed' => array_column($removed, 'line_id'),
             'totals' => $proposedTotals,
         ]));
-        if ($update) $state[] = 'q:'.$this->quotations->version($quotation);
+        if ($update) {
+            $state[] = 'q:'.$this->quotations->version($quotation);
+        }
         sort($state);
 
         return [
@@ -232,7 +256,7 @@ final class McpQuotationDraftService
     }
 
     /**
-     * @param array<string, mixed> $payload
+     * @param  array<string, mixed>  $payload
      * @return array<string, mixed>
      */
     public function preview(array $payload): array
@@ -288,7 +312,7 @@ final class McpQuotationDraftService
      * Create the draft through CreateQuotationAction + SaveQuotationLineAction.
      * Must run inside the caller's transaction (idempotency wrapper).
      *
-     * @param array<string, mixed> $payload
+     * @param  array<string, mixed>  $payload
      * @return array{quotation: Quotation, evaluation: array<string, mixed>}
      */
     public function create(array $payload, string $fingerprint): array
@@ -313,13 +337,15 @@ final class McpQuotationDraftService
      * Apply a previewed draft update through the existing quotation actions.
      * Must run inside the caller's transaction.
      *
-     * @param array<string, mixed> $payload
+     * @param  array<string, mixed>  $payload
      * @return array{quotation: Quotation, evaluation: array<string, mixed>}
      */
     public function update(array $payload, string $fingerprint): array
     {
         $quotation = $this->quotations->find($this->context->organization(), (int) $payload['quotation_id'], lock: true);
-        if (! $quotation->status->isEditable()) throw new InvalidArgumentException('quotation_not_editable');
+        if (! $quotation->status->isEditable()) {
+            throw new InvalidArgumentException('quotation_not_editable');
+        }
         $evaluation = $this->evaluate($payload, $quotation);
         $this->verify($payload, $evaluation, $fingerprint);
 
@@ -327,7 +353,9 @@ final class McpQuotationDraftService
         $changed = $evaluation['header']['changed_fields'];
         if ($changed !== []) {
             $data = array_intersect_key($evaluation['header']['proposed'], array_flip($changed));
-            if (in_array('customer_id', $changed, true)) $data['sync_customer_snapshot'] = true;
+            if (in_array('customer_id', $changed, true)) {
+                $data['sync_customer_snapshot'] = true;
+            }
             $this->updateQuotation->execute($user, $quotation, $data);
         }
         $lines = $quotation->lines->keyBy(fn (QuotationLine $line) => (int) $line->getKey());
@@ -364,9 +392,9 @@ final class McpQuotationDraftService
     }
 
     /**
-     * @param array<string, mixed> $item
-     * @param Collection<int, QuotationLine> $existing
-     * @param list<string> $state
+     * @param  array<string, mixed>  $item
+     * @param  Collection<int, QuotationLine>  $existing
+     * @param  list<string>  $state
      * @return array<string, mixed>
      */
     private function evaluateLine(array $item, Collection $existing, Store $store, int $organizationId, array &$state): array
@@ -445,7 +473,9 @@ final class McpQuotationDraftService
     {
         $discountType = $item['discount_type'] ?? $line->discount_type->value;
         foreach (array_intersect_key($item, array_flip(self::LINE_INPUTS)) as $field => $value) {
-            if ($field === 'discount_value' && $discountType === 'none') continue;
+            if ($field === 'discount_value' && $discountType === 'none') {
+                continue;
+            }
             $current = match ($field) {
                 'price_input_mode' => $line->price_input_mode?->value,
                 'discount_type' => $line->discount_type->value,
@@ -455,7 +485,9 @@ final class McpQuotationDraftService
             $same = in_array($field, ['quantity', 'unit_price', 'discount_value'], true)
                 ? $value !== null && $current !== null && Decimal::compare((string) $value, (string) $current) === 0
                 : (string) $value === (string) $current;
-            if (! $same && ! ($value === null && $current === null)) return false;
+            if (! $same && ! ($value === null && $current === null)) {
+                return false;
+            }
         }
 
         return true;
@@ -470,13 +502,13 @@ final class McpQuotationDraftService
      * Mirrors CreateQuotationAction's defaults so the preview shows the values
      * that will be stored; they are then passed to the action explicitly.
      *
-     * @param array<string, mixed> $header
+     * @param  array<string, mixed>  $header
      * @return array<string, mixed>
      */
     private function createHeader(array $header): array
     {
         $defaults = $this->settings->settings($this->context->organization());
-        $date = $header['quotation_date'] ?? now()->toDateString();
+        $date = $header['quotation_date'] ?? BusinessTime::today($this->context->organization());
 
         return [
             'customer_id' => isset($header['customer_id']) ? (int) $header['customer_id'] : null,

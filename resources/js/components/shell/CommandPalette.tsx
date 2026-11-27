@@ -45,7 +45,10 @@ export default function CommandPalette({ open, onClose, groups }: { open: boolea
 
 function Palette({ onClose, groups }: { onClose: () => void; groups: NavGroup[] }) {
     const { t, direction } = useI18n();
-    const { tenant } = usePage<SharedPageProps>().props;
+    const page = usePage<SharedPageProps & { sandbox?: { active: boolean } }>();
+    const { tenant } = page.props;
+    const supplierInvoicesEnabled = Boolean(page.props.features?.supplier_invoices);
+    const sandboxActive = Boolean(page.props.sandbox?.active);
     const baseId = useId();
     const listId = `${baseId}-list`;
     const inputRef = useRef<HTMLInputElement | null>(null);
@@ -113,7 +116,7 @@ function Palette({ onClose, groups }: { onClose: () => void; groups: NavGroup[] 
         );
         pages.sort((a, b) => b.rank - a.rank);
 
-        const actions = buildQuickActions(t, tenant)
+        const actions = buildQuickActions(t, tenant, { supplierInvoicesEnabled: supplierInvoicesEnabled, sandboxActive: sandboxActive })
             .filter((action) => !needle || score(action.label, needle) > 0)
             .map((action) => ({ id: `action:${action.href}`, href: action.href, label: action.label, icon: action.icon }));
 
@@ -149,7 +152,7 @@ function Palette({ onClose, groups }: { onClose: () => void; groups: NavGroup[] 
             { key: 'pages', title: t('palette.pages'), results: needle ? pages.slice(0, 12) : pages },
             { key: 'search', title: t('palette.searchIn'), results: searchIn },
         ].filter((section) => section.results.length > 0);
-    }, [groups, needle, query, customers.items, t, tenant]);
+    }, [groups, needle, query, customers.items, t, tenant, supplierInvoicesEnabled, sandboxActive]);
 
     const flat = useMemo(() => sections.flatMap((section) => section.results), [sections]);
 

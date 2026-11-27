@@ -174,7 +174,7 @@ export default function CreateExchange({
                         {t("returns.disabled")}
                     </p>
                 )}
-                {!policy.within_policy && !canOverride && (
+                {policy.enabled && !policy.within_policy && !canOverride && (
                     <p className="rounded-field border border-danger/30 bg-danger-soft p-3 text-sm text-danger">
                         {t("returns.deadlineExceeded")}
                     </p>

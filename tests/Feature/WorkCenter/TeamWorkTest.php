@@ -30,7 +30,7 @@ class TeamWorkTest extends QuotationTestCase
     /** @return array{Organization, Store, Store, User} organization (Africa/Casablanca), Store A, Store B, owner */
     private function fixture(): array
     {
-        Carbon::setTestNow('2026-11-10 10:00:00');
+        Carbon::setTestNow('2026-07-10 10:00:00');
         $owner = User::factory()->create(['name' => 'Owner']);
         $organization = $this->createOrganization($owner);
         $organization->settings = ['timezone' => 'Africa/Casablanca'];
@@ -57,7 +57,7 @@ class TeamWorkTest extends QuotationTestCase
     {
         return DB::table('follow_ups')->insertGetId([
             'organization_id' => $organization->getKey(), 'store_id' => $store?->getKey(), 'assigned_user_id' => $assignee?->getKey(),
-            'title' => 'Suivi '.(++$this->sequence), 'priority' => 'normal', 'status' => 'open', 'due_date' => '2026-11-10', 'due_at' => null,
+            'title' => 'Suivi '.(++$this->sequence), 'priority' => 'normal', 'status' => 'open', 'due_date' => '2026-07-10', 'due_at' => null,
             'version' => 1, 'created_at' => now(), 'updated_at' => now(), ...$attributes,
         ]);
     }
@@ -91,9 +91,9 @@ class TeamWorkTest extends QuotationTestCase
         $orgLevel = $this->member($organization, [], self::SELLER, 'Org level');
         $noWorkRole = $this->member($organization, [$storeA], [], 'No work role');
 
-        $this->followUp($organization, $storeA, $ahmed, ['due_date' => '2026-11-01']);
-        $this->followUp($organization, $storeB, $ahmed, ['due_date' => '2026-11-01']); // Store B: invisible to the manager
-        $this->followUp($organization, $storeB, $onlyB, ['due_date' => '2026-11-01']);
+        $this->followUp($organization, $storeA, $ahmed, ['due_date' => '2026-07-01']);
+        $this->followUp($organization, $storeB, $ahmed, ['due_date' => '2026-07-01']); // Store B: invisible to the manager
+        $this->followUp($organization, $storeB, $onlyB, ['due_date' => '2026-07-01']);
         $this->attention($organization, $storeB, $ahmed, 'critical', true);
 
         $rows = $this->rows($manager, $organization);
@@ -129,18 +129,18 @@ class TeamWorkTest extends QuotationTestCase
     public function test_grouped_overdue_today_upcoming_completed_counts_use_business_timezone(): void
     {
         [$organization, $storeA] = $this->fixture();
-        // 2026-11-10 10:00 UTC = 11:00 in Casablanca (UTC+1).
+        // 2026-07-10 10:00 UTC = 11:00 in Casablanca (UTC+1).
         $manager = $this->member($organization, [$storeA], self::MANAGER, 'Manager');
         $seller = $this->member($organization, [$storeA], self::SELLER, 'Seller');
 
-        $this->followUp($organization, $storeA, $seller, ['due_date' => '2026-11-09']);                                   // overdue
-        $this->followUp($organization, $storeA, $seller, ['due_date' => '2026-11-10']);                                   // today
-        $this->followUp($organization, $storeA, $seller, ['due_date' => '2026-11-10', 'due_at' => '2026-11-10 09:30:00']); // today + overdue (10:30 local passed)
-        $this->followUp($organization, $storeA, $seller, ['due_date' => '2026-11-10', 'due_at' => '2026-11-10 22:30:00']); // 23:30 local: today
-        $this->followUp($organization, $storeA, $seller, ['due_date' => '2026-11-11', 'due_at' => '2026-11-10 23:30:00']); // 00:30 local tomorrow: upcoming
+        $this->followUp($organization, $storeA, $seller, ['due_date' => '2026-07-09']);                                   // overdue
+        $this->followUp($organization, $storeA, $seller, ['due_date' => '2026-07-10']);                                   // today
+        $this->followUp($organization, $storeA, $seller, ['due_date' => '2026-07-10', 'due_at' => '2026-07-10 09:30:00']); // today + overdue (10:30 local passed)
+        $this->followUp($organization, $storeA, $seller, ['due_date' => '2026-07-10', 'due_at' => '2026-07-10 22:30:00']); // 23:30 local: today
+        $this->followUp($organization, $storeA, $seller, ['due_date' => '2026-07-11', 'due_at' => '2026-07-10 23:30:00']); // 00:30 local tomorrow: upcoming
         $this->followUp($organization, $storeA, $seller, ['due_date' => null]);                                             // open, undated
-        $this->followUp($organization, $storeA, $seller, ['status' => 'completed', 'completed_at' => '2026-11-03 23:30:00']); // 04/11 local: in window
-        $this->followUp($organization, $storeA, $seller, ['status' => 'completed', 'completed_at' => '2026-11-03 22:30:00']); // 03/11 23:30 local: out
+        $this->followUp($organization, $storeA, $seller, ['status' => 'completed', 'completed_at' => '2026-07-03 23:30:00']); // 04/07 local: in window
+        $this->followUp($organization, $storeA, $seller, ['status' => 'completed', 'completed_at' => '2026-07-03 22:30:00']); // 03/07 23:30 local: out
         $this->followUp($organization, $storeA, $seller, ['status' => 'cancelled', 'cancelled_at' => now()]);
 
         $row = $this->rows($manager, $organization)[$seller->getKey()];
@@ -164,10 +164,10 @@ class TeamWorkTest extends QuotationTestCase
         $this->attention($organization, $storeA, $yan, 'warning');
         $this->attention($organization, $storeA, $yan, 'critical', false, 'resolved');   // not counted
         $this->attention($organization, $storeA, $yan, 'critical', false, 'dismissed');  // not counted
-        $this->followUp($organization, $storeA, $xavier, ['due_date' => '2026-11-01']);
-        $this->followUp($organization, $storeA, $will, ['due_date' => '2026-11-10']);
-        $this->followUp($organization, $storeA, null, ['due_date' => '2026-11-01']);      // unassigned follow-up
-        $this->followUp($organization, null, null, ['due_date' => '2026-11-20']);         // unassigned, store-less
+        $this->followUp($organization, $storeA, $xavier, ['due_date' => '2026-07-01']);
+        $this->followUp($organization, $storeA, $will, ['due_date' => '2026-07-10']);
+        $this->followUp($organization, $storeA, null, ['due_date' => '2026-07-01']);      // unassigned follow-up
+        $this->followUp($organization, null, null, ['due_date' => '2026-07-20']);         // unassigned, store-less
         $this->attention($organization, $storeA, null, 'critical');                       // unassigned attention
 
         $overview = app(TeamWorkQuery::class)->overview($manager, $organization, []);
@@ -228,13 +228,13 @@ class TeamWorkTest extends QuotationTestCase
         };
         for ($i = 0; $i < 3; $i++) {
             $user = $this->member($organization, [$storeA], self::SELLER, "Seller {$i}");
-            $this->followUp($organization, $storeA, $user, ['due_date' => '2026-11-01']);
+            $this->followUp($organization, $storeA, $user, ['due_date' => '2026-07-01']);
             $this->attention($organization, $storeA, $user, 'critical');
         }
         $small = $count();
         for ($i = 0; $i < 25; $i++) {
             $user = $this->member($organization, [$storeA], self::SELLER, "Seller more {$i}");
-            $this->followUp($organization, $storeA, $user, ['due_date' => '2026-11-01']);
+            $this->followUp($organization, $storeA, $user, ['due_date' => '2026-07-01']);
             $this->attention($organization, $storeA, $user, 'warning');
         }
 

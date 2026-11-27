@@ -4,8 +4,8 @@ namespace App\Services\Finance;
 
 use App\Models\Organization;
 use App\Support\LockedRow;
-use LogicException;
 use Illuminate\Support\Facades\DB;
+use LogicException;
 
 class FinanceNumberGenerator
 {
@@ -27,6 +27,11 @@ class FinanceNumberGenerator
     public function nextSupplierInstallmentPlan(Organization $organization, int $year): string
     {
         return $this->next('finance_supplier_plan_sequences', 'ECH', $organization, $year);
+    }
+
+    public function nextSupplierInvoice(Organization $organization, int $year): string
+    {
+        return $this->next('supplier_invoice_sequences', 'FAF', $organization, $year);
     }
 
     public function nextPaymentInstrument(Organization $organization, int $year, string $type): string

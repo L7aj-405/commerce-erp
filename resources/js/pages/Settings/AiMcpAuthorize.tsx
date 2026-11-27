@@ -1,5 +1,6 @@
 import AuthLayout from '@/components/auth/AuthLayout';
 import { useFreshAuth } from '@/components/auth/FreshAuthProvider';
+import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { useI18n } from '@/i18n';
 import { mcpScopeTranslationKeys } from '@/utils/mcpScopes';
@@ -80,6 +81,8 @@ export default function AiMcpAuthorize({ error, requestId, client, requestedScop
                     <p className="mt-1 text-xs text-ink-muted">{t('mcp.oauth.redirectsTo')} <bdi dir="ltr">{client.redirect}</bdi></p>
                     <p className="mt-2 text-xs text-warning">{t('mcp.oauth.selfDeclared')}</p>
                 </div>
+
+                <Alert tone="warning" title={t('mcp.productionWarningTitle')}>{t('mcp.productionWarning')}</Alert>
 
                 {failure && <div className="rounded-field border border-danger/30 bg-danger-soft p-3 text-sm text-danger">{failure}</div>}
 

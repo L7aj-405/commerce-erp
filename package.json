@@ -4,6 +4,7 @@
     "type": "module",
     "scripts": {
         "build": "vite build",
+        "test:frontend": "node --experimental-strip-types --test \"tests/Frontend/*.test.ts\"",
         "dev": "vite"
     },
     "dependencies": {

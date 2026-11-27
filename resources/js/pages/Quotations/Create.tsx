@@ -1,8 +1,13 @@
+import { contactJson } from '@/components/contacts/api';
+import ContactDrawer from '@/components/contacts/ContactDrawer';
+import { toCommercialPayload } from '@/components/contacts/contactValues';
+import type { ContactCan, ContactResult, ContactValues } from '@/components/contacts/types';
 import DatePicker from '@/components/ui/DatePicker';
 import { Button } from '@/components/ui/Button';
 import PageHeader from '@/components/ui/PageHeader';
 import { useI18n } from '@/i18n';
 import SalesLayout from '@/layouts/SalesLayout';
+import { addDaysToDate, useBusinessToday } from '@/utils/businessDate';
 import { Head, Link, useForm } from '@inertiajs/react';
 import type { FormEvent, ReactNode } from 'react';
 import { useEffect, useRef, useState } from 'react';
@@ -22,20 +27,15 @@ type Props = {
     can: { createCustomer: boolean };
 };
 
-function addDays(days: number): string {
-    const d = new Date();
-    d.setDate(d.getDate() + days);
-    return d.toISOString().slice(0, 10);
-}
-
 export default function QuotationCreate({ defaults, currencyCode, can }: Props) {
     const { direction, t } = useI18n();
-    const today = new Date().toISOString().slice(0, 10);
+    // The organization's business date (as the server computes it), never the browser's UTC date.
+    const today = useBusinessToday();
     const form = useForm({
         customer_id: null as number | null,
         currency_code: currencyCode,
         quotation_date: today,
-        valid_until: addDays(defaults.default_validity_days),
+        valid_until: addDaysToDate(today, defaults.default_validity_days),
         customer_name: '',
         customer_company: '',
         customer_email: '',
@@ -50,6 +50,8 @@ export default function QuotationCreate({ defaults, currencyCode, can }: Props) 
     const [results, setResults] = useState<CustomerResult[]>([]);
     const [picked, setPicked] = useState<CustomerResult | null>(null);
     const timer = useRef<number | undefined>(undefined);
+    // Inline customer creation: a plain overlay, so every field of this quotation stays exactly as typed.
+    const [drawer, setDrawer] = useState(false);
 
     useEffect(() => {
         window.clearTimeout(timer.current);
@@ -85,6 +87,12 @@ export default function QuotationCreate({ defaults, currencyCode, can }: Props) 
             billing_address: c.billing_address ?? '',
         });
     };
+
+    /** POST /quotations/customers (the existing authorized contract); the new customer is then selected in THIS quotation. */
+    async function createCustomer(values: ContactValues): Promise<ContactResult> {
+        const payload = await contactJson<{ data: CustomerResult }>('/quotations/customers', 'POST', toCommercialPayload(values));
+        return { party_id: 0, display_name: payload.data.display_name, reused: false, customer: payload.data as ContactResult['customer'], supplier: null };
+    }
 
     const clearCustomer = () => {
         setPicked(null);
@@ -141,9 +149,9 @@ export default function QuotationCreate({ defaults, currencyCode, can }: Props) 
                                 <p className="mt-1 text-xs text-ink-faint">
                                     {t('quotations.freeCustomerHelp')}{' '}
                                     {can.createCustomer && (
-                                        <Link href="/sales/customers/create" className="underline">
+                                        <button type="button" onClick={() => setDrawer(true)} className="underline">
                                             {t('quotations.createCustomer')}
-                                        </Link>
+                                        </button>
                                     )}
                                 </p>
                             </div>
@@ -207,11 +215,44 @@ export default function QuotationCreate({ defaults, currencyCode, can }: Props) 
                     </div>
                 </form>
             </div>
+            {can.createCustomer && (
+                <ContactDrawer
+                    open={drawer}
+                    onClose={() => setDrawer(false)}
+                    mode="quick"
+                    natureLabels="commercial"
+                    legacyFiscal
+                    allowedRoles={['client']}
+                    presetRoles={['client']}
+                    catalogue={{ roles: [], paymentTerms: [] }}
+                    can={QUICK_CAN}
+                    title={t('quotations.createCustomer')}
+                    transport={createCustomer}
+                    onSuccess={(result) => {
+                        choose(result.customer as unknown as CustomerResult);
+                        setDrawer(false);
+                    }}
+                />
+            )}
         </SalesLayout>
     );
 }
 
 const input = 'control-input w-full';
+
+const QUICK_CAN: ContactCan = {
+    create: false,
+    update: false,
+    archive: false,
+    manageRoles: false,
+    createCustomer: false,
+    createSupplier: false,
+    manageTerms: false,
+    assignCustomerTerms: false,
+    assignSupplierTerms: false,
+    viewCustomers: false,
+    viewSuppliers: false,
+};
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
     return (
