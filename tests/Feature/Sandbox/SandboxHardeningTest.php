@@ -4,14 +4,10 @@ namespace Tests\Feature\Sandbox;
 
 use App\Actions\Sales\CreateSalesOrderAction;
 use App\Http\Controllers\PosController;
-use App\Models\FinancialAccount;
 use App\Models\Organization;
-use App\Models\ProductVariant;
-use App\Models\SalesOrder;
 use App\Models\Sandbox;
-use App\Models\Store;
+use App\Models\SalesOrder;
 use App\Models\User;
-use App\Models\Warehouse;
 use App\Services\OrganizationDataReset\OrganizationDataResetExecutor;
 use App\Services\OrganizationDataReset\OrganizationDataResetPreviewService;
 use App\Services\OrganizationDataReset\OrganizationDataResetScope;
@@ -78,7 +74,7 @@ class SandboxHardeningTest extends QuotationTestCase
         $this->get('/sales/orders')->assertStatus(303)->assertRedirect('/test-mode');
         $this->getJson('/sales/orders')->assertStatus(409)->assertJson(['code' => 'SANDBOX_STALE_GENERATION',
             'message' => 'Le Mode Test a été réinitialisé. Veuillez entrer à nouveau en Mode Test.']);
-        $this->post('/sales/orders', $this->orderPayload())->assertStatus(303)->assertRedirect('/test-mode');
+        $this->post("/sales/orders", $this->orderPayload())->assertStatus(303)->assertRedirect('/test-mode');
         $this->assertSame(0, DB::table('sales_orders')->count());
         $home = $this->get('/test-mode')->assertOk()->viewData('page')['props'];
         $this->assertTrue($home['stale']);
@@ -161,7 +157,7 @@ class SandboxHardeningTest extends QuotationTestCase
         $this->postJson('/sales/customers', ['display_name' => 'X'])->assertForbidden()->assertJson(['code' => 'SANDBOX_DOMAIN_UNAVAILABLE']);
     }
 
-    /** @return array{User, Organization, Store, ProductVariant, Warehouse, FinancialAccount} */
+    /** @return array{User, Organization, \App\Models\Store, \App\Models\ProductVariant, \App\Models\Warehouse, \App\Models\FinancialAccount} */
     private function fixture(): array
     {
         [$owner, $org, $store, $variant] = $this->quotationCatalogFixture();

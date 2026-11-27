@@ -15,7 +15,7 @@ final class CustomerReadService
     public function __construct(private readonly CustomerFinancialSummary $summary) {}
 
     /**
-     * @param  array{query?: string|null, status?: string|null, page?: int, per_page?: int}  $filters
+     * @param array{query?: string|null, status?: string|null, page?: int, per_page?: int} $filters
      * @return array<string, mixed>
      */
     public function search(Organization $organization, array $filters): array
@@ -25,15 +25,9 @@ final class CustomerReadService
         $page = (int) ($filters['page'] ?? 1);
         $perPage = (int) ($filters['per_page'] ?? 25);
 
-        if (mb_strlen($queryText) > 255) {
-            throw new InvalidArgumentException('query_too_long');
-        }
-        if ($status !== null && CustomerStatus::tryFrom((string) $status) === null) {
-            throw new InvalidArgumentException('invalid_status');
-        }
-        if ($page < 1 || $page > 100000 || $perPage < 1 || $perPage > 100) {
-            throw new InvalidArgumentException('invalid_pagination');
-        }
+        if (mb_strlen($queryText) > 255) throw new InvalidArgumentException('query_too_long');
+        if ($status !== null && CustomerStatus::tryFrom((string) $status) === null) throw new InvalidArgumentException('invalid_status');
+        if ($page < 1 || $page > 100000 || $perPage < 1 || $perPage > 100) throw new InvalidArgumentException('invalid_pagination');
 
         $customers = Customer::query()
             ->where('organization_id', $organization->getKey())
@@ -116,9 +110,7 @@ final class CustomerReadService
 
     public function find(Organization $organization, int $customerId, bool $lock = false): Customer
     {
-        if ($customerId < 1) {
-            throw new InvalidArgumentException('invalid_id');
-        }
+        if ($customerId < 1) throw new InvalidArgumentException('invalid_id');
 
         return Customer::query()->where('organization_id', $organization->getKey())->whereKey($customerId)
             ->when($lock, fn ($query) => $query->lockForUpdate())->first()
