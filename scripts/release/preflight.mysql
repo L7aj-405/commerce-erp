@@ -1,0 +1,748 @@
+-- =====================================================================================================
+-- 10xScale ERP - production-consolidation-01 - PREFLIGHT (READ ONLY)
+--
+-- Run BEFORE any migration, against production or (first) an isolated clone:
+--   mysql --table --default-character-set=utf8mb4 -h HOST -u USER -p DATABASE < scripts/release/preflight.mysql
+--
+-- Everything runs inside ONE `READ ONLY` transaction: MySQL itself refuses any write. Nothing is corrected.
+-- Result column: PASS = ok | STOP = do not migrate | REVIEW = a human must read and accept | INFO = context.
+-- Requires MySQL 8.0.19+ (VALUES ROW). Do not use --force: a SQL error must abort the run (treat as STOP).
+-- Generated from main 5285c6c and the release tree; do not hand-edit lists.
+-- =====================================================================================================
+SET SESSION TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+SET SESSION time_zone = '+00:00';
+START TRANSACTION WITH CONSISTENT SNAPSHOT, READ ONLY;
+
+-- P01 engine
+SELECT 'P01' AS id, 'MySQL version (CHECK constraints need 8.0.16+; MariaDB is untested)' AS check_name,
+  IF(VERSION() NOT LIKE '%MariaDB%' AND (CAST(SUBSTRING_INDEX(VERSION(),'.',1) AS UNSIGNED) > 8
+     OR (CAST(SUBSTRING_INDEX(VERSION(),'.',1) AS UNSIGNED) = 8
+         AND (CAST(SUBSTRING_INDEX(SUBSTRING_INDEX(VERSION(),'.',2),'.',-1) AS UNSIGNED) > 0
+              OR CAST(SUBSTRING_INDEX(VERSION(),'.',-1) AS UNSIGNED) >= 19))), 'PASS', 'STOP') AS result,
+  CONCAT('version=', VERSION(), ' sql_mode=', @@sql_mode, ' global_tz=', @@global.time_zone, ' system_tz=', @@system_time_zone,
+         ' lock_wait_timeout=', @@lock_wait_timeout, 's') AS detail;
+
+-- P02 migration state: production must be exactly at main (132 migrations), none of the 15 release migrations applied
+SELECT 'P02a' AS id, 'Release migrations already recorded (expected 0)' AS check_name,
+  IF(COUNT(*) = 0, 'PASS', 'STOP') AS result, COALESCE(GROUP_CONCAT(migration ORDER BY migration SEPARATOR ', '), '-') AS detail
+FROM migrations WHERE migration IN ('2026_11_23_000001_provision_payments_refund_permission', '2026_11_23_000002_repair_payments_refund_catalog', '2026_11_24_000001_add_financial_check_constraints', '2026_11_25_000001_add_typed_policy_columns_to_organizations', '2026_11_25_000002_provision_policy_permissions', '2026_11_26_000001_add_fiscal_identity_to_suppliers', '2026_11_26_000002_create_supplier_invoice_tables', '2026_11_26_000003_link_obligations_to_supplier_invoice_installments', '2026_11_26_000004_provision_supplier_invoice_permissions', '2026_11_28_000001_create_customer_finance_tables', '2026_11_29_000001_add_customer_allocation_effective_dates', '2026_12_01_000001_add_invoicing_policy_to_customer_financial_terms', '2026_12_02_000001_create_unified_contacts_party_tables', '2026_12_02_000002_backfill_parties_and_provision_contact_permissions', '2026_12_03_000001_add_archive_snapshot_to_parties');
+
+SELECT 'P02b' AS id, 'Applied migrations unknown to main (expected 0)' AS check_name,
+  IF(COUNT(*) = 0, 'PASS', 'STOP') AS result, COALESCE(GROUP_CONCAT(migration ORDER BY migration SEPARATOR ', '), '-') AS detail
+FROM migrations WHERE migration NOT IN ('0001_01_01_000000_create_users_table', '0001_01_01_000001_create_cache_table', '0001_01_01_000002_create_jobs_table', '2026_08_23_000001_create_platform_core_tables', '2026_08_23_000002_create_catalog_tables', '2026_08_23_000003_create_inventory_tables', '2026_08_23_000004_create_sales_tables', '2026_08_23_000005_create_payment_tables', '2026_08_23_000006_create_document_tables', '2026_08_23_000007_create_product_import_tables', '2026_08_23_000008_create_stock_transfer_tables', '2026_08_23_000009_create_woocommerce_integration_tables', '2026_08_23_000010_provision_permissions', '2026_09_09_000001_recreate_invoice_sequences_with_year', '2026_09_09_000002_add_av_professional_fields_to_invoices', '2026_09_10_000001_add_correction_workflow_to_invoices', '2026_09_11_000001_create_quotation_tables', '2026_09_11_000002_provision_quotation_permissions', '2026_09_12_000001_add_revision_workflow_to_quotations', '2026_09_13_000001_add_tax_unresolved_to_sales_order_lines', '2026_09_14_000001_create_transfer_request_tables', '2026_09_14_000002_create_warehouse_replenishment_tables', '2026_09_14_000003_provision_transfer_request_permissions', '2026_09_15_000001_add_driver_and_shipping_details_to_transfer_requests', '2026_09_16_000001_create_supplier_procurement_tables', '2026_09_16_000002_provision_procurement_permissions', '2026_09_16_000003_add_preset_slug_to_roles_table', '2026_09_16_000004_provision_finance_and_settings_permissions', '2026_09_16_000005_create_user_invitations_table', '2026_09_17_000001_add_accepted_methods_to_financial_accounts_table', '2026_09_17_000002_create_organization_mail_settings_table', '2026_09_18_000001_create_organization_document_stamp_tables', '2026_09_18_000002_provision_document_stamp_permission', '2026_09_19_000001_add_rotation_to_document_stamp_tables', '2026_09_20_000001_create_woocommerce_stock_tasks_table', '2026_09_20_000002_provision_woocommerce_stock_task_permissions', '2026_09_20_000003_create_out_of_stock_articles_table', '2026_09_20_000004_add_image_url_to_product_variants_table', '2026_09_21_000001_backfill_email_verified_at_for_existing_users', '2026_09_21_000002_add_two_factor_columns_to_users_table', '2026_09_21_000003_create_organization_security_settings_table', '2026_09_21_000004_add_privileged_2fa_policy_to_organization_security_settings', '2026_09_22_000001_create_sales_order_revision_tables', '2026_09_23_000001_add_invoice_families_and_versions', '2026_09_24_000001_create_payment_refunds', '2026_09_25_000001_add_pos_sales_order_addenda', '2026_09_26_000001_create_customer_returns_and_credit_notes', '2026_09_26_000002_provision_return_permissions', '2026_09_26_000010_provision_organization_backup_permissions', '2026_09_26_000011_create_organization_scheduled_backups', '2026_09_26_000012_create_organization_cloud_backup_connections', '2026_09_26_000013_fix_cloud_backup_token_payload_column', '2026_09_27_000001_create_customer_exchanges', '2026_09_27_000002_provision_exchange_permissions', '2026_09_27_000003_create_user_social_identities', '2026_09_28_000001_create_organization_contacts_and_document_email_deliveries', '2026_09_28_000002_provision_contact_permissions', '2026_09_29_000001_add_visual_fields_to_document_stamp_appositions', '2026_09_30_000001_add_finance_reporting_indexes', '2026_10_05_000001_provision_audit_center', '2026_10_05_000002_create_system_health_heartbeats', '2026_10_06_000001_create_user_notifications', '2026_10_06_000002_create_trusted_two_factor_devices', '2026_10_07_000001_make_audit_log_auditable_id_string_compatible', '2026_10_08_000001_create_product_cost_import_tables', '2026_10_08_000002_provision_product_cost_permissions', '2026_10_08_000003_add_cost_margin_snapshots_to_sales_order_lines', '2026_10_08_000004_add_salesperson_attribution_to_sales_orders', '2026_10_08_000005_provision_salesperson_attribution_permissions', '2026_10_08_000006_create_commission_rule_tables', '2026_10_08_000007_provision_commission_permissions', '2026_10_08_000008_create_commission_entries_table', '2026_10_08_000009_provision_commission_ledger_permissions', '2026_10_08_000010_provision_commission_dashboard_permissions', '2026_10_08_000011_add_store_reporting_index_to_commission_entries', '2026_10_09_000001_add_default_warehouse_to_organization_memberships', '2026_10_16_000001_make_document_stamp_storage_persistent', '2026_10_16_000002_add_whatsapp_usernames', '2026_10_17_000001_create_finance_monthly_obligations', '2026_10_17_000002_create_finance_recurring_obligation_templates', '2026_10_17_000003_create_finance_supplier_installments_and_instruments', '2026_10_17_000004_create_finance_treasury_forecast_tables', '2026_10_17_000005_provision_finance_balance_permission', '2026_10_17_000006_create_finance_month_reviews', '2026_10_17_000007_provision_finance_monthly_export_permission', '2026_10_22_000001_provision_organization_data_reset_permission', '2026_10_22_000002_create_mcp_connection_foundation', '2026_10_22_000003_create_mcp_idempotency_records', '2026_10_22_000004_create_mcp_operations', '2026_10_23_000001_add_unique_reference_to_product_variants', '2026_10_24_000001_create_mcp_oauth_tables', '2026_10_25_000001_create_follow_ups_table', '2026_10_25_000002_provision_follow_up_permissions', '2026_10_26_000001_make_follow_up_assignee_nullable', '2026_10_27_000001_add_follow_up_reminder_state', '2026_10_27_000002_backfill_commission_entries_no_commission_status', '2026_10_28_000001_create_follow_up_recurring_rules_and_templates', '2026_10_29_000001_create_attention_items_table', '2026_10_30_000001_add_attention_notification_state', '2026_10_31_000001_add_attention_ownership_and_escalation', '2026_11_01_000001_add_invoice_due_date_and_invoice_attention_links', '2026_11_02_000001_add_sales_order_due_date_and_receivables_attention_links', '2026_11_03_000001_create_attention_baselines', '2026_11_04_000001_add_follow_up_team_counts_index', '2026_11_05_000001_create_quotation_supplier_sourcing_tables', '2026_11_05_000002_provision_quotation_sourcing_permissions', '2026_11_06_000001_create_purchase_orders_tables', '2026_11_07_000001_create_procurement_receipts_table', '2026_11_08_000001_create_product_variant_suppliers_table', '2026_11_08_000002_provision_supplier_catalog_permission', '2026_11_09_000001_create_fulfillment_tables', '2026_11_09_000002_provision_fulfillment_permissions', '2026_11_10_000001_add_shipment_tracking_and_customer_notifications', '2026_11_11_000001_add_shipment_context_to_follow_ups', '2026_11_12_000001_add_cart_sourcing_to_supplier_availability_requests', '2026_11_13_000001_add_progress_and_diagnostics_to_woocommerce_sync_runs', '2026_11_14_000001_add_pos_terminals_and_store_inventory_locations', '2026_11_15_000001_add_editing_and_restoration_to_transfer_requests', '2026_11_16_000001_add_reallocated_quantity_to_transfer_request_lines', '2026_11_17_000001_widen_purchase_orders_status_column', '2026_11_18_000001_add_pos_fulfillment_origin_to_sales_orders', '2026_11_21_000001_create_sandbox_foundation', '2026_11_21_000002_isolate_sandbox_sales', '2026_11_21_000003_isolate_sandbox_documents', '2026_11_21_000004_create_sandbox_inventory', '2026_11_21_000005_create_sandbox_finance', '2026_11_21_000006_create_sandbox_procurement', '2026_11_21_000007_create_sandbox_fulfillment', '2026_11_21_000008_isolate_sandbox_returns', '2026_11_22_000001_add_fiscal_protection_to_organizations', '2026_11_22_000001_add_pos_last_activity_to_sales_orders', '2026_11_22_000002_add_client_operation_to_stock_transfers') AND migration NOT IN ('2026_11_23_000001_provision_payments_refund_permission', '2026_11_23_000002_repair_payments_refund_catalog', '2026_11_24_000001_add_financial_check_constraints', '2026_11_25_000001_add_typed_policy_columns_to_organizations', '2026_11_25_000002_provision_policy_permissions', '2026_11_26_000001_add_fiscal_identity_to_suppliers', '2026_11_26_000002_create_supplier_invoice_tables', '2026_11_26_000003_link_obligations_to_supplier_invoice_installments', '2026_11_26_000004_provision_supplier_invoice_permissions', '2026_11_28_000001_create_customer_finance_tables', '2026_11_29_000001_add_customer_allocation_effective_dates', '2026_12_01_000001_add_invoicing_policy_to_customer_financial_terms', '2026_12_02_000001_create_unified_contacts_party_tables', '2026_12_02_000002_backfill_parties_and_provision_contact_permissions', '2026_12_03_000001_add_archive_snapshot_to_parties');
+
+SELECT 'P02c' AS id, 'Main migrations not yet applied (expected 0)' AS check_name,
+  IF(COUNT(*) = 0, 'PASS', 'STOP') AS result, COALESCE(GROUP_CONCAT(t.m ORDER BY t.m SEPARATOR ', '), '-') AS detail
+FROM (VALUES
+      ROW('0001_01_01_000000_create_users_table'),
+      ROW('0001_01_01_000001_create_cache_table'),
+      ROW('0001_01_01_000002_create_jobs_table'),
+      ROW('2026_08_23_000001_create_platform_core_tables'),
+      ROW('2026_08_23_000002_create_catalog_tables'),
+      ROW('2026_08_23_000003_create_inventory_tables'),
+      ROW('2026_08_23_000004_create_sales_tables'),
+      ROW('2026_08_23_000005_create_payment_tables'),
+      ROW('2026_08_23_000006_create_document_tables'),
+      ROW('2026_08_23_000007_create_product_import_tables'),
+      ROW('2026_08_23_000008_create_stock_transfer_tables'),
+      ROW('2026_08_23_000009_create_woocommerce_integration_tables'),
+      ROW('2026_08_23_000010_provision_permissions'),
+      ROW('2026_09_09_000001_recreate_invoice_sequences_with_year'),
+      ROW('2026_09_09_000002_add_av_professional_fields_to_invoices'),
+      ROW('2026_09_10_000001_add_correction_workflow_to_invoices'),
+      ROW('2026_09_11_000001_create_quotation_tables'),
+      ROW('2026_09_11_000002_provision_quotation_permissions'),
+      ROW('2026_09_12_000001_add_revision_workflow_to_quotations'),
+      ROW('2026_09_13_000001_add_tax_unresolved_to_sales_order_lines'),
+      ROW('2026_09_14_000001_create_transfer_request_tables'),
+      ROW('2026_09_14_000002_create_warehouse_replenishment_tables'),
+      ROW('2026_09_14_000003_provision_transfer_request_permissions'),
+      ROW('2026_09_15_000001_add_driver_and_shipping_details_to_transfer_requests'),
+      ROW('2026_09_16_000001_create_supplier_procurement_tables'),
+      ROW('2026_09_16_000002_provision_procurement_permissions'),
+      ROW('2026_09_16_000003_add_preset_slug_to_roles_table'),
+      ROW('2026_09_16_000004_provision_finance_and_settings_permissions'),
+      ROW('2026_09_16_000005_create_user_invitations_table'),
+      ROW('2026_09_17_000001_add_accepted_methods_to_financial_accounts_table'),
+      ROW('2026_09_17_000002_create_organization_mail_settings_table'),
+      ROW('2026_09_18_000001_create_organization_document_stamp_tables'),
+      ROW('2026_09_18_000002_provision_document_stamp_permission'),
+      ROW('2026_09_19_000001_add_rotation_to_document_stamp_tables'),
+      ROW('2026_09_20_000001_create_woocommerce_stock_tasks_table'),
+      ROW('2026_09_20_000002_provision_woocommerce_stock_task_permissions'),
+      ROW('2026_09_20_000003_create_out_of_stock_articles_table'),
+      ROW('2026_09_20_000004_add_image_url_to_product_variants_table'),
+      ROW('2026_09_21_000001_backfill_email_verified_at_for_existing_users'),
+      ROW('2026_09_21_000002_add_two_factor_columns_to_users_table'),
+      ROW('2026_09_21_000003_create_organization_security_settings_table'),
+      ROW('2026_09_21_000004_add_privileged_2fa_policy_to_organization_security_settings'),
+      ROW('2026_09_22_000001_create_sales_order_revision_tables'),
+      ROW('2026_09_23_000001_add_invoice_families_and_versions'),
+      ROW('2026_09_24_000001_create_payment_refunds'),
+      ROW('2026_09_25_000001_add_pos_sales_order_addenda'),
+      ROW('2026_09_26_000001_create_customer_returns_and_credit_notes'),
+      ROW('2026_09_26_000002_provision_return_permissions'),
+      ROW('2026_09_26_000010_provision_organization_backup_permissions'),
+      ROW('2026_09_26_000011_create_organization_scheduled_backups'),
+      ROW('2026_09_26_000012_create_organization_cloud_backup_connections'),
+      ROW('2026_09_26_000013_fix_cloud_backup_token_payload_column'),
+      ROW('2026_09_27_000001_create_customer_exchanges'),
+      ROW('2026_09_27_000002_provision_exchange_permissions'),
+      ROW('2026_09_27_000003_create_user_social_identities'),
+      ROW('2026_09_28_000001_create_organization_contacts_and_document_email_deliveries'),
+      ROW('2026_09_28_000002_provision_contact_permissions'),
+      ROW('2026_09_29_000001_add_visual_fields_to_document_stamp_appositions'),
+      ROW('2026_09_30_000001_add_finance_reporting_indexes'),
+      ROW('2026_10_05_000001_provision_audit_center'),
+      ROW('2026_10_05_000002_create_system_health_heartbeats'),
+      ROW('2026_10_06_000001_create_user_notifications'),
+      ROW('2026_10_06_000002_create_trusted_two_factor_devices'),
+      ROW('2026_10_07_000001_make_audit_log_auditable_id_string_compatible'),
+      ROW('2026_10_08_000001_create_product_cost_import_tables'),
+      ROW('2026_10_08_000002_provision_product_cost_permissions'),
+      ROW('2026_10_08_000003_add_cost_margin_snapshots_to_sales_order_lines'),
+      ROW('2026_10_08_000004_add_salesperson_attribution_to_sales_orders'),
+      ROW('2026_10_08_000005_provision_salesperson_attribution_permissions'),
+      ROW('2026_10_08_000006_create_commission_rule_tables'),
+      ROW('2026_10_08_000007_provision_commission_permissions'),
+      ROW('2026_10_08_000008_create_commission_entries_table'),
+      ROW('2026_10_08_000009_provision_commission_ledger_permissions'),
+      ROW('2026_10_08_000010_provision_commission_dashboard_permissions'),
+      ROW('2026_10_08_000011_add_store_reporting_index_to_commission_entries'),
+      ROW('2026_10_09_000001_add_default_warehouse_to_organization_memberships'),
+      ROW('2026_10_16_000001_make_document_stamp_storage_persistent'),
+      ROW('2026_10_16_000002_add_whatsapp_usernames'),
+      ROW('2026_10_17_000001_create_finance_monthly_obligations'),
+      ROW('2026_10_17_000002_create_finance_recurring_obligation_templates'),
+      ROW('2026_10_17_000003_create_finance_supplier_installments_and_instruments'),
+      ROW('2026_10_17_000004_create_finance_treasury_forecast_tables'),
+      ROW('2026_10_17_000005_provision_finance_balance_permission'),
+      ROW('2026_10_17_000006_create_finance_month_reviews'),
+      ROW('2026_10_17_000007_provision_finance_monthly_export_permission'),
+      ROW('2026_10_22_000001_provision_organization_data_reset_permission'),
+      ROW('2026_10_22_000002_create_mcp_connection_foundation'),
+      ROW('2026_10_22_000003_create_mcp_idempotency_records'),
+      ROW('2026_10_22_000004_create_mcp_operations'),
+      ROW('2026_10_23_000001_add_unique_reference_to_product_variants'),
+      ROW('2026_10_24_000001_create_mcp_oauth_tables'),
+      ROW('2026_10_25_000001_create_follow_ups_table'),
+      ROW('2026_10_25_000002_provision_follow_up_permissions'),
+      ROW('2026_10_26_000001_make_follow_up_assignee_nullable'),
+      ROW('2026_10_27_000001_add_follow_up_reminder_state'),
+      ROW('2026_10_27_000002_backfill_commission_entries_no_commission_status'),
+      ROW('2026_10_28_000001_create_follow_up_recurring_rules_and_templates'),
+      ROW('2026_10_29_000001_create_attention_items_table'),
+      ROW('2026_10_30_000001_add_attention_notification_state'),
+      ROW('2026_10_31_000001_add_attention_ownership_and_escalation'),
+      ROW('2026_11_01_000001_add_invoice_due_date_and_invoice_attention_links'),
+      ROW('2026_11_02_000001_add_sales_order_due_date_and_receivables_attention_links'),
+      ROW('2026_11_03_000001_create_attention_baselines'),
+      ROW('2026_11_04_000001_add_follow_up_team_counts_index'),
+      ROW('2026_11_05_000001_create_quotation_supplier_sourcing_tables'),
+      ROW('2026_11_05_000002_provision_quotation_sourcing_permissions'),
+      ROW('2026_11_06_000001_create_purchase_orders_tables'),
+      ROW('2026_11_07_000001_create_procurement_receipts_table'),
+      ROW('2026_11_08_000001_create_product_variant_suppliers_table'),
+      ROW('2026_11_08_000002_provision_supplier_catalog_permission'),
+      ROW('2026_11_09_000001_create_fulfillment_tables'),
+      ROW('2026_11_09_000002_provision_fulfillment_permissions'),
+      ROW('2026_11_10_000001_add_shipment_tracking_and_customer_notifications'),
+      ROW('2026_11_11_000001_add_shipment_context_to_follow_ups'),
+      ROW('2026_11_12_000001_add_cart_sourcing_to_supplier_availability_requests'),
+      ROW('2026_11_13_000001_add_progress_and_diagnostics_to_woocommerce_sync_runs'),
+      ROW('2026_11_14_000001_add_pos_terminals_and_store_inventory_locations'),
+      ROW('2026_11_15_000001_add_editing_and_restoration_to_transfer_requests'),
+      ROW('2026_11_16_000001_add_reallocated_quantity_to_transfer_request_lines'),
+      ROW('2026_11_17_000001_widen_purchase_orders_status_column'),
+      ROW('2026_11_18_000001_add_pos_fulfillment_origin_to_sales_orders'),
+      ROW('2026_11_21_000001_create_sandbox_foundation'),
+      ROW('2026_11_21_000002_isolate_sandbox_sales'),
+      ROW('2026_11_21_000003_isolate_sandbox_documents'),
+      ROW('2026_11_21_000004_create_sandbox_inventory'),
+      ROW('2026_11_21_000005_create_sandbox_finance'),
+      ROW('2026_11_21_000006_create_sandbox_procurement'),
+      ROW('2026_11_21_000007_create_sandbox_fulfillment'),
+      ROW('2026_11_21_000008_isolate_sandbox_returns'),
+      ROW('2026_11_22_000001_add_fiscal_protection_to_organizations'),
+      ROW('2026_11_22_000001_add_pos_last_activity_to_sales_orders'),
+      ROW('2026_11_22_000002_add_client_operation_to_stock_transfers')) AS t (m)
+WHERE NOT EXISTS (SELECT 1 FROM migrations x WHERE x.migration = t.m);
+
+-- P03 leftovers of a partially applied run (MySQL DDL is not transactional)
+SELECT 'P03a' AS id, 'New tables that already exist (expected 0)' AS check_name,
+  IF(COUNT(*) = 0, 'PASS', 'STOP') AS result, COALESCE(GROUP_CONCAT(table_name SEPARATOR ', '), '-') AS detail
+FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name IN ('supplier_invoice_sequences', 'supplier_invoices', 'supplier_invoice_lines', 'supplier_invoice_installments', 'supplier_invoice_attachments', 'customer_opening_balances', 'customer_financial_terms', 'customer_credit_exceptions', 'customer_payment_installments', 'customer_payment_promises', 'customer_payment_instruments', 'customer_instrument_events', 'payment_allocation_releases', 'customer_opening_balance_settlements', 'parties', 'contact_roles', 'party_roles', 'party_relationships', 'payment_terms', 'party_migration_conflicts');
+
+SELECT 'P03b' AS id, 'New columns that already exist (expected 0)' AS check_name,
+  IF(COUNT(*) = 0, 'PASS', 'STOP') AS result, COALESCE(GROUP_CONCAT(CONCAT(table_name, '.', column_name) SEPARATOR ', '), '-') AS detail
+FROM information_schema.columns WHERE table_schema = DATABASE() AND ((table_name = 'organizations' AND column_name IN ('invoice_issuance', 'credit_limit_enforcement', 'sales_order_payment_term_days', 'invoice_payment_term_days')) OR (table_name = 'suppliers' AND column_name IN ('ice', 'tax_identifier', 'rc_number', 'default_payment_term_days', 'default_currency_code', 'bank_iban', 'party_id', 'payment_term_id')) OR (table_name = 'finance_obligations' AND column_name IN ('supplier_invoice_installment_id')) OR (table_name = 'payments' AND column_name IN ('customer_id', 'request_fingerprint')) OR (table_name = 'payment_allocations' AND column_name IN ('effective_date')) OR (table_name = 'customers' AND column_name IN ('party_id')) OR (table_name = 'organization_contacts' AND column_name IN ('party_id')));
+
+SELECT 'P03c' AS id, 'New CHECK constraints that already exist (expected 0)' AS check_name,
+  IF(COUNT(*) = 0, 'PASS', 'STOP') AS result, COALESCE(GROUP_CONCAT(constraint_name SEPARATOR ', '), '-') AS detail
+FROM information_schema.check_constraints WHERE constraint_schema = DATABASE()
+  AND (constraint_name LIKE 'chk\_%');
+
+SELECT 'P03d' AS id, 'Composite (organization_id, id) unique keys required by new foreign keys' AS check_name,
+  IF(COUNT(*) = 7, 'PASS', 'STOP') AS result, CONCAT(COUNT(*), '/7: ', COALESCE(GROUP_CONCAT(table_name ORDER BY table_name SEPARATOR ', '), '-')) AS detail
+FROM (SELECT DISTINCT table_name FROM (
+        SELECT table_name, index_name, GROUP_CONCAT(column_name ORDER BY seq_in_index) AS cols, MAX(non_unique) AS nu
+        FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name IN ('stores', 'suppliers', 'purchase_orders', 'purchase_order_lines', 'product_variants', 'tax_rates', 'financial_accounts')
+        GROUP BY table_name, index_name) i WHERE nu = 0 AND cols = 'organization_id,id') k;
+
+-- P04 financial CHECK constraints (2026_11_24_000001 refuses to run when any of these is non-zero)
+SELECT 'P04.01' AS id, 'payments.amount must be > 0' AS check_name, IF(COUNT(*) = 0, 'PASS', 'STOP') AS result,
+  CONCAT(COUNT(*), ' violating row(s); first ids: ', COALESCE(SUBSTRING_INDEX(GROUP_CONCAT(id ORDER BY id), ',', 20), '-')) AS detail
+FROM payments WHERE NOT (amount > 0)
+UNION ALL
+SELECT 'P04.02' AS id, 'payment_allocations.amount must be > 0' AS check_name, IF(COUNT(*) = 0, 'PASS', 'STOP') AS result,
+  CONCAT(COUNT(*), ' violating row(s); first ids: ', COALESCE(SUBSTRING_INDEX(GROUP_CONCAT(id ORDER BY id), ',', 20), '-')) AS detail
+FROM payment_allocations WHERE NOT (amount > 0)
+UNION ALL
+SELECT 'P04.03' AS id, 'payment_refunds.amount must be > 0' AS check_name, IF(COUNT(*) = 0, 'PASS', 'STOP') AS result,
+  CONCAT(COUNT(*), ' violating row(s); first ids: ', COALESCE(SUBSTRING_INDEX(GROUP_CONCAT(id ORDER BY id), ',', 20), '-')) AS detail
+FROM payment_refunds WHERE NOT (amount > 0)
+UNION ALL
+SELECT 'P04.04' AS id, 'invoices.total_incl_tax must be >= 0' AS check_name, IF(COUNT(*) = 0, 'PASS', 'STOP') AS result,
+  CONCAT(COUNT(*), ' violating row(s); first ids: ', COALESCE(SUBSTRING_INDEX(GROUP_CONCAT(id ORDER BY id), ',', 20), '-')) AS detail
+FROM invoices WHERE NOT (total_incl_tax >= 0)
+UNION ALL
+SELECT 'P04.05' AS id, 'credit_notes.total_incl_tax must be >= 0' AS check_name, IF(COUNT(*) = 0, 'PASS', 'STOP') AS result,
+  CONCAT(COUNT(*), ' violating row(s); first ids: ', COALESCE(SUBSTRING_INDEX(GROUP_CONCAT(id ORDER BY id), ',', 20), '-')) AS detail
+FROM credit_notes WHERE NOT (total_incl_tax >= 0)
+UNION ALL
+SELECT 'P04.06' AS id, 'inventory_balances.on_hand must be >= 0' AS check_name, IF(COUNT(*) = 0, 'PASS', 'STOP') AS result,
+  CONCAT(COUNT(*), ' violating row(s); first ids: ', COALESCE(SUBSTRING_INDEX(GROUP_CONCAT(id ORDER BY id), ',', 20), '-')) AS detail
+FROM inventory_balances WHERE NOT (on_hand >= 0)
+UNION ALL
+SELECT 'P04.07' AS id, 'inventory_balances.reserved must be >= 0' AS check_name, IF(COUNT(*) = 0, 'PASS', 'STOP') AS result,
+  CONCAT(COUNT(*), ' violating row(s); first ids: ', COALESCE(SUBSTRING_INDEX(GROUP_CONCAT(id ORDER BY id), ',', 20), '-')) AS detail
+FROM inventory_balances WHERE NOT (reserved >= 0)
+UNION ALL
+SELECT 'P04.08' AS id, 'sandbox_payments.amount must be > 0' AS check_name, IF(COUNT(*) = 0, 'PASS', 'STOP') AS result,
+  CONCAT(COUNT(*), ' violating row(s); first ids: ', COALESCE(SUBSTRING_INDEX(GROUP_CONCAT(id ORDER BY id), ',', 20), '-')) AS detail
+FROM sandbox_payments WHERE NOT (amount > 0)
+UNION ALL
+SELECT 'P04.09' AS id, 'sandbox_payment_allocations.amount must be > 0' AS check_name, IF(COUNT(*) = 0, 'PASS', 'STOP') AS result,
+  CONCAT(COUNT(*), ' violating row(s); first ids: ', COALESCE(SUBSTRING_INDEX(GROUP_CONCAT(id ORDER BY id), ',', 20), '-')) AS detail
+FROM sandbox_payment_allocations WHERE NOT (amount > 0)
+UNION ALL
+SELECT 'P04.10' AS id, 'sandbox_payment_refunds.amount must be > 0' AS check_name, IF(COUNT(*) = 0, 'PASS', 'STOP') AS result,
+  CONCAT(COUNT(*), ' violating row(s); first ids: ', COALESCE(SUBSTRING_INDEX(GROUP_CONCAT(id ORDER BY id), ',', 20), '-')) AS detail
+FROM sandbox_payment_refunds WHERE NOT (amount > 0)
+UNION ALL
+SELECT 'P04.11' AS id, 'sandbox_inventory_balances.on_hand must be >= 0' AS check_name, IF(COUNT(*) = 0, 'PASS', 'STOP') AS result,
+  CONCAT(COUNT(*), ' violating row(s); first ids: ', COALESCE(SUBSTRING_INDEX(GROUP_CONCAT(id ORDER BY id), ',', 20), '-')) AS detail
+FROM sandbox_inventory_balances WHERE NOT (on_hand >= 0)
+UNION ALL
+SELECT 'P04.12' AS id, 'sandbox_inventory_balances.reserved must be >= 0' AS check_name, IF(COUNT(*) = 0, 'PASS', 'STOP') AS result,
+  CONCAT(COUNT(*), ' violating row(s); first ids: ', COALESCE(SUBSTRING_INDEX(GROUP_CONCAT(id ORDER BY id), ',', 20), '-')) AS detail
+FROM sandbox_inventory_balances WHERE NOT (reserved >= 0);
+
+-- P05 permissions. 2026_11_28_000001 and 2026_12_02_000002 re-sync every role whose slug is a default slug
+-- with the permissions of config/platform.php (additive, nothing is revoked).
+SELECT 'P05a' AS id, 'Custom (non-system) roles reusing a default slug: they WOULD receive default permissions' AS check_name,
+  IF(COUNT(*) = 0, 'PASS', 'REVIEW') AS result,
+  COALESCE(GROUP_CONCAT(CONCAT('org ', organization_id, ' role ', id, ' (', slug, ')') SEPARATOR '; '), '-') AS detail
+FROM roles WHERE is_system = 0 AND slug IN ('owner', 'admin', 'sales-employee');
+
+SELECT 'P05b' AS id, 'Default-role permissions of CURRENT main that are missing in the database (would be re-added)' AS check_name,
+  IF(COUNT(*) = 0, 'PASS', 'REVIEW') AS result,
+  CONCAT(COUNT(*), ' grant(s): ', COALESCE(SUBSTRING(GROUP_CONCAT(CONCAT('org ', r.organization_id, ' ', r.slug, ' +', t.k) SEPARATOR '; '), 1, 900), '-')) AS detail
+FROM (VALUES
+      ROW('owner', 'sandbox.access'),
+      ROW('owner', 'sandbox.switch'),
+      ROW('owner', 'sandbox.manage'),
+      ROW('owner', 'organizations.view'),
+      ROW('owner', 'organizations.update'),
+      ROW('owner', 'organizations.delete'),
+      ROW('owner', 'settings.update'),
+      ROW('owner', 'stores.view'),
+      ROW('owner', 'stores.create'),
+      ROW('owner', 'stores.update'),
+      ROW('owner', 'stores.delete'),
+      ROW('owner', 'members.view'),
+      ROW('owner', 'members.create'),
+      ROW('owner', 'members.update'),
+      ROW('owner', 'members.delete'),
+      ROW('owner', 'store-memberships.manage'),
+      ROW('owner', 'roles.view'),
+      ROW('owner', 'roles.create'),
+      ROW('owner', 'roles.update'),
+      ROW('owner', 'roles.delete'),
+      ROW('owner', 'roles.assign-permissions'),
+      ROW('owner', 'catalog.view'),
+      ROW('owner', 'products.view'),
+      ROW('owner', 'products.create'),
+      ROW('owner', 'products.update'),
+      ROW('owner', 'products.archive'),
+      ROW('owner', 'products.import'),
+      ROW('owner', 'product_cost.view'),
+      ROW('owner', 'product_cost.manage'),
+      ROW('owner', 'product_cost.export'),
+      ROW('owner', 'product_cost.import'),
+      ROW('owner', 'categories.view'),
+      ROW('owner', 'categories.manage'),
+      ROW('owner', 'brands.view'),
+      ROW('owner', 'brands.manage'),
+      ROW('owner', 'units.view'),
+      ROW('owner', 'units.manage'),
+      ROW('owner', 'tax_rates.view'),
+      ROW('owner', 'tax_rates.manage'),
+      ROW('owner', 'warehouses.view'),
+      ROW('owner', 'warehouses.create'),
+      ROW('owner', 'warehouses.update'),
+      ROW('owner', 'inventory.view'),
+      ROW('owner', 'inventory.opening'),
+      ROW('owner', 'inventory.adjust'),
+      ROW('owner', 'inventory.transfer'),
+      ROW('owner', 'inventory.reserve'),
+      ROW('owner', 'inventory.release'),
+      ROW('owner', 'inventory.consume'),
+      ROW('owner', 'inventory.transfer_requests.view'),
+      ROW('owner', 'inventory.transfer_requests.manage'),
+      ROW('owner', 'inventory.transfer_requests.receive'),
+      ROW('owner', 'suppliers.view'),
+      ROW('owner', 'suppliers.manage'),
+      ROW('owner', 'supplier_catalog.manage'),
+      ROW('owner', 'procurement.view'),
+      ROW('owner', 'procurement.manage'),
+      ROW('owner', 'procurement.receive'),
+      ROW('owner', 'customers.view'),
+      ROW('owner', 'customers.create'),
+      ROW('owner', 'customers.update'),
+      ROW('owner', 'contacts.view'),
+      ROW('owner', 'contacts.create'),
+      ROW('owner', 'contacts.update'),
+      ROW('owner', 'contacts.archive'),
+      ROW('owner', 'follow_ups.view'),
+      ROW('owner', 'follow_ups.create'),
+      ROW('owner', 'follow_ups.update'),
+      ROW('owner', 'follow_ups.manage_all'),
+      ROW('owner', 'sales_orders.view'),
+      ROW('owner', 'sales_orders.create'),
+      ROW('owner', 'sales_orders.update'),
+      ROW('owner', 'sales_orders.confirm'),
+      ROW('owner', 'sales_orders.cancel'),
+      ROW('owner', 'sales_orders.fulfill'),
+      ROW('owner', 'fulfillment.view'),
+      ROW('owner', 'fulfillment.manage'),
+      ROW('owner', 'fulfillment.dispatch'),
+      ROW('owner', 'fulfillment.mark_delivered'),
+      ROW('owner', 'sales_orders.override_price'),
+      ROW('owner', 'sales_orders.apply_discount'),
+      ROW('owner', 'sales_orders.assign_salesperson'),
+      ROW('owner', 'sales_orders.reassign_salesperson'),
+      ROW('owner', 'sales_returns.view'),
+      ROW('owner', 'sales_returns.create'),
+      ROW('owner', 'sales_returns.receive'),
+      ROW('owner', 'sales_returns.cancel'),
+      ROW('owner', 'sales_returns.override_policy'),
+      ROW('owner', 'sales_exchanges.view'),
+      ROW('owner', 'sales_exchanges.create'),
+      ROW('owner', 'sales_exchanges.process'),
+      ROW('owner', 'credit_notes.view'),
+      ROW('owner', 'credit_notes.issue'),
+      ROW('owner', 'pos.access'),
+      ROW('owner', 'financial_accounts.view'),
+      ROW('owner', 'financial_accounts.create'),
+      ROW('owner', 'financial_accounts.update'),
+      ROW('owner', 'payments.view'),
+      ROW('owner', 'payments.create'),
+      ROW('owner', 'payments.reverse'),
+      ROW('owner', 'payments.backdate'),
+      ROW('owner', 'invoices.view'),
+      ROW('owner', 'invoices.create'),
+      ROW('owner', 'invoices.update_draft'),
+      ROW('owner', 'invoices.issue'),
+      ROW('owner', 'invoices.backdate'),
+      ROW('owner', 'invoices.email'),
+      ROW('owner', 'quotations.view'),
+      ROW('owner', 'quotations.create'),
+      ROW('owner', 'quotations.update'),
+      ROW('owner', 'quotations.issue'),
+      ROW('owner', 'quotations.accept'),
+      ROW('owner', 'quotations.convert'),
+      ROW('owner', 'quotations.email'),
+      ROW('owner', 'quotations.override_supplier_availability'),
+      ROW('owner', 'non_stock_items.manage'),
+      ROW('owner', 'delivery_notes.view'),
+      ROW('owner', 'delivery_notes.create'),
+      ROW('owner', 'delivery_notes.update_draft'),
+      ROW('owner', 'delivery_notes.issue'),
+      ROW('owner', 'delivery_notes.backdate'),
+      ROW('owner', 'delivery_notes.email'),
+      ROW('owner', 'documents.stamp'),
+      ROW('owner', 'integrations.view'),
+      ROW('owner', 'integrations.manage'),
+      ROW('owner', 'integrations.sync'),
+      ROW('owner', 'integrations.woocommerce.stock_tasks.view'),
+      ROW('owner', 'integrations.woocommerce.stock_tasks.manage'),
+      ROW('owner', 'finance.view'),
+      ROW('owner', 'finance.export'),
+      ROW('owner', 'finance.receivables.view'),
+      ROW('owner', 'finance.monthly_situation.view'),
+      ROW('owner', 'finance.monthly_situation.manage'),
+      ROW('owner', 'finance.periods.reopen'),
+      ROW('owner', 'finance.monthly_situation.export'),
+      ROW('owner', 'finance.outgoing_payments.manage'),
+      ROW('owner', 'finance.financial_accounts.manage_balance'),
+      ROW('owner', 'commissions.rules.view'),
+      ROW('owner', 'commissions.rules.manage'),
+      ROW('owner', 'commissions.rules.activate'),
+      ROW('owner', 'commissions.simulate'),
+      ROW('owner', 'commissions.ledger.view'),
+      ROW('owner', 'commissions.ledger.approve'),
+      ROW('owner', 'commissions.ledger.mark_paid'),
+      ROW('owner', 'commissions.ledger.reconcile'),
+      ROW('owner', 'commissions.export'),
+      ROW('owner', 'commissions.own.view'),
+      ROW('owner', 'settings.view'),
+      ROW('owner', 'organization_backups.view'),
+      ROW('owner', 'organization_backups.create'),
+      ROW('owner', 'organization_backups.restore'),
+      ROW('owner', 'audit.view'),
+      ROW('owner', 'system.health.view'),
+      ROW('owner', 'system.health.manage'),
+      ROW('owner', 'system.data_reset'),
+      ROW('admin', 'sandbox.access'),
+      ROW('admin', 'sandbox.switch'),
+      ROW('admin', 'sandbox.manage'),
+      ROW('admin', 'organizations.view'),
+      ROW('admin', 'organizations.update'),
+      ROW('admin', 'settings.update'),
+      ROW('admin', 'stores.view'),
+      ROW('admin', 'stores.create'),
+      ROW('admin', 'stores.update'),
+      ROW('admin', 'stores.delete'),
+      ROW('admin', 'members.view'),
+      ROW('admin', 'members.create'),
+      ROW('admin', 'members.update'),
+      ROW('admin', 'members.delete'),
+      ROW('admin', 'store-memberships.manage'),
+      ROW('admin', 'roles.view'),
+      ROW('admin', 'roles.create'),
+      ROW('admin', 'roles.update'),
+      ROW('admin', 'roles.delete'),
+      ROW('admin', 'roles.assign-permissions'),
+      ROW('admin', 'catalog.view'),
+      ROW('admin', 'products.view'),
+      ROW('admin', 'products.create'),
+      ROW('admin', 'products.update'),
+      ROW('admin', 'products.archive'),
+      ROW('admin', 'products.import'),
+      ROW('admin', 'product_cost.view'),
+      ROW('admin', 'product_cost.manage'),
+      ROW('admin', 'product_cost.export'),
+      ROW('admin', 'product_cost.import'),
+      ROW('admin', 'categories.view'),
+      ROW('admin', 'categories.manage'),
+      ROW('admin', 'brands.view'),
+      ROW('admin', 'brands.manage'),
+      ROW('admin', 'units.view'),
+      ROW('admin', 'units.manage'),
+      ROW('admin', 'tax_rates.view'),
+      ROW('admin', 'tax_rates.manage'),
+      ROW('admin', 'warehouses.view'),
+      ROW('admin', 'warehouses.create'),
+      ROW('admin', 'warehouses.update'),
+      ROW('admin', 'inventory.view'),
+      ROW('admin', 'inventory.opening'),
+      ROW('admin', 'inventory.adjust'),
+      ROW('admin', 'inventory.transfer'),
+      ROW('admin', 'inventory.reserve'),
+      ROW('admin', 'inventory.release'),
+      ROW('admin', 'inventory.consume'),
+      ROW('admin', 'inventory.transfer_requests.view'),
+      ROW('admin', 'inventory.transfer_requests.manage'),
+      ROW('admin', 'inventory.transfer_requests.receive'),
+      ROW('admin', 'suppliers.view'),
+      ROW('admin', 'suppliers.manage'),
+      ROW('admin', 'supplier_catalog.manage'),
+      ROW('admin', 'procurement.view'),
+      ROW('admin', 'procurement.manage'),
+      ROW('admin', 'procurement.receive'),
+      ROW('admin', 'customers.view'),
+      ROW('admin', 'customers.create'),
+      ROW('admin', 'customers.update'),
+      ROW('admin', 'contacts.view'),
+      ROW('admin', 'contacts.create'),
+      ROW('admin', 'contacts.update'),
+      ROW('admin', 'contacts.archive'),
+      ROW('admin', 'follow_ups.view'),
+      ROW('admin', 'follow_ups.create'),
+      ROW('admin', 'follow_ups.update'),
+      ROW('admin', 'follow_ups.manage_all'),
+      ROW('admin', 'sales_orders.view'),
+      ROW('admin', 'sales_orders.create'),
+      ROW('admin', 'sales_orders.update'),
+      ROW('admin', 'sales_orders.confirm'),
+      ROW('admin', 'sales_orders.cancel'),
+      ROW('admin', 'sales_orders.fulfill'),
+      ROW('admin', 'fulfillment.view'),
+      ROW('admin', 'fulfillment.manage'),
+      ROW('admin', 'fulfillment.dispatch'),
+      ROW('admin', 'fulfillment.mark_delivered'),
+      ROW('admin', 'sales_orders.override_price'),
+      ROW('admin', 'sales_orders.apply_discount'),
+      ROW('admin', 'sales_orders.assign_salesperson'),
+      ROW('admin', 'sales_orders.reassign_salesperson'),
+      ROW('admin', 'sales_returns.view'),
+      ROW('admin', 'sales_returns.create'),
+      ROW('admin', 'sales_returns.receive'),
+      ROW('admin', 'sales_returns.cancel'),
+      ROW('admin', 'sales_returns.override_policy'),
+      ROW('admin', 'sales_exchanges.view'),
+      ROW('admin', 'sales_exchanges.create'),
+      ROW('admin', 'sales_exchanges.process'),
+      ROW('admin', 'credit_notes.view'),
+      ROW('admin', 'credit_notes.issue'),
+      ROW('admin', 'pos.access'),
+      ROW('admin', 'financial_accounts.view'),
+      ROW('admin', 'financial_accounts.create'),
+      ROW('admin', 'financial_accounts.update'),
+      ROW('admin', 'payments.view'),
+      ROW('admin', 'payments.create'),
+      ROW('admin', 'payments.reverse'),
+      ROW('admin', 'payments.backdate'),
+      ROW('admin', 'invoices.view'),
+      ROW('admin', 'invoices.create'),
+      ROW('admin', 'invoices.update_draft'),
+      ROW('admin', 'invoices.issue'),
+      ROW('admin', 'invoices.backdate'),
+      ROW('admin', 'invoices.email'),
+      ROW('admin', 'quotations.view'),
+      ROW('admin', 'quotations.create'),
+      ROW('admin', 'quotations.update'),
+      ROW('admin', 'quotations.issue'),
+      ROW('admin', 'quotations.accept'),
+      ROW('admin', 'quotations.convert'),
+      ROW('admin', 'quotations.email'),
+      ROW('admin', 'quotations.override_supplier_availability'),
+      ROW('admin', 'non_stock_items.manage'),
+      ROW('admin', 'delivery_notes.view'),
+      ROW('admin', 'delivery_notes.create'),
+      ROW('admin', 'delivery_notes.update_draft'),
+      ROW('admin', 'delivery_notes.issue'),
+      ROW('admin', 'delivery_notes.backdate'),
+      ROW('admin', 'delivery_notes.email'),
+      ROW('admin', 'documents.stamp'),
+      ROW('admin', 'integrations.view'),
+      ROW('admin', 'integrations.manage'),
+      ROW('admin', 'integrations.sync'),
+      ROW('admin', 'integrations.woocommerce.stock_tasks.view'),
+      ROW('admin', 'integrations.woocommerce.stock_tasks.manage'),
+      ROW('admin', 'finance.monthly_situation.view'),
+      ROW('admin', 'finance.monthly_situation.manage'),
+      ROW('admin', 'finance.monthly_situation.export'),
+      ROW('admin', 'finance.outgoing_payments.manage'),
+      ROW('admin', 'finance.financial_accounts.manage_balance'),
+      ROW('admin', 'commissions.rules.view'),
+      ROW('admin', 'commissions.rules.manage'),
+      ROW('admin', 'commissions.rules.activate'),
+      ROW('admin', 'commissions.simulate'),
+      ROW('admin', 'commissions.ledger.view'),
+      ROW('admin', 'commissions.ledger.approve'),
+      ROW('admin', 'commissions.ledger.mark_paid'),
+      ROW('admin', 'commissions.ledger.reconcile'),
+      ROW('admin', 'commissions.export'),
+      ROW('admin', 'audit.view'),
+      ROW('admin', 'system.health.view'),
+      ROW('admin', 'system.data_reset'),
+      ROW('sales-employee', 'organizations.view'),
+      ROW('sales-employee', 'stores.view'),
+      ROW('sales-employee', 'catalog.view'),
+      ROW('sales-employee', 'products.view'),
+      ROW('sales-employee', 'categories.view'),
+      ROW('sales-employee', 'brands.view'),
+      ROW('sales-employee', 'units.view'),
+      ROW('sales-employee', 'tax_rates.view'),
+      ROW('sales-employee', 'inventory.view'),
+      ROW('sales-employee', 'inventory.transfer_requests.view'),
+      ROW('sales-employee', 'inventory.transfer_requests.receive'),
+      ROW('sales-employee', 'suppliers.view'),
+      ROW('sales-employee', 'suppliers.manage'),
+      ROW('sales-employee', 'supplier_catalog.manage'),
+      ROW('sales-employee', 'procurement.view'),
+      ROW('sales-employee', 'procurement.manage'),
+      ROW('sales-employee', 'procurement.receive'),
+      ROW('sales-employee', 'customers.view'),
+      ROW('sales-employee', 'customers.create'),
+      ROW('sales-employee', 'customers.update'),
+      ROW('sales-employee', 'contacts.view'),
+      ROW('sales-employee', 'contacts.create'),
+      ROW('sales-employee', 'contacts.update'),
+      ROW('sales-employee', 'contacts.archive'),
+      ROW('sales-employee', 'follow_ups.view'),
+      ROW('sales-employee', 'follow_ups.create'),
+      ROW('sales-employee', 'follow_ups.update'),
+      ROW('sales-employee', 'sales_orders.view'),
+      ROW('sales-employee', 'sales_orders.create'),
+      ROW('sales-employee', 'sales_orders.update'),
+      ROW('sales-employee', 'sales_orders.confirm'),
+      ROW('sales-employee', 'sales_orders.fulfill'),
+      ROW('sales-employee', 'fulfillment.view'),
+      ROW('sales-employee', 'fulfillment.manage'),
+      ROW('sales-employee', 'fulfillment.dispatch'),
+      ROW('sales-employee', 'fulfillment.mark_delivered'),
+      ROW('sales-employee', 'sales_returns.view'),
+      ROW('sales-employee', 'sales_returns.create'),
+      ROW('sales-employee', 'sales_returns.receive'),
+      ROW('sales-employee', 'sales_exchanges.view'),
+      ROW('sales-employee', 'sales_exchanges.create'),
+      ROW('sales-employee', 'sales_exchanges.process'),
+      ROW('sales-employee', 'credit_notes.view'),
+      ROW('sales-employee', 'credit_notes.issue'),
+      ROW('sales-employee', 'pos.access'),
+      ROW('sales-employee', 'payments.view'),
+      ROW('sales-employee', 'payments.create'),
+      ROW('sales-employee', 'invoices.view'),
+      ROW('sales-employee', 'invoices.create'),
+      ROW('sales-employee', 'invoices.update_draft'),
+      ROW('sales-employee', 'invoices.issue'),
+      ROW('sales-employee', 'invoices.email'),
+      ROW('sales-employee', 'quotations.view'),
+      ROW('sales-employee', 'quotations.create'),
+      ROW('sales-employee', 'quotations.update'),
+      ROW('sales-employee', 'quotations.issue'),
+      ROW('sales-employee', 'quotations.accept'),
+      ROW('sales-employee', 'quotations.convert'),
+      ROW('sales-employee', 'quotations.email'),
+      ROW('sales-employee', 'non_stock_items.manage'),
+      ROW('sales-employee', 'delivery_notes.view'),
+      ROW('sales-employee', 'delivery_notes.create'),
+      ROW('sales-employee', 'delivery_notes.update_draft'),
+      ROW('sales-employee', 'delivery_notes.issue'),
+      ROW('sales-employee', 'delivery_notes.email')) AS t (slug, k)
+JOIN roles r ON r.slug = t.slug
+WHERE NOT EXISTS (SELECT 1 FROM role_permission rp JOIN permissions p ON p.id = rp.permission_id
+                  WHERE rp.role_id = r.id AND p.`key` = t.k);
+
+SELECT 'P05c' AS id, 'New permissions each default role will receive' AS check_name, 'REVIEW' AS result,
+  CONCAT(r.slug, ' (', COUNT(DISTINCT r.id), ' role(s)): ', GROUP_CONCAT(DISTINCT t.k ORDER BY t.k SEPARATOR ', ')) AS detail
+FROM (VALUES
+      ROW('owner', 'settings.billing.manage'),
+      ROW('owner', 'customers.manage_credit'),
+      ROW('owner', 'contacts.roles.manage'),
+      ROW('owner', 'contacts.payment_terms.manage'),
+      ROW('owner', 'payments.refund'),
+      ROW('owner', 'supplier_invoices.view'),
+      ROW('owner', 'supplier_invoices.manage'),
+      ROW('owner', 'supplier_invoices.approve'),
+      ROW('owner', 'supplier_invoices.void'),
+      ROW('owner', 'finance.customers.opening_balance.manage'),
+      ROW('owner', 'finance.customers.terms.manage'),
+      ROW('owner', 'finance.customers.credit_override'),
+      ROW('owner', 'finance.customers.settlements.manage'),
+      ROW('owner', 'finance.customers.schedules.manage'),
+      ROW('owner', 'finance.customers.instruments.manage'),
+      ROW('admin', 'settings.billing.manage'),
+      ROW('admin', 'customers.manage_credit'),
+      ROW('admin', 'supplier_invoices.view'),
+      ROW('admin', 'supplier_invoices.manage'),
+      ROW('admin', 'contacts.roles.manage'),
+      ROW('admin', 'contacts.payment_terms.manage'),
+      ROW('admin', 'payments.refund'),
+      ROW('admin', 'supplier_invoices.approve'),
+      ROW('admin', 'supplier_invoices.void'),
+      ROW('admin', 'finance.customers.opening_balance.manage'),
+      ROW('admin', 'finance.customers.terms.manage'),
+      ROW('admin', 'finance.customers.credit_override'),
+      ROW('admin', 'finance.customers.settlements.manage'),
+      ROW('admin', 'finance.customers.schedules.manage'),
+      ROW('admin', 'finance.customers.instruments.manage'),
+      ROW('sales-employee', 'supplier_invoices.view'),
+      ROW('sales-employee', 'supplier_invoices.manage')) AS t (slug, k)
+JOIN roles r ON r.slug = t.slug
+GROUP BY r.slug;
+
+SELECT 'P05d' AS id, 'Roles receiving equivalence grants (custom roles included)' AS check_name, 'REVIEW' AS result,
+  CONCAT('org ', r.organization_id, ' role ', r.id, ' ', r.slug, IF(r.is_system, ' [system]', ' [custom]'), ' holds: ',
+         GROUP_CONCAT(p.`key` ORDER BY p.`key` SEPARATOR ', '),
+         ' => gains: ',
+         CONCAT_WS(', ',
+           IF(SUM(p.`key` = 'payments.reverse') > 0, 'payments.refund', NULL),
+           IF(SUM(p.`key` = 'settings.update') > 0, 'settings.billing.manage, customers.manage_credit', NULL),
+           IF(SUM(p.`key` IN ('procurement.manage', 'finance.monthly_situation.manage')) > 0, 'supplier_invoices.view/manage', NULL),
+           IF(SUM(p.`key` = 'finance.monthly_situation.manage') > 0, 'supplier_invoices.approve/void', NULL))) AS detail
+FROM roles r JOIN role_permission rp ON rp.role_id = r.id JOIN permissions p ON p.id = rp.permission_id
+WHERE p.`key` IN ('payments.reverse', 'settings.update', 'procurement.manage', 'finance.monthly_situation.manage')
+GROUP BY r.id, r.organization_id, r.slug, r.is_system ORDER BY r.organization_id, r.id;
+
+SELECT 'P05e' AS id, 'Release permission keys already present (expected 0 on a main database)' AS check_name,
+  IF(COUNT(*) = 0, 'PASS', 'REVIEW') AS result, COALESCE(GROUP_CONCAT(`key` SEPARATOR ', '), '-') AS detail
+FROM permissions WHERE `key` IN ('settings.billing.manage', 'customers.manage_credit', 'contacts.roles.manage', 'contacts.payment_terms.manage', 'payments.refund', 'supplier_invoices.view', 'supplier_invoices.manage', 'supplier_invoices.approve', 'supplier_invoices.void', 'finance.customers.opening_balance.manage', 'finance.customers.terms.manage', 'finance.customers.credit_override', 'finance.customers.settlements.manage', 'finance.customers.schedules.manage', 'finance.customers.instruments.manage');
+
+-- P06 Unified Contacts backfill (2026_12_02_000002). Additive: only the new nullable party_id is written on legacy rows.
+-- suppliers.ice is a NEW column, so at migration time it is empty: NO customer/supplier pair is merged by ICE.
+SELECT 'P06a' AS id, 'Rows that will each get a party (per organization)' AS check_name, 'INFO' AS result,
+  CONCAT('org ', o.id, ': customers=', (SELECT COUNT(*) FROM customers c WHERE c.organization_id = o.id),
+         ' suppliers=', (SELECT COUNT(*) FROM suppliers s WHERE s.organization_id = o.id),
+         ' contacts=', (SELECT COUNT(*) FROM organization_contacts k WHERE k.organization_id = o.id)) AS detail
+FROM organizations o ORDER BY o.id;
+
+SELECT 'P06b' AS id, 'Customer type values (anything but company is migrated as a person)' AS check_name,
+  IF(type IN ('company', 'individual'), 'INFO', 'REVIEW') AS result, CONCAT(type, ' / ', status, ': ', COUNT(*)) AS detail
+FROM customers GROUP BY type, status;
+
+SELECT 'P06c' AS id, 'Contacts linked to a customer of ANOTHER organization (link ignored by the backfill)' AS check_name,
+  IF(COUNT(*) = 0, 'PASS', 'REVIEW') AS result, CONCAT(COUNT(*), ' contact(s)') AS detail
+FROM organization_contacts k JOIN customers c ON c.id = k.customer_id WHERE c.organization_id <> k.organization_id
+UNION ALL
+SELECT 'P06d', 'Contacts linked to a supplier of ANOTHER organization (link ignored by the backfill)',
+  IF(COUNT(*) = 0, 'PASS', 'REVIEW'), CONCAT(COUNT(*), ' contact(s)')
+FROM organization_contacts k JOIN suppliers s ON s.id = k.supplier_id WHERE s.organization_id <> k.organization_id
+UNION ALL
+SELECT 'P06e', 'Blank names (party display_name would be blank)', IF(SUM(n) = 0, 'PASS', 'REVIEW'),
+  CONCAT('customers=', SUM(IF(src = 'c', n, 0)), ' suppliers=', SUM(IF(src = 's', n, 0)), ' contacts=', SUM(IF(src = 'k', n, 0)))
+FROM (SELECT 'c' AS src, COUNT(*) AS n FROM customers WHERE TRIM(display_name) = ''
+      UNION ALL SELECT 's', COUNT(*) FROM suppliers WHERE TRIM(name) = ''
+      UNION ALL SELECT 'k', COUNT(*) FROM organization_contacts WHERE TRIM(full_name) = '') x;
+
+SELECT 'P06f' AS id, 'Customer / supplier same name (kept separate, reported as possible duplicate)' AS check_name, 'INFO' AS result,
+  CONCAT(COUNT(*), ' pair(s) (approximation: case-insensitive equality)') AS detail
+FROM customers c JOIN suppliers s ON s.organization_id = c.organization_id AND LOWER(TRIM(s.name)) = LOWER(TRIM(c.display_name)) AND c.type = 'company';
+
+SELECT 'P06g' AS id, 'E-mail shared by several legacy rows (never merged; reported)' AS check_name, 'INFO' AS result,
+  CONCAT(COUNT(*), ' shared address(es)') AS detail
+FROM (SELECT organization_id, LOWER(TRIM(email)) AS e FROM (
+        SELECT organization_id, email FROM customers UNION ALL SELECT organization_id, email FROM suppliers
+        UNION ALL SELECT organization_id, email FROM organization_contacts) u
+      WHERE email IS NOT NULL AND TRIM(email) <> '' GROUP BY organization_id, LOWER(TRIM(email)) HAVING COUNT(*) > 1) d;
+
+-- P07 invoice eligibility change (OPT-FC-004): effective immediately, every company customer may be invoiced
+-- BEFORE full payment unless an authorized user pins "after_full_payment" afterwards.
+SELECT 'P07a' AS id, 'Company customers that become eligible for invoice-before-payment' AS check_name, 'REVIEW' AS result,
+  CONCAT('org ', organization_id, ': ', COUNT(*)) AS detail
+FROM customers WHERE type = 'company' GROUP BY organization_id;
+
+SELECT 'P07b' AS id, 'Confirmed, not fully paid Production orders of company customers' AS check_name, 'REVIEW' AS result,
+  CONCAT('org ', o.organization_id, ': ', COUNT(*), ' order(s), total_incl_tax=', SUM(o.total_incl_tax)) AS detail
+FROM sales_orders o JOIN customers c ON c.id = o.customer_id
+WHERE c.type = 'company' AND o.status = 'confirmed' AND o.payment_status <> 'paid' AND o.sandbox_id IS NULL
+GROUP BY o.organization_id;
+
+SELECT 'P07c' AS id, 'Existing DRAFT invoices of company customers (could be issued unpaid after release)' AS check_name,
+  IF(COUNT(*) = 0, 'PASS', 'REVIEW') AS result,
+  CONCAT(COUNT(*), ' draft(s); first ids: ', COALESCE(SUBSTRING_INDEX(GROUP_CONCAT(i.id ORDER BY i.id), ',', 20), '-')) AS detail
+FROM invoices i JOIN sales_orders o ON o.id = i.sales_order_id JOIN customers c ON c.id = o.customer_id
+WHERE i.status = 'draft' AND i.sandbox_id IS NULL AND c.type = 'company';
+
+-- P08 queue: drain before the cut-over (old job payloads must be consumed by the code that wrote them)
+SELECT 'P08a' AS id, 'Jobs waiting or reserved' AS check_name, IF(COUNT(*) = 0, 'PASS', 'REVIEW') AS result,
+  CONCAT(COUNT(*), ' job(s), reserved=', COALESCE(SUM(reserved_at IS NOT NULL), 0)) AS detail FROM jobs
+UNION ALL
+SELECT 'P08b', 'Failed jobs (kept as they are)', IF(COUNT(*) = 0, 'PASS', 'REVIEW'), CONCAT(COUNT(*), ' failed job(s)') FROM failed_jobs;
+
+-- P09 size of the tables that will be altered (CHECK / foreign key additions copy the table and block writes)
+SELECT 'P09' AS id, 'Altered tables' AS check_name, 'INFO' AS result,
+  CONCAT(table_name, ': ~', table_rows, ' rows, ', ROUND((data_length + index_length) / 1048576, 1), ' MiB') AS detail
+FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name IN ('credit_notes', 'customers', 'finance_obligations', 'inventory_balances', 'invoices', 'organization_contacts', 'organizations', 'payment_allocations', 'payment_refunds', 'payments', 'sandbox_inventory_balances', 'sandbox_payment_allocations', 'sandbox_payment_refunds', 'sandbox_payments', 'suppliers')
+ORDER BY data_length DESC;
+
+-- P10 long-running transactions / metadata-lock risk at the moment of the check (needs PROCESS privilege to see others)
+SELECT 'P10' AS id, 'Open transactions older than 60 s' AS check_name, IF(COUNT(*) = 0, 'PASS', 'REVIEW') AS result,
+  CONCAT(COUNT(*), ' transaction(s)') AS detail
+FROM information_schema.processlist
+WHERE db = DATABASE() AND command <> 'Sleep' AND time > 60 AND id <> CONNECTION_ID();
+
+COMMIT;
