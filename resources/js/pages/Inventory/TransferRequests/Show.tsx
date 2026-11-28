@@ -8,6 +8,7 @@ import {
     useTransferLabels,
     type WarehouseRef,
 } from '@/components/inventory/TransferRequestUi';
+import ReceiptRefusal from '@/components/inventory/ReceiptRefusal';
 import { Button, ButtonLink } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
 import { useI18n } from '@/i18n';
@@ -187,17 +188,22 @@ export default function TransferRequestShow({ request, breakdown, history, membe
     const labels = useTransferLabels();
     const pageErrors = (usePage().props.errors ?? {}) as Record<string, string | undefined>;
     const [busy, setBusy] = useState<string | null>(null);
-    const act = (verb: string, onSuccess?: () => void) => router.post(`/inventory/transfer-requests/${request.id}/${verb}`, {}, {
+    const act = (verb: string, onSuccess?: () => void, onError?: (errors: Record<string, string>) => void) => router.post(`/inventory/transfer-requests/${request.id}/${verb}`, {}, {
         preserveScroll: true,
+        preserveState: true,
         onStart: () => setBusy(verb),
         onFinish: () => setBusy(null),
         onSuccess,
+        onError,
     });
 
     const cancelForm = useForm({ reason: '' });
     const [cancelOpen, setCancelOpen] = useState(false);
     const [shipOpen, setShipOpen] = useState(false);
     const [receiveOpen, setReceiveOpen] = useState(false);
+    const [receiveErrors, setReceiveErrors] = useState<Record<string, string>>({});
+    const closeReceive = () => { setReceiveOpen(false); setReceiveErrors({}); };
+    const confirmReceive = () => { setReceiveErrors({}); act('receive', closeReceive, setReceiveErrors); };
     const [driverOpen, setDriverOpen] = useState(false);
     const [reviewed, setReviewed] = useState(false);
     const [sent, setSent] = useState<Record<number, string>>(() => Object.fromEntries(request.lines.map((l) => [l.id, String(Number(l.quantity))])));
@@ -220,7 +226,7 @@ export default function TransferRequestShow({ request, breakdown, history, membe
     const sentTotal = request.lines.reduce((sum, l) => sum + (Number(sent[l.id]) || 0), 0);
     const reducedLines = request.lines.filter((l) => Number(sent[l.id]) < n(l.quantity));
     const totalShortage = breakdown.reduce((s, b) => s + n(b.shortage), 0);
-    const pageErrorList = ['status', 'restore', 'reason', 'lock_version', 'lines'].map((k) => pageErrors[k]).filter(Boolean) as string[];
+    const pageErrorList = ['status', 'restore', 'reason', 'lock_version', 'lines', 'order', 'allocation', 'reservation', 'quantity'].map((k) => pageErrors[k]).filter(Boolean) as string[];
     const isOrder = request.sales_order !== null;
     // Order-linked but carrying replenishment only (direct dispatch order).
     const replenishmentOnlyForOrder = isOrder && !request.customer_transfer;
@@ -806,19 +812,20 @@ export default function TransferRequestShow({ request, breakdown, history, membe
 
             <Dialog
                 open={receiveOpen}
-                onClose={() => setReceiveOpen(false)}
+                onClose={closeReceive}
                 title={t('inventory.trq.receiveDialogTitle').replace('{number}', request.request_number)}
                 description={t('inventory.trq.receiveDialogHelp').replace('{destination}', dst)}
                 footer={
                     <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-                        <Button type="button" variant="secondary" onClick={() => setReceiveOpen(false)}>{t('common.cancel')}</Button>
-                        <Button type="button" loading={busy === 'receive'} onClick={() => act('receive', () => setReceiveOpen(false))}>
+                        <Button type="button" variant="secondary" onClick={closeReceive}>{t('common.cancel')}</Button>
+                        <Button type="button" loading={busy === 'receive'} onClick={confirmReceive}>
                             {t('inventory.trq.confirmReceiveUnits').replace('{units}', formatQuantity(total))}
                         </Button>
                     </div>
                 }
             >
                 <div className="space-y-3 p-4 sm:p-6">
+                    <ReceiptRefusal errors={receiveErrors} />
                     <ul className="divide-y divide-line rounded-field border border-line text-sm">
                         {request.lines.map((l) => (
                             <li key={l.id} className="flex items-center justify-between gap-3 px-3 py-2">
