@@ -378,6 +378,9 @@ jobs:
       - name: Race - unified contacts role / profile activation and custom role / payment term creation
         run: php tests/Concurrency/contacts_activation_race.php --sessions=6 --rounds=3 --database=commerce_erp_race_test
 
+      - name: Race - customer transfer receipt (double receipt, receipt vs new orders)
+        run: php tests/Concurrency/transfer_receipt_race.php --rivals=4 --rounds=2 --database=commerce_erp_race_test
+
   frontend:
     name: Frontend (typecheck and production build)
     runs-on: ubuntu-24.04

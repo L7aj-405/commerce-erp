@@ -1,0 +1,85 @@
+-- Incident TRQ-000030. READ ONLY: SELECT statements only. Production ledger (Test Mode tables are not read).
+-- Run in a read-only session:  mysql --database=<db> < scripts/incidents/transfer-receipt-reservations.mysql
+SET SESSION TRANSACTION READ ONLY;
+
+-- 1. Confirmed orders with goods still to ship whose allocation holds nothing.
+--    shipped = quantity on shipments that left the company. A consumed reservation is normal once shipped.
+SELECT '1_unheld_allocations' AS section, o.organization_id, o.id AS order_id, o.order_number, o.source,
+       o.fulfillment_status, o.confirmed_at, l.id AS line_id, l.quantity AS line_qty,
+       COALESCE(s.shipped, 0) AS shipped_qty, a.id AS allocation_id, a.warehouse_id, a.quantity AS allocation_qty,
+       r.id AS reservation_id, COALESCE(r.status, 'none') AS reservation_status, r.updated_at AS reservation_changed_at,
+       (SELECT GROUP_CONCAT(CONCAT(t.request_number, ':', t.status) ORDER BY t.id)
+          FROM transfer_requests t WHERE t.organization_id = o.organization_id AND t.sales_order_id = o.id) AS transfers
+FROM sales_orders o
+JOIN sales_order_lines l ON l.sales_order_id = o.id AND l.organization_id = o.organization_id
+JOIN sales_order_inventory_allocations a ON a.sales_order_line_id = l.id AND a.organization_id = o.organization_id
+LEFT JOIN inventory_reservations r ON r.id = a.inventory_reservation_id AND r.organization_id = a.organization_id
+LEFT JOIN (
+    SELECT i.sales_order_line_id, SUM(i.quantity) AS shipped
+    FROM fulfillment_items i
+    JOIN fulfillments f ON f.id = i.fulfillment_id AND f.organization_id = i.organization_id
+    WHERE f.status IN ('handed_to_carrier', 'in_transit', 'delivered', 'closed')
+    GROUP BY i.sales_order_line_id
+) s ON s.sales_order_line_id = l.id
+WHERE o.sandbox_id IS NULL AND o.status = 'confirmed' AND o.fulfillment_status <> 'fulfilled'
+  AND l.quantity > COALESCE(s.shipped, 0)
+  AND (r.id IS NULL OR r.status = 'released')
+ORDER BY o.organization_id, o.id, l.id, a.id;
+
+-- 2. Confirmed orders with goods still to ship holding less than what is left (any cause).
+--    Supplier quantity not yet received is expected here: compare with open procurements.
+SELECT '2_under_held_lines' AS section, o.organization_id, o.order_number, l.id AS line_id,
+       l.quantity - COALESCE(s.shipped, 0) AS outstanding, COALESCE(h.held, 0) AS actively_held,
+       COALESCE(p.awaited, 0) AS awaited_from_supplier
+FROM sales_orders o
+JOIN sales_order_lines l ON l.sales_order_id = o.id AND l.organization_id = o.organization_id
+LEFT JOIN (
+    SELECT i.sales_order_line_id, SUM(i.quantity) AS shipped
+    FROM fulfillment_items i JOIN fulfillments f ON f.id = i.fulfillment_id AND f.organization_id = i.organization_id
+    WHERE f.status IN ('handed_to_carrier', 'in_transit', 'delivered', 'closed') GROUP BY i.sales_order_line_id
+) s ON s.sales_order_line_id = l.id
+LEFT JOIN (
+    SELECT a.sales_order_line_id, SUM(r.quantity) AS held
+    FROM sales_order_inventory_allocations a
+    JOIN inventory_reservations r ON r.id = a.inventory_reservation_id AND r.organization_id = a.organization_id AND r.status = 'active'
+    GROUP BY a.sales_order_line_id
+) h ON h.sales_order_line_id = l.id
+LEFT JOIN (
+    SELECT sales_order_line_id, SUM(quantity - received_quantity) AS awaited
+    FROM sales_order_procurements WHERE status NOT IN ('cancelled', 'unavailable') GROUP BY sales_order_line_id
+) p ON p.sales_order_line_id = l.id
+WHERE o.sandbox_id IS NULL AND o.status = 'confirmed' AND o.fulfillment_status <> 'fulfilled'
+  AND l.line_type = 'catalog' AND l.sales_order_addendum_id IS NULL
+  AND l.quantity - COALESCE(s.shipped, 0) > COALESCE(h.held, 0) + COALESCE(p.awaited, 0)
+ORDER BY o.organization_id, o.id, l.id;
+
+-- 3. Balances that disagree with their active reservations (expected: no row).
+SELECT '3_balance_mismatch' AS section, b.organization_id, b.warehouse_id, b.product_variant_id, b.on_hand, b.reserved,
+       COALESCE(SUM(r.quantity), 0) AS active_reservations
+FROM inventory_balances b
+LEFT JOIN inventory_reservations r ON r.organization_id = b.organization_id AND r.warehouse_id = b.warehouse_id
+     AND r.product_variant_id = b.product_variant_id AND r.status = 'active'
+GROUP BY b.id, b.organization_id, b.warehouse_id, b.product_variant_id, b.on_hand, b.reserved
+HAVING b.reserved <> COALESCE(SUM(r.quantity), 0) OR b.reserved > b.on_hand;
+
+-- 4. SO-000073 (id 93): the trail that dates the release. Expected for the correction defect:
+--    correction_started, two reservation.released, correction_completed, and NO reservation.created in between.
+SELECT '4_order_93_trail' AS section, g.id, g.created_at, g.event, g.auditable_type, g.auditable_id, g.actor_id
+FROM audit_logs g
+WHERE (g.auditable_type LIKE '%SalesOrder' AND g.auditable_id = 93)
+   OR (g.auditable_type LIKE '%InventoryReservation' AND g.auditable_id IN (
+        SELECT r.id FROM inventory_reservations r
+        JOIN sales_order_inventory_allocations a ON a.id = r.reference_id AND r.reference_type LIKE '%SalesOrderInventoryAllocation'
+        JOIN sales_order_lines l ON l.id = a.sales_order_line_id
+        WHERE l.sales_order_id = 93))
+ORDER BY g.id;
+
+-- 5. TRQ-000030 (id 30): everything that will travel, and current stock for it.
+SELECT '5_trq_30' AS section, t.request_number, t.status, t.sales_order_id, t.source_warehouse_id, t.destination_warehouse_id,
+       tl.product_variant_id, tl.reason, tl.quantity, b.warehouse_id, b.on_hand, b.reserved
+FROM transfer_requests t
+JOIN transfer_request_lines tl ON tl.transfer_request_id = t.id AND tl.organization_id = t.organization_id
+LEFT JOIN inventory_balances b ON b.organization_id = t.organization_id AND b.product_variant_id = tl.product_variant_id
+     AND b.warehouse_id IN (t.source_warehouse_id, t.destination_warehouse_id)
+WHERE t.id = 30
+ORDER BY tl.id, b.warehouse_id;

@@ -118,6 +118,43 @@ class InventoryReservationManager
         });
     }
 
+    /**
+     * Shrink an active reservation by `$delta`, keeping the remainder held —
+     * used when only part of an Order's earmark leaves its warehouse. Removing
+     * the whole quantity is a release(), which keeps the row's quantity intact.
+     */
+    public function decrease(User $actor, Organization $organization, InventoryReservation $reservation, int|float|string $delta): InventoryReservation
+    {
+        $this->assertContext($actor, $organization);
+        abort_unless($reservation->organization_id === $organization->getKey(), 404);
+        $delta = InventoryQuantity::positive($delta);
+
+        return DB::transaction(function () use ($actor, $organization, $reservation, $delta) {
+            $balance = $this->balances->lock($organization, $reservation->warehouse, $reservation->productVariant);
+            $reservation = InventoryReservation::query()->whereKey($reservation->getKey())
+                ->where('organization_id', $organization->getKey())->lockForUpdate()->firstOrFail();
+            if ($reservation->status !== InventoryReservationStatus::Active) {
+                throw ValidationException::withMessages(['reservation' => 'Only an active reservation can be decreased.']);
+            }
+            if (InventoryQuantity::compare($delta, $reservation->quantity) >= 0) {
+                throw ValidationException::withMessages(['quantity' => 'The decrease must be smaller than the reservation.']);
+            }
+            if (InventoryQuantity::compare($balance->reserved, $delta) < 0) {
+                throw ValidationException::withMessages(['reservation' => 'The reserved balance is inconsistent with this reservation.']);
+            }
+            $reservation->quantity = InventoryQuantity::subtract($reservation->quantity, $delta);
+            $reservation->save();
+            $balance->reserved = InventoryQuantity::subtract($balance->reserved, $delta);
+            $balance->save();
+            $this->audit->record('inventory.reservation.decreased', $actor, $organization, auditable: $reservation, newValues: [
+                'warehouse_id' => $reservation->warehouse_id, 'product_variant_id' => $reservation->product_variant_id,
+                'delta' => $delta, 'quantity' => $reservation->quantity,
+            ]);
+
+            return $reservation;
+        });
+    }
+
     public function release(User $actor, Organization $organization, InventoryReservation $reservation): InventoryReservation
     {
         $this->assertContext($actor, $organization);

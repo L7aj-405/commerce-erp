@@ -453,7 +453,7 @@ class TransferRequestController extends Controller
         $this->authorize('receive', $transferRequest);
         $action->execute($request->user(), $transferRequest);
 
-        return back()->with('success', 'Demande de transfert réceptionnée.');
+        return back()->with('success', __('transfer_receipt.success', ['number' => $transferRequest->request_number]));
     }
 
     public function cancel(Request $request, TransferRequest $transferRequest, CancelTransferRequestAction $action): RedirectResponse
